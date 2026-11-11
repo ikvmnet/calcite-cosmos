@@ -66,10 +66,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>What is true is the oracle's; what is written is this.</b> Every fact a rewrite reads is
     /// asked of <see cref="CosmosFilterStatement"/> under the licence the rewrite has: the filter is
-    /// <c>FALSE</c> where every conjunct together contradicts the declaration, a strengthening; a
-    /// conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered on what
-    /// its siblings establish, never what it does; and inside the arm of a <c>CASE</c>, on that and the
-    /// conditions the arm is read under. What is left here is the shapes, the stored spellings and the
+    /// <c>FALSE</c> where no document the declaration admits makes the WHERE true, and none makes it
+    /// raise; a conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered
+    /// on what its siblings establish, never what it does; inside the arm of a <c>CASE</c>, on that and
+    /// the conditions the arm is read under; and an arm is written <c>FALSE</c> where those contradict
+    /// and the WHERE raises nowhere. What is left here is the shapes, the stored spellings and the
     /// licence a form gives an operator.
     /// </para>
     /// </remarks>
@@ -114,10 +115,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         static RexNode Rewritten(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder)
         {
-            // Where the conjuncts and the container's declaration cannot all hold, no document
-            // satisfies the predicate -- so the equivalent predicate is the constant, and every rule
-            // that reduces one takes it from there. A strengthening, which every conjunct's own facts
-            // may justify.
+            // Where no document the container's declaration admits makes the predicate true, and
+            // none makes anything in it raise, Calcite answers no rows and fails on none -- so the
+            // equivalent predicate is the constant, and every rule that reduces one takes it from
+            // there. Where something may raise, the filter stays, and fails as Calcite fails it.
             if (statement is { IsContradictory: true })
                 return rexBuilder.makeLiteral(false);
 
@@ -207,8 +208,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 : _statement.Within(_conjunct, _conditions);
 
             /// <summary>
-            /// Gets whether the arm the rewrite is inside is never read: its conditions contradict
-            /// what its siblings establish.
+            /// Gets whether the arm the rewrite is inside is never read, and may be written <c>FALSE</c>:
+            /// its conditions contradict what its siblings establish, and nothing in the WHERE raises, so
+            /// the evaluation the <c>FALSE</c> removes removes no failure.
             /// </summary>
             public bool NeverRead => _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
 
@@ -418,10 +420,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// A merged view's filter is exactly the discriminator that makes its columns mean what they
         /// do, so <c>q</c> is lowered against the facts <c>p</c> establishes beside the ones the
         /// conjunct's siblings do — the sibling-conjunct argument, one level down: over a row where
-        /// <c>p</c> is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. And where
-        /// those facts cannot hold together <c>p</c> is never true, so the <c>CASE</c> is the constant.
-        /// That is <see cref="OracleLicence.Arm"/>: the siblings and the arm's conditions, never the
-        /// conjunct the <c>CASE</c> is part of.
+        /// <c>p</c> is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. That is
+        /// <see cref="OracleLicence.Arm"/>: the siblings and the arm's conditions, never the conjunct
+        /// the <c>CASE</c> is part of. And where those facts cannot hold together <c>p</c> is never
+        /// true, so the <c>CASE</c> is the constant; but the constant stops Calcite evaluating <c>p</c>,
+        /// <c>q</c> and, where it decides the filter, every conjunct, so it is written only where nothing
+        /// in the WHERE raises (<see cref="OracleLicence.NeverRead"/>). Where the WHERE may raise, the arm
+        /// is lowered under the contradiction's view, which licenses nothing, and taken apart or rebuilt
+        /// as any other.
         /// </para>
         /// <para>
         /// <b>Only where <c>q</c> cannot raise, which is the condition Calcite's own simplifier keeps

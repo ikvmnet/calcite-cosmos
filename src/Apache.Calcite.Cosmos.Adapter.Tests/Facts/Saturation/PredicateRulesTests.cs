@@ -324,25 +324,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// as 6, which is more than 5. Beside each, a statement whose readings keep no row the declaration admits still
         /// contradicts it.
         /// </summary>
+        /// <remarks>
+        /// The reduce (<see cref="OracleLicence.Reduce"/>) narrows by the same <c>Kept</c> once its gate assumes the WHERE,
+        /// so none of the four is reduced either, and each control that raises nowhere is. Over the <c>INTEGER</c> column,
+        /// <c>= 7</c> is not, since its number cells may raise: the gate does not fire, though what the statement keeps
+        /// contradicts.
+        /// </remarks>
         [Fact]
         public void WhatAStatementKeepsHoldsEveryRowItsReadingsMayKeep()
         {
-            static bool Contradicts(JsonFactTheory theory, SqlPredicate conjunct) => Declared(theory, conjunct).IsContradictory(OracleLicence.Kept);
+            static bool Contradicts(JsonFactTheory theory, SqlPredicate conjunct, OracleLicence licence) => Declared(theory, conjunct).IsContradictory(licence);
 
-            var tenth = Theory(Outright(A, Enum(0.1m, 0.25m)));
-            Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.10000000000000001m)).Should().BeFalse("0.1 and 0.10000000000000001 are one double");
-            Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.3m)).Should().BeTrue("no double of the enum is 0.3's");
+            foreach (var licence in new[] { OracleLicence.Kept, OracleLicence.Reduce })
+            {
+                var tenth = Theory(Outright(A, Enum(0.1m, 0.25m)));
+                Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.10000000000000001m), licence).Should().BeFalse("0.1 and 0.10000000000000001 are one double, under {0}", licence.Question);
+                Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.3m), licence).Should().BeTrue("no double of the enum is 0.3's, under {0}", licence.Question);
 
-            var category = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Integer)));
-            Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "VARIANT" }))).Should().BeFalse("a VARIANT casts a number to text as null");
-            Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "ANY" }))).Should().BeTrue("an ANY casts a number to its text");
+                var category = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Integer)));
+                Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "VARIANT" })), licence).Should().BeFalse("a VARIANT casts a number to text as null, under {0}", licence.Question);
+                Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "ANY" })), licence).Should().BeTrue("an ANY casts a number to its text, under {0}", licence.Question);
 
-            var near = Theory(Outright(A, Enum(0.10000000000000001m, 0.25m)));
-            Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.1")).Should().BeFalse("an ANY renders 0.10000000000000001 as 0.1");
-            Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.2")).Should().BeTrue("an ANY renders no number of the enum as 0.2");
+                var near = Theory(Outright(A, Enum(0.10000000000000001m, 0.25m)));
+                Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.1"), licence).Should().BeFalse("an ANY renders 0.10000000000000001 as 0.1, under {0}", licence.Question);
+                Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.2"), licence).Should().BeTrue("an ANY renders no number of the enum as 0.2, under {0}", licence.Question);
 
-            var six = Theory(Outright(A, Enum(6.0000000000000001m)));
-            Contradicts(six, Cmp(Typed(A, "INTEGER"), ">", Lit(5m))).Should().BeFalse("an INTEGER column reads 6.0000000000000001 as 6");
+                var six = Theory(Outright(A, Enum(6.0000000000000001m)));
+                Contradicts(six, Cmp(Typed(A, "INTEGER"), ">", Lit(5m)), licence).Should().BeFalse("an INTEGER column reads 6.0000000000000001 as 6, under {0}", licence.Question);
+            }
+
+            var sixth = Theory(Outright(A, Enum(6.0000000000000001m)));
+            Contradicts(sixth, Eq(Typed(A, "INTEGER"), 7m), OracleLicence.Kept).Should().BeTrue("the column reads 6.0000000000000001 as 6, not 7");
+            Contradicts(sixth, Eq(Typed(A, "INTEGER"), 7m), OracleLicence.Reduce).Should().BeFalse("an INTEGER column's number cells may raise, so the gate does not fire");
+        }
+
+        /// <summary>
+        /// An arm of a <c>CASE</c> is written <c>FALSE</c> (<see cref="OracleLicence.NeverRead"/>) where its question's
+        /// facts contradict, as <see cref="OracleLicence.Arm"/>'s do, and the WHERE raises on no document: here
+        /// <c>kind = 'b'</c> beneath a sibling <c>kind = 'a'</c>. Beside a conjunct that may raise, an opaque one, it is
+        /// not, though the arm's own node still contradicts: the <c>FALSE</c> would stop Calcite evaluating it.
+        /// </summary>
+        [Fact]
+        public void AnArmIsNeverReadWhereItsFactsContradictAndTheWhereRaisesNowhere()
+        {
+            var condition = Eq(Text(Kind), "b");
+            var @case = Or(new SqlPredicate.Case(condition, Eq(Text(N), "y"), new SqlPredicate.Constant(false)), Eq(Text(A), "x"));
+            var conditions = new[] { condition };
+
+            var safe = Declared(Theory(), Eq(Text(Kind), "a"), @case);
+            safe.IsContradictory(OracleLicence.Arm(1, conditions)).Should().BeTrue("kind cannot be both a and b");
+            safe.IsContradictory(OracleLicence.NeverRead(1, conditions)).Should().BeTrue("and nothing in the WHERE raises");
+
+            var raising = Declared(Theory(), Eq(Text(Kind), "a"), @case, Opaque(9));
+            raising.IsContradictory(OracleLicence.Arm(1, conditions)).Should().BeTrue("kind cannot be both a and b");
+            raising.IsContradictory(OracleLicence.NeverRead(1, conditions)).Should().BeFalse("no rule says an opaque conjunct never raises");
         }
 
         [Fact]

@@ -28,8 +28,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>whether a conjunct renders, and how (<see cref="Renders"/>, <see cref="IsAdmitted"/>,
     /// <see cref="FactsFor"/>, <see cref="Translate"/>)</term><description>the stratum before the one that admitted it, or
     /// for one no stratum admitted, the last: what its siblings applied beside it establish, never what it does</description></item>
-    /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>every
-    /// conjunct: a strengthening, which the conjuncts' own facts may justify</description></item>
+    /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>the
+    /// WHERE as one conjunction, assumed only where it raises on no document the declaration admits: so that the filter
+    /// keeps nothing and fails on nothing</description></item>
     /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
     /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
     /// too</description></item>
@@ -37,6 +38,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, never the conjunct itself</description></item>
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
     /// deletions keep, and the conditions the arm is read under</description></item>
+    /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
+    /// the arm's question assumes, each assumed only where the WHERE the deletions leave raises on no document the
+    /// declaration admits</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
     /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
@@ -475,17 +479,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ? Scope.Facts(licence)
                 : throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
-        // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
+        // ── The reduce: the WHERE, where it raises nowhere; strengthening: every conjunct ────────────────────────────
 
         /// <summary>
-        /// Gets whether the conjuncts and the declaration cannot all hold of one document, so that the filter keeps nothing.
+        /// Gets whether the filter keeps nothing and fails on nothing: no document the declaration admits makes the WHERE
+        /// TRUE, and none makes anything in it raise (<see cref="OracleLicence.Reduce"/>), so the empty relation is
+        /// Calcite's answer.
         /// </summary>
         public bool IsContradictory
         {
             get
             {
                 lock (_lock)
-                    return _contradictory ??= Scope.IsContradictory(OracleLicence.Kept);
+                    return _contradictory ??= Scope.IsContradictory(OracleLicence.Reduce);
             }
         }
 
@@ -664,12 +670,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Determines whether an arm of a <c>CASE</c> is read under conditions its kept siblings contradict, so that it is
-        /// never read and the <c>CASE</c> answers its <c>ELSE</c>.
+        /// never read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE the deletions leave raises, so
+        /// that a <c>FALSE</c> written for it stops no failure (<see cref="OracleLicence.NeverRead"/>).
         /// </summary>
         public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions)
         {
             var (scope, index) = Remaining;
-            return scope.IsContradictory(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
+            return scope.IsContradictory(OracleLicence.NeverRead(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
         }
 
         // ── A weakening beside what is applied ───────────────────────────────────────────────────────────────────────

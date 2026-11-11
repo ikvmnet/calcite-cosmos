@@ -179,6 +179,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.AssumedIn(OracleLicence.DeleteConjunct(1, new[] { 1, 2, 3 })).Should().Equal(2);
             scope.AssumedIn(OracleLicence.Siblings(1)).Should().Equal(0, 2, 3);
             scope.AssumedIn(OracleLicence.Siblings(3)).Should().Equal(0, 1, 2);
+            scope.AssumedIn(OracleLicence.Kept).Should().Equal(0, 1, 2, 3);
+            scope.AssumedIn(OracleLicence.Reduce).Should().Equal(new[] { 0, 1, 2, 3 }, "the WHERE, the most the reduce's node may assume, where nothing in it raises");
+            scope.AssumedIn(OracleLicence.NeverRead(2, new[] { Opaque(8) })).Should().Equal(scope.AssumedIn(OracleLicence.Arm(2, new[] { Opaque(8) })),
+                "what the arm's question assumes, the most the never-read node may assume, where the WHERE raises nowhere");
             scope.AssumedIn(OracleLicence.Applied(new[] { Opaque(7) })).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.PointRead(new[] { Id })).Should().Equal(0);
             scope.AssumedIn(OracleLicence.Select).Should().Equal(0, 1, 2);
@@ -381,7 +385,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(scope.Facts(arm), X, Value("y")).Should().BeTrue("the condition holds wherever the arm is read");
             Knows(scope.Facts(arm), A, Present).Should().BeFalse("the conjunct the arm is part of is not its own licence");
 
+            // The gated twins assume as much, where the WHERE raises nowhere, as a comparison of text does not.
+            scope.AssumedIn(OracleLicence.Reduce).Should().Equal(scope.AssumedIn(OracleLicence.Kept));
+            Knows(scope.Facts(OracleLicence.Reduce), Kind, Value("a")).Should().BeTrue("the gate assumed the WHERE");
+            var neverRead = OracleLicence.NeverRead(1, new[] { Eq(Text(X), "y") });
+            scope.AssumedIn(neverRead).Should().Equal(scope.AssumedIn(arm));
+            Knows(scope.Facts(neverRead), Kind, Value("a")).Should().BeTrue("the gate assumed the sibling");
+            Knows(scope.Facts(neverRead), X, Value("y")).Should().BeTrue("and the condition");
+            Knows(scope.Facts(neverRead), A, Present).Should().BeFalse("but not the conjunct the arm is part of");
+
             Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Kept).Should().BeTrue();
+            Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Reduce).Should().BeTrue("a comparison of text raises nowhere");
         }
 
         // A container that declares no schema.

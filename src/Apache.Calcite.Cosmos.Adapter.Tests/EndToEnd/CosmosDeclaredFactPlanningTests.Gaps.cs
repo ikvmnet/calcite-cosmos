@@ -107,25 +107,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         const string N = """CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER)""";
 
+        const string D = """CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE)""";
+
         static string Where(string condition) => $"""SELECT c."DOC" FROM items AS c WHERE {condition}""";
 
         /// <summary>
         /// Gap 4: a range beyond a declared bound keeps no number, so over a path declared an integer it keeps
-        /// no document.
+        /// no document: through the cast to <c>DOUBLE</c>, which raises on no number, the plan says so. Through the
+        /// cast to <c>INTEGER</c> it is sent, since that cast fails on a stored <c>30.0</c> and on a number past an
+        /// <c>INTEGER</c>, which an integer declaration admits, and Calcite would fail there.
         /// </summary>
         /// <remarks>
         /// The cast puts the raw value above 499, the declaration below 100. Bounds bind numbers, so crossing them
         /// says the path holds no number — and with nothing but an integer declared, nothing at all, which the
         /// comparison's own presence contradicts. Declared without a type it says less: a stored <c>"600"</c>
-        /// passes the cast, and is no number for a bound to refuse.
+        /// passes the cast, and is no number for a bound to refuse. Through the integer cast an integer answers FALSE
+        /// beside the cast's failure, and a document without <c>n</c> UNKNOWN, so not every document fails: the
+        /// comparison is sent as any is, and the service finds nothing.
         /// </remarks>
         [Fact]
         public void ARangeBeyondADeclaredBoundKeepsNoNumber()
         {
             var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
 
-            var beyond = PlanToCosmos(Where($"{N} > 500"), integer, out _);
-            PlanText(beyond).Should().Contain(KeepsNothing, "no integer is above 499 and at most 100: " + PlanText(beyond));
+            var beyond = PlanToCosmos(Where($"{D} > 500"), integer, out _);
+            PlanText(beyond).Should().Contain(KeepsNothing, "no number is above 500 and at most 100, and the cast to DOUBLE fails on none: " + PlanText(beyond));
+
+            var cast = PlanToCosmos(Where($"{N} > 500"), integer, out _);
+            PlanText(cast).Should().NotContain(KeepsNothing, "the integer cast fails on 30.0 and on numbers past an INTEGER: " + PlanText(cast));
+            Query(FindCosmos(cast), integer).Sql.Should().EndWith("WHERE (c.n > @p0)", "and the service finds nothing");
 
             var within = PlanToCosmos(Where($"{N} > 50"), integer, out _);
             PlanText(within).Should().NotContain(KeepsNothing, "an integer of 60 is both: " + PlanText(within));
@@ -137,17 +147,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, where a closure rechecked it over
-        /// every document in process.
+        /// every document in process: through the cast to <c>DOUBLE</c> the plan says so. Through the cast to
+        /// <c>INTEGER</c>, which fails on a stored <c>1.0</c> the enum admits, the range is sent, and the service finds
+        /// nothing.
         /// </summary>
         [Fact]
         public void ARangeOutsideAnEnumKeepsNothing()
         {
             var enumerated = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
 
-            foreach (var outside in new[] { $"{N} > 499 AND {N} < 501", $"{N} = 30" })
+            foreach (var outside in new[] { $"{D} > 499 AND {D} < 501", $"{D} = 30" })
             {
                 var best = PlanToCosmos(Where(outside), enumerated, out _);
                 PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}: " + PlanText(best));
+            }
+
+            foreach (var (outside, sent) in new[] { ($"{N} > 499 AND {N} < 501", "WHERE ((c.n > @p0) AND (c.n < @p1))"), ($"{N} = 30", "WHERE (c.n = @p0)") })
+            {
+                var best = PlanToCosmos(Where(outside), enumerated, out _);
+                PlanText(best).Should().NotContain(KeepsNothing, $"the integer cast fails on 1.0, which the enum admits: {outside}: " + PlanText(best));
+                Query(FindCosmos(best), enumerated).Sql.Should().EndWith(sent, "and the service finds nothing");
             }
 
             foreach (var inside in new[] { $"{N} = 2", $"{N} > 1" })

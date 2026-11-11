@@ -327,11 +327,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             loaded.Statement.IsContradictory.Should().BeFalse();
         }
 
+        /// <summary>
+        /// A number through a <c>RETURNING</c> the declaration refuses keeps no row, so what the statement keeps is a
+        /// contradiction, as before; but <c>RETURNING INTEGER</c> raises on a stored string, which the declaration admits,
+        /// so the filter is not reduced, and fails as Calcite fails it.
+        /// </summary>
         [Fact]
-        public void ANumberTheDeclarationRefusesIsOne()
+        public void ANumberTheDeclarationRefusesKeepsNoRowYetFailsAsCalciteDoes()
         {
-            Where("""{ "properties": { "rate": { "type": "string" } } }""", """JSON_VALUE(c."DOC", '$.rate' RETURNING INTEGER) = 2""")
-                .Statement.IsContradictory.Should().BeTrue("a string is never an integer RETURNING keeps");
+            var loaded = Where("""{ "properties": { "rate": { "type": "string" } } }""", """JSON_VALUE(c."DOC", '$.rate' RETURNING INTEGER) = 2""");
+
+            loaded.Statement.IsContradictory.Should().BeFalse("RETURNING INTEGER raises on the string rate may hold");
+            loaded.Statement.Kept.IsContradictory.Should().BeTrue("a string is never an integer RETURNING keeps");
         }
 
         // ── F2, F3, F4 ───────────────────────────────────────────────────────────────────────────────────────────
@@ -396,24 +403,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Where(Status, """JSON_VALUE(c."DOC", '$.status') = 'archived'""").Statement.IsContradictory.Should().BeFalse();
         }
 
+        /// <summary>
+        /// Gap 4: a range beyond a declared bound keeps no number. Through the cast to <c>DOUBLE</c>, which raises on no
+        /// number, the filter keeps nothing and is reduced; through the cast to <c>INTEGER</c> what it keeps is still a
+        /// contradiction, but the cast raises on a stored <c>30.0</c> and on a number past an <c>INTEGER</c>, which an
+        /// integer declaration admits, so it is not reduced.
+        /// </summary>
         [Fact]
         public void Gap4ARangeBeyondADeclaredBoundKeepsNoNumber()
         {
             const string Integer = """{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""";
             const string Untyped = """{ "type": "object", "properties": { "n": { "maximum": 100 } } }""";
 
-            Where(Integer, $"{NCast} > 500").Statement.IsContradictory.Should().BeTrue();
+            Where(Integer, $"{NDouble} > 500").Statement.IsContradictory.Should().BeTrue();
+            var integer = Where(Integer, $"{NCast} > 500");
+            integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on 30.0 and on numbers past an INTEGER");
+            integer.Statement.Kept.IsContradictory.Should().BeTrue("and keeps no number above 499 and at most 100");
             Where(Integer, $"{NCast} > 50").Statement.IsContradictory.Should().BeFalse();
             Where(Untyped, $"{NCast} > 500").Statement.IsContradictory.Should().BeFalse("a stored \"600\" passes the cast");
         }
 
+        /// <summary>
+        /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing. Through the cast to <c>DOUBLE</c> it is
+        /// reduced; through the cast to <c>INTEGER</c>, which raises on a stored <c>1.0</c> the enum admits, it is not,
+        /// though what it keeps is still a contradiction.
+        /// </summary>
         [Fact]
         public void Gap5ARangeOutsideAnEnumKeepsNothing()
         {
             const string Enumerated = """{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""";
 
-            Where(Enumerated, $"{NCast} > 499 AND {NCast} < 501").Statement.IsContradictory.Should().BeTrue();
-            Where(Enumerated, $"{NCast} = 30").Statement.IsContradictory.Should().BeTrue();
+            foreach (var outside in new[] { "> 499 AND {0} < 501", "= 30" })
+            {
+                Where(Enumerated, $"{NDouble} " + string.Format(outside, NDouble)).Statement.IsContradictory.Should().BeTrue(outside);
+                var integer = Where(Enumerated, $"{NCast} " + string.Format(outside, NCast));
+                integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on 1.0, which the enum admits: {0}", outside);
+                integer.Statement.Kept.IsContradictory.Should().BeTrue("and no member of the enum satisfies {0}", outside);
+            }
+
             Where(Enumerated, $"{NCast} = 2").Statement.IsContradictory.Should().BeFalse();
             Where(Enumerated, $"{NCast} > 1").Statement.IsContradictory.Should().BeFalse();
             Where("""{ "type": "object", "properties": { "n": { "enum": ["600", 1] } } }""", $"{NCast} > 500").Statement.IsContradictory.Should().BeFalse();

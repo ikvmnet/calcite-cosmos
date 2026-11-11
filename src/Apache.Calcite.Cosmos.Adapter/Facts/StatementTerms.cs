@@ -167,7 +167,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (distinct.Count == 0 || parent.Scope is null || _rules is null)
                 return parent;
 
-            var key = parent.Key + "/" + string.Join(" & ", distinct.Keys.OrderBy(k => k, StringComparer.Ordinal));
+            var key = KeyOf(parent, distinct.Keys);
 
             lock (_lock)
             {
@@ -183,6 +183,51 @@ namespace Apache.Calcite.Cosmos.Facts
                 return child;
             }
         }
+
+        /// <summary>
+        /// Returns the child of a context that gates predicates on a WHERE: it holds the statement's terms, each gated
+        /// predicate's and the WHERE's, asserts <c>gated(s, W)</c> for each and nothing it holds, and runs
+        /// <see cref="PredicateRules.Reduction"/>, whose gate assumes each only where the WHERE raises on no document the
+        /// context admits. Made the first time it is asked for; the parent where nothing is gated.
+        /// </summary>
+        /// <remarks>
+        /// Its <see cref="Node.Holding"/> is its parent's, since whether the gate fired is the rules' to say. It mentions
+        /// what the gated predicates read, as a child assuming them does, so the same discriminator splits open; its key
+        /// is that child's followed by what it is for, which no other child takes.
+        /// </remarks>
+        /// <param name="parent">The context: the declaration's <c>D0</c>.</param>
+        /// <param name="question">What the node is for, which keys it apart: <c>reduce</c>, or <c>gated</c> for an arm.</param>
+        /// <param name="gated">What the node assumes where the WHERE raises nowhere.</param>
+        /// <param name="where">The WHERE, as one conjunction.</param>
+        public Node Gated(Node parent, string question, IEnumerable<SqlPredicate> gated, SqlPredicate where)
+        {
+            var distinct = new Dictionary<string, SqlPredicate>(StringComparer.Ordinal);
+            foreach (var predicate in gated)
+                distinct.TryAdd(predicate.Digest, predicate);
+
+            if (distinct.Count == 0 || parent.Scope is null || _rules is null)
+                return parent;
+
+            var key = KeyOf(parent, distinct.Keys) + "#" + question;
+
+            lock (_lock)
+            {
+                if (_children.TryGetValue(key, out var child) == false)
+                {
+                    var predicates = distinct.Values.ToArray();
+                    var made = _statement.Conjuncts.Concat(predicates).Append(where).ToArray();
+                    var paths = _statement.Paths.Concat(predicates.SelectMany(p => p.Paths)).Concat(where.Paths).Distinct().ToArray();
+                    child = Open(parent, key, assumed: Array.Empty<SqlPredicate>(), made: made, paths: paths, holdsTerms: true, gated: (predicates, where));
+                    _children[key] = child;
+                }
+
+                return child;
+            }
+        }
+
+        /// <summary>A child's key: its parent's, and the digests of what it assumes or gates, in order.</summary>
+        static string KeyOf(Node parent, IEnumerable<string> digests) =>
+            parent.Key + "/" + string.Join(" & ", digests.OrderBy(k => k, StringComparer.Ordinal));
 
         /// <summary>
         /// Returns what a context says of a predicate: read off it where it holds the predicate's term, and otherwise off
@@ -260,9 +305,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// A context that cannot be opened, or whose run stops on a limit, is released, and the node reads its parent's
         /// context instead: it knows nothing more than its parent did. One made to answer a single question is not kept:
-        /// it is neither frozen nor leased, and the caller releases it.
+        /// it is neither frozen nor leased, and the caller releases it. A gated one (<see cref="Gated"/>) assumes nothing
+        /// from here and runs <see cref="PredicateRules.Reduction"/>.
         /// </remarks>
-        Node Open(Node parent, string key, IReadOnlyList<SqlPredicate> assumed, IReadOnlyList<SqlPredicate> made, IReadOnlyList<JsonDocumentPath> paths, bool holdsTerms, bool keep = true)
+        Node Open(Node parent, string key, IReadOnlyList<SqlPredicate> assumed, IReadOnlyList<SqlPredicate> made, IReadOnlyList<JsonDocumentPath> paths, bool holdsTerms, bool keep = true,
+            (IReadOnlyList<SqlPredicate> Predicates, SqlPredicate Where)? gated = null)
         {
             var rules = _rules!;
             var json = rules.Json;
@@ -280,7 +327,8 @@ namespace Apache.Calcite.Cosmos.Facts
                 // on everything the statement does; a context that assumes nothing splits on nothing, its parent having
                 // lifted what a split there proves.
                 var facts = new List<Fact>();
-                foreach (var spec in assumed.SelectMany(p => p.Paths).Distinct().Select(JsonFactEncoding.Path))
+                var mentioned = gated is { } g ? assumed.Concat(g.Predicates) : assumed;
+                foreach (var spec in mentioned.SelectMany(p => p.Paths).Distinct().Select(JsonFactEncoding.Path))
                     facts.Add(json.Mentioned.Of(spec.ToTerm(json)));
 
                 foreach (var predicate in made)
@@ -289,10 +337,18 @@ namespace Apache.Calcite.Cosmos.Facts
                 foreach (var predicate in assumed)
                     facts.Add(rules.Holds.Of(_writer!.Term(predicate, facts), true));
 
+                // A gated node asserts what it gates on the WHERE, and holds nothing: the gate assumes it, or nothing does.
+                if (gated is { } gate)
+                {
+                    var where = _writer!.Term(gate.Where, facts);
+                    foreach (var predicate in gate.Predicates)
+                        facts.Add(rules.Gated.Of(_writer!.Term(predicate, facts), where));
+                }
+
                 if (facts.Count > 0)
                     scope.Assume(facts.ToArray());
 
-                var report = scope.Run(assumed.Count == 0 ? rules.Answer : rules.Saturation, _run);
+                var report = scope.Run(gated is not null ? rules.Reduction : assumed.Count == 0 ? rules.Answer : rules.Saturation, _run);
                 var contradictory = report.StopReason == RunStopReason.Contradiction || scope.IsContradictory;
 
                 if (contradictory == false && report.StopReason != RunStopReason.Completed)

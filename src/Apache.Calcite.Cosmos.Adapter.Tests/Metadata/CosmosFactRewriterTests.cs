@@ -108,6 +108,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         string Rewrite(RexNode condition, string? schema) =>
             CosmosFactRewriter.Rewrite(condition, _fields, Container(schema), "c", _rex).ToString();
 
+        /// <summary>The condition as the oracle reads it over a container declaring the schema.</summary>
+        CosmosFilterStatement Statement(RexNode condition, string schema) =>
+            CosmosFilterStatement.Of(condition, _fields, null, Container(schema), _rex, "c");
+
         const string Millis = """
         { "properties": { "ref": { "type": "string",
                                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" } } }
@@ -695,18 +699,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// The lattice still excludes what it should: a fraction on a path declared an integer, and a
-        /// number on a path declared a string, keep nothing.
+        /// number on a path declared a string, keep nothing. But <c>RETURNING DOUBLE</c> fails on an
+        /// integer written so, <c>30</c>, and on a string, each of which the declaration admits, so the
+        /// filter is not written <c>FALSE</c>: it fails as Calcite fails it.
         /// </summary>
         [Theory]
         [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "1.5")]
         [InlineData("""{ "properties": { "body": { "type": "string" } } }""", "2")]
-        public void AValueOutsideTheDeclaredTypeIsAContradiction(string schema, string value)
+        public void AValueOutsideTheDeclaredTypeKeepsNothingYetFailsAsCalciteDoes(string schema, string value)
         {
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
                 Number(),
                 _rex.makeExactLiteral(new java.math.BigDecimal(value)));
 
-            Rewrite(equality, schema).Should().Be("false", "no document holds the value and satisfies the declaration");
+            Statement(equality, schema).Kept.IsContradictory.Should().BeTrue("no document holds the value and satisfies the declaration");
+            Rewrite(equality, schema).Should().Be(equality.ToString(), "RETURNING DOUBLE fails on 30 and on a string, which the declaration admits");
         }
 
         /// <summary>
@@ -722,8 +729,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </para>
         /// <para>
         /// What it establishes is what a cast to a number does: the path is there, and a number there is within one of
-        /// the literal. Neither is a contradiction with a string. The control is <c>RETURNING DOUBLE</c>, which asserts,
-        /// and over a declared string keeps nothing Calcite would answer for.
+        /// the literal. Neither is a contradiction with a string. Beside it, <c>RETURNING DOUBLE</c> asserts, and over a
+        /// declared string keeps no row; but it fails on every string, so it is not written <c>FALSE</c> either: it fails
+        /// as Calcite fails it.
         /// </para>
         /// </remarks>
         [Fact]
@@ -742,8 +750,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Rewrite(parsed, Strings).Should().Be(parsed.ToString(), "a stored \"2\" is 2 to it, and nothing is rewritten");
             }
 
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2))), Strings)
-                .Should().Be("false", "an asserted type is a claim, and the declaration contradicts it");
+            var asserted = _rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2)));
+            Statement(asserted, Strings).Kept.IsContradictory.Should().BeTrue("an asserted type is a claim, and the declaration contradicts it");
+            Rewrite(asserted, Strings).Should().Be(asserted.ToString(), "but RETURNING DOUBLE fails on the string body may hold, as Calcite does");
         }
 
 

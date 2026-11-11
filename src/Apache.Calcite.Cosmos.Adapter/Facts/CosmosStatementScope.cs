@@ -30,8 +30,13 @@ namespace Apache.Calcite.Cosmos.Facts
     /// the rows the rest of the filter keeps, which a rewrite inside it may lean on</description></item>
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
+    /// <item><term><see cref="OracleQuestion.Reduce"/></term><description>the WHERE as one conjunction, assumed by a rule
+    /// only where it raises on no document the declaration admits: whether the filter keeps nothing and fails on nothing</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under, each the facts graph reads exactly (h15)</description></item>
+    /// <item><term><see cref="OracleQuestion.NeverRead"/></term><description>what <see cref="OracleQuestion.Arm"/> assumes,
+    /// each assumed by the same rule only where the WHERE raises on no document the declaration admits: whether the arm
+    /// is never read, and may be written <c>FALSE</c></description></item>
     /// <item><term><see cref="OracleQuestion.RenderArm"/></term><description>the conjunct's render stratum, and the conditions
     /// an arm S writes is read under: never a sibling the render stratum does not hold (#117)</description></item>
     /// <item><term><see cref="OracleQuestion.PointRead"/></term><description>the conjuncts that pin the read's keys, and no
@@ -69,6 +74,7 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly IReadOnlyCollection<JsonDocumentPath> _declared;
         readonly object _lock = new();
         Admission? _admission;
+        SqlPredicate? _where;
 
         /// <summary>The admission whose rounds are running, under the lock: what <see cref="StratumFor"/> reads meanwhile.</summary>
         Admission? _admitting;
@@ -373,9 +379,9 @@ namespace Apache.Calcite.Cosmos.Facts
                     Beside(licence).ToArray(),
                 OracleQuestion.Siblings =>
                     all.Where(i => i != Check(licence.Conjunct)).ToArray(),
-                OracleQuestion.Arm =>
+                OracleQuestion.Arm or OracleQuestion.NeverRead =>
                     all.Where(i => i != Check(licence.Conjunct) && _terms.ReadsExactly(Statement.Conjuncts[i])).ToArray(),
-                OracleQuestion.Kept =>
+                OracleQuestion.Kept or OracleQuestion.Reduce =>
                     all.ToArray(),
                 OracleQuestion.PointRead =>
                     all.Where(i => IsPin(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
@@ -523,19 +529,21 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct));
                 }
 
-                // Only what the facts graph reads as Calcite does (h15): a sibling read coarsely may say of the documents what is
-                // not so, and a condition is assumed only while each before it is read exactly, as a rendered arm's are
-                // (StratumFor). A CASE answered by its ELSE beneath a typed kind = 5 dropped a number label Calcite keeps
-                // (G12). Assuming less is stricter, and sound.
                 case OracleQuestion.Arm:
-                {
-                    var conjunct = Check(licence.Conjunct);
-                    return _terms.Child(_terms.Root, conjuncts.Where((c, i) => i != conjunct && _terms.ReadsExactly(c))
-                        .Concat((licence.Given ?? Array.Empty<SqlPredicate>()).TakeWhile(_terms.ReadsExactly)));
-                }
+                    return _terms.Child(_terms.Root, ArmAssumes(licence));
+
+                // What the arm's node assumes, gated on the WHERE: a FALSE written for the arm stops Calcite evaluating it,
+                // and the filter where it decides the conjunct, which drops no failure only where the WHERE raises nowhere.
+                case OracleQuestion.NeverRead:
+                    return _terms.Gated(_terms.Root, "gated", ArmAssumes(licence), Where);
 
                 case OracleQuestion.Kept:
                     return _terms.Child(_terms.Root, conjuncts);
+
+                // The WHERE gated on itself: assumed only where nothing in it raises, so that a contradiction says Calcite
+                // answers no rows and fails on none.
+                case OracleQuestion.Reduce:
+                    return conjuncts.Count == 0 ? _terms.Root : _terms.Gated(_terms.Root, "reduce", new[] { Where }, Where);
 
                 case OracleQuestion.PointRead:
                     return _terms.Child(_terms.Root, conjuncts.Where(c => IsPin(c, licence.Pins!)));
@@ -550,6 +558,26 @@ namespace Apache.Calcite.Cosmos.Facts
                     throw new ArgumentOutOfRangeException(nameof(licence), licence.Question, "No such question.");
             }
         }
+
+        /// <summary>
+        /// What the arm of a <c>CASE</c> in a conjunct may lean on: every sibling, and the arm's leading conditions, each
+        /// the facts graph reads as Calcite does (h15).
+        /// </summary>
+        /// <remarks>
+        /// A sibling read coarsely may say of the documents what is not so, and a condition is assumed only while each
+        /// before it is read exactly, as a rendered arm's are (<c>StratumFor</c>). A CASE answered by its ELSE beneath a
+        /// typed kind = 5 dropped a number label Calcite keeps (G12). Assuming less is stricter, and sound.
+        /// </remarks>
+        IEnumerable<SqlPredicate> ArmAssumes(OracleLicence licence)
+        {
+            var conjunct = Check(licence.Conjunct);
+            return Statement.Conjuncts.Where((c, i) => i != conjunct && _terms.ReadsExactly(c))
+                .Concat((licence.Given ?? Array.Empty<SqlPredicate>()).TakeWhile(_terms.ReadsExactly))
+                .ToArray();
+        }
+
+        /// <summary>The WHERE as one conjunction: the conjuncts flattened, in digest order, one being itself.</summary>
+        SqlPredicate Where => _where ??= SqlPredicate.AllOf(Statement.Conjuncts);
 
         /// <summary>
         /// Determines whether a conjunct pins one of a point read's keys: an equality of what the path holds, or reads as,

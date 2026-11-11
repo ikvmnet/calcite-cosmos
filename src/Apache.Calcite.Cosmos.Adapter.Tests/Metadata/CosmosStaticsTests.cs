@@ -160,7 +160,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.JsonSchemaRecognisers", ["None"], StaticFact, "no recognisers"),
             ("Facts.JsonSchemaResolver", ["Data", "DefaultBase"], StaticFact, "JSON Schema's own keywords and base"),
             ("Facts.JsonScopeTables", ["Asking"], Infra, "the engine's limits for asking a context"),
-            ("Facts.OracleLicence", ["Declaration", "GroupBy", "Kept", "Key", "OrderBy", "Select"], StaticFact, "licences, immutable"),
+            ("Facts.OracleLicence", ["Declaration", "GroupBy", "Kept", "Key", "OrderBy", "Reduce", "Select"], StaticFact, "licences, immutable"),
             ("Facts.OracleVerdict", ["Always", "Contradicted", "Unknown"], StaticFact, "verdicts, immutable"),
             ("Facts.StatementTerms", ["Default"], Infra, "the engine's limits for a statement's runs"),
             ("Facts.StatementTerms.Contradiction", ["Tables"], StaticFact, "a singleton with no fields"),
