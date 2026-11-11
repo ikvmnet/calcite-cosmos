@@ -79,7 +79,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var pushed = new List<string>();
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
             {
-                var containers = CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()).WithServiceTarget(target)).ToArray();
+                // Each container in a reasoning of its own, its S build awaited before anything plans: a question that waited
+                // past its bound would decline and admit nothing, and leave this check empty for that statement rather than fail.
+                var containers = RenderingInputs.Built([.. CosmosDifferentialTests.Containers.Select(c => c.WithReasoning(new CosmosReasoning()).WithServiceTarget(target))]);
                 foreach (var (refusal, sql) in Refusals)
                 {
                     var recorder = new RenderingRecorder();

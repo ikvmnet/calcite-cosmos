@@ -59,7 +59,13 @@ dotnet build Apache.Calcite.Cosmos.slnx
 ```
 
 The build resolves Calcite through IKVM's Maven support, including an Apache snapshot repository while
-the Calcite version the packages use is unreleased (see `Directory.Build.props`).
+the Calcite version the packages use is unreleased (see `Directory.Build.props`). It takes the newest
+snapshot there. CI does so on every run; a local build reuses its earlier resolution until
+`dotnet clean`, and asks Apache for a newer snapshot at most once a day, so a break CI shows can take
+a clean and up to a day to appear locally. The `Apache.Calcite.*` packages were compiled against the
+snapshot that was newest when they were built. When a snapshot changes a signature those packages
+call, the adapter still builds and then fails at run time, with `MissingMethodException` for a changed
+method or constructor; the cure is an `Apache.Calcite.*` build made against that snapshot.
 
 ## E.5 The test suite
 

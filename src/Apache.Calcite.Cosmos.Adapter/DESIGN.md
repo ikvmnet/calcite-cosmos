@@ -7582,9 +7582,21 @@ So does one whose warm-up question fails in the engine or conflicts, which would
 bundle's cost. A first build that fails for another reason, memory short, leaves that schema's S unavailable for its
 life (`TODO.md`). A successor is the definition that already built once, so its failure is no row's — memory
 short while two generations live, at the moment that is likeliest — and the spec's rationale does not reach it: the
-current answers on, the failure is counted, and the next build starts after 10 s. A generation is published under the
-lock builds start under, so an asker still holding the one it replaced starts no second build, and every build runs
-under no caller's execution context.
+current answers on unless it ran out, the failure is counted, and the first question after 10 s starts the next build.
+A generation is published under the lock builds start under, so an asker still holding the one it replaced starts no
+second build, and every build runs under no caller's execution context. A build is over where it publishes its
+generation, or records its failure, under that lock, not where its task finishes a moment later. So an asker after
+that point starts the next where it should, past a failed successor's retry or over a generation already ageing or run
+out, and a question whose wait for the build ran out in between reads the generation it published. At the defaults no
+build starts sooner for it: a failed successor's next waits 10 s, and a generation just published has asked one
+warm-up question, far short of either mark, while a warm-up that runs out of ids or epochs fails its build rather than
+publishing it. So in production only a question whose 5 s wait runs out after a build has published and before its
+task finishes can tell, and it now answers where it declined before; one whose wait runs out after a failure is
+recorded finds no generation answering, and declines as it did. With no retry, or with ageing forced, an asker there
+also starts the next build sooner, and the tests below hold a build there to ask on purpose. `Ready` still ends with
+the task, since a build roots its graph until its task has finished and let go of it, a step after the task is marked
+complete; `CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt`, which finds S's generation and graph collected with
+their schema, waits on it for that, and collects only after more work.
 
 **The set per endpoint (O1).** `CosmosSchemaFactory` reads `serviceTarget`, `azure` by default or `emulator`, onto each
 container's metadata (`CosmosContainerMetadata.ServiceTarget`), where a host building its own tables sets it.
@@ -7634,11 +7646,15 @@ node, a stratum stated otherwise, or none, apart; `AnOpaquesReadingIsInTheKey`, 
 oracle's own clock. `RenderingGraphTests.ASpentGenerationAnswersUntilItsSuccessorIsReady` holds a successor's
 definition at a gate while the spent generation answers, `ASuccessorIsBuiltOffThePlanningThread` finds every
 definition on a thread neither the asker's nor the pool's and under none of its async locals, and
-`ASuccessorsFailureLeavesTheCurrentAnswering` fails one. `CosmosRenderingTests.TheTargetChoosesTheSet` holds the
-operand, the metadata and the set, asked of a reasoning of its own that both containers are bound to.
-`CosmosReasoningTests` holds two schemas to two oracles and a made schema to no build, and `ASchemasGraphsCost`,
-explicit, reads what one schema's graphs hold (*What one schema's graphs hold*). From g15 generate mode's runs ask
-through the oracle, so the bundle is written once, and the tests define S from `CosmosRendering.Definition`.
+`ASuccessorsFailureLeavesTheCurrentAnswering` fails one and holds its build's task unfinished while the next question
+starts the next. `AGenerationAgeingAsItIsPublishedStartsItsSuccessor` holds the first build's task unfinished once it
+has published, and a question that finds its generation ageing starts the successor, which answers while that task is
+held; `AWaitThatRunsOutAfterTheBuildPublishedAnswers` lets a question's wait run out between a build's publish and its
+task's end, and the question answers. `CosmosRenderingTests.TheTargetChoosesTheSet` holds the operand, the metadata
+and the set, asked of a reasoning of its own that both containers are bound to. `CosmosReasoningTests` holds two
+schemas to two oracles and a made schema to no build, and `ASchemasGraphsCost`, explicit, reads what one schema's
+graphs hold (*What one schema's graphs hold*). From g15 generate mode's runs ask through the oracle, so the bundle is
+written once, and the tests define S from `CosmosRendering.Definition`.
 
 ### Admission asked once a round
 

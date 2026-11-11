@@ -243,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
         {
             var container = new Adapter.Metadata.CosmosContainerMetadata("t", ["/kind"])
-                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithReasoning(new Adapter.Metadata.CosmosReasoning());
+                .WithFacts([Outright(KindPath, Present), When(KindPath, 5m, LabelPath, Type(JsonType.String))]).WithReasoning(TestReasoning.Own());
             var run = RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [
                 "SELECT c.\"id\" FROM t AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c.\"DOC\", '$.label') = '7'"], [container]));
             var checks = run.Conjuncts.Where(c => c.Site == 2 && c.Entry is not null).ToList();

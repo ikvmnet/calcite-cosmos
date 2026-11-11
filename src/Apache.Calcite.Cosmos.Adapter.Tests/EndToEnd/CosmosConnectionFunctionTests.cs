@@ -265,7 +265,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 CaseSensitive = true,
             }.ConnectionString);
 
+            // The schema the model's factory made reasons in a reasoning of its own: its S build is awaited before anything
+            // plans, since a first question that waited past its bound would decline and keep in process what the plans
+            // here assert is pushed.
             await connection.OpenAsync();
+            await TestReasoning.Ready(connection, "COSMOS", "products");
             return connection;
         }
 

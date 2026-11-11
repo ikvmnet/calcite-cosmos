@@ -38,12 +38,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact(Explicit = true)]
         public void EachBundleIsWithinTheLine()
         {
-            var inputs = () => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, new CosmosReasoning());
+            // Each pass in a schema of its own, its S build awaited before the clock starts: a question that waited past its
+            // bound would decline, and leave out of the population the checks of what it would have sent.
+            var inputs = () => RenderingInputs.All(CosmosDifferentialTests.DefaultPartitionedPredicates, TestReasoning.Own());
             GC.KeepAlive(RenderingCheckRun.Over(inputs()));
 
             var times = new ConcurrentQueue<(RenderingSet Set, double Ms)>();
+            var timed = inputs();
             var started = Stopwatch.GetTimestamp();
-            var run = RenderingCheckRun.Over(inputs(), (set, t) => times.Enqueue((set, t.TotalMilliseconds)));
+            var run = RenderingCheckRun.Over(timed, (set, t) => times.Enqueue((set, t.TotalMilliseconds)));
             Print($"run {Stopwatch.GetElapsedTime(started).TotalSeconds:N1} s, planning included; {run.Memo.Entries.Count} entries");
             foreach (var group in times.GroupBy(t => t.Set.ToString()).Append(times.GroupBy(_ => "both").Single()))
                 Print($"{group.Key}: {Centiles([.. group.Select(t => t.Ms)])}");
@@ -65,7 +68,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             double Mean(out int entries)
             {
                 var times = new ConcurrentQueue<double>();
-                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(new CosmosReasoning()), (set, t) =>
+                // In a schema of its own, its S build awaited: a declined conjunct is sent in no form there is to check, and
+                // the count the projection is scaled by would be short.
+                var run = RenderingCheckRun.Over(RenderingInputs.Corpus(TestReasoning.Own()), (set, t) =>
                 {
                     if (set == RenderingCheckRun.AssertedSet)
                         times.Enqueue(t.TotalMilliseconds);

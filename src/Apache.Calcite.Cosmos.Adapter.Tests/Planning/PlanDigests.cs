@@ -58,10 +58,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// Plans the statements twice, each time in a reasoning of their own, the second under a switch and in the reasoning
         /// given, if one is; holds that the switch reached the planner, and that every digest is the same.
         /// </summary>
+        /// <remarks>
+        /// Every reasoning it plans in has its S build awaited first, the one given by whoever made it: a decline leaves its
+        /// conjunct residual with no weakening, so a first question that waited past its bound on one side alone would change
+        /// a digest no switch changed.
+        /// </remarks>
         public static void Unchanged(Func<IDisposable> arm, Func<CosmosReasoning, IEnumerable<RenderingInputs.Statement>> statements, Action<CosmosReasoning> reached, CosmosReasoning? armed = null)
         {
-            var off = Lines(statements(new CosmosReasoning())).ToList();
-            armed ??= new CosmosReasoning();
+            var off = Lines(statements(TestReasoning.Own())).ToList();
+            armed ??= TestReasoning.Own();
             List<string> on;
             using (arm())
                 on = Lines(statements(armed)).ToList();

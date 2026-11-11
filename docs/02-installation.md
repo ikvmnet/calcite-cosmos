@@ -26,7 +26,7 @@ itself, and the `Apache.Calcite.Extensions`, `Apache.Calcite.Geography` and `Apa
 packages it builds on.
 
 Keep `Apache.Calcite.Data` on the same `Apache.Calcite` version the adapter was built against (this
-manual describes 2.0.1-pre.267). The packages share one Calcite, and mixing versions mixes two.
+manual describes 2.0.1-pre.282). The packages share one Calcite, and mixing versions mixes two.
 
 ## 2.3 Name the factory assembly-qualified
 

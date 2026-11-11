@@ -2551,6 +2551,21 @@ across documents* and *A join of a container to itself* is the record.
 - **Client disposal** — *small.* See *A rebuilt root leaks its client* in section 1.
 - **Server-side functions** — *medium.* Cosmos has stored procedures and JavaScript UDFs. A UDF is
   nameable in a query, so it could be exposed as a Calcite operator the way the built-ins are.
+- **The build follows Calcite's newest snapshot** — *small here; what blocks it is upstream.* The
+  `Apache.Calcite.*` packages declare `calcite-core` 1.43.0-SNAPSHOT, which outranks the 1.42.0 the
+  adapter names, so CI, which starts every run with no Maven cache, resolves whichever snapshot
+  Apache published last, and a local build follows after a clean, up to a day late (appendix E.4),
+  while the packages were compiled against the one that was newest when they were made. A snapshot
+  that changes a signature they call fails plans at run time: CALCITE-7608 replaced the `Uncollect`
+  constructor 2.0.1-pre.267 called. That also breaks an adapter already published, which keeps the
+  packages it was packed with, for anyone who restores it afresh until a release made against the new
+  snapshot goes out. A pin from here cannot hold: Apache keeps a superseded snapshot only a few days,
+  and a pin made here would land in the adapter's own POM and name a build its users cannot download.
+  The build becomes reproducible when the packages name the exact snapshot they were compiled against
+  and that build is kept somewhere that serves it (calcite-dotnet's to do), or when Calcite 1.43.0
+  reaches central, which is when the `apache-snapshots` repository leaves `Directory.Build.props`.
+  The workflow has no schedule, so until then a breaking snapshot shows up on whichever run comes
+  next, often an unrelated pull request; a scheduled run on `main` would show it there first.
 
 ---
 
@@ -3088,11 +3103,11 @@ across documents* and *A join of a container to itself* is the record.
   `FILTER_PROJECT_TRANSPOSE` already pushed beneath is not pushed again (#210): a C# rule of where a weakening is asked.
   G10 deletes it with `AlreadyApplied` crossing a `Project` member and each conjunct bound through its own input; the
   plan's order puts it after the switch and before 3B closes, being precision, never an answer, and the switch left it.
-- **calcite-core's snapshot moves beneath the digests** — *note; main's to pin.* The Apache.Calcite packages resolve
-  `calcite-core` 1.43.0-SNAPSHOT (`Directory.Build.props`), and each project and framework converts the jar `~/.m2`
-  holds when its own IKVM caches refresh, so outputs drift apart. On 2026-11-05 build 341 (`20261105.194231`) replaced
-  336, and under it the corpus's `Composite.CatalogueReport` fails validation (`UNNEST(StringToArray(JSON_QUERY(…)))`,
-  line 7, column 57). 3A's byte-equal digests run over 336 until it is pinned or 1.43.0 is released.
+- **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
+  1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
+  newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with
+  pre.282, which `main` has moved to, they are byte-equal to those at `13fd800` for both targets. A step that records
+  digests names the snapshot it took them over.
 - **The string functions over a raw reading or a bound read off a path** — *rows owed, the owner's to schedule.* No row
   measured a string function through the cast to `ANY` (the split rule's spelling of a fold under a rendering), a
   `VARIANT` column cast to text (the partition key's `UPPER(c."$.category")`), or a count read through `typed:INTEGER`
