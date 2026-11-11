@@ -3018,7 +3018,7 @@ across documents* and *A join of a container to itself* is the record.
   value, a field or a cast to `ANY` of an element, and its raw value in a column, still read the element reading
   (`PredicateAtom.ElementReader`), a reading of its own with no rows: an `ANY`'s `ITEM` raises over a scalar and a
   `VARIANT`'s element is unboxed (`Calcite.ItemIsNullWhereNoElementIs`), and no run measured the rest, so both graphs
-  read them as unmeasured, F holding nothing of their characters. Rows of their own would let F and S learn from them.
+  read them as unmeasured, F proving nothing of their characters. Rows of their own would let F and S learn from them.
   `CosmosDocumentPaths.From` reads a subscript for the loader alone, so a declaration's facts about elements, a
   partition key and an order still refuse one.
 - **`LIKE` with `_` or a backslash, and over a cast to `CHAR`, is never decided by F** — *small.* F decides a match only
@@ -3251,11 +3251,13 @@ across documents* and *A join of a container to itself* is the record.
   templates' rows. They equal `measuredcast`'s rows, which `RenderingTheoryTests.TheEdgesTablesCastsAreTheMeasuredCasts`
   holds; the keys move with the cast targets, derived from `measuredcast`, and the edges stay data per type. Since h15b
   both are rules over cells both graphs read: the guards are gone, a path's term saying whether it holds an element
-  (`noelement`, `haselement`) and a raw value of one, however written, reading the element reading, which no row
-  measured (`PredicateVocabularyTests.AReadingWrittenApartIsItsReadingButToItsTest`); and the cast targets are gone with
-  `TryNumericCastOperand` and the `RETURNING DECIMAL` arm, the loader writing a conversion of the text or a raw value by
-  its target type, the shared cast rule reading one a row measured (`measuredcast`), and the edges table deriving its
-  cast keys from the same rows (`ReaderEdgesTable.Of`), each with its target type's edges.
+  (`noelement`, `haselement`) and a raw value of one written apart or in a column reading the element reading, which no
+  row measured (`PredicateVocabularyTests.AReadingWrittenApartIsItsReadingButToItsTest`); the pull request after 3A
+  measured an index's raw value and reads the accessor re-typed `ANY` of one as a path's (DESIGN.md, *An element's raw
+  value is a path's*); and the cast targets are gone with `TryNumericCastOperand` and the `RETURNING DECIMAL` arm, the
+  loader writing a conversion of the text or a raw value by its target type, the shared cast rule reading one a row
+  measured (`measuredcast`), and the edges table deriving its cast keys from the same rows (`ReaderEdgesTable.Of`), each
+  with its target type's edges.
 - **`Portable` reads `_` by no row** — *small, S's.* Each target's `_` is measured over every class
   (`Service.LikeOneOverEachClass`; the emulator at rows2, Azure at run 2): one code point of each as written, line
   terminators and the trimmed class among them, where Calcite's `_` matches no line terminator, so a pattern holding

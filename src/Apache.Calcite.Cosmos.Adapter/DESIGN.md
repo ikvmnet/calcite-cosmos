@@ -10321,19 +10321,21 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   asks every accessor the loader reads as a reading of a path: the text accessor, plain and `RETURNING VARCHAR(3)` and
   `CHAR(8)`, which the loader reads as the text; a `RETURNING` of each type the loader reads one of, `TINYINT`,
   `SMALLINT`, `INTEGER`, `BIGINT`, `FLOAT`, `REAL`, `DOUBLE`, `DECIMAL`, `BOOLEAN` and `VARIANT`; `JSON_QUERY`; and the
-  accessor re-typed `ANY` with each of the eight type tests' bodies over it. No SQL text spells that last one, so
-  Calcite's executor compiles it over a record (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING
-  VARIANT`'s value there alone, which the client reads in no box. Every reading answers at the element what it answers at
-  `$.g`, a raise where it raises, so where there is no element it answers as over an absent path. The test fails if the
-  cell names a reading that does not answer so, or leaves out one that does; a reading that raises on every document
-  measures nothing, so it never counts as answering so.
+  accessor re-typed `ANY`, the only typing the loader reads as the raw value; and each of the eight type tests' bodies
+  over every one of them. No SQL text spells the re-typed accessor, so Calcite's executor compiles it over a record
+  (`RexExecutorImpl`, as line 1c does), and it compares `RETURNING VARIANT`'s value there alone, which the client reads
+  in no box. `JSON_EXISTS`, which no rule reads, is asked at the first index alone. Every reading answers at the element
+  what it answers at `$.g`, a raise where it raises, so where there is no element it answers as over an absent path. The
+  test fails if the cell names a reading that does not answer so, or leaves out one that does; a reading that raises on
+  every document measures nothing, so it never counts as answering so.
 - **Its witnesses.** Each path holds a whole number beyond an int's range and a fraction beside 30, since `RETURNING
   BIGINT`, `FLOAT` and `DOUBLE` raise over 30 and answer a value over those; the test holds that every `RETURNING`
   answers a value at some element but `TINYINT`, `SMALLINT` and `REAL`, which answer none anywhere: Calcite casts the
   number it parsed, an int, a long, a double or a decimal, to a byte, a short or a float, and raises over every number,
-  at the path as at the element. Which types are measured is one list beside the measurement, which
+  at the path as at the element. Which types are measured are lists beside the measurement, which
   `CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder` holds equal to the types whose
-  accessor the loader reads as the text or a `RETURNING`, so a type the loader came to read would fail it until measured.
+  accessor the loader reads as the text, a `RETURNING` or the raw value, so a type the loader came to read would fail it
+  until measured.
 - **The cell.** `Calcite.ReadingsOfAnIndexAreAsOfAPath` names the readings measured so, by the names the vocabulary keys
   them by: the text, the typed readings (every `RETURNING`'s, under one name), `JSON_QUERY`'s and the raw value
   (`CosmosAxiom.AsOfAPath`). Both graphs assume them at the root as one set, `asofapath` (`ReadingVocabulary.AsOfAPath`,
@@ -10355,8 +10357,8 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   the cell named, and `JsonFactSet.CharactersOf` read a path's characters for any text or raw value in C#. It asks the
   theory for every value now, whose question runs the analysis beside the rules of characters
   (`PredicateRules.CharacterSaturation`). Under the registry's cell an element's text and raw value hold what they held;
-  its column reading, field, item and cast to `ANY` hold nothing, as they read nothing measured
-  (`ComputedCharactersTests.AnElementsCharactersAreItsPathsWhereAnIndexReadsItSo`).
+  its column reading, field, item and cast to `ANY` may hold any character (`JsonCharacterBand.Any`), as they read
+  nothing measured (`ComputedCharactersTests.AnElementsCharactersAreItsPathsWhereAnIndexReadsItSo`).
 - **`RETURNING VARIANT` is a reading of its own.** The loader read `JSON_VALUE … RETURNING VARIANT` as the raw value, as
   it reads the accessor re-typed `ANY`, so the box rules read `= CAST('bikes' AS VARIANT)` over it as the raw value's
   equality and sent it exactly: `c.category = @p0` already at 13fd800, and `c.tags[0] = @p0` once the cell named the raw
@@ -10375,11 +10377,11 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no
   column's reading (`raw:` and its column), and so would any accessor the cell stopped naming.
 
-**What it moved.** Against 13fd800's digests (`92d62c75…` under `Production` and `7fc46555…` under `Emulator`), this
-branch's (`b761612a…` and `fdcd03b8…`, net10.0 and net8.0 byte-equal) move 49 statements under `Production` and 53 under
-`Emulator`: 29 and 33 gains, 18 and 20 tighter and 2 and 0 respelled, none looser and none incomparable. The listing's
-comparator is h15b's with the documents a random draw seldom makes added: the one lacking every path, each path alone,
-and each drawn document lacking each path in turn.
+**What it moved.** Against 13fd800's digests (`92d62c75…` under `Production` and `7fc46555…` under `Emulator`), the
+digests after this change (`b761612a…` and `fdcd03b8…`, net10.0 and net8.0 byte-equal) move 49 statements under
+`Production` and 53 under `Emulator`: 29 and 33 gains, 18 and 20 tighter and 2 and 0 respelled, none looser and none
+incomparable. The listing's comparator is h15b's with the documents a random draw seldom makes added: the one lacking
+every path, each path alone, and each drawn document lacking each path in turn.
 h15b's draw alone had read six of these lines as respelled, partitions 488 under each set and 999, 1908, 1909 and 2435
 under `Emulator`; each sends a test of an element's presence, which only a document lacking it tells apart. Read against
 h15's, every one of h15b's 40 and 42 looser lines sends h15's documents again or fewer: 8 and 19 byte-equal, 31 and 22

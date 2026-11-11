@@ -185,7 +185,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
                 [Text(p), new SqlValue.Raw(p), new SqlValue.Cast("VARCHAR", new SqlValue.Raw(p)), Call("REVERSE", Text(p))];
             SqlValue Column(JsonDocumentPath p) => new SqlValue.Raw(p) { Column = "VARCHAR" };
             SqlValue[] Apart(JsonDocumentPath p) =>
-                [new SqlValue.Text(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm }, new SqlValue.Raw(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm }];
+                [new SqlValue.Text(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm }, new SqlValue.Raw(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.ItemForm },
+                    new SqlValue.Raw(p) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm }];
 
             var registry = new JsonFactTheory(rules).Derive(null);
             var none = Under();
