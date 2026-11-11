@@ -68,11 +68,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// A reading of an element answers what the same reading of a path holding the element answers: the text accessor of
-        /// each character type, a <c>RETURNING</c> of each type the loader reads, <c>VARIANT</c> among them, <c>JSON_QUERY</c>,
-        /// <c>JSON_EXISTS</c> and the accessor re-typed <c>ANY</c>, the raw value a weakening's test is written over, alike,
-        /// and each type test's body over the text, a <c>RETURNING</c>, <c>JSON_QUERY</c> and the raw value; and where there is
-        /// no element, past the end or over a value that is no array, what it answers over an absent path. The cell names each
-        /// reading measured so, and no other.
+        /// each character type the loader reads as the text, a <c>RETURNING</c> of each other type it reads, <c>VARIANT</c>
+        /// among them, <c>JSON_QUERY</c> and the accessor re-typed <c>ANY</c>, the raw value a weakening's test is written
+        /// over, alike, and each type test's body over every one of them, at each path an element is read at
+        /// (<see cref="Indexes"/>); and where there is no element, past the end or over a value that is no array, what it
+        /// answers over an absent path. <c>JSON_EXISTS</c>, which no rule reads, is asked at the first index alone. The cell
+        /// names each reading measured so, and no other.
         /// </summary>
         [Fact, CosmosPins("Calcite.ReadingsOfAnIndexAreAsOfAPath")]
         public void AReadingOfAnIndexIsAsOfAPath()
@@ -95,9 +96,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             // Each reading by the name the vocabulary keys it by, and each type test's body over it, at every path an
             // element is read at, a raise where it raises: the text of each character type, a RETURNING of each type,
-            // and the accessor re-typed ANY, which no statement spells, by Calcite's executor. RETURNING VARIANT's
-            // value, which the client reads in no box (it raises a mapping exception of its own over every scalar), is
-            // compared by the executor alone.
+            // and the accessor of each type read as the raw value, re-typed ANY, which no statement spells, by Calcite's
+            // executor. RETURNING VARIANT's value, which the client reads in no box (it raises a mapping exception of its
+            // own over every scalar), is compared by the executor alone.
             var differs = new Dictionary<string, List<string>>
             {
                 [PredicateAtom.TextReader] = [.. Differing(connection, path => [.. Characters.Select(t => $"JSON_VALUE(\"d\", '{path}'{t.Returning})")])],
@@ -105,7 +106,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                                                    .. Differing(connection, path => [$"JSON_VALUE(\"d\", '{path}' RETURNING VARIANT)"], value: false),
                                                    .. ExecutedDiffering(SqlTypeName.VARIANT, ("RETURNING VARIANT", (_, value) => value))],
                 [PredicateAtom.QueryReader] = [.. Differing(connection, path => [$"JSON_QUERY(\"d\", '{path}')"])],
-                [PredicateAtom.RawReader] = [.. ExecutedDiffering(SqlTypeName.ANY, [.. TypeTests.Select(t => (t + "(raw)", Tested(t))).Prepend(("raw", (_, raw) => raw))])],
+                [PredicateAtom.RawReader] = [.. Raws.SelectMany(type => ExecutedDiffering(type, [.. TypeTests.Select(t => (t + "(raw)", Tested(t))).Prepend(("raw", (_, raw) => raw))]))],
             };
             foreach (var (reader, wrong) in differs)
                 foreach (var w in wrong)
@@ -167,6 +168,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// (<c>CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder</c>).
         /// </summary>
         internal static readonly string[] Returnings = ["TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN", "VARIANT"];
+
+        /// <summary>
+        /// Each type of the accessor the loader reads as the raw value, keyed by the one name <c>raw</c> and compiled by
+        /// Calcite's executor, no statement spelling it
+        /// (<c>CosmosPredicateLoaderTests.EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder</c>).
+        /// </summary>
+        internal static readonly SqlTypeName[] Raws = [SqlTypeName.ANY];
 
         /// <summary>The one-place tests whose bodies are measured over each reading of an element.</summary>
         static readonly string[] TypeTests = ["IS_DEFINED", "IS_NULL", "IS_PRIMITIVE", "IS_STRING", "IS_NUMBER", "IS_BOOL", "IS_OBJECT", "IS_ARRAY"];

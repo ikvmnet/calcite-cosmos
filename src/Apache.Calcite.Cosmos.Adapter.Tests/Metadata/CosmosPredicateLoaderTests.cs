@@ -351,15 +351,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// Every type <c>JSON_VALUE</c> may be typed whose accessor the loader reads as the text or a <c>RETURNING</c>
-        /// is one the in-process measurement of an index asks, and every one it asks the loader reads so: the cell
-        /// names the text and every <c>RETURNING</c> under one name each, so a type read and not measured would be
-        /// named unmeasured.
+        /// Every type <c>JSON_VALUE</c> may be typed whose accessor the loader reads as the text, a <c>RETURNING</c> or
+        /// the raw value is one the in-process measurement of an index asks so, and every one it asks the loader reads
+        /// so: the cell names the text, every <c>RETURNING</c> and the raw value under one name each, so a type read and
+        /// not measured would be named unmeasured.
         /// </summary>
         [Fact]
         public void EachAccessorTheLoaderReadsIsOneAnIndexIsMeasuredUnder()
         {
-            var (texts, returnings) = (new HashSet<string>(), new HashSet<string>());
+            var (texts, returnings, raws) = (new HashSet<string>(), new HashSet<string>(), new HashSet<string>());
             foreach (var type in SqlTypeName.values())
             {
                 org.apache.calcite.rel.type.RelDataType typed;
@@ -379,11 +379,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                         texts.Add(type.getName());
                     else if (read is SqlValue.Typed returning)
                         returnings.Add(returning.Type);
+                    else if (read is SqlValue.Raw { Form: null, Column: null })
+                        raws.Add(type.getName());
                 }
             }
 
             texts.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Characters.Select(c => c.Type.getName()).Distinct());
             returnings.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Returnings);
+            raws.Should().BeEquivalentTo(Measurements.CalciteItemMeasurementTests.Raws.Select(t => t.getName()), "the types the measurement executes as the raw value");
         }
 
         [Fact]
