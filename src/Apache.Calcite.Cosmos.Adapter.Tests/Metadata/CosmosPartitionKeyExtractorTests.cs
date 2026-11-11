@@ -306,24 +306,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A number pinned is sent as the client sends a literal of it: a whole one as a <see cref="long"/>, which a
-        /// whole-partition delete takes, and any other as a <see cref="double"/>.
+        /// A field typed <c>ANY</c> compares a number not written as a long by its double, so <c>= 5</c> keeps a stored
+        /// <c>5.0000000000000001</c> too, and <c>= 5.5</c> every number whose double is 5.5's: neither is one partition. Where
+        /// the declaration makes the key an integer, <c>= 5</c> keeps 5 alone, which is pinned and sent as the client sends a
+        /// literal of it, a <see cref="long"/>, which a whole-partition delete takes.
         /// </summary>
         /// <remarks>
         /// The oracle holds a number as a <see cref="decimal"/>, which no partition key component is.
         /// </remarks>
         [Fact]
-        public void ANumberPinnedIsSentAsTheClientSendsOne()
+        public void ANumberIsPinnedOnlyWhereTheDeclarationMakesTheKeyAnInteger()
         {
             var container = Container("/category");
 
-            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, container, "c", out var whole)
-                .Should().BeTrue();
-            whole.Should().Equal(5L);
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, container, "c", out _)
+                .Should().BeFalse("a stored 5.0000000000000001 is equal to 5 through an ANY, and lies in another partition");
 
-            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal("5.5"))), Fields, null, container, "c", out var fraction)
-                .Should().BeTrue();
-            fraction.Should().Equal(5.5d);
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal("5.5"))), Fields, null, container, "c", out _)
+                .Should().BeFalse("every number whose double is 5.5's is equal to it through an ANY");
+
+            var integral = Declaring("{ \"type\": \"object\", \"properties\": { \"category\": { \"type\": \"integer\" } } }", "/category");
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, integral, "c", out var whole)
+                .Should().BeTrue("the one integer whose double is 5's is 5");
+            whole.Should().Equal(5L);
         }
 
         // ── Under the emulator ────────────────────────────────────────────────────

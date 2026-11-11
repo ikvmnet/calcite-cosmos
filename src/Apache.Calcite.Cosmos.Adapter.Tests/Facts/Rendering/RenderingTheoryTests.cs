@@ -584,7 +584,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var unknown = PredicateAtom.CompareNull(PredicateAtom.TextReader, "=");
             Atoms(new SqlPredicate.Compare("=", new SqlValue.Text(t), new SqlValue.Null("VARCHAR"))).Should().Equal(unknown);
             unknown.On(new PredicateAtom.State.Scalar(JsonValues.Of("bikes")), ReaderRows).Should().Be(Truths.Unknown);
-            unknown.Kept(true, ReaderRows).Should().Be(PathValues.OfKinds(ValueSet<string>.Empty), "it is never TRUE");
+            unknown.Kept(true, ReaderRows, ProbeRows.Columns).Should().Be(PathValues.OfKinds(ValueSet<string>.Empty), "it is never TRUE");
         }
 
         /// <summary>

@@ -48,16 +48,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// hold is in the preimage. A stored 30.0 is in the preimage of <c>'30'</c> as the theory spells it, and renders
         /// as <c>30.0</c>.
         /// </summary>
+        /// <remarks>
+        /// The facts graph's tables are read before the plant, not in its filter: building them builds a graph, which no
+        /// filter may.
+        /// </remarks>
         [Fact]
-        public void ATooWidePreimageRowIsCaught() => Caught(Planted(rules =>
-            rules.Decide.DefineRule("planted: an equality with text holds where the path holds only its preimage", r =>
-            {
-                var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
-                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, FactsReadings.Rows).Values is { } preimage && held.All(preimage.Contains));
-                r.Then(rules.AlwaysTrue.Of(e));
-            })));
+        public void ATooWidePreimageRowIsCaught()
+        {
+            var (rows, columns) = (FactsReadings.Rows, FactsReadings.Columns);
+            Caught(Planted(rules =>
+                rules.Decide.DefineRule("planted: an equality with text holds where the path holds only its preimage", r =>
+                {
+                    var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
+                    r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
+                    r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
+                        && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, rows, columns).Values is { } preimage && held.All(preimage.Contains));
+                    r.Then(rules.AlwaysTrue.Of(e));
+                })));
+        }
 
         /// <summary>
         /// A disjunction that holds read as each of its arms holding: an arm's facts established from what only weakens
@@ -268,16 +276,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// What one arm of a disjunction that holds says of a path's characters, stated of the disjunction: a filter's
         /// <c>OR</c> narrowing the characters where it should widen them.
         /// </summary>
+        /// <remarks>The facts graph's tables are read before the plant, as <see cref="ATooWidePreimageRowIsCaught"/> reads them.</remarks>
         [Fact]
-        public void AnArmsCharactersStatedOfItsDisjunctionAreCaught() => Caught(Planted(rules =>
-            rules.Establish.DefineRule("planted: a disjunction that holds holds its left arm's characters", r =>
-            {
-                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
-                var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
-                r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
-                r.Where(k, atom => atom.Kept(true, FactsReadings.Rows).Values is not null);
-                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, FactsReadings.Rows).Values!))));
-            })), "fact");
+        public void AnArmsCharactersStatedOfItsDisjunctionAreCaught()
+        {
+            var (rows, columns) = (FactsReadings.Rows, FactsReadings.Columns);
+            Caught(Planted(rules =>
+                rules.Establish.DefineRule("planted: a disjunction that holds holds its left arm's characters", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
+                    r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
+                    r.Where(k, atom => atom.Kept(true, rows, columns).Values is not null);
+                    r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, rows, columns).Values!))));
+                })), "fact");
+        }
 
         /// <summary>
         /// A union of two predicates: a conjunction with an arm the context decides always true made one class with its

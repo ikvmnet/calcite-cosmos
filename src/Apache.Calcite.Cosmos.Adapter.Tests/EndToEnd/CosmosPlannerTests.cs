@@ -204,16 +204,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// number and boolean to null (<c>Calcite.CastOfARawValueToText</c>), so the cast's text is the stored string
         /// alone, and since the switch (h15) S writes the comparison exact, where the translator refused it, reading the
         /// cast as an accessor's text, which renders the number too
-        /// (<see cref="ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor"/>). The routing is not taken: the
-        /// facts graph reads the cast as the value's rendering, so the key may hold a stored 30 too and pins nothing
-        /// (TODO.md, <i>The facts graph reads a text cast of a raw value as its rendering</i>). RU, never rows.
+        /// (<see cref="ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor"/>). The routing is taken: the facts
+        /// graph keeps by what the cast's column answers, so the key holds the stored string "30" alone, and the query is
+        /// sent to its partition.
         /// </remarks>
         [Fact]
         public void ACastAgainstTextANumberRendersAsIsTakenOverAVariant()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'"));
 
-            query.PartitionKeyValues.Should().BeNull();
+            query.PartitionKeyValues.Should().Equal("30");
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
             query.Parameters.Select(p => p.Value).Should().Equal("30");
         }

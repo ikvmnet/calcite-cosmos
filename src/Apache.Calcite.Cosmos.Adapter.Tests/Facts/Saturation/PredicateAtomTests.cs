@@ -40,7 +40,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AnEqualityWithTextANumberRendersAsAdmitsTheStringAndTheNumber()
         {
-            var kept = PredicateAtom.Compare(Text, "=", Of("30")).Kept(true, FactsReadings.Rows);
+            var kept = PredicateAtom.Compare(Text, "=", Of("30")).Kept(true, FactsReadings.Rows, FactsReadings.Columns);
 
             kept.IsPresent.Should().BeTrue("a comparison over SQL null keeps no row");
             kept.Values.Should().BeEquivalentTo(new[] { Of("30"), Of(30m) }, "the stored number 30 renders as '30' too");
@@ -49,16 +49,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void AnEqualityWithTextNothingElseRendersAsAdmitsTheStringAlone()
         {
-            PredicateAtom.Compare(Text, "=", Of("bikes")).Kept(true, FactsReadings.Rows).Values.Should().BeEquivalentTo(new[] { Of("bikes") });
-            PredicateAtom.Compare(Text, "=", Of("true")).Kept(true, FactsReadings.Rows).Values.Should().BeEquivalentTo(new[] { Of("true"), Of(true) },
+            PredicateAtom.Compare(Text, "=", Of("bikes")).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Values.Should().BeEquivalentTo(new[] { Of("bikes") });
+            PredicateAtom.Compare(Text, "=", Of("true")).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Values.Should().BeEquivalentTo(new[] { Of("true"), Of(true) },
                 "Calcite renders a boolean in lower case");
-            PredicateAtom.Compare(Text, "=", Of("TRUE")).Kept(true, FactsReadings.Rows).Values.Should().BeEquivalentTo(new[] { Of("TRUE") });
+            PredicateAtom.Compare(Text, "=", Of("TRUE")).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Values.Should().BeEquivalentTo(new[] { Of("TRUE") });
         }
 
         [Fact]
         public void TextOfANumberNoDecimalHoldsAdmitsANumberOfEitherKind()
         {
-            var kept = PredicateAtom.Compare(Text, "=", Of("1.0E30")).Kept(true, FactsReadings.Rows);
+            var kept = PredicateAtom.Compare(Text, "=", Of("1.0E30")).Kept(true, FactsReadings.Rows, FactsReadings.Columns);
 
             kept.Values.Should().BeNull("no domain names a number a decimal does not hold");
             kept.Types.Should().Contain(new[] { StringType, IntegerType, FractionType });
@@ -67,7 +67,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void ADisequalityExcludesOnlyTheStringItsTextSpells()
         {
-            var kept = PredicateAtom.Compare(Text, "<>", Of("30")).Kept(true, FactsReadings.Rows);
+            var kept = PredicateAtom.Compare(Text, "<>", Of("30")).Kept(true, FactsReadings.Rows, FactsReadings.Columns);
 
             kept.Excluded.Should().BeEquivalentTo(new[] { Of("30") }, "a stored 30.0 renders as 30.0, which is not '30'");
             kept.Types.Should().BeEquivalentTo(new[] { StringType, IntegerType, FractionType, BooleanType });
@@ -78,8 +78,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var test = PredicateAtom.IsNull(Text);
 
-            test.Kept(true, FactsReadings.Rows).Kinds.Should().BeEquivalentTo(new[] { PathValues.AbsentKind, NullType, ObjectType, ArrayType });
-            test.Kept(false, FactsReadings.Rows).IsPresent.Should().BeTrue();
+            test.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Kinds.Should().BeEquivalentTo(new[] { PathValues.AbsentKind, NullType, ObjectType, ArrayType });
+            test.Kept(false, FactsReadings.Rows, FactsReadings.Columns).IsPresent.Should().BeTrue();
             test.Over(AnObject, FactsReadings.Rows).Should().Be(Truths.True, "JSON_VALUE answers SQL null for an object");
             test.Over(Holding(Of("x")), FactsReadings.Rows).Should().Be(Truths.False);
         }
@@ -89,18 +89,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var greater = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">", Of(500m));
 
-            greater.Kept(true, FactsReadings.Rows).Lower.Should().Be(Bound.Above(499m), "a conversion moves a number by less than one");
-            greater.Kept(true, FactsReadings.Rows).Upper.Should().BeNull();
-            greater.Kept(true, FactsReadings.Rows).Types.Should().Contain(StringType, "the cast converts a stored string too");
-            greater.Kept(false, FactsReadings.Rows).Upper.Should().Be(Bound.Below(501m), "FALSE of > is TRUE of <=");
+            greater.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().Be(Bound.Above(499m), "a conversion moves a number by less than one");
+            greater.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Upper.Should().BeNull();
+            greater.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Types.Should().Contain(StringType, "the cast converts a stored string too");
+            greater.Kept(false, FactsReadings.Rows, FactsReadings.Columns).Upper.Should().Be(Bound.Below(501m), "FALSE of > is TRUE of <=");
         }
 
         [Fact]
         public void ALimitTheComparisonHoldsOfBoundsNothingOnThatSide()
         {
             // A stored -1e30 converts to the lower limit, which is greater than -3000000000.
-            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">", Of(-3000000000m)).Kept(true, FactsReadings.Rows).Lower.Should().BeNull();
-            PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), ">", Of(-3000000000m)).Kept(true, FactsReadings.Rows).Lower.Should().Be(Bound.Above(-3000000001m));
+            PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">", Of(-3000000000m)).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().BeNull();
+            PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), ">", Of(-3000000000m)).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().Be(Bound.Above(-3000000001m));
         }
 
         [Fact]
@@ -197,8 +197,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 "a row Calcite raises on is no row a verdict may decide");
             typed.Over(Holding(Of("30")), FactsReadings.Rows).Should().Be(Truths.Raises);
             typed.NeverTrue(Absent, FactsReadings.Rows).Should().BeTrue();
-            typed.Kept(true, FactsReadings.Rows).Values.Should().BeEquivalentTo(new[] { Of(30m) });
-            PredicateAtom.Compare(PredicateAtom.TypedReader("INTEGER"), "=", Of(30.5m)).Kept(true, FactsReadings.Rows).Kinds.Should().BeEmpty(
+            typed.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Should().Match<PathValues>(k => k.Values == null && k.Admits(Of(30m)) && k.Admits(Of(30.000000000000001m)) && k.Admits(Of(30.01m)) == false,
+                "the column reads a number written with a point as its double, whole there");
+            PredicateAtom.Compare(PredicateAtom.TypedReader("INTEGER"), "=", Of(30.5m)).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Kinds.Should().BeEmpty(
                 "an integer is never 30.5");
         }
 
@@ -212,14 +213,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var equal = PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(30m));
 
             equal.Over(Holding(Of("30")), FactsReadings.Rows).Should().HaveFlag(Truths.True, "a stored \"30\" parses as 30");
-            equal.Kept(true, FactsReadings.Rows).Types.Should().Contain(StringType);
+            equal.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Types.Should().Contain(StringType);
             equal.AlwaysTrue(Holding(Of(30m)), FactsReadings.Rows).Should().BeTrue("30 and 30.0 both parse as 30");
             equal.Over(Holding(Of(true)), FactsReadings.Rows).Should().Be(Truths.Raises | Truths.True | Truths.False, "a boolean's rendering does not parse");
             equal.Over(AnObject, FactsReadings.Rows).Should().Be(Truths.Unknown);
 
             var fraction = PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(2.5m));
             fraction.Over(Holding(Of(2.5m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.False, "the literal is compared at scale zero, which is not 2.5");
-            fraction.Kept(true, FactsReadings.Rows).Lower.Should().Be(Bound.Above(1.5m), "the window holds whatever the literal is cast to");
+            fraction.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().Be(Bound.Above(1.5m), "the window holds whatever the literal is cast to");
         }
 
         /// <summary>
@@ -236,15 +237,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var reader = PredicateAtom.CastReader("DOUBLE", Text);
 
             var equal = PredicateAtom.Compare(reader, "=", Of(Big));
-            equal.Kept(true, FactsReadings.Rows).Lower.Should().BeNull("a stored 2^60 + 1 rounds to the literal's double");
-            equal.Kept(true, FactsReadings.Rows).Upper.Should().BeNull();
+            equal.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().BeNull("a stored 2^60 + 1 rounds to the literal's double");
+            equal.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Upper.Should().BeNull();
             equal.Over(Holding(Of(Big + 1)), FactsReadings.Rows).Should().HaveFlag(Truths.True, "2^60 + 1 is 2^60 as a double");
 
             var range = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.Above(Big)));
             PredicateAtom.Compare(reader, ">", Of(Big)).Over(range, FactsReadings.Rows).Should().HaveFlag(Truths.False, "a number above 2^60 may be 2^60 as a double");
             PredicateAtom.Compare(reader, "=", Of(Big)).NeverTrue(range, FactsReadings.Rows).Should().BeFalse();
 
-            PredicateAtom.Compare(reader, "=", Of(30m)).Kept(true, FactsReadings.Rows).Lower.Should().Be(Bound.Above(29m), "below 2^52 the window holds");
+            PredicateAtom.Compare(reader, "=", Of(30m)).Kept(true, FactsReadings.Rows, FactsReadings.Columns).Lower.Should().Be(Bound.Above(29m), "below 2^52 the window holds");
         }
 
         /// <summary>
@@ -265,7 +266,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var membership = PredicateAtom.In(Text, ValueSet.Of(Of("x"), Of("30")));
 
-            membership.Kept(true, FactsReadings.Rows).Values.Should().BeEquivalentTo(new[] { Of("x"), Of("30"), Of(30m) });
+            membership.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Values.Should().BeEquivalentTo(new[] { Of("x"), Of("30"), Of(30m) });
             membership.Over(Holding(Of("x"), Of("y")), FactsReadings.Rows).Should().Be(Truths.True | Truths.False);
             membership.Over(Holding(Of("x")), FactsReadings.Rows).Should().Be(Truths.True);
         }
@@ -328,12 +329,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// Every truth value an atom may take on a stored value is one whose kept documents include that value: what a
-        /// verdict is read from and what an assumption establishes cannot disagree, on any reading, test or value.
+        /// verdict is read from and what an assumption establishes cannot disagree, on any reading, test or value. The cast
+        /// of a raw value to text keeps by its column's answer (<c>rawunion</c>), which its coarse reading does not read, so
+        /// it is asked of its cells over the same rows; beside a parameter its cells add the coarse answer, which says a null
+        /// may compare where every column casts it to null, and <c>PredicateAtomCellTests</c>' audit of what every reading
+        /// keeps holds it against the evaluator instead.
         /// </summary>
         [Fact]
         public void WhatARowKeepsCoversEveryValueOnWhichItTakesThatTruthValue()
         {
-            var atoms = Grid(Readers).ToList();
+            var atoms = Grid(Readers).Where(a => a.Parameter == false || PredicateAtom.Columnless(a.Reader) != "cast:VARCHAR:raw").ToList();
             var states = Stored.Select(v => (Name: v, Values: v == NullValue ? PathValues.OfKinds(ValueSet.Of(NullType)) : Holding(v), Admits: (Func<PathValues, bool>)(k => k.Admits(v))))
                 .Append((Name: "absent", Values: Absent, Admits: k => k.Kinds.Contains(PathValues.AbsentKind)))
                 .Append((Name: "object", Values: AnObject, Admits: k => k.Kinds.Contains(ObjectType) && k.Values is null))
@@ -344,10 +349,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 foreach (var state in states)
                 {
-                    var truths = atom.Over(state.Values, FactsReadings.Rows);
+                    var truths = PredicateAtom.Columnless(atom.Reader) == "cast:VARCHAR:raw"
+                        ? PredicateAtom.State.Enumerate(state.Values).Aggregate(Truths.None, (t, s) => t | atom.OnCell(PathCell.Of(s), FactsReadings.Columns, FactsReadings.Rows))
+                        : atom.Over(state.Values, FactsReadings.Rows);
                     foreach (var truth in new[] { true, false })
                         if ((truths & (truth ? Truths.True : Truths.False)) != 0)
-                            state.Admits(atom.Kept(truth, FactsReadings.Rows)).Should().BeTrue($"{atom} may be {truth} over {state.Name}, so what it keeps at {truth} must admit it");
+                            state.Admits(atom.Kept(truth, FactsReadings.Rows, FactsReadings.Columns)).Should().BeTrue($"{atom} may be {truth} over {state.Name}, so what it keeps at {truth} must admit it");
                 }
             }
         }

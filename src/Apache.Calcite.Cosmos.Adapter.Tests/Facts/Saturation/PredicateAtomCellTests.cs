@@ -70,6 +70,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             .Concat([new J.Num(9007199254740993m), new J.Num(9007199254740994.4m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(2m), new J.Num(2147483648m), new J.Str("2"), new J.Str("2.5")])
             .ToArray();
 
+        /// <summary>The typed columns the loader types a field by beside the grid's: each reads a number as its own type.</summary>
+        static readonly string[] Narrow = [PredicateAtom.TypedReader("FLOAT"), PredicateAtom.TypedReader("REAL"), PredicateAtom.TypedReader("TINYINT"), PredicateAtom.TypedReader("SMALLINT")];
+
+        /// <summary>Every reading the loader builds: the cells' readers and the narrow typed columns.</summary>
+        static readonly string[] KeptReaders = [.. Readers, .. Narrow];
+
+        /// <summary>
+        /// Beside the boundaries, the numbers a double holds only near, a decimal and a whole-valued fraction a double and an
+        /// integer column read as a whole number, and the whole numbers about it.
+        /// </summary>
+        static readonly string[] KeptNumbers = [.. Boundaries, Of(0.10000000000000001m), Of(0.0000001m), Of(6.0000000000000001m), Of(6m), Of(5m), Of(127m), Of(128m)];
+
+        /// <summary>Beside what an <c>ANY</c> renders the pool's numbers as, what the text of the narrow numbers renders: Java's spelling of a double.</summary>
+        static readonly string[] KeptTexts = [.. Rendered, Of("0.10000000000000001"), Of("1.0E-7"), Of("6.0"), Of("6"), Of("6.0000000000000001")];
+
+        /// <summary>The cells' pool, and the numbers a double holds only near and a whole-valued fraction.</summary>
+        static readonly J?[] KeptPool = [.. Pool, new J.Num(0.0000001m), new J.Num(6.0000000000000001m), new J.Num(6m), new J.Num(127.5m), new J.Num(128m), new J.Str("0.1"), new J.Str("6.0"), new J.Str("1e-7")];
+
         /// <summary>
         /// Every value in a cell, read through every reader the atom's reading stands for, takes a truth value the cell's
         /// answer holds. A coin the evaluator tosses, where nothing was measured, leaves the case out, counted.
@@ -180,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             }
 
                             asked++;
-                            if (truth is Truths.True or Truths.False && PopulationD.Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows), value) == false)
+                            if (truth is Truths.True or Truths.False && PopulationD.Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows, FactsReadings.Columns), value) == false)
                                 inexact.Add($"{atom} is {truth} of {PathCellTests.Show(value)} read {typed} {raw}, which a row it keeps {truth} cannot be");
                         }
                 }
@@ -193,6 +211,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             presences.Should().BeEquivalentTo(Readers, "the presence tests' row names a presence test over any reading");
             CosmosAxiomRows.ReadExactReadings(CosmosAxioms.All).Should().Contain((RenderingFamily.PresenceTest, CosmosValueClass.None));
         }
+
+        /// <summary>
+        /// Every reading the loader builds, exact or not, beside the grid's literals, the boundaries and the numbers a double
+        /// holds only near, keeps every value Calcite gives a truth value on: what a row taking that truth value can be
+        /// (<see cref="PredicateAtom.Kept"/>), over the facts graph's own rows and <c>rawunion</c>, admits every value the
+        /// evaluator gives that truth on, through every reader the reading stands for. A comparison with a parameter is asked
+        /// by every operator. So whatever the facts graph assumes of an atom leaves out no document Calcite keeps. Coins are
+        /// left out, counted.
+        /// </summary>
+        [Fact]
+        public void WhatEveryReadingKeepsHoldsEveryValueCalciteGivesThatTruthOn()
+        {
+            var (unkept, (asked, tossed)) = (new List<string>(), (0, 0));
+            var readers = new HashSet<string>();
+            var atoms = Atoms(KeptReaders, reader => PredicateAtom.IsRaw(reader) ? [.. KeptNumbers, .. KeptTexts] : Textual(reader) ? KeptTexts : KeptNumbers)
+                .Concat(from reader in KeptReaders from op in new[] { "<>", "<", "<=", ">", ">=" } select PredicateAtom.CompareParameter(reader, op));
+            foreach (var atom in atoms)
+            {
+                var kept = new[] { atom.Kept(false, FactsReadings.Rows, FactsReadings.Columns), atom.Kept(true, FactsReadings.Rows, FactsReadings.Columns) };
+                var values = Spelled(KeptPool.Concat(Partitions(atom).SelectMany(p => p.Fine.Cells).Select(c => PathCellTests.Decode(c.Witness()))))
+                    .DistinctBy(v => v is null ? "absent" : v.GetType().Name + Documents.Json(v));
+                foreach (var value in values)
+                    foreach (var (typed, raw) in Modes(atom))
+                    {
+                        var world = new World(asked + tossed);
+                        var truth = IrEval.Truth(Predicate(atom), Document(value), world, typed, raw);
+                        if (world.Tossed > 0)
+                        {
+                            tossed++;
+                            continue;
+                        }
+
+                        asked++;
+                        readers.Add(atom.Reader);
+                        if (truth is Truths.True or Truths.False && PopulationD.Admits(kept[truth == Truths.True ? 1 : 0], value) == false)
+                            unkept.Add($"{atom} is {truth} of {PathCellTests.Show(value)} read {typed} {raw}, which a row it keeps {truth} cannot be: {kept[truth == Truths.True ? 1 : 0]}");
+                    }
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{asked:N0} answers checked; {tossed:N0} left out, a coin tossed");
+            unkept.Should().BeEmpty("a stratum resting on any atom leaves out no document Calcite keeps");
+            readers.Should().BeEquivalentTo(KeptReaders, "every reading is checked on some value");
+        }
+
+        /// <summary>Whether a reading is compared with a string alone: the text, a typed text place, and the cast of a raw value to text.</summary>
+        static bool Textual(string reader) => PredicateAtom.Columnless(reader) is PredicateAtom.TextReader or "cast:VARCHAR:raw" || TextPlaces.Contains(reader);
 
         static bool Fractional(PathCell cell) => cell.Coarse is PredicateAtom.State.AnyNumber { Integral: false } || cell.Coarse is PredicateAtom.State.Scalar s && TypeOf(s.Value) == FractionType;
 
@@ -278,11 +342,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// readings, the boundaries, which the coarse readings compare exactly where a double does not; and the type tests
         /// of the raw value, and <c>LIKE</c> of the text, of the typed text places and of the cast of the raw value to text.
         /// </summary>
-        static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) => PredicateAtomTests.Grid(Readers)
+        static IEnumerable<PredicateAtom> Atoms(bool boundaries = false) =>
+            Atoms(Readers, reader => boundaries ? PredicateAtom.Columnless(reader) == "cast:VARCHAR:raw" ? Rendered : Boundaries : []);
+
+        /// <summary>The atoms over some readers, as <see cref="Atoms(bool)"/>, each reader compared with the literals <paramref name="beside"/> gives it.</summary>
+        static IEnumerable<PredicateAtom> Atoms(string[] readers, Func<string, string[]> beside) => PredicateAtomTests.Grid(readers)
             .Concat(from row in FactsReadings.TestKinds where row.Test != "IS_DEFINED" select PredicateAtom.TypeTest(PredicateAtom.RawReader, row.Test, row.Kinds))
-            .Concat(from reader in Readers.Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR") || TextPlaces.Contains(r))
+            .Concat(from reader in readers.Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR") || TextPlaces.Contains(r))
                     from pattern in Patterns select PredicateAtom.Affix(reader, PredicateAtom.LikeTest, pattern))
-            .Concat(boundaries ? from reader in Readers from literal in PredicateAtom.Columnless(reader) == "cast:VARCHAR:raw" ? Rendered : Boundaries from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal) : [])
+            .Concat(from reader in readers from literal in beside(reader) from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal))
             .Where(atom => Literals(atom).All(literal => atom.Reader switch
         {
             // A VARCHAR column is raw beside a string alone: the loader casts it beside anything else.
@@ -308,9 +376,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>The values a cell holds of its witness and the pool, each whole number in both its spellings.</summary>
-        static IEnumerable<J?> Inside(PathCell cell) => Pool.Append(PathCellTests.Decode(cell.Witness()))
-            .SelectMany(v => v is J.Num n && n.Value == decimal.Truncate(n.Value) ? new J?[] { new J.Num(NumberOf(Of(n.Value))), new J.Num(NumberOf(Of(n.Value)) + 0.0m) } : new[] { v })
+        static IEnumerable<J?> Inside(PathCell cell) => Spelled(Pool.Append(PathCellTests.Decode(cell.Witness())))
             .Where(v => cell.Contains(PathCellTests.Encode(v)));
+
+        /// <summary>Some values, each whole number in both its spellings.</summary>
+        static IEnumerable<J?> Spelled(IEnumerable<J?> values) =>
+            values.SelectMany(v => v is J.Num n && n.Value == decimal.Truncate(n.Value) ? new J?[] { new J.Num(NumberOf(Of(n.Value))), new J.Num(NumberOf(Of(n.Value)) + 0.0m) } : new[] { v });
 
         /// <summary>
         /// The readers a reading stands for, as the evaluator names them: <c>RETURNING</c> and a column for <c>typed</c>,

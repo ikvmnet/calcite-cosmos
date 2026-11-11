@@ -297,12 +297,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>
         /// Returns what a path holds in every document on which the atom takes the given truth value: the documents a
         /// row it keeps (<paramref name="truth"/> <c>true</c>), or a row its negation keeps, can be. Each class of value is
-        /// read as the readings rules say (<paramref name="readings"/>, G7): by the reading the reader is evaluated as there.
+        /// read as the readings rules say (<paramref name="readings"/>, G7): by the reading the reader is evaluated as there;
+        /// and a cast of a raw value to text by what its column answers (<paramref name="columns"/>), as a cell of it reads.
         /// </summary>
         /// <param name="truth">Whether the atom is TRUE of the row, or FALSE.</param>
         /// <param name="readings">Every reading's rows, the readings vocabulary's table.</param>
+        /// <param name="columns">The raw columns' union, the readings vocabulary's <c>rawunion</c>.</param>
         /// <returns>An over-approximation of those documents.</returns>
-        public PathValues Kept(bool truth, ReadingTable readings)
+        public PathValues Kept(bool truth, ReadingTable readings, RawTruths columns)
         {
             // True where the path is there, a null included, and false only where it is not.
             if (Test == DefinedTest)
@@ -316,13 +318,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             // Each reading the reader is evaluated as keeps the kinds of the classes it is evaluated over; its own the rest.
             var aliases = readings[Reader].As.AsEnumerable().ToList();
-            var own = KeptBy(Evaluate(Reader, readings), truth);
+            var own = KeptBy(Evaluate(Reader, readings), truth, columns);
             if (aliases.Count == 0)
                 return own;
 
             var kept = PathValues.Meet(own, PathValues.OfKinds(KindsOf(CosmosValueClasses.Kinds.AsEnumerable().Except(aliases.Select(a => a.Kind)))));
             foreach (var alias in aliases.GroupBy(a => a.Reader))
-                kept = PathValues.Join(kept, PathValues.Meet(KeptBy(Evaluate(alias.Key, readings), truth), PathValues.OfKinds(KindsOf(alias.Select(a => a.Kind)))));
+                kept = PathValues.Join(kept, PathValues.Meet(KeptBy(Evaluate(alias.Key, readings), truth, columns), PathValues.OfKinds(KindsOf(alias.Select(a => a.Kind)))));
 
             return kept;
         }
@@ -332,14 +334,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             ValueSet.From(classes.SelectMany(c => CosmosValueClasses.JsonKinds.Where(k => k.Class == c).Select(k => k.Kind)));
 
         /// <summary>What a path holds where the atom, evaluated by the reading, takes the truth value.</summary>
-        PathValues KeptBy(Reading reading, bool truth)
+        PathValues KeptBy(Reading reading, bool truth, RawTruths columns)
         {
             // TRUE or FALSE only where the value matched is not null.
             if (Test == LikeTest)
-                return reading.KeptNull(false);
+                return reading.KeptNull(false, columns);
 
             if (Parameter)
-                return reading.KeptParameter();
+                return reading.KeptParameter(columns);
 
             // Never TRUE nor FALSE: no document is kept either way.
             if (NullOperand)
@@ -348,17 +350,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             switch (Test)
             {
                 case Equal:
-                    return truth ? reading.KeptEqual(Operand!) : reading.KeptUnequal(Operand!);
+                    return truth ? reading.KeptEqual(Operand!, columns) : reading.KeptUnequal(Operand!, columns);
                 case NotEqual:
-                    return truth ? reading.KeptUnequal(Operand!) : reading.KeptEqual(Operand!);
+                    return truth ? reading.KeptUnequal(Operand!, columns) : reading.KeptEqual(Operand!, columns);
                 case Less or LessOrEqual or Greater or GreaterOrEqual:
-                    return reading.KeptOrder(truth ? Test : Negate(Test), Operand!);
+                    return reading.KeptOrder(truth ? Test : Negate(Test), Operand!, columns);
                 case InTest when Points is { Count: > 0 }:
                     return truth
-                        ? Points.Select(reading.KeptEqual).Aggregate(PathValues.Join)
-                        : Points.Select(reading.KeptUnequal).Aggregate(PathValues.Meet);
+                        ? Points.Select(point => reading.KeptEqual(point, columns)).Aggregate(PathValues.Join)
+                        : Points.Select(point => reading.KeptUnequal(point, columns)).Aggregate(PathValues.Meet);
                 case NullTest:
-                    return reading.KeptNull(truth);
+                    return reading.KeptNull(truth, columns);
                 default:
                     return PathValues.Anything;
             }
@@ -391,6 +393,43 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>Whether the atom is TRUE of no document the knowledge admits, and raises on none.</summary>
         public bool NeverTrue(PathValues possible, ReadingTable readings) => (Over(possible, readings) & (Truths.True | Truths.Raises)) == Truths.None;
+
+        /// <summary>
+        /// Determines whether Calcite may raise on some document holding a value the path's knowledge admits: the raise
+        /// evaluator, which reads every state the path may hold through its cell (<see cref="PathCell.Of"/>,
+        /// <see cref="OnCell"/>), whose answers carry the raises the coarse readings leave out, and never stops while a state
+        /// is left. A pattern the units' rows leave unread, U+0000 among them, may raise; an answer that decides nothing,
+        /// exactly <see cref="Truths.Any"/>, counts as one; and a comparison with a parameter raises where its reading's
+        /// answer to one raises (<see cref="ParameterOn"/>), and nowhere else, since its undecided truth value is no raise.
+        /// </summary>
+        /// <param name="possible">What the path may hold.</param>
+        /// <param name="columns">The raw columns' union, the readings vocabulary's <c>rawunion</c>.</param>
+        /// <param name="readings">Every reading's rows, the readings vocabulary's table.</param>
+        public bool RaisesOver(PathValues possible, RawTruths columns, ReadingTable readings)
+        {
+            // LIKE answers TRUE and FALSE for a pattern it leaves unread, neither a raise nor undecided, so it is asked here.
+            if (Test == LikeTest && LikePattern.Read(StringOf(Operand!), readings.Units) is null)
+                return true;
+
+            foreach (var state in State.Enumerate(possible))
+            {
+                var cell = PathCell.Of(state);
+                var truths = Parameter ? ParameterOn(cell, columns, readings) : OnCell(cell, columns, readings);
+                if ((truths & Truths.Raises) != 0 || Parameter == false && truths == Truths.Any)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// The truth values a comparison with a parameter may take on a cell, beside a raise wherever Calcite may raise
+        /// whatever the parameter is bound to (<c>Calcite.AParameterComparesAsItsComparand</c>): the reading evaluated as the
+        /// readings rules say over the cell's class, as <see cref="OnCell"/> evaluates it, its own answer beside its null
+        /// test's and, for a raw value or its cast to text, its column's answer beside a parameter.
+        /// </summary>
+        internal Truths ParameterOn(PathCell cell, RawTruths columns, ReadingTable readings) =>
+            EvaluatorOf(Reader, readings, CosmosValueClasses.Of(cell)).Reading.ParameterOn(cell, Test, columns);
 
         /// <summary>The truth values the atom may take on one kind of document, its class read as the readings rules say.</summary>
         internal Truths On(State state, ReadingTable readings)
@@ -822,6 +861,80 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>What a path holds where a comparison with a parameter is TRUE or FALSE.</summary>
             public abstract PathValues KeptParameter();
 
+            // Beside the raw columns' truths, which a cast of a raw value to text alone reads: by default, what it keeps without.
+            public virtual PathValues KeptEqual(string literal, RawTruths columns) => KeptEqual(literal);
+
+            public virtual PathValues KeptUnequal(string literal, RawTruths columns) => KeptUnequal(literal);
+
+            public virtual PathValues KeptOrder(string op, string literal, RawTruths columns) => KeptOrder(op, literal);
+
+            public virtual PathValues KeptNull(bool truth, RawTruths columns) => KeptNull(truth);
+
+            public virtual PathValues KeptParameter(RawTruths columns) => KeptParameter();
+
+            /// <summary>
+            /// The numbers whose double is a number's, of either kind: its rounding interval (<see cref="DoubleBound.Rounding"/>),
+            /// what a reading that compares by a double keeps beside it; every number where no decimal bounds it.
+            /// </summary>
+            protected static PathValues RoundingTo(double d)
+            {
+                var kept = PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType));
+                var (low, high) = DoubleBound.Rounding(d);
+                if (low is decimal l)
+                    kept = PathValues.Meet(kept, PathValues.Above(Bound.AtLeast(l)));
+                if (high is decimal h)
+                    kept = PathValues.Meet(kept, PathValues.Below(Bound.AtMost(h)));
+
+                return kept;
+            }
+
+            /// <summary>
+            /// The join of two states, a side that holds no number read as bounding none: a bound binds numbers alone, so a
+            /// side of strings or booleans takes the other's, and the numbers' bounds survive the join. A side of no kind
+            /// holds nothing, and is no side: <see cref="PathValues.Join"/> reads its domain, which none names, as any value.
+            /// </summary>
+            protected static PathValues Either(PathValues a, PathValues b)
+            {
+                static bool Numbers(PathValues x) => x.Kinds.Contains(IntegerType) || x.Kinds.Contains(FractionType);
+
+                if (a.Kinds.Count == 0)
+                    return b;
+                if (b.Kinds.Count == 0)
+                    return a;
+
+                if (Numbers(a) == false)
+                    a = a with { Lower = b.Lower, Upper = b.Upper };
+                if (Numbers(b) == false)
+                    b = b with { Lower = a.Lower, Upper = a.Upper };
+
+                return PathValues.Join(a, b);
+            }
+
+            /// <summary>
+            /// The numbers that may render as a text: an integer as its digits, which hold no point, and any other number as
+            /// Java spells its double, which always holds one and parses back to it, so every number whose double the
+            /// text's is; none where the text is no number's rendering. <paramref name="digits"/> is the integers digits
+            /// render: any, or those within a long, past which a reader boxes a double.
+            /// </summary>
+            protected static PathValues RenderedAs(string text, bool digits)
+            {
+                if (Renderings.MayBeNumberText(text) == false)
+                    return PathValues.OfKinds(ValueSet<string>.Empty);
+
+                if (text.Contains('.'))
+                    return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? RoundingTo(d) : PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType));
+
+                if (text.IndexOfAny(['e', 'E']) >= 0)
+                    return PathValues.OfKinds(ValueSet<string>.Empty);
+
+                if (Renderings.TryExactNumber(text, out var x) == false)
+                    return digits ? PathValues.OfKinds(ValueSet.Of(IntegerType)) : PathValues.OfKinds(ValueSet<string>.Empty);
+
+                return digits || x >= long.MinValue && x <= long.MaxValue
+                    ? PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.OneOf(ValueSet.Of(Of(x))))
+                    : PathValues.OfKinds(ValueSet<string>.Empty);
+            }
+
             /// <summary>The rows the cell methods rest on.</summary>
             public virtual ValueSet<string> Rests => ValueSet<string>.Empty;
 
@@ -841,6 +954,19 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             public virtual Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => OrderOn(cell, op, literal);
 
             public virtual Truths NullOn(PathCell cell, RawTruths columns) => NullOn(cell);
+
+            /// <summary>
+            /// The truth values of a comparison by the operator with a parameter on a cell, beside a raise wherever Calcite
+            /// may raise whatever the parameter is bound to (<c>Calcite.AParameterComparesAsItsComparand</c>): by default the
+            /// reading's own answer to a parameter, beside its null test's, whose read of the value the comparison makes.
+            /// </summary>
+            public virtual Truths ParameterOn(PathCell cell, string op, RawTruths columns) => Parameter(cell.Coarse) | ComparedWhereNotNull(NullOn(cell, columns));
+
+            /// <summary>
+            /// The test a comparison with a parameter reads its column's key by: an ordering's own, and <c>=</c>'s for
+            /// <c>&lt;&gt;</c>, which no key holds, as a comparison with a literal swaps <c>=</c>'s answer for it.
+            /// </summary>
+            protected static string KeyedBy(string op) => op == NotEqual ? PredicateAtom.Equal : op;
 
             /// <summary>Whether a comparison holds of a value that compares with the literal as the sign says.</summary>
             static bool Ordered(string op, int sign) => op switch
@@ -958,7 +1084,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <c>30</c> and a stored <c>30.0</c> reads <c>30.0</c>, and the theory spells both <c>integer|30</c>. So a
             /// number whose value is the text's may render as the text or not, and one whose value is not never does.
             /// That is the rendering preimage: <c>'30'</c> admits the string <c>"30"</c> and the number 30, and a declared
-            /// string leaves only the first.
+            /// string leaves only the first. A text with a point is a double's spelling, which every number whose double it
+            /// is renders as: <c>'0.1'</c> admits a stored <c>0.10000000000000001</c>, and every number of its rounding interval.
             /// </remarks>
             class Text : Reading
             {
@@ -1039,22 +1166,6 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         values.Add(Of(text == "true"));
                     }
 
-                    if (Renderings.MayBeNumberText(text))
-                    {
-                        if (Renderings.TryExactNumber(text, out var number))
-                        {
-                            var value = Of(number);
-                            kinds.Add(TypeOf(value));
-                            values.Add(value);
-                        }
-                        else
-                        {
-                            kinds.Add(IntegerType);
-                            kinds.Add(FractionType);
-                            finite = false;
-                        }
-                    }
-
                     if (_structures)
                     {
                         if (text.StartsWith('['))
@@ -1077,7 +1188,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     }
 
                     var kept = PathValues.OfKinds(ValueSet.From(kinds));
-                    return finite ? PathValues.Meet(kept, PathValues.OneOf(ValueSet.From(values))) : kept;
+                    kept = finite ? PathValues.Meet(kept, PathValues.OneOf(ValueSet.From(values))) : kept;
+                    return Renderings.MayBeNumberText(text) ? Either(kept, RenderedAs(text, digits: true)) : kept;
                 }
 
                 public override PathValues KeptUnequal(string literal)
@@ -1141,7 +1253,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
             /// <summary>
             /// The cast to text of a raw value on a cell: its columns' union (<c>Calcite.CastOfARawValueToText</c>), or the one
-            /// column its reader names, S's. The facts graph reads the rendering alone (<c>TODO.md</c>).
+            /// column its reader names, S's. The facts graph's coarse verdicts read the rendering alone (<c>TODO.md</c>); what a
+            /// row it keeps holds is its column's answer, as a cell reads it.
             /// </summary>
             /// <param name="castOfRaw">The reading's spelling, which keys its columns' truths.</param>
             sealed class RawText(string castOfRaw) : Text(structures: true)
@@ -1192,6 +1305,59 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public override Truths NullOn(PathCell cell, RawTruths columns) => AsText(cell, NullTest, null, columns, () => T | F);
 
+                /// <summary>
+                /// What a row the cast takes a truth value on holds, class by class, as its column's answer on the class's key
+                /// says (G5), as <see cref="AsText"/> reads a cell's: the class where the truths stated whole hold the truth,
+                /// those of the class the rendering keeps where the column compares the rendering on the cell, and nothing where
+                /// it fails or raises alone. A key no column answers holds anything, so keeps the class.
+                /// </summary>
+                PathValues ByColumn(CosmosServiceTest test, string? literal, Truths truth, RawTruths columns, Func<CosmosValueClass, PathValues> rendered)
+                {
+                    var kept = PathValues.OfKinds(ValueSet<string>.Empty);
+                    foreach (var kind in CosmosValueClasses.Kinds)
+                    {
+                        var answer = columns[RawKey.Of(castOfRaw, kind, test, literal is null ? CosmosValueClass.None : CosmosValueClasses.Of(literal))];
+                        if ((answer.Whole & truth) != 0)
+                            kept = Either(kept, Holding(kind));
+                        else if ((answer.Compared & truth) != 0)
+                            kept = Either(kept, PathValues.Meet(Holding(kind), rendered(kind)));
+                    }
+
+                    return kept;
+                }
+
+                /// <summary>The values of a class: its kinds, and of a boolean its one value.</summary>
+                static PathValues Holding(CosmosValueClass kind) => kind switch
+                {
+                    CosmosValueClass.True or CosmosValueClass.False => PathValues.Meet(PathValues.OfKinds(ValueSet.Of(BooleanType)), PathValues.OneOf(ValueSet.Of(Of(kind == CosmosValueClass.True)))),
+                    _ => PathValues.OfKinds(KindsOf([kind])),
+                };
+
+                /// <summary>
+                /// Equal where the column's answer is, a number through an <c>ANY</c> where its rendering may be the text
+                /// (<see cref="MayRender"/>): a long as its digits, any other number as its double's spelling.
+                /// </summary>
+                public override PathValues KeptEqual(string literal, RawTruths columns) => IsString(literal) == false ? KeptEqual(literal)
+                    : ByColumn(CosmosServiceTest.Equal, literal, T, columns, kind => kind == CosmosValueClass.Number ? RenderedAs(StringOf(literal), digits: false) : KeptEqual(literal));
+
+                public override PathValues KeptUnequal(string literal, RawTruths columns) => IsString(literal) == false ? KeptUnequal(literal)
+                    : ByColumn(CosmosServiceTest.Equal, literal, F, columns, _ => KeptUnequal(literal));
+
+                public override PathValues KeptOrder(string op, string literal, RawTruths columns) => IsString(literal) == false ? KeptOrder(op, literal)
+                    : ByColumn(ServiceTestOf(op), literal, T, columns, _ => KeptOrder(op, literal));
+
+                public override PathValues KeptNull(bool truth, RawTruths columns) => ByColumn(CosmosServiceTest.IsNull, null, truth ? T : F, columns, _ => PathValues.Anything);
+
+                /// <summary>TRUE or FALSE only where the cast is not null, as the null test's FALSE keeps.</summary>
+                public override PathValues KeptParameter(RawTruths columns) => KeptNull(false, columns);
+
+                /// <summary>
+                /// Beside the reading's own answer, what its column answers beside a parameter, whichever class it is bound to:
+                /// the key with no literal's class, which the readings rules fill as the join over every class.
+                /// </summary>
+                public override Truths ParameterOn(PathCell cell, string op, RawTruths columns) =>
+                    base.ParameterOn(cell, op, columns) | AsText(cell, KeyedBy(op), null, columns, () => T | F);
+
             }
 
             /// <summary>
@@ -1230,8 +1396,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 public override Truths Parameter(State state) => state is State.Absent ? U : Truths.Any;
 
+                /// <summary>
+                /// The literal; beside a number, every number whose double is the literal's, since an <c>ANY</c> compares a
+                /// number not written as a long by its double (<c>Calcite.RawNullIsSqlNull</c>).
+                /// </summary>
                 public override PathValues KeptEqual(string literal) =>
-                    TypeOf(literal) == NullType ? PathValues.Anything : PathValues.Meet(PathValues.OfKinds(ValueSet.Of(TypeOf(literal))), PathValues.OneOf(ValueSet.Of(literal)));
+                    TypeOf(literal) == NullType ? PathValues.Anything
+                    : IsNumber(literal) ? RoundingTo(DoubleBound.Of(literal))
+                    : PathValues.Meet(PathValues.OfKinds(ValueSet.Of(TypeOf(literal))), PathValues.OneOf(ValueSet.Of(literal)));
 
                 public override PathValues KeptUnequal(string literal) =>
                     IsNumber(literal) || TypeOf(literal) == NullType ? PathValues.AnythingThere : PathValues.Meet(PathValues.AnythingThere, PathValues.Not(literal));
@@ -1287,6 +1459,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 /// <summary>As the union says: true of a null alone, and a raise where a column reads no value of the kind.</summary>
                 public override Truths NullOn(PathCell cell, RawTruths columns) => Through(cell, NullTest, null, columns, () => T | F);
+
+                /// <summary>
+                /// Beside the reading's own answer, what its column answers beside a parameter, whichever class it is bound to:
+                /// the key with no literal's class, which the readings rules fill as the join over every class, a
+                /// <c>VARIANT</c> ordering's failure to compile, an <c>ANY</c> ordering's raise across types and a
+                /// <c>VARCHAR</c> column's over any other value among it.
+                /// </summary>
+                public override Truths ParameterOn(PathCell cell, string op, RawTruths columns) =>
+                    base.ParameterOn(cell, op, columns) | Through(cell, KeyedBy(op), null, columns, () => T | F);
 
             }
 
@@ -1352,17 +1533,92 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     _ => Truths.Any | R,
                 };
 
-                public override PathValues KeptEqual(string literal) =>
-                    PathValues.Meet(PathValues.OfKinds(_kinds.Intersect(ValueSet.Of(TypeOf(literal)))), PathValues.OneOf(ValueSet.Of(literal)));
+                /// <summary>
+                /// Where the reading is equal to a literal (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>): under <c>DOUBLE</c>
+                /// and <c>FLOAT</c>, which compare doubles, every number whose double is the literal's; under <c>REAL</c>, which
+                /// compares floats, every number whose float is; under an integer type, which its column reads a fraction
+                /// whose double is whole as, every number whose double is a whole literal within the type, and none beside
+                /// any other; a boolean the literal.
+                /// </summary>
+                public override PathValues KeptEqual(string literal)
+                {
+                    if (IsNumber(literal) && Limits is var (least, most))
+                        return TryNumberOf(literal, out var c) == false ? Read
+                            : c == decimal.Truncate(c) && c >= least && c <= most ? PathValues.Meet(Read, RoundingTo(DoubleBound.Of(c))) : PathValues.OfKinds(ValueSet<string>.Empty);
 
-                public override PathValues KeptUnequal(string literal) => PathValues.Meet(PathValues.OfKinds(_kinds), PathValues.Not(literal));
+                    if (IsNumber(literal) && _type is "DOUBLE" or "FLOAT")
+                        return RoundingTo(DoubleBound.Of(literal));
 
-                public override PathValues KeptOrder(string op, string literal) => PathValues.OfKinds(_kinds);
+                    if (IsNumber(literal) && _type == "REAL")
+                        return FloatRoundingTo(literal);
+
+                    return PathValues.Meet(PathValues.OfKinds(_kinds.Intersect(ValueSet.Of(TypeOf(literal)))), PathValues.OneOf(ValueSet.Of(literal)));
+                }
+
+                /// <summary>
+                /// Where the reading is unequal to a literal: every value it reads, but the literal where every spelling of it
+                /// reads as what it is compared with. An integer type's column reads a number written with a point as its
+                /// double, so 9007199254740993.0 as 9007199254740992 and 6.0000000000000001 as 6, each unequal to itself; and
+                /// a <c>REAL</c> casts the literal to a float from its decimal or through its double, which may part at a tie.
+                /// </summary>
+                public override PathValues KeptUnequal(string literal) => ReadsAsItself(literal) ? PathValues.Meet(Read, PathValues.Not(literal)) : Read;
+
+                bool ReadsAsItself(string literal)
+                {
+                    if (IsNumber(literal) == false)
+                        return true;
+
+                    if (Limits is not null)
+                        return TryNumberOf(literal, out var c) && c == decimal.Truncate(c) && Math.Abs(c) <= 9007199254740992m;
+
+                    if (_type == "REAL")
+                        return TryNumberOf(literal, out var c) && (float)DoubleBound.Of(c) == float.Parse(c.ToString(CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
+
+                    return true;
+                }
+
+                public override PathValues KeptOrder(string op, string literal) => Read;
 
                 public override PathValues KeptNull(bool truth) =>
-                    truth ? PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind, NullType, ObjectType, ArrayType)) : PathValues.OfKinds(_kinds);
+                    truth ? PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind, NullType, ObjectType, ArrayType)) : Read;
 
-                public override PathValues KeptParameter() => PathValues.OfKinds(_kinds);
+                public override PathValues KeptParameter() => Read;
+
+                /// <summary>
+                /// What the reading reads a value of: its kinds; under an integer type, whose column reads a fraction whose
+                /// double is whole and within the type, either number within the type's range, a double's rounding beyond it.
+                /// </summary>
+                PathValues Read => Limits is var (least, most)
+                    ? PathValues.Meet(PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType)), Below(RoundingTo(DoubleBound.Of(most)))), Above(RoundingTo(DoubleBound.Of(least))))
+                    : PathValues.OfKinds(_kinds);
+
+                static PathValues Below(PathValues window) => window.Upper is Bound upper ? PathValues.Below(upper) : PathValues.Anything;
+
+                static PathValues Above(PathValues window) => window.Lower is Bound lower ? PathValues.Above(lower) : PathValues.Anything;
+
+                /// <summary>
+                /// The numbers a <c>REAL</c> reads as the float the literal is cast to: the float nearest each number's double,
+                /// so every number whose double lies within the float's rounding interval. The literal is cast once from its
+                /// decimal or through its double, which may part at a tie, so both floats are kept.
+                /// </summary>
+                static PathValues FloatRoundingTo(string literal)
+                {
+                    var d = DoubleBound.Of(literal);
+                    var floats = TryNumberOf(literal, out var c) ? new[] { (float)d, float.Parse(c.ToString(CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture) } : [(float)d];
+                    var kept = PathValues.OfKinds(ValueSet<string>.Empty);
+                    foreach (var f in floats)
+                    {
+                        if (float.IsFinite(f) == false)
+                            return PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType));
+
+                        // A float's neighbours' midpoints with it are doubles exactly; a number rounds to a double within them.
+                        var low = RoundingTo(((double)MathF.BitDecrement(f) + f) / 2);
+                        var high = RoundingTo(((double)f + MathF.BitIncrement(f)) / 2);
+                        kept = Either(kept, PathValues.Meet(PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType, FractionType)), Above(low)), Below(high)));
+                    }
+
+                    return kept;
+                }
 
                 static readonly ValueSet<string> Rows = ValueSet.Of("Calcite.ReturningAsserts", "Calcite.ColumnReadsWholeNumbersAsItsType");
 
@@ -1640,6 +1896,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 /// </summary>
                 Truths Converted(PathCell cell, string op, string literal)
                 {
+                    // A double compares doubles, the literal's whether a decimal holds it or not.
+                    if (_roundsFrom is not null && IsNumber(literal) && Doubled(cell, op, DoubleBound.Of(literal)) is Truths doubled)
+                        return doubled;
+
                     if (TryNumberOf(literal, out var c) == false || _parsesDecimal && c != decimal.Truncate(c))
                         return Compare(cell.Coarse, op, literal);
 
@@ -1647,23 +1907,16 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     var (least, most) = _saturates ?? (0m, 0m);
                     switch (cell)
                     {
-                        // A boolean renders as text that spells no number, a NaN compares as nothing Java says alike, and BIGINT reads
-                        // text shaped as a timestamp as one.
+                        // A boolean renders as text that spells no number, and BIGINT reads text shaped as a timestamp as one.
                         case PathCell.Point { Value: var v } when IsString(v) || TypeOf(v) == BooleanType:
                         {
                             var text = IsString(v) ? StringOf(v) : Renderings.BooleanText(v);
                             if (_saturates?.Max == long.MaxValue && Renderings.ReadsAsTimestamp(text))
                                 return T | F | R;
 
-                            return _roundsFrom is not null ? (Renderings.ParseDouble(text) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(DoubleBound.Of(c)), 0) : R)
-                                : _parsesDecimal ? (Renderings.DecimalSide(text, c) is int side ? By(side, 0) : R)
+                            return _parsesDecimal ? (Renderings.DecimalSide(text, c) is int side ? By(side, 0) : R)
                                 : Renderings.ParseInteger(text, least, most) is decimal w ? By(w.CompareTo(c), 0) : R;
                         }
-
-                        case PathCell.Point { Value: var v } when _roundsFrom is not null && IsNumber(v):
-                            return By(Math.Sign(DoubleBound.Of(v).CompareTo(DoubleBound.Of(c))), 0);
-                        case PathCell.Numbers n when _roundsFrom is not null:
-                            return By(n.DoubleSide(DoubleBound.Of(c)), 0);
 
                         // A number written as an integer renders as its digits, and any other as its double does
                         // (Calcite.JsonValueRendersScalarsAsText), which parses as the literal where both are a whole double.
@@ -1682,6 +1935,24 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         default:
                             return Compare(cell.Coarse, op, literal);
                     }
+                }
+
+                /// <summary>
+                /// The cast to a double's answer on a cell, against the literal's double: a string or a boolean by its rendering's
+                /// parse, a NaN comparing as nothing Java says alike, and a raise where it parses as no double; a number by its
+                /// double. <c>null</c> for a cell it does not place.
+                /// </summary>
+                static Truths? Doubled(PathCell cell, string op, double literal)
+                {
+                    Truths By(int? side) => Placed(op, [side], Truths.None);
+                    return cell switch
+                    {
+                        PathCell.Point { Value: var v } when IsString(v) || TypeOf(v) == BooleanType =>
+                            Renderings.ParseDouble(IsString(v) ? StringOf(v) : Renderings.BooleanText(v)) is double d ? double.IsNaN(d) ? T | F : By(d.CompareTo(literal)) : R,
+                        PathCell.Point { Value: var v } when IsNumber(v) => By(Math.Sign(DoubleBound.Of(v).CompareTo(literal))),
+                        PathCell.Numbers n => By(n.DoubleSide(literal)),
+                        _ => null,
+                    };
                 }
 
                 /// <summary>

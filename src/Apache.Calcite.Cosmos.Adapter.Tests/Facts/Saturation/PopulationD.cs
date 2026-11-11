@@ -489,9 +489,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             break;
                         }
 
-                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows), value) == false)
+                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows, FactsReadings.Columns), value) == false)
                         {
-                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True, FactsReadings.Rows)}");
+                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True, FactsReadings.Rows, FactsReadings.Columns)}");
                             break;
                         }
                     }

@@ -194,10 +194,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Knows(Established(Theory(), Eq(Raw(A), "bikes")), A, Value("bikes")).Should().BeTrue();
         }
 
+        /// <summary>
+        /// The column a typed <c>INTEGER</c> stands for reads a number written with a point as its double where that is
+        /// whole, so <c>30.000000000000001</c> is equal to 30 there: an equality establishes a number within the literal's
+        /// rounding, not the literal itself; and beside a fraction, which no integer equals, it keeps nothing.
+        /// </summary>
         [Fact]
-        public void ATypedEqualityEstablishesAValueOfItsType()
+        public void ATypedEqualityEstablishesANumberRoundingToItsLiteral()
         {
-            Knows(Established(Theory(), Eq(Typed(N, "INTEGER"), 30m)), N, Value(30m)).Should().BeTrue();
+            var facts = Established(Theory(), Eq(Typed(N, "INTEGER"), 30m));
+
+            Knows(facts, N, Type(JsonType.Number)).Should().BeTrue();
+            Knows(facts, N, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, N, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, N, Value(30m)).Should().BeFalse("a stored 30.000000000000001 is read as 30");
             Established(Theory(), Eq(Typed(N, "INTEGER"), 30.5m)).IsContradictory.Should().BeTrue("an INTEGER is never 30.5");
         }
 
@@ -221,8 +231,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var facts = Established(Theory(), Cmp(Typed(N, "INTEGER"), ">", Lit(500m)));
 
             Knows(facts, N, Present).Should().BeTrue();
-            Knows(facts, N, Type(JsonType.Integer)).Should().BeTrue("RETURNING asserts the type");
+            Knows(facts, N, Type(JsonType.Number)).Should().BeTrue("RETURNING and the column read a number alone");
+            Knows(facts, N, Type(JsonType.Integer)).Should().BeFalse("the column reads a number written with a point whose double is whole");
             Knows(facts, N, new JsonClaim.LowerBound(499m, Exclusive: true)).Should().BeFalse("what RETURNING does at the comparison is unmeasured");
+        }
+
+        /// <summary>
+        /// What the statement keeps (<see cref="OracleLicence.Kept"/>) holds every row its readings may keep, so a declaration
+        /// that admits such a row is no contradiction: <c>RETURNING DOUBLE</c> compares doubles, and 0.1's is
+        /// 0.10000000000000001's; a <c>VARIANT</c> casts a number to text as null; an <c>ANY</c> renders
+        /// 0.10000000000000001 as its double's spelling, <c>0.1</c>; and an <c>INTEGER</c> column reads 6.0000000000000001
+        /// as 6, which is more than 5. Beside each, a statement whose readings keep no row the declaration admits still
+        /// contradicts it.
+        /// </summary>
+        [Fact]
+        public void WhatAStatementKeepsHoldsEveryRowItsReadingsMayKeep()
+        {
+            static bool Contradicts(JsonFactTheory theory, SqlPredicate conjunct) => Declared(theory, conjunct).IsContradictory(OracleLicence.Kept);
+
+            var tenth = Theory(Outright(A, Enum(0.1m, 0.25m)));
+            Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.10000000000000001m)).Should().BeFalse("0.1 and 0.10000000000000001 are one double");
+            Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.3m)).Should().BeTrue("no double of the enum is 0.3's");
+
+            var category = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Integer)));
+            Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "VARIANT" }))).Should().BeFalse("a VARIANT casts a number to text as null");
+            Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "ANY" }))).Should().BeTrue("an ANY casts a number to its text");
+
+            var near = Theory(Outright(A, Enum(0.10000000000000001m, 0.25m)));
+            Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.1")).Should().BeFalse("an ANY renders 0.10000000000000001 as 0.1");
+            Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.2")).Should().BeTrue("an ANY renders no number of the enum as 0.2");
+
+            var six = Theory(Outright(A, Enum(6.0000000000000001m)));
+            Contradicts(six, Cmp(Typed(A, "INTEGER"), ">", Lit(5m))).Should().BeFalse("an INTEGER column reads 6.0000000000000001 as 6");
         }
 
         [Fact]

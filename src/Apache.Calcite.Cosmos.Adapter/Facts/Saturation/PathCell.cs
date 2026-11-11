@@ -96,6 +96,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// </summary>
         public sealed record Pair(PathCell Left, PathCell Right, int? Order = null) : PathCell;
 
+        /// <summary>
+        /// The cell that is a state whole, every value it stands for: a string of every character class, cut by no affix, and
+        /// a number of no double bound, so its <see cref="Coarse"/> state is the state. What the raise evaluator reads a
+        /// state a path may hold through (<see cref="PredicateAtom.RaisesOver"/>), the cell methods carrying the raises the
+        /// coarse readings leave out.
+        /// </summary>
+        public static PathCell Of(PredicateAtom.State state) => state switch
+        {
+            PredicateAtom.State.Absent => new Absent(),
+            PredicateAtom.State.Null => new Null(),
+            PredicateAtom.State.Structure s => new Structure(s.Type),
+            PredicateAtom.State.Scalar s => new Point(s.Value),
+            PredicateAtom.State.AnyString s => new Strings(null, null, s.Except, AllBands),
+            PredicateAtom.State.AnyNumber n => new Numbers(n.Integral, n.Lower, n.Upper, ValueSet<string>.Empty),
+            _ => new Unknown(),
+        };
+
         /// <summary>The state the cell lies in, which the coarse reading answers on.</summary>
         public PredicateAtom.State Coarse => this switch
         {
@@ -130,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         static string But(ValueSet<string> except) => except.Count == 0 ? "" : " but " + string.Join(", ", except.Select(SqlValue.Quote));
 
-        static string Number(decimal value) => Of(value).Substring(Of(value).IndexOf('|') + 1);
+        static string Number(decimal value) => JsonValues.Of(value).Substring(JsonValues.Of(value).IndexOf('|') + 1);
 
         /// <inheritdoc />
         public int CompareTo(PathCell? other) => other is null ? 1 : string.CompareOrdinal(Text, other.Text);
@@ -256,7 +273,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         break;
 
                     case BooleanType:
-                        cells.AddRange(new[] { Of(true), Of(false) }.Where(Admits).Select(v => new Point(v)));
+                        cells.AddRange(new[] { JsonValues.Of(true), JsonValues.Of(false) }.Where(Admits).Select(v => new Point(v)));
                         break;
 
                     case StringType or IntegerType or FractionType when x.Values is not null:
@@ -292,8 +309,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             if (cut is not decimal point)
                                 break;
 
-                            if (TypeOf(Of(point)) == kind && Admits(Of(point)))
-                                cells.Add(new Point(Of(point)));
+                            if (TypeOf(JsonValues.Of(point)) == kind && Admits(JsonValues.Of(point)))
+                                cells.Add(new Point(JsonValues.Of(point)));
                             lower = x.Lower is Bound l ? Bound.StricterLower(Bound.Above(point), l) : Bound.Above(point);
                         }
 
@@ -463,7 +480,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 foreach (var seed in seeds.Distinct())
                     foreach (var before in fillers)
                         foreach (var after in fillers)
-                            if (Of(start + before + seed + after) is var candidate && s.Contains(candidate))
+                            if (JsonValues.Of(start + before + seed + after) is var candidate && s.Contains(candidate))
                                 return candidate;
 
             return null;
@@ -493,8 +510,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 if (s.High is not null && string.CompareOrdinal(text, StringOf(s.High)) >= 0)
                     return null;
 
-                if (s.Except.Contains(Of(text)) == false)
-                    return Of(text);
+                if (s.Except.Contains(JsonValues.Of(text)) == false)
+                    return JsonValues.Of(text);
             }
 
             return null;
@@ -535,18 +552,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 for (var x = from; ; x += step)
                 {
-                    if (n.Contains(Of(x)))
-                        return Of(x);
+                    if (n.Contains(JsonValues.Of(x)))
+                        return JsonValues.Of(x);
 
                     // Out of the interval, and not for being excepted: past its far end.
-                    if (n.Except.Contains(Of(x)) == false)
+                    if (n.Except.Contains(JsonValues.Of(x)) == false)
                         return null;
                 }
             }
             catch (OverflowException)
             {
                 // Past a decimal's range: a number the theory holds approximately, as a document may.
-                var beyond = Of(n.Lower is null ? -1e30 : 1e30);
+                var beyond = JsonValues.Of(n.Lower is null ? -1e30 : 1e30);
                 return n.Contains(beyond) ? beyond : null;
             }
         }
@@ -614,7 +631,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 // Past a decimal's range, where only a number held approximately lies.
             }
 
-            return candidates.Select(Of).Concat(new[] { 1e30, -1e30, 1e-30, -1e-30 }.Select(Of)).FirstOrDefault(n.Contains);
+            return candidates.Select(JsonValues.Of).Concat(new[] { 1e30, -1e30, 1e-30, -1e-30 }.Select(JsonValues.Of)).FirstOrDefault(n.Contains);
         }
 
         /// <summary>
@@ -625,7 +642,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         {
             // An interval of one value, or of none.
             if (n.Lower is Bound l && n.Upper is Bound h && (Bound.NoNumberBetween(l, h) || l.Value == h.Value))
-                return n.Contains(Of(l.Value)) ? Of(l.Value) : null;
+                return n.Contains(JsonValues.Of(l.Value)) ? JsonValues.Of(l.Value) : null;
 
             try
             {
@@ -633,8 +650,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var low = n.Lower?.Value ?? excepted.Append(n.Upper?.Value ?? 1m).Min() - 1;
                 var high = excepted.Where(e => e > low).Append(n.Upper?.Value ?? low + 1).Min();
                 for (var x = low / 2 + high / 2; x > low; x = low / 2 + x / 2)
-                    if (n.Contains(Of(x)))
-                        return Of(x);
+                    if (n.Contains(JsonValues.Of(x)))
+                        return JsonValues.Of(x);
             }
             catch (OverflowException)
             {
