@@ -6863,9 +6863,12 @@ did not import, and one that admits more than the import.
 be in the check, and read by the text accessor, typed `BOOLEAN`, a cast of the accessor to an integer type, a raw value
 beside no number, or a presence test (`RenderingCheckRun.ReadExactly`), whose coarse readings leave out no truth Calcite
 gives, which `CellAnswersStayInsideTheCoarseAnswer` holds them to. A stratum resting on a coarser reading can be wrong
-where the translator relied on it: the facts graph reads typed `INTEGER` `= 5` as the integer 5 alone, where a column
-reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would be
-proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+where the translator relied on it: the facts graph read typed `INTEGER` `= 5` as the integer 5 alone, where a column
+reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would have
+been proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+`Kept` now keeps that equality as every number whose double is 5 (*Which stratum a later round may rest on is a row*),
+so this statement's stratum no longer narrows the label; the gate stays, and retiring it is `TODO.md`'s (*A stratum
+resting on a coarse reading is not read beside a later round*).
 
 **A cell the stratum admits nothing of is set aside.** It is found by cutting the stratum's value where the import was
 cut (`PathCell.SetAside`): each of its cells lies within one of the import's, and a cell their inhabitants miss holds
@@ -7388,8 +7391,9 @@ assumes hold in any mode Calcite may read them in, `RETURNING` or a column, and 
 set-aside cells' promise. **The judge never rests on the stratum it judges.** A document is ruled out only where the
 container's declaration rejects it, each rule's body and head read by an evaluator of the declaration's own over the
 paths the document sets; never by what the facts graph says a stratum admits, which a coarse reading may narrow. So a
-stratum fault — G12's coarse reading, G11's own facts — shows as a witness of line 1 itself. The check run's source A
-reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
+stratum fault that drops a row — G11's own facts, and G12's coarse reading until `Kept` kept a typed number's rounding
+window (*G12*, below) — shows as a witness of line 1 itself. The check run's source A reads its strata the same way,
+and the pairwise check judges the same documents by the same definition. The sampler
 draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
 conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
 nothing measured; a raw ordering, or a raw comparison with a number or a boolean, is judged through each column
@@ -7471,9 +7475,14 @@ generations and the Rex builder, and come with them.
   importer reading the licence table's node, which renders no conjunct from its own facts; so it is planted where it
   acts, admission stating a round's conjunct beneath its own facts with the licence table's assumptions kept. S then
   proves the bare form, and line 1 itself finds the null label it keeps.
-- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7:
-  beneath it the bare label is exact and drops that document, which what S sends as built keeps, and line 1 itself
-  finds a document whose label is the number 7 beside a kind a column reads as 5.
+- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7.
+  While the facts graph read the kind's typed equality as the integer 5, beneath it the bare label was exact and
+  dropped that document, which what S sends as built keeps, and line 1 found a document whose label is the number 7.
+  `Kept` now keeps that equality as its rounding window, every number whose double is 5, which meets no condition of
+  the declaration, so the planted run keeps the document too and source A finds no witness: for this statement the
+  exactness gate is redundant beside `Kept`. The gate is held only structurally now, by
+  `G16b_ACoarseAffixLicensesNoArmUnlessPlanted` and `G16b_AnAffixOverACoarseReaderIsNotReadExactly`; whether to retire
+  it is `TODO.md`'s (*A stratum resting on a coarse reading is not read beside a later round*).
 - *G14* fails a later round's arm on the cells its stratum sets aside; a set-aside cell tolerates anything but a
   failure, so neither the arm nor the round's junction has an exact form, and nothing is admitted.
 
@@ -9615,8 +9624,10 @@ beneath an arm (`RenderingBundle.ArmsOf`) and states it beneath the stratum the 
 two conjuncts open, which a bundle opens once for both, is stated beneath neither. The licence assumes only what F reads
 exactly, so a coarse condition never narrows what a row may hold: the label of
 `AStratumAConjunctReadCoarselyRestsOnIsNotRead` is sent as its text alternatives and its presence, the arm beneath
-`IS_NUMBER(label)` sending the number 7, which keeps a number label, and G16b's plant, every condition read exactly, is
-caught by source A the G12 way (`G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven`). This is P6
+`IS_NUMBER(label)` sending the number 7, which keeps a number label. G16b's plant, every condition read exactly, was
+caught by source A the G12 way until `Kept` kept the kind's typed equality as its rounding window; its planted run now
+keeps the document too (`G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven`), and only
+`G16b_ACoarseAffixLicensesNoArmUnlessPlanted` shows the licence the plant opens (*G12*, *Faults planted in S*). This is P6
 (line 19), delivered and listed: its pushes reach the service through the arm's licence.
 
 **Site W pushes S's weakening, with no translator.** The split rule pushes each residual's weakening as the Rex
