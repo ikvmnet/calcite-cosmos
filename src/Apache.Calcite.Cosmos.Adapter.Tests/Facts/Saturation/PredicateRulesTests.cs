@@ -396,8 +396,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <c>c."id" = ?</c> and the partition key's <c>= ?</c>. It is not reduced where a conjunct may raise, though what
         /// every conjunct keeps still contradicts: <c>RETURNING INTEGER</c> over a declared string, the first design's
         /// counterexample (the cast of the text to <c>DOUBLE</c> over a path that may hold a string), the partition key's
-        /// <c>&lt; ?</c>, a <c>VARIANT</c> ordering Calcite does not compile, and an <c>ANY</c> field's <c>&gt; ?</c> over a
-        /// path declared an integer or a string, which raises across types.
+        /// <c>&lt; ?</c> and <c>&lt; 'x'</c>, a <c>VARIANT</c> ordering Calcite does not compile against a parameter or a
+        /// literal, and an <c>ANY</c> field's <c>&gt; ?</c> over a path declared an integer or a string, which raises across
+        /// types.
         /// </summary>
         [Fact]
         public void TheReduceAsksEveryRowFalse()
@@ -448,6 +449,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             NotReduced(theory, "for RETURNING INTEGER over a declared string", Eq(Typed(body, "INTEGER"), 2m));
             NotReduced(theory, "for the first design's counterexample", Cmp(Cast("DOUBLE", Text(N)), ">", Lit(0m)), contradiction);
             NotReduced(theory, "beside the partition key's < ?", contradiction, Cmp(variant, "<", Param(0, "VARIANT")));
+            NotReduced(theory, "beside the partition key's < 'x'", contradiction, Cmp(variant, "<", Lit("x")));
             NotReduced(theory, "beside an ANY field's > ? over an integer or a string", contradiction, Cmp(new SqlValue.Raw(N) { Column = "ANY" }, ">", Param(0, "ANY")));
         }
 
