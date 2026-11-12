@@ -212,6 +212,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             _ => throw new NotSupportedException(value.GetType().Name),
         };
 
+        /// <summary>
+        /// A document as the service returns it (<c>Service.NumbersBeyondLongCompareAsDoubles</c>): a number written as an
+        /// integer within a long as itself, and any other as its double, a whole one within a long as its digits and the
+        /// rest as their shortest digits, 6.0000000000000001 and 30.0 as 6 and 30, 0.10000000000000001 as 0.1. The same
+        /// reference where nothing changes, so a caller can tell the two apart cheaply.
+        /// </summary>
+        public static J Served(J value)
+        {
+            switch (value)
+            {
+                case J.Num n when n.Value == decimal.Truncate(n.Value) && n.Value.Scale == 0 && n.Value >= long.MinValue && n.Value <= long.MaxValue:
+                    return value;
+                case J.Num n:
+                {
+                    var d = (double)n.Value;
+                    if (Math.Floor(d) == d && d >= long.MinValue && d < 9.2233720368547758E18)
+                        return new J.Num((long)d);
+                    return Renderings.TryExactNumber(d.ToString("R", CultureInfo.InvariantCulture), out var shortest) && shortest != decimal.Truncate(shortest)
+                        ? shortest == n.Value && shortest.Scale == n.Value.Scale ? value : new J.Num(shortest)
+                        : new J.Huge(d);
+                }
+                case J.Obj o:
+                {
+                    var served = o.Properties.ToDictionary(kv => kv.Key, kv => Served(kv.Value), StringComparer.Ordinal);
+                    return served.All(kv => ReferenceEquals(kv.Value, o.Properties[kv.Key])) ? value : new J.Obj(new SortedDictionary<string, J>(served, StringComparer.Ordinal));
+                }
+                case J.Arr a:
+                {
+                    var served = a.Elements.Select(Served).ToList();
+                    return served.Select((e, i) => ReferenceEquals(e, a.Elements[i])).All(same => same) ? value : new J.Arr(served);
+                }
+                default:
+                    return value;
+            }
+        }
+
         /// <summary>Whether a conditional rule is true of a document: its body false of it, or its head true.</summary>
         public static bool IsTrue(J document, JsonGuardedRule rule) =>
             rule.When.All(f => IsTrue(document, f)) == false || rule.Then.All(f => IsTrue(document, f));

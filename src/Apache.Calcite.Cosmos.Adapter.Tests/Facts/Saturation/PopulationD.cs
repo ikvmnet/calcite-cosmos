@@ -53,6 +53,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// questions, and the same arm never read, whose assumptions must lie among the conjuncts beside it.
     /// </para>
     /// <para>
+    /// <b>Each document is read as written and as served.</b> The service holds a number as its double and returns a whole
+    /// one as its digits (<see cref="Documents.Served"/>), so Calcite reads 6.0000000000000001 as 6 through the service
+    /// and as 6.0 over the document as written: every truth is checked over both, and every fact, being of what was
+    /// written, over the written one.
+    /// </para>
+    /// <para>
     /// <b>A verdict may stand over a row Calcite raises on.</b> The connectives do not model a raise, and whether an
     /// answer may stand where Calcite fails is the refinement order still to settle; a raise is held to the table that
     /// says whether one happens, by the atom check, which is where it is decided.
@@ -136,6 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 if (declaration.Admits(document) == false)
                     report.Fail("generator", $"drew {Documents.Json(document)}, which the declaration does not admit");
 
+            // Each document as written and, where it differs, as the service returns it: the documents truths are read over.
+            var written = new Dictionary<J.Obj, J.Obj>(ReferenceEqualityComparer.Instance);
+            var drawn = documents;
+            documents = [.. drawn.SelectMany(d => Documents.Served(d) is J.Obj served && ReferenceEquals(served, d) == false ? new[] { d, served } : new[] { d })];
+            foreach (var d in drawn)
+                if (Documents.Served(d) is J.Obj served && ReferenceEquals(served, d) == false)
+                    written[served] = d;
+
             var statement = new PredicateStatement(conjuncts);
             var oracle = _oracle(new JsonFactTheory(declaration.Rules));
 
@@ -166,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             // The questions: every term of every conjunct, and two predicates the statement does not hold.
             var questions = conjuncts.SelectMany(c => c.Subterms).Concat(Enumerable.Range(0, 2).Select(_ => Statements.Predicate(random, declaration, 0, new List<SqlPredicate>())))
                 .GroupBy(p => p.ToString(), StringComparer.Ordinal).Select(g => g.First()).ToArray();
-            var check = new Check(report, world, documents, questions, computed);
+            var check = new Check(report, world, documents, questions, computed, written);
 
             // The licence table, read from the strata the oracle admitted in, and never from what it says it assumed.
             var stratum = Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf).ToArray();
@@ -325,17 +339,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             readonly IReadOnlyList<SqlValue> _computed;
             readonly HashSet<(Scope, string)> _read = new();
             readonly HashSet<Scope> _validated = new();
+            readonly IReadOnlyDictionary<J.Obj, J.Obj> _written;
 
-            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions, IReadOnlyList<SqlValue> computed)
+            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions, IReadOnlyList<SqlValue> computed,
+                IReadOnlyDictionary<J.Obj, J.Obj> written)
             {
                 _report = report;
                 _world = world;
                 _documents = documents;
                 _questions = questions;
                 _computed = computed;
+                _written = written;
             }
 
             Truths Truth(SqlPredicate predicate, J.Obj document) => IrEval.Truth(predicate, document, _world);
+
+            /// <summary>The document as written, which a fact is of: itself, or the one the service returned this from.</summary>
+            J.Obj Written(J.Obj document) => _written.GetValueOrDefault(document, document);
 
             /// <summary>
             /// Checks everything a scope says on the documents its licence admits.
@@ -386,9 +406,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             _report.Characters++;
 
                         foreach (var document in keeping)
-                            if (Declaration.Holds(IrEval.At(document, path), claim) == false)
+                            if (Declaration.Holds(IrEval.At(Written(document), path), claim) == false)
                             {
-                                _report.Fail(kind, $"{name} claims {SqlValue.Spell(path)} {claim}, false of {Documents.Json(document)}, which the conjuncts {which} ({string.Join(", ", assumed)}) keep");
+                                _report.Fail(kind, $"{name} claims {SqlValue.Spell(path)} {claim}, false of {Documents.Json(Written(document))}, which the conjuncts {which} ({string.Join(", ", assumed)}) keep");
                                 break;
                             }
                     }
@@ -400,9 +420,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                         _report.Facts++;
                         foreach (var document in keeping)
-                            if (Declaration.Holds(IrEval.At(document, path), new JsonClaim.NotEqualTo(scalar)) == false)
+                            if (Declaration.Holds(IrEval.At(Written(document), path), new JsonClaim.NotEqualTo(scalar)) == false)
                             {
-                                _report.Fail(kind, $"{name} knows {SqlValue.Spell(path)} is not {value}, false of {Documents.Json(document)}");
+                                _report.Fail(kind, $"{name} knows {SqlValue.Spell(path)} is not {value}, false of {Documents.Json(Written(document))}");
                                 break;
                             }
                     }
@@ -494,9 +514,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _report.Characters++;
 
                     foreach (var document in keeping)
-                        if (Documents.IsTrue(document, fact) == false)
+                        if (Documents.IsTrue(Written(document), fact) == false)
                         {
-                            _report.Fail("fact", $"{name} holds {fact}, false of {Documents.Json(document)}");
+                            _report.Fail("fact", $"{name} holds {fact}, false of {Documents.Json(Written(document))}");
                             break;
                         }
                 }
@@ -536,14 +556,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     var possible = (PathValues)row.Output!;
                     _report.Rows++;
                     foreach (var document in keeping)
-                        if (Admits(possible, IrEval.At(document, path)) == false)
+                        if (Admits(possible, IrEval.At(Written(document), path)) == false)
                         {
-                            _report.Fail("possible", $"{name} says {SqlValue.Spell(path)} may hold {possible}, and {Documents.Json(document)} holds {Show(IrEval.At(document, path))}");
+                            _report.Fail("possible", $"{name} says {SqlValue.Spell(path)} may hold {possible}, and {Documents.Json(Written(document))} holds {Show(IrEval.At(Written(document), path))}");
                             break;
                         }
                 }
 
-                // What an atom means is a property of the term, so it holds of every declared document.
+                // What an atom means is a property of the term, so it holds of every declared document, the truth read
+                // over it as written and as served, and the atom read over the value written.
                 foreach (var row in context.Rows(rules.Atom))
                 {
                     if (graph.Predicate((ClassId)row.Keys[0]) is not SqlPredicate term || graph.DocumentPath((ClassId)row.Keys[1]) is not JsonDocumentPath path)
@@ -553,7 +574,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     _report.Atoms++;
                     foreach (var document in _documents)
                     {
-                        var value = IrEval.At(document, path);
+                        var value = IrEval.At(Written(document), path);
                         var truth = Truth(term, document);
                         var over = atom.On(State(value), FactsReadings.Rows);
                         if ((over & truth) == 0)

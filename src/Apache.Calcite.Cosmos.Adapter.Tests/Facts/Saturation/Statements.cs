@@ -48,7 +48,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Draws a conjunct whose raise or window the reduce must read: a raw value in a named column against a parameter by
         /// an ordering or <c>&lt;&gt;</c>, as the loader builds a field, a <c>VARIANT</c>'s ordering failing to compile; a type
         /// or presence test of a <c>RETURNING</c> or of a raw value in a named column, which raise where the reading does and
-        /// everywhere; or a reading that compares doubles against a number no double holds exactly. Bare or negated.
+        /// everywhere; a reading that compares doubles, floats or decimals against a number no double holds exactly, or casts
+        /// the text to an integer against a whole one; or a reading that renders a number, the text, a raw value or its cast
+        /// to text, against the texts the service and Java spell one as. Bare or negated.
         /// </summary>
         static SqlPredicate Besides(Random random)
         {
@@ -78,16 +80,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 default:
                 {
                     // A VARCHAR column is compared with a number through a cast, which the loader reads as no raw value.
-                    SqlValue reading = random.Next(3) switch
+                    var pool = Near;
+                    SqlValue reading;
+                    switch (random.Next(4))
                     {
-                        0 => new SqlValue.Typed(path, "DOUBLE"),
-                        1 => new SqlValue.Cast("DOUBLE", new SqlValue.Text(path)),
-                        _ => new SqlValue.Raw(path) { Column = random.Next(2) == 0 ? "VARIANT" : "ANY" },
-                    };
-                    var near = Near[random.Next(Near.Length)];
+                        case 0:
+                            reading = new SqlValue.Typed(path, new[] { "DOUBLE", "FLOAT", "REAL", "INTEGER", "BIGINT", "DECIMAL" }[random.Next(6)]);
+                            break;
+                        case 1:
+                            var target = new[] { "DOUBLE", "INTEGER", "BIGINT" }[random.Next(3)];
+                            reading = new SqlValue.Cast(target, new SqlValue.Text(path));
+                            pool = target == "DOUBLE" ? Near : Whole;
+                            break;
+                        case 2:
+                            reading = new SqlValue.Raw(path) { Column = random.Next(2) == 0 ? "VARIANT" : "ANY" };
+                            break;
+                        default:
+                            reading = random.Next(3) switch
+                            {
+                                0 => new SqlValue.Text(path),
+                                1 => new SqlValue.Raw(path),
+                                _ => new SqlValue.Cast("VARCHAR", new SqlValue.Raw(path) { Column = random.Next(2) == 0 ? null : Column() }),
+                            };
+                            pool = NearTexts;
+                            break;
+                    }
+
                     drawn = random.Next(4) == 0
-                        ? new SqlPredicate.In(reading, ValueSet.Of(near.Value, Near[random.Next(Near.Length)].Value))
-                        : new SqlPredicate.Compare(Op(random), reading, near);
+                        ? new SqlPredicate.In(reading, ValueSet.Of(pool[random.Next(pool.Length)].Value, pool[random.Next(pool.Length)].Value))
+                        : new SqlPredicate.Compare(Op(random), reading, pool[random.Next(pool.Length)]);
                     break;
                 }
             }
@@ -97,6 +118,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>Numbers no double holds exactly: two spellings of a tenth, a ten-millionth, and a fraction whose double is whole.</summary>
         static readonly SqlValue.Literal[] Near = [SqlValue.Of(0.1m), SqlValue.Of(0.10000000000000001m), SqlValue.Of(0.0000001m), SqlValue.Of(6.0000000000000001m)];
+
+        /// <summary>Whole numbers a cast to an integer is compared with, one written with a point.</summary>
+        static readonly SqlValue.Literal[] Whole = [SqlValue.Of(6m), SqlValue.Of(0m), SqlValue.Of(30m), SqlValue.Of(6.0m)];
+
+        /// <summary>
+        /// Texts a number may render as, or seem to: the service's digits of a whole double and Java's spelling of any other
+        /// (6, 30, 0.1, 1.0E-7), and spellings neither returns (6.0 for a whole one, 0.10000000000000001, 1E-7).
+        /// </summary>
+        static readonly SqlValue.Literal[] NearTexts = [.. new[] { "0.1", "6", "6.0", "0.10000000000000001", "1E-7", "1.0E-7", "30", "30.0" }.Select(t => SqlValue.Of(t))];
 
         /// <summary>
         /// Draws one predicate, sharing an atom already drawn now and then.

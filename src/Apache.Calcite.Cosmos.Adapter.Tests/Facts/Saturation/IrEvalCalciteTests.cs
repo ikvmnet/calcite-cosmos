@@ -56,15 +56,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static readonly JsonDocumentPath[] Paths = { Declaration.A, Declaration.N, Declaration.V };
 
-        static readonly string[] Texts = { "30", "30.0", "true", "x", "", "1e30", "1.0E30", "abc", "7", "2.5", " 30 ", "\u00017", "7\u001F", "\u00011.5" };
+        /// <summary>Texts a reading is compared with, among them a number's spellings Java gives and those it never does.</summary>
+        static readonly string[] Texts = { "30", "30.0", "true", "x", "", "1e30", "1.0E30", "abc", "7", "2.5", " 30 ", "\u00017", "7\u001F", "\u00011.5",
+            "6", "6.0", "0.1", "0.10000000000000001", "1.0E-7", "1E-7" };
 
         /// <summary>
-        /// What a path may hold: population D's values, and numbers padded with control characters, which Java's trim takes
-        /// off and a cast's parse then reads.
+        /// What a path may hold: population D's values, numbers padded with control characters, which Java's trim takes off
+        /// and a cast's parse then reads, and numbers no double holds exactly (<see cref="Declaration.Near"/>).
         /// </summary>
-        static readonly J[] Values = [.. Declaration.Values, new J.Str("\u00017"), new J.Str("7\u001F"), new J.Str("\u00011.5"), new J.Str("\u001F30\u0001")];
+        static readonly J[] Values = [.. Declaration.Values, new J.Str("\u00017"), new J.Str("7\u001F"), new J.Str("\u00011.5"), new J.Str("\u001F30\u0001"), .. Declaration.Near];
 
-        static readonly decimal[] Numbers = { 30m, 7m, -1m, 0m, 2.5m, 10m };
+        /// <summary>Numbers a reading is compared with, among them some no double holds exactly.</summary>
+        static readonly decimal[] Numbers = { 30m, 7m, -1m, 0m, 2.5m, 10m, 6m, 0.1m, 0.10000000000000001m, 6.0000000000000001m, 0.0000001m };
 
         [Fact]
         public void TheEvaluatorAgreesWithCalcite() => Run(Predicates);
@@ -363,7 +366,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 return random.Next(2) == 0 ? SqlPredicate.AllOf(arms) : SqlPredicate.AnyOf(arms);
             }
 
-            var types = new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" };
+            var types = new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN", "REAL" };
             var path = Paths[random.Next(Paths.Length)];
             SqlValue reading = random.Next(12) switch
             {
