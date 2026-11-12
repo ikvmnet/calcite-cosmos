@@ -2502,7 +2502,7 @@ across documents* and *A join of a container to itself* is the record.
   Calcite writes the fragment with, over the value built as Calcite would hold it: a number past int64 is a
   `BigInteger` to Jackson and a `Double` to `GetNatural`, so that reading needs care too.
 - **A projected `JSON_VALUE` of a whole number past int64 served as digits reads as its double** — *small, a wrong
-  answer; measured on the emulators, and older than "fail like Calcite", whose third soundness check found it.*
+  answer; measured on the emulators, and older than "fail like Calcite", whose checks found it.*
   `CosmosJson.GetNatural` reads a number `TryGetInt64` refuses as a `java.lang.Double`, so `GetText` renders the
   served digits `10000000000000000000` as `1.0E19`, and `9223372036854775808` as `9.223372036854776E18`, where Calcite
   in process reads the same digits through Jackson as a `BigInteger` and renders them as they are (measured in process
@@ -2880,25 +2880,24 @@ across documents* and *A join of a container to itself* is the record.
   (the service finds nothing). Beside `JSON_VALUE(c."DOC", '$.status') = 'deleted'` over a required
   `enum: ["active", "archived"]`, `RETURNING INTEGER` over a required string, `UPPER` and a comparison of two properties
   each answer no rows (`CosmosDeclaredFactPlanningTests.ThePartKeptInProcessReadsOnlyWhatTheSplitSends`); planned in
-  process beside a contradicted `k`, so does each case this pull request stopped reducing — a cast of the text to
+  process beside a contradicted `k`, so does each case "fail like Calcite" stopped reducing — a cast of the text to
   `DOUBLE` over a path declared `["integer", "string"]`, a cast to `BOOLEAN` over a required integer, `NOT IS_DEFINED`
   of a text cast to `VARCHAR`, a cast to `INTEGER`, and a `VARIANT` ordered against a literal (and, on the emulator,
   against a parameter) — each kept in Calcite, or sent, alone. No regression: main reduced the whole filter. Gating the
   lower filter's reduce on the whole condition would only add the request, the answer the same. The choice is between
   keeping such a filter whole in Calcite where its pushed part keeps nothing and its residual may raise — a full read,
   failing as Calcite does — and accepting the split's answer, as the deletions and lowerings below are, and sizing it
-  with them (*small*). The pull request's second soundness check found it again (an empty answer where Calcite fails,
-  through the split): a lowering by the plan's shape, out of its scope with the deletions and lowerings below, and the
-  owner's to decide. Its third found more shapes, each answered empty with no request where Calcite fails, and none
-  worse than main, which answered each empty by reducing the whole filter: a condition sent on behalf of a `CASE` and
-  contradicted (`CASE WHEN CAST(n AS BOOLEAN) AND kind = 'C' THEN CAST(body AS INTEGER) = 1 ELSE FALSE END`, which sends
-  `kind = 'C'`, or a `CASE` whose arm raises beside `kind = 'Z'`), `SUBSTRING` with a negative length, a division by
-  zero, a `DATE` cast, `RETURNING INTEGER` arithmetic, a comparison of two properties, a parameter
-  (`CAST(… AS ANY) > ?` beside `k = 'z'`), and a cast of a string that parses as no number to `INTEGER`, `BIGINT` or
-  `DOUBLE`, or `RETURNING DECIMAL`, beside a contradicted sibling; 95 statements on each emulator under both targets
-  (`reports/fail-like-calcite/check-soundness-3`).
+  with them (*small*). It is a lowering by the plan's shape, outside "fail like Calcite" with the deletions and
+  lowerings below, and the owner's to decide. More shapes are answered empty with no request where Calcite fails, none
+  worse than before "fail like Calcite", which answered each empty by reducing the whole filter: a condition sent on
+  behalf of a `CASE` and contradicted (`CASE WHEN CAST(n AS BOOLEAN) AND kind = 'C' THEN CAST(body AS INTEGER) = 1
+  ELSE FALSE END`, which sends `kind = 'C'`, or a `CASE` whose arm raises beside `kind = 'Z'`), `SUBSTRING` with a
+  negative length, a division by zero, a `DATE` cast, `RETURNING INTEGER` arithmetic, a comparison of two properties,
+  a parameter (`CAST(… AS ANY) > ?` beside `k = 'z'`), and a cast of a string that parses as no number to `INTEGER`,
+  `BIGINT` or `DOUBLE`, or `RETURNING DECIMAL`, beside a contradicted sibling: 95 statements, measured on each
+  emulator under both targets' plans.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
-  answers; it predates this pull request.* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
+  answers; it predates "fail like Calcite".* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
   `WHERE (c.o = @p0)` and leaves the `CASE` to a `ClrCursorCalc`, which evaluates the cast and raises on `m = 5`, where
   Calcite's own single `Calc` simplifies the condition away beside `o = 'o1'` and answers the row (measured on both
@@ -2914,7 +2913,7 @@ across documents* and *A join of a container to itself* is the record.
   no recheck, though Calcite fails to compile it, declared or not and beside a contradicted conjunct too; under
   `Emulator` it stays in Calcite (`IS_DEFINED(c.ref)` sent, the ordering rechecked). `CAST(JSON_VALUE(…) AS ANY) > ?`
   stays in Calcite on both targets. The permanent fix is the rendering graph owning parameter conjuncts (3B) and
-  reading the parameter key this pull request writes into `rawunion`, which already carries a `VARIANT` ordering's
+  reading the parameter key the readings vocabulary writes into `rawunion`, which already carries a `VARIANT` ordering's
   compile failure; the bridge until then is the translator declining where a fact Eggnog derives from that key says
   the conjunct may fail, never a C# check of the column in `Compare`.
 - **A deletion stops evaluating a conjunct that may raise** — *small, an answer where Calcite fails.* `Redundant`, and
@@ -2926,7 +2925,7 @@ across documents* and *A join of a container to itself* is the record.
 - **A flattened `CASE` decides its arm's raise in C#** — *small, an answer where Calcite fails; the owner's call.*
   `IsSafe` (`Metadata/CosmosFactRewriter.cs:621-657`) decides by operator name that a lowered arm cannot raise, before
   `TryFlattenCase` writes `p AND q`. It passes any comparison of an input reference, an ordering of an `ANY` column
-  among them, which raises across types (`Calcite.RawNullIsSqlNull`): a hole that predates this pull request, where
+  among them, which raises across types (`Calcite.RawNullIsSqlNull`): a hole that predates "fail like Calcite", where
   flattening adds a raise Calcite would not make. It refuses every cast, a cast to `DOUBLE` over declared numbers among
   them. The lowered arm is a predicate the rewriter builds after the oracle answers, not a term the reduce's node
   holds, so the swap gives it a term of its own in a gated node opened beneath `D0`, as the reduce's and the never-read
