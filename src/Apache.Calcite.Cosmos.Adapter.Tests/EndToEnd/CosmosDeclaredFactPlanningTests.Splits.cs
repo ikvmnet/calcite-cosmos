@@ -182,6 +182,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query(FindCosmos(plan), container).PartitionKeyValues.Should().Equal(true);
         }
 
+        /// <summary>
+        /// A number pins the key only where the declaration makes it an integer, required or not: through <c>RETURNING
+        /// INTEGER</c>, or <c>RETURNING BIGINT</c> past an <c>INTEGER</c>'s range (<c>docs/07</c>, 7.3). <c>RETURNING BIGINT</c>
+        /// over a stored 5 and <c>RETURNING DOUBLE</c> pin it too, answering where Calcite fails (<c>docs/23</c>). Undeclared,
+        /// Calcite compares the number by its double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal
+        /// to no stored integer, a <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or not.
+        /// </summary>
+        [Fact]
+        public void ANumberPinsTheKeyOnlyThroughADeclaredInteger()
+        {
+            const string Returning = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING {0}) = {1}""";
+            const string Boxed = """SELECT c."id" FROM items AS c WHERE c."$.ref" = CAST(5 AS VARIANT)""";
+            foreach (var declared in new[] { """{ "type": "object", "properties": { "ref": { "type": "integer" } } }""", """{ "type": "object", "required": ["ref"], "properties": { "ref": { "type": "integer" } } }""" })
+            {
+                var container = Declaring(declared);
+                foreach (var (type, value, pinned) in new[] { ("INTEGER", "5", 5L), ("BIGINT", "3000000000", 3000000000L), ("BIGINT", "5", 5L), ("DOUBLE", "5", 5L) })
+                    Query(FindCosmos(PlanToCosmos(string.Format(Returning, type, value), container, out _)), container).PartitionKeyValues
+                        .Should().Equal(new object?[] { pinned }, $"RETURNING {type} = {value} over {declared}");
+                Query(FindCosmos(PlanToCosmos(Boxed, container, out _)), container).PartitionKeyValues.Should().BeNull($"a boxed 5 over {declared}");
+            }
+
+            var undeclared = Declaring("""{ "type": "object" }""");
+            foreach (var (type, value) in new[] { ("INTEGER", "5"), ("BIGINT", "3000000000"), ("DOUBLE", "5") })
+                Query(FindCosmos(PlanToCosmos(string.Format(Returning, type, value), undeclared, out _)), undeclared).PartitionKeyValues
+                    .Should().BeNull($"RETURNING {type} = {value}, undeclared");
+            Query(FindCosmos(PlanToCosmos(Boxed, undeclared, out _)), undeclared).PartitionKeyValues.Should().BeNull("a boxed 5, undeclared");
+        }
+
     }
 
 }
