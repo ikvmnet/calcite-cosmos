@@ -2821,11 +2821,14 @@ across documents* and *A join of a container to itself* is the record.
   `CAST(c."$.category" AS VARCHAR) = '30'`, which S sends exact as `c.category = @p0`, now routes to `"30"`
   (`CosmosPlannerTests.ACastAgainstTextANumberRendersAsIsTakenOverAVariant`). What is left is the facts graph's reading
   of the cells: the coarse `On` and `Over` verdicts, so `NOT (CAST(raw(flag) AS VARCHAR) = 'x')` is still decided
-  `Always` and deleted; the unnamed `IrEval`; and the translator's column. The column reads it so too (review 3): a
-  projected or grouped `CAST(c."$.category" AS VARCHAR)` is the translator's, which writes the stored value as its
-  rendering (`IsDocumentValueType`), so a stored number or boolean comes back as its text where Calcite answers `NULL`,
-  and a grouping keys it so. Both are on main; the owner placed the fix with F's reading of the cells, whose pull
-  request reads the union where the rendering is read, and the column's writer with S's column (h37).
+  `Always` and deleted, and over a `VARIANT`'s number the cast's `IN` of two texts `AlwaysFalse` where Calcite answers
+  `UNKNOWN` (population D's long run drew it once in 5,000, seed 20263941, and draws the cast through no named column
+  since, as it draws the cast elsewhere: `Statements.Besides`, to name the column again with the fix); the unnamed
+  `IrEval`; and the translator's column. The column reads it so too (review 3): a projected or grouped
+  `CAST(c."$.category" AS VARCHAR)` is the translator's, which writes the stored value as its rendering
+  (`IsDocumentValueType`), so a stored number or boolean comes back as its text where Calcite answers `NULL`, and a
+  grouping keys it so. Both are on main; the owner placed the fix with F's reading of the cells, whose pull request
+  reads the union where the rendering is read, and the column's writer with S's column (h37).
 - **A projected or grouped type test over `JSON_VALUE` is written over the rendering** — *medium, a wrong answer; the
   column's, h37.* The translator writes a column's `IS_STRING(JSON_VALUE(DOC, '$.v'))`, and every type test and
   `IS_DEFINED` beside it, as the function over the value's rendering, `IS_STRING((IS_PRIMITIVE(c.v) ? c.v : null))`
