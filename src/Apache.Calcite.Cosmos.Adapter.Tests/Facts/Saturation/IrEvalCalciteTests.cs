@@ -403,10 +403,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// Writes a predicate as Calcite's SQL over a document column <c>d</c> and the columns the reader fills.
         /// </summary>
+        /// <remarks>
+        /// A membership is written as the disjunction of equalities the loader reads it from, not as SQL's <c>IN</c>, which
+        /// casts each point to the value's type first (<c>SqlToRelConverter</c>): an <c>INTEGER</c> column <c>IN
+        /// (6.0000000000000001)</c> is TRUE of a stored 6, where its <c>=</c> compares the two as decimals and is FALSE.
+        /// </remarks>
         static string Sql(SqlPredicate predicate, Drawn drawn) => predicate switch
         {
             SqlPredicate.Compare c => $"({Sql(c.Left, drawn)} {c.Op} {Sql(c.Right, drawn, c.Left)})",
-            SqlPredicate.In i => $"({Sql(i.Value, drawn)} IN ({string.Join(", ", i.Points.Select(p => Sql(new SqlValue.Literal(p), drawn, i.Value)))}))",
+            SqlPredicate.In i => "(" + string.Join(" OR ", i.Points.Select(p => $"({Sql(i.Value, drawn)} = {Sql(new SqlValue.Literal(p), drawn, i.Value)})")) + ")",
             SqlPredicate.IsNull n => $"({Sql(n.Value, drawn)} IS NULL)",
             SqlPredicate.Affix { Op: "LIKE" } a => $"({Sql(a.Value, drawn)} LIKE '{a.Pattern.Replace("'", "''")}')",
             SqlPredicate.Not n => $"(NOT {Sql(n.Operand, drawn)})",
