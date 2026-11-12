@@ -15,9 +15,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <b>The rewrite reaches the constant; this is what makes it a plan.</b> <see cref="Metadata.CosmosFactRewriter"/>
     /// answers <c>FALSE</c> where no document the declaration admits makes the WHERE true and none makes anything in it
     /// raise (<see cref="Cosmos.Facts.OracleLicence.Reduce"/>), so that the empty relation is Calcite's own answer, and
-    /// <c>TRUE</c> where every conjunct is one the rest and the declaration imply, deleted one at a time. A converted filter carrying <c>FALSE</c> is a round trip for no rows, and one carrying <c>TRUE</c> a
-    /// <c>WHERE</c> that restricts nothing. <c>CoreRules.FILTER_REDUCE_EXPRESSIONS</c>, which makes an always-false
-    /// filter an empty <c>Values</c>, matches the logical filter, and the constant exists only after the rewrite. A
+    /// <c>TRUE</c> where every conjunct is one the rest and the declaration imply, deleted one at a time. A converted
+    /// filter carrying <c>FALSE</c> is a round trip for no rows, and one carrying <c>TRUE</c> a <c>WHERE</c> that
+    /// restricts nothing. <c>CoreRules.FILTER_REDUCE_EXPRESSIONS</c>, which makes an always-false filter an empty
+    /// <c>Values</c>, matches the logical filter, and the constant exists only after the rewrite. A
     /// condition Calcite itself reads as never true is reduced too: <c>(x IS NULL) IS NULL</c> tests for null what its
     /// type says never is, and is the constant whatever the declaration.
     /// </para>

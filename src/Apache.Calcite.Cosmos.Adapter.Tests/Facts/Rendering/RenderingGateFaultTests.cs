@@ -492,7 +492,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// the label a string. What it keeps of that equality is now every number whose double is 5
         /// (<see cref="PredicateAtom.Kept"/>), which states no value of the kind, so the condition is not met
         /// beneath the stratum either way, and a stratum whose facts hold of every row it keeps drops none read exactly: the
-        /// plant has nothing to break here, and source A finds no document with a number as its label.
+        /// plant has nothing to break here, and source A finds no document with a number as its label. So the planted run
+        /// shows the exactness gate redundant beside <see cref="PredicateAtom.Kept"/> for this statement; the gate stays
+        /// (<c>TODO.md</c>, a stratum resting on a coarse reading), and this run holds <c>Kept</c> to keeping the row alone.
         /// </remarks>
         [Fact]
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
@@ -665,7 +667,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// kind's typed equality as the integer 5: S sent the bare label, which dropped the document. What it keeps of that
         /// equality is now every number whose double is 5, which meets no condition of the declaration, so the arm's stratum
         /// states nothing of the label read exactly or not, as <see cref="G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven"/>
-        /// finds of the stratum.
+        /// finds of the stratum: the planted run holds <c>Kept</c> to keeping the row with the gate open.
         /// </remarks>
         [Fact]
         public void G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven()

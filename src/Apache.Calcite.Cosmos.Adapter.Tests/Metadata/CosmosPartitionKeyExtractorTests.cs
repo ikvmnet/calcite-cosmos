@@ -320,7 +320,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var container = Container("/category");
 
             CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, container, "c", out _)
-                .Should().BeFalse("a stored 5.0000000000000001 is equal to 5 through an ANY, and lies in another partition");
+                .Should().BeFalse("a stored 5.0000000000000001 is equal to 5 through an ANY too, so the comparison keeps more than one stored value and names no single partition");
 
             CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal("5.5"))), Fields, null, container, "c", out _)
                 .Should().BeFalse("every number whose double is 5.5's is equal to it through an ANY");
