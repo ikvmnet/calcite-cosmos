@@ -43,7 +43,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var kept = PredicateAtom.Compare(Text, "=", Of("30")).Kept(true, FactsReadings.Rows, FactsReadings.Columns);
 
             kept.IsPresent.Should().BeTrue("a comparison over SQL null keeps no row");
-            kept.Values.Should().BeEquivalentTo(new[] { Of("30"), Of(30m) }, "the stored number 30 renders as '30' too");
+            foreach (var value in new[] { Of("30"), Of(30m), Of(30.000000000000001m) })
+                kept.Admits(value).Should().BeTrue($"the stored number 30 renders as '30' too, and one whose double is 30 is returned as 30: {value}");
+            // The join of a string and the numbers whose double is 30, which the lattice holds as their kinds alone.
+            foreach (var value in new[] { Of(true), Of(false), JsonValues.NullValue })
+                kept.Admits(value).Should().BeFalse(value);
         }
 
         [Fact]
@@ -266,7 +270,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var membership = PredicateAtom.In(Text, ValueSet.Of(Of("x"), Of("30")));
 
-            membership.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Values.Should().BeEquivalentTo(new[] { Of("x"), Of("30"), Of(30m) });
+            var kept = membership.Kept(true, FactsReadings.Rows, FactsReadings.Columns);
+            foreach (var value in new[] { Of("x"), Of("30"), Of(30m), Of(30.000000000000001m) })
+                kept.Admits(value).Should().BeTrue(value);
+            kept.Admits(Of(true)).Should().BeFalse();
             membership.Over(Holding(Of("x"), Of("y")), FactsReadings.Rows).Should().Be(Truths.True | Truths.False);
             membership.Over(Holding(Of("x")), FactsReadings.Rows).Should().Be(Truths.True);
         }

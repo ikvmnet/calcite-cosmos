@@ -51,6 +51,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         static readonly ConditionalWeakTable<JsonRules, PredicateRules> Defined = new();
 
+        /// <summary>The one type a string's characters speak of.</summary>
+        static readonly ValueSet<string> Strings = ValueSet.Of(JsonValues.StringType);
+
         readonly PredicateWriter _writer;
 
         /// <summary>
@@ -371,6 +374,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()), u.Is(json.Readings.RawUnion.Of()));
                 r.Where(a, t, w, u, (atom, truth, table, columns) => atom.Kept(truth, table, columns).Values is not null);
                 r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, w, u, (atom, truth, table, columns) => atom.Kept(truth, table, columns).Values!)));
+            });
+            // A preimage's cases are met with the types its path may hold before they are joined (PredicateAtom.Kept), so a
+            // number's window beside a declared string leaves the string's value rather than any string.
+            Establish.DefineRule("an atom that takes a truth value says what values its path may hold among the types it may hold", r =>
+            {
+                var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
+                var w = r.Var<ReadingTable>("w");
+                var u = r.Var<RawTruths>("u");
+                var c = r.Var<(ReadingTable, RawTruths)>("c");
+                var y = r.Var<ValueSet<string>>("y");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()), u.Is(json.Readings.RawUnion.Of()),
+                    c.Is(Compute.Of(w, u, (table, columns) => (table, columns))), y.Is(json.Types.Of(p)));
+                r.Where(a, t, c, y, (atom, truth, read, types) => atom.Kept(truth, read.Item1, read.Item2, types).Values is not null);
+                r.Then(json.Dom.Of(p).Is(Compute.Of(a, t, c, y, (atom, truth, read, types) => atom.Kept(truth, read.Item1, read.Item2, types).Values!)));
+            });
+            // A string's characters are a fact of the strings alone, so the preimage's strings say them whatever else it keeps.
+            Establish.DefineRule("an atom that takes a truth value says what characters its path's strings may hold", r =>
+            {
+                var (e, p, a, t) = r.Vars<Pred, JPath, PredicateAtom, bool>("e", "p", "a", "t");
+                var w = r.Var<ReadingTable>("w");
+                var u = r.Var<RawTruths>("u");
+                r.When(Holds.Of(e, t), Atom.Of(e, p, a), w.Is(json.Readings.ReaderRows.Of()), u.Is(json.Readings.RawUnion.Of()));
+                r.Where(a, t, w, u, (atom, truth, table, columns) => atom.Kept(truth, table, columns, Strings).Values is not null);
+                r.Then(json.Chars.Of(p).Is(Compute.Of(a, t, w, u, (atom, truth, table, columns) => JsonValues.CharactersOf(atom.Kept(truth, table, columns, Strings).Values!))));
             });
             Establish.DefineRule("an atom that takes a truth value says how small a number its path may hold", r =>
             {

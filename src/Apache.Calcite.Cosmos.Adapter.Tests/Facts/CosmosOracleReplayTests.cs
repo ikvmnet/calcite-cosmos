@@ -262,7 +262,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(loaded.Statement.FactsFor(0), Label, String).Should().BeFalse();
             loaded.Statement.IsAdmitted(0).Should().BeFalse("so the translator does not render it exactly");
             loaded.Statement.Kept.TryGetConstant(Label, out _).Should().BeFalse("a stored 30 renders as '30' too");
-            Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeTrue("the preimage, and nothing narrower");
+            Knows(loaded.Statement.Kept, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue("the preimage, and nothing narrower");
+            Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeFalse("30.000000000000001 is held as the double 30, and returned as '30' too");
         }
 
         /// <summary>

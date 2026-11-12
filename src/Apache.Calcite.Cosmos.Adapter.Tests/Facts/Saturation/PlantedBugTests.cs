@@ -47,8 +47,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A rendering's preimage read as exact: an equality with text is decided TRUE where every value its path may
-        /// hold is in the preimage. A stored 30.0 is in the preimage of <c>'30'</c> as the theory spells it, and renders
-        /// as <c>30.0</c>.
+        /// hold is one the preimage admits. A stored 30.0 is in the preimage of <c>'30'</c> as the theory spells it, the
+        /// service returning it as <c>30</c>, and renders as <c>30.0</c> as written.
         /// </summary>
         /// <remarks>
         /// The facts graph's tables are read before the plant, not in its filter: building them builds a graph, which no
@@ -64,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
                     r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
                     r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
-                        && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, rows, columns).Values is { } preimage && held.All(preimage.Contains));
+                        && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, rows, columns) is var preimage && held.All(preimage.Admits));
                     r.Then(rules.AlwaysTrue.Of(e));
                 })));
         }

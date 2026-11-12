@@ -63,10 +63,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Box, rules.Ir.Query, rules.Ir.Apart, rules.Ir.Null, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(78,
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(80,
                 "the vocabulary's thirteen of G8, which both graphs read since h15, h15b's ten of the element and the readings written apart among them, "
                 + "each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not, "
-                + "and the gate that assumes what a gated node gates where the WHERE raises on no row");
+                + "the gate that assumes what a gated node gates where the WHERE raises on no row, "
+                + "and the domain an atom's preimage keeps among the types its path may hold, and among its strings their characters");
             rules.Establish.Rules.Count(rule => rule.Name == "an assumption the WHERE gates holds where the WHERE raises on no row").Should().Be(1);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
             rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
@@ -182,9 +183,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The rendering preimage: a stored number renders as its digits, so an equality with them keeps a document storing
-        /// the number as well as one storing the string, and establishes both and nothing narrower. #117's fact, which a
-        /// conjunct used to certify itself exact with, is not among them.
+        /// The rendering preimage: the service returns a number as its double, a whole one as its digits
+        /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), so an equality with them keeps a document storing any
+        /// number whose double is theirs as well as one storing the string, and establishes the numbers' window and
+        /// nothing narrower. #117's fact, which a conjunct used to certify itself exact with, is not among them.
         /// </summary>
         [Fact]
         public void AnEqualityWithTextANumberRendersAsEstablishesTheStringOrTheNumber()
@@ -192,14 +194,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var facts = Established(Theory(), Eq(Text(Label), "30"));
 
             Knows(facts, Label, Present).Should().BeTrue();
-            Knows(facts, Label, Enum("30", 30m)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.LowerBound(30m)).Should().BeFalse("29.9999999999999999's double is 30");
+            Knows(facts, Label, Enum("30", 30m)).Should().BeFalse("30.000000000000001's double is 30, which the service returns as 30");
             Knows(facts, Label, Value("30")).Should().BeFalse();
             Knows(facts, Label, Type(JsonType.String, orNull: true)).Should().BeFalse();
         }
 
         /// <summary>
         /// A declared string meets the preimage and leaves the string alone, which deletes the stored-number disjunct
-        /// (<c>TODO.md</c>, under <em>The numeric forms stop at whole numbers</em>).
+        /// (<c>TODO.md</c>, under <em>The numeric forms stop at whole numbers</em>): the preimage's cases are met with the
+        /// types before they are joined, so the numbers' window takes nothing from the string's value.
         /// </summary>
         [Fact]
         public void ADeclaredStringLeavesTheStringMemberOfThePreimage()
@@ -216,13 +222,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Knows(Established(Theory(), Eq(Text(A), "true")), A, Enum("true", true)).Should().BeTrue();
         }
 
+        /// <summary>
+        /// A membership keeps the union of its points' preimages: a window of numbers beside the strings, which names no
+        /// domain, and the strings themselves where the path holds no number.
+        /// </summary>
         [Fact]
         public void AMembershipEstablishesTheUnionOfItsPreimages()
         {
             var facts = Established(Theory(), In(Text(A), "x", "30"));
 
-            Knows(facts, A, Enum("x", "30", 30m)).Should().BeTrue();
             Knows(facts, A, Present).Should().BeTrue();
+            Knows(facts, A, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, A, Enum("x", "30", 30m)).Should().BeFalse("30.000000000000001 is returned as 30");
+
+            var declared = Established(Theory(Outright(A, Type(JsonType.String))), In(Text(A), "x", "30"));
+            Knows(declared, A, Enum("x", "30")).Should().BeTrue();
         }
 
         [Fact]
