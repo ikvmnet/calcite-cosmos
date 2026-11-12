@@ -17,8 +17,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A part that stays in Calcite beside a contradicted <c>status</c> reads what the part sent returns, which the
         /// declaration says is nothing, so no request is made and the part kept fails on nothing, where Calcite fails on a
-        /// required string read as an integer. A comparison of two properties no declaration names stays in Calcite too; of
-        /// two declared strings it is sent with the rest on Azure.
+        /// required string read as an integer. A comparison of two properties no declaration names stays in Calcite too.
         /// </summary>
         [Fact]
         public void ThePartKeptInProcessReadsOnlyWhatTheSplitSends()
@@ -38,6 +37,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A comparison of two declared strings beside a contradicted <c>status</c> is sent with it on Azure, as one request
+        /// that finds nothing; on the emulator, which compares strings by what it stores, it stays in Calcite over the part
+        /// sent, which the declaration says is nothing.
+        /// </summary>
+        [Fact]
+        public void TwoDeclaredStringsComparedBesideAContradictionAreSentOnAzure()
+        {
+            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'deleted' AND JSON_VALUE(c."DOC", '$.body') = JSON_VALUE(c."DOC", '$.name')""";
+
+            var azure = Declaring(Statuses).WithServiceTarget(Adapter.Metadata.CosmosServiceTarget.Azure);
+            var sent = PlanToCosmos(Sql, azure, out _);
+            PlanText(sent).Should().NotContain(KeepsNothing, PlanText(sent));
+            Query(FindCosmos(sent), azure).Sql.Should().Contain("c.status", "the whole WHERE is sent").And.Contain("c.body", "the comparison with it");
+
+            var emulator = Declaring(Statuses).WithServiceTarget(Adapter.Metadata.CosmosServiceTarget.Emulator);
+            var kept = PlanToCosmos(Sql, emulator, out _);
+            PlanText(kept).Should().Contain(KeepsNothing, "the part sent keeps nothing: " + PlanText(kept));
+            PlanText(kept).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + PlanText(kept));
+        }
+
+        /// <summary>
+        /// The partition key's <c>VARIANT</c> ordered against a parameter, which Calcite does not compile, is sent on Azure
+        /// and answered by the service; on the emulator the ordering stays in Calcite, which fails as it does, and only the
+        /// key's presence is sent (<c>docs/07</c>, 7.3; <c>docs/23</c>). Beside a contradicted <c>status</c>, Azure sends
+        /// both, and the emulator keeps the ordering over the part sent, which the declaration says is nothing.
+        /// </summary>
+        [Fact]
+        public void TheKeyOrderedAgainstAParameterIsSentOnAzureAlone()
+        {
+            const string Alone = """SELECT c."id" FROM items AS c WHERE c."$.ref" < ?""";
+            const string Beside = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'deleted' AND c."$.ref" < ?""";
+
+            var azure = Declaring(Statuses).WithServiceTarget(Adapter.Metadata.CosmosServiceTarget.Azure);
+            var sent = PlanToCosmos(Alone, azure, out _);
+            PlanText(sent).Should().NotContain("ClrCursorFilter", PlanText(sent));
+            Query(FindCosmos(sent), azure).Sql.Should().EndWith("WHERE (c.ref < @p0)", "Azure is sent the ordering");
+            var both = PlanToCosmos(Beside, azure, out _);
+            Query(FindCosmos(both), azure).Sql.Should().EndWith("WHERE ((c.status = @p0) AND (c.ref < @p1))", "and sent it beside the contradiction");
+
+            var emulator = Declaring(Statuses).WithServiceTarget(Adapter.Metadata.CosmosServiceTarget.Emulator);
+            var kept = PlanToCosmos(Alone, emulator, out _);
+            PlanText(kept).Should().Contain("ClrCursorFilter(condition=[<($4, ?0)])", "the emulator keeps the ordering in Calcite: " + PlanText(kept));
+            Query(FindCosmos(kept), emulator).Sql.Should().EndWith("WHERE IS_DEFINED(c.ref)", "and sends the key's presence");
+            var split = PlanToCosmos(Beside, emulator, out _);
+            PlanText(split).Should().Contain(KeepsNothing, PlanText(split));
+            PlanText(split).Should().Contain("ClrCursorFilter(condition=[<($4, ?0)])", PlanText(split));
+        }
+
+        /// <summary>
         /// A <c>LIKE</c> over <c>id</c>, which the adapter cannot show never fails, is sent with the contradicted
         /// <c>status</c> as one request that finds nothing.
         /// </summary>
@@ -51,20 +99,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// <c>RETURNING DOUBLE</c> over a required integer is sent, though Calcite fails on a whole number written without a
-        /// point: the rendering graph lifts the agreement beside the raise (<c>TODO.md</c>, <em>The rendering graph lifts an
-        /// agreement where a raise sits beside a truth value</em>). A fraction no integer equals is sent too, since a raise
-        /// keeps the reduce shut.
+        /// <c>RETURNING DOUBLE</c> over a required integer is sent, though Calcite fails on every whole number a long holds,
+        /// which the service returns as its digits however it was written (<c>Service.IntegralNumbersReadBackAsHeld</c>):
+        /// the loader reads <c>RETURNING DOUBLE</c> and a column typed <c>DOUBLE</c> alike, the column reads every number,
+        /// and the rendering graph lifts the agreement beside the raise (<c>TODO.md</c>, <em>The rendering graph lifts an
+        /// agreement where a raise sits beside a truth value</em>). So it is sent where the declaration bounds the integer
+        /// within a long, or lists the integers, and Calcite fails on every document too. A fraction no integer equals is sent
+        /// as well, since a raise keeps the reduce shut.
         /// </summary>
         [Fact]
         public void AReturningDoubleOverARequiredIntegerIsSent()
         {
-            var container = Declaring("""{ "type": "object", "required": ["body"], "properties": { "body": { "type": "integer" } } }""");
-            foreach (var value in new[] { "2", "1.5" })
+            foreach (var declared in new[] { """{ "type": "integer" }""", """{ "type": "integer", "minimum": 0, "maximum": 100 }""", """{ "enum": [1, 2, 3] }""" })
             {
-                var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DOUBLE) = {value}""", container, out _);
-                PlanText(plan).Should().NotContain(KeepsNothing, "Calcite may fail: " + PlanText(plan));
-                Query(FindCosmos(plan), container).Sql.Should().EndWith("WHERE (c.body = @p0)", "the agreement is lifted");
+                var container = Declaring($$"""{ "type": "object", "required": ["body"], "properties": { "body": {{declared}} } }""");
+                foreach (var value in new[] { "2", "1.5" })
+                {
+                    var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING DOUBLE) = {value}""", container, out _);
+                    PlanText(plan).Should().NotContain(KeepsNothing, $"Calcite fails over {declared}: " + PlanText(plan));
+                    Query(FindCosmos(plan), container).Sql.Should().EndWith("WHERE (c.body = @p0)", "the agreement is lifted");
+                }
             }
         }
 

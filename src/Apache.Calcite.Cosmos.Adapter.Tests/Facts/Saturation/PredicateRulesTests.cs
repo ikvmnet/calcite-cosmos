@@ -183,10 +183,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The rendering preimage: the service returns a number as its double, a whole one as its digits
-        /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), so an equality with them keeps a document storing any
-        /// number whose double is theirs as well as one storing the string, and establishes the numbers' window and
-        /// nothing narrower. #117's fact, which a conjunct used to certify itself exact with, is not among them.
+        /// The rendering preimage: the service holds a number as its double (<c>Service.NumbersBeyondLongCompareAsDoubles</c>)
+        /// and returns a whole one within a long as its digits (<c>Service.IntegralNumbersReadBackAsHeld</c>), so an equality
+        /// with them keeps a document storing any number whose double is theirs as well as one storing the string, and
+        /// establishes the numbers' window and nothing narrower. #117's fact, which a conjunct used to certify itself exact with, is not among them.
         /// </summary>
         [Fact]
         public void AnEqualityWithTextANumberRendersAsEstablishesTheStringOrTheNumber()
@@ -232,6 +232,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var facts = Established(Theory(), In(Text(A), "x", "30"));
 
             Knows(facts, A, Present).Should().BeTrue();
+            Knows(facts, A, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
             Knows(facts, A, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
             Knows(facts, A, Enum("x", "30", 30m)).Should().BeFalse("30.000000000000001 is returned as 30");
 

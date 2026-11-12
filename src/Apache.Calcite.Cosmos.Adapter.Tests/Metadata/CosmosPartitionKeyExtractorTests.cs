@@ -309,7 +309,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A field typed <c>ANY</c> compares a number not written as a long by its double, so <c>= 5</c> keeps a stored
         /// <c>5.0000000000000001</c> too, and <c>= 5.5</c> every number whose double is 5.5's: neither is one partition. Where
         /// the declaration makes the key an integer, <c>= 5</c> keeps 5 alone, which is pinned and sent as the client sends a
-        /// literal of it, a <see cref="long"/>, which a whole-partition delete takes.
+        /// literal of it, a <see cref="long"/>, which a whole-partition delete takes; where it narrows the key to one fraction,
+        /// <c>= 5.5</c> keeps that fraction alone, sent as a <see cref="double"/>.
         /// </summary>
         /// <remarks>
         /// The oracle holds a number as a <see cref="decimal"/>, which no partition key component is.
@@ -329,6 +330,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal(5))), Fields, null, integral, "c", out var whole)
                 .Should().BeTrue("the one integer whose double is 5's is 5");
             whole.Should().Equal(5L);
+
+            var fraction = Declaring("{ \"type\": \"object\", \"properties\": { \"category\": { \"enum\": [5.5] } } }", "/category");
+            CosmosPartitionKeyExtractor.TryExtractWholePartition(Eq(Ref(1), _rex.makeExactLiteral(new java.math.BigDecimal("5.5"))), Fields, null, fraction, "c", out var half)
+                .Should().BeTrue("the one value the declaration admits whose double is 5.5's is 5.5");
+            half.Should().Equal(5.5d);
         }
 
         // ── Under the emulator ────────────────────────────────────────────────────

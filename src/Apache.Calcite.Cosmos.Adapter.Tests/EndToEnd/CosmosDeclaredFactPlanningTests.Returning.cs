@@ -115,22 +115,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// number, and with the path declared a string there are none. The rewrite kept nothing here, answering where
         /// the engine raises; it no longer does. Where the path may be missing, a document without it answers UNKNOWN
         /// beside the strings' failure, so the comparison is sent and the service finds nothing. Where it is required
-        /// every document fails, nothing is sent, and the comparison stays in Calcite, which fails on the first.
+        /// every document fails, nothing is sent, and the comparison stays in Calcite, which fails on the first. The same
+        /// holds of <c>RETURNING DOUBLE</c> (<c>docs/07</c>, 7.4).
         /// </remarks>
-        [Fact]
-        public void AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes()
+        [Theory]
+        [InlineData("INTEGER")]
+        [InlineData("DOUBLE")]
+        public void AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes(string type)
         {
-            const string Compared = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2""";
+            var compared = $"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING {type}) = 2""";
 
             var optional = Declaring(Bodies);
-            var sent = PlanToCosmos(Compared, optional, out _);
-            PlanText(sent).Should().NotContain(KeepsNothing, "RETURNING INTEGER fails on a stored string: " + PlanText(sent));
+            var sent = PlanToCosmos(compared, optional, out _);
+            PlanText(sent).Should().NotContain(KeepsNothing, $"RETURNING {type} fails on a stored string: " + PlanText(sent));
             PlanText(sent).Should().NotContain("ClrCursorFilter", PlanText(sent));
             Query(FindCosmos(sent), optional).Sql.Should().EndWith("WHERE (c.body = @p0)", "a document may lack body, and the service finds nothing");
 
             var required = Declaring("""{ "type": "object", "required": ["body"], "properties": { "body": { "type": "string" } } }""");
-            var kept = PlanToCosmos(Compared, required, out _);
-            PlanText(kept).Should().NotContain(KeepsNothing, "RETURNING INTEGER fails on every document: " + PlanText(kept));
+            var kept = PlanToCosmos(compared, required, out _);
+            PlanText(kept).Should().NotContain(KeepsNothing, $"RETURNING {type} fails on every document: " + PlanText(kept));
             PlanText(kept).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's, which fails as it does: " + PlanText(kept));
             Query(FindCosmos(kept), required).Sql.Should().Be("SELECT VALUE c FROM items c", "nothing of it is sent");
         }
