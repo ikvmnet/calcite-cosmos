@@ -123,6 +123,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// <c>RETURNING BIGINT</c> over a required integer the declaration keeps within an <c>INTEGER</c>, bounded or listed, is
+        /// sent too, though Calcite fails on every document: the reader builds an <c>Integer</c> of such a number, which the
+        /// clause, asserting a <c>Long</c>, refuses (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>).
+        /// It is <see cref="AReturningDoubleOverARequiredIntegerIsSent"/>'s lift: a column typed <c>BIGINT</c> reads those
+        /// numbers, and the loader reads the two alike.
+        /// </summary>
+        [Fact]
+        public void AReturningBigintOverIntegersWithinAnIntegerIsSent()
+        {
+            foreach (var declared in new[] { """{ "type": "integer", "minimum": 0, "maximum": 100 }""", """{ "enum": [1, 2, 3] }""" })
+            {
+                var container = Declaring($$"""{ "type": "object", "required": ["body"], "properties": { "body": {{declared}} } }""");
+                foreach (var value in new[] { "2", "5" })
+                {
+                    var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.body' RETURNING BIGINT) = {value}""", container, out _);
+                    PlanText(plan).Should().NotContain(KeepsNothing, $"Calcite fails over {declared}: " + PlanText(plan));
+                    Query(FindCosmos(plan), container).Sql.Should().EndWith("WHERE (c.body = @p0)", "the agreement is lifted");
+                }
+            }
+        }
+
+        /// <summary>
         /// <c>RETURNING DOUBLE</c> against a parameter beside a contradicted <c>status</c> is sent: a typed comparison with a
         /// parameter raises over every scalar (<c>TODO.md</c>, <em>A typed comparison with a parameter raises over every
         /// scalar</em>), so the reduce stays shut.

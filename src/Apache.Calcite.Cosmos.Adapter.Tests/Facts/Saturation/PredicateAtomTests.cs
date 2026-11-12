@@ -73,7 +73,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var kept = PredicateAtom.Compare(Text, "<>", Of("30")).Kept(true, FactsReadings.Rows, FactsReadings.Columns);
 
-            kept.Excluded.Should().BeEquivalentTo(new[] { Of("30") }, "a stored 30.0 renders as 30.0, which is not '30'");
+            kept.Excluded.Should().BeEquivalentTo(new[] { Of("30") },
+                "the text reading reads no spelling the service returns, so it keeps the number 30, which comes back as '30', soundly (TODO.md)");
             kept.Types.Should().BeEquivalentTo(new[] { StringType, IntegerType, FractionType, BooleanType });
         }
 
@@ -140,7 +141,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void ANumberWhoseValueTheTextSpellsMayRenderOtherwise()
         {
-            PredicateAtom.Compare(Text, "=", Of("30")).Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.False, "a stored 30.0 renders as 30.0");
+            PredicateAtom.Compare(Text, "=", Of("30")).Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.False,
+                "the reading says only that a number whose double is the text's may render as it, and reads no spelling the service returns, which is '30' (TODO.md)");
             PredicateAtom.Compare(Text, "=", Of("30")).Over(Holding(Of("30")), FactsReadings.Rows).Should().Be(Truths.True);
             PredicateAtom.Compare(Text, "=", Of("31")).Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.False);
         }
@@ -163,8 +165,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A cast of the accessor to an integer type parses the rendering as Java parses an integer, which raises on a
-        /// stored <c>30.0</c>, <c>2.5</c> or <c>1e30</c> and on a number beyond the type. The theory spells <c>30</c> and
-        /// <c>30.0</c> alike, so no number decides it either way: the rows that raise are rows no verdict may decide.
+        /// stored <c>2.5</c> or <c>1e30</c> and on a number beyond the type. The service returns a whole number within a
+        /// long as its digits however it was written, <c>30.0</c> as <c>30</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>),
+        /// which the parse reads, and the cells say so (<c>NumberCast.ParsesWhole</c>). The coarse reading, which the
+        /// verdicts read, reads no spelling and puts the parse's raise beside every number, so no number decides it either
+        /// way (<c>TODO.md</c>, <em>A conjunct through an integer parse its declared bounds satisfy is still sent</em>).
         /// </summary>
         [Fact]
         public void AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber()
@@ -172,7 +177,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var integers = PathValues.Meet(PathValues.OfKinds(ValueSet.Of(IntegerType)), PathValues.Above(Bound.AtLeast(0m)));
             var atLeastZero = PredicateAtom.Compare(PredicateAtom.CastReader("INTEGER", Text), ">=", Of(0m));
 
-            atLeastZero.Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.Raises, "a stored 30.0 renders as 30.0, which Java's integer parse refuses");
+            atLeastZero.Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.Raises, "the coarse reading puts the parse's raise beside every number");
+            atLeastZero.RaisesOver(Holding(Of(30m)), FactsReadings.Columns, FactsReadings.Rows).Should().BeFalse("its cells read 30 as the service returns it, which the parse reads");
+            atLeastZero.RaisesOver(PathValues.Meet(integers, PathValues.Below(Bound.AtMost(100m))), FactsReadings.Columns, FactsReadings.Rows).Should().BeFalse(
+                "nor does it raise on an integer from 0 to 100, however written");
+            atLeastZero.AlwaysTrue(PathValues.Meet(integers, PathValues.Below(Bound.AtMost(100m))), FactsReadings.Rows).Should().BeFalse(
+                "yet the verdict reads the coarse reading, and is not reached");
             atLeastZero.Over(Holding(Of(2.5m)), FactsReadings.Rows).Should().HaveFlag(Truths.Raises);
             atLeastZero.AlwaysTrue(integers, FactsReadings.Rows).Should().BeFalse("a stored 3000000000 is no int");
             PredicateAtom.Compare(PredicateAtom.CastReader("BIGINT", Text), "<", Of(0m)).NeverTrue(integers, FactsReadings.Rows).Should().BeFalse();
@@ -195,10 +205,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var typed = PredicateAtom.Compare(PredicateAtom.TypedReader("INTEGER"), "=", Of(30m));
 
-            typed.Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.Raises, "a stored 30.0 is no Integer, and Calcite raises on it");
+            typed.Over(Holding(Of(30m)), FactsReadings.Rows).Should().Be(Truths.True | Truths.Raises,
+                "the coarse reading puts the raise of a spelling of another class beside every value of the type, though the service returns 30.0 as 30, an Integer");
+            typed.RaisesOver(Holding(Of(30m)), FactsReadings.Columns, FactsReadings.Rows).Should().BeFalse("its cells read the spelling the service returns");
             typed.AlwaysTrue(Holding(Of(30m)), FactsReadings.Rows).Should().BeFalse();
             PredicateAtom.Compare(PredicateAtom.TypedReader("INTEGER"), "=", Of(31m)).NeverTrue(Holding(Of(30m)), FactsReadings.Rows).Should().BeFalse(
-                "a row Calcite raises on is no row a verdict may decide");
+                "a row the coarse reading says may raise is no row a verdict may decide");
             typed.Over(Holding(Of("30")), FactsReadings.Rows).Should().Be(Truths.Raises);
             typed.NeverTrue(Absent, FactsReadings.Rows).Should().BeTrue();
             typed.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Should().Match<PathValues>(k => k.Values == null && k.Admits(Of(30m)) && k.Admits(Of(30.000000000000001m)) && k.Admits(Of(30.01m)) == false,

@@ -787,13 +787,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// A projected <c>CASE</c> whose condition contradicts the declaration has that condition folded to <c>FALSE</c>
         /// where nothing in it raises on a document the declaration admits (<see cref="CosmosFactRewriter.RewriteConditions"/>
         /// asks as the WHERE's reduce does): the cast of the text to <c>DOUBLE</c> over an integer of at most 100 is never
-        /// more than 500. Through <c>INTEGER</c> the condition keeps no row either, but the cast raises on <c>30.0</c>, which
-        /// the declaration admits, so it stays and Calcite fails as it would.
+        /// more than 500. Through <c>INTEGER</c> the condition keeps no row either, but with no minimum the declaration
+        /// admits integers below an <c>INTEGER</c>, which the cast raises on, so it stays and Calcite fails as it would; with
+        /// a minimum of 0 it raises on none, the service returning a whole number as its digits however it was written
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>), and is folded.
         /// </summary>
         [Fact]
         public void AProjectedConditionTheDeclarationContradictsIsFalseOnlyWhereNothingInItRaises()
         {
             const string Bounded = """{ "properties": { "body": { "type": "integer", "maximum": 100 } } }""";
+            const string Within = """{ "properties": { "body": { "type": "integer", "minimum": 0, "maximum": 100 } } }""";
 
             RexNode Sized(SqlTypeName type) => Case(
                 _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
@@ -805,14 +808,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Str("big"),
                 Str("small"));
 
-            string Conditions(RexNode expression) =>
-                CosmosFactRewriter.RewriteConditions(expression, _fields, Container(Bounded), "c", _rex).ToString();
+            string Conditions(RexNode expression, string declared = Bounded) =>
+                CosmosFactRewriter.RewriteConditions(expression, _fields, Container(declared), "c", _rex).ToString();
 
             Conditions(Sized(SqlTypeName.DOUBLE)).Should().Be("CASE(false, 'big', 'small')");
 
             var integer = Sized(SqlTypeName.INTEGER);
             Statement((RexNode)((RexCall)integer).getOperands().get(0), Bounded).Kept.IsContradictory.Should().BeTrue("no integer of at most 100 is more than 500");
-            Conditions(integer).Should().Be(integer.ToString(), "the cast to INTEGER raises on 30.0");
+            Conditions(integer).Should().Be(integer.ToString(), "the cast to INTEGER raises on an integer below an INTEGER, which no minimum rules out");
+            Conditions(integer, Within).Should().Be("CASE(false, 'big', 'small')", "an integer from 0 to 100 parses, however it was written");
         }
 
 

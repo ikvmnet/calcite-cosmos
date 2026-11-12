@@ -175,6 +175,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A range through an integer parse that the declared bounds satisfy is still sent, where the same range through the
+        /// cast to <c>DOUBLE</c> is dropped. The parse's cells read the service's spelling and raise on no integer the bounds
+        /// admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the coarse reading, and
+        /// that puts the parse's raise beside every number (<c>TODO.md</c>, <em>A conjunct through an integer parse its
+        /// declared bounds satisfy is still sent</em>). Its fix flips this test.
+        /// </summary>
+        [Fact]
+        public void ARangeAnIntegerParseItsBoundsSatisfyIsStillSent()
+        {
+            foreach (var declared in new[] { """{ "type": "integer", "minimum": 0, "maximum": 100 }""", """{ "enum": [1, 2, 3] }""" })
+            {
+                var container = Declaring($$"""{ "type": "object", "required": ["n"], "properties": { "n": {{declared}} } }""");
+
+                foreach (var parsed in new[] { $"{N} >= 0", """JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) >= 0""" })
+                    Query(FindCosmos(PlanToCosmos(Where(parsed), container, out _)), container).Sql.Should().EndWith("WHERE (c.n >= @p0)", $"{parsed} is sent over {declared}");
+
+                Query(FindCosmos(PlanToCosmos(Where($"{D} >= 0"), container, out _)), container).Sql.Should().NotContain("WHERE", $"the cast to DOUBLE is dropped over {declared}");
+            }
+        }
+
+        /// <summary>
         /// F3: two declared claims that no one value satisfies say the property is never there, which a document
         /// satisfies by not having it. A query that says nothing about the property keeps its rows.
         /// </summary>
