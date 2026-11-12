@@ -380,7 +380,10 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
   graph's reading rows and the raw columns' answers, an undecided answer counted as a raise; a truth value never
   raises; and a negation, a conjunction, a disjunction and a `CASE` never raise where their operands never raise
   (`Calcite.ConnectivesAreKleene`). An opaque term gets no row. No verdict reads `never raises`: a row Calcite raises
-  on supports none.
+  on supports none. A gated node — the reduce's, gating the `WHERE` itself, and the never-read arm's, gating what the
+  arm's question assumes — runs the schedule `Reduction`: `Answer` and the raises before anything is assumed, then
+  `Saturation`, so nothing assumed reaches what the raises derived, and the node is contradictory only where no
+  document the declaration admits makes the `WHERE` true and none makes it raise.
 - **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
   before discriminators.
 - **Decide** (24), run once the facts have settled:
@@ -417,10 +420,6 @@ argument (`JsonFactSet.CharactersOf`), in a context made for the question beneat
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
 then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the
 verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value's characters, for a question of one.
-`Reduction`, for a gated node — the reduce's, gating the `WHERE` itself, and the never-read arm's, gating what the arm's
-question assumes — runs `Answer` and the raises before anything is assumed, then `Saturation`, so nothing assumed
-reaches what the raises derived: the node is contradictory only where no document the declaration admits makes the
-`WHERE` true and none makes it raise.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
