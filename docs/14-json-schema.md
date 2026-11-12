@@ -211,7 +211,7 @@ A `CASE` condition in a projection follows the same rule. One the schema rules o
 `CASE`'s other arms, without evaluating it, only where nothing in it can fail: through a cast to
 `DOUBLE` the first range above is, and through a cast to `INTEGER` it is evaluated on every row.
 
-**A query that can fail is not answered in Calcite's place.** The empty result stands in for
+**A query that can fail is not answered empty in Calcite's place.** The empty result stands in for
 Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.
 
 - Through `CAST(… AS INTEGER)` the first range is sent: Calcite's integer cast of the text fails on
@@ -221,8 +221,12 @@ Calcite's answer, so the adapter gives it only where Calcite would answer no row
 - The same holds of a `RETURNING` of one type over a property declared another (Chapter 7), and of a
   type test Calcite cannot implement (Appendix B.5).
 - Where every document the schema admits fails, because the property is required, the filter stays in
-  Calcite and the statement fails as it does there. Where a document may lack the property, the filter
-  may be sent, and the service finds nothing.
+  Calcite and the statement fails as it does there: `RETURNING INTEGER` or `RETURNING DOUBLE` over a
+  required string. Where a document may lack the property, the filter may be sent, and the service
+  finds nothing.
+- Over a property declared `"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over integers
+  within an `INTEGER`'s range, are sent whether the property is required or not, and answer what the
+  service finds, though Calcite fails on every such document (Chapters 7.4 and 23).
 
 One case answers where Calcite fails. Where part of a `WHERE` cannot be sent, the adapter sends the
 rest and keeps that part in process (Chapter 8.1), and the part kept reads only the rows the part sent

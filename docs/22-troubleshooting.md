@@ -56,9 +56,11 @@ The empty answer stands in for Calcite's, so the adapter gives it only where Cal
 document the schema admits, and it can show so. A cast to `INTEGER` over numbers an `INTEGER` may not
 hold, a `RETURNING` of a type the declaration does not name, a comparison of two properties or a
 function's result keeps the request where the service can take the whole `WHERE`, or fails where
-every document would (*A query the schema rules out fails*, below); over a declared number, a cast to
-`DOUBLE` does not. Where such a part stays in process beside a part the schema rules out, there is no
-request and no failure: the part kept reads only the rows the part sent returns, and there are none
+every document would (*A query the schema rules out fails*, below). Over a property declared
+`"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over integers within an `INTEGER`'s range, are
+sent even where the property is required (Chapter 23). Over a declared number, a cast to `DOUBLE` does
+not keep the request. Where such a part stays in process beside a part the schema rules out, there is
+no request and no failure: the part kept reads only the rows the part sent returns, and there are none
 (Chapter 14.2's last case). Chapters 14.2 and 7.
 
 **A filter that pushed before reads the whole container.**
@@ -121,10 +123,12 @@ data source. Chapter 6.
 ## Queries that fail
 
 **A query the schema rules out fails.**
-Calcite fails on every document the schema admits — `RETURNING INTEGER` over a required string, a cast
-to `BOOLEAN` over a required integer — so the filter stays in Calcite and fails as it does there,
-rather than be answered with no rows. What the query asks of the property is not what the schema says
-it holds; ask it as the schema does. Chapters 14.2 and 7.
+Calcite fails on every document the schema admits — `RETURNING INTEGER` or `RETURNING DOUBLE` over a
+required string, a cast to `BOOLEAN` over a required integer — so the filter stays in Calcite and fails
+as it does there, rather than be answered with no rows. What the query asks of the property is not
+what the schema says it holds; ask it as the schema does. Chapters 14.2 and 7. Over a property declared
+`"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over integers within an `INTEGER`'s range, do
+not fail: they are sent and answer what the service finds, where Calcite fails (Chapter 23).
 
 **`CosmosMaterializationException: Expected a JSON string, got Number` (or similar).**
 A document holds something the query's type cannot hold — `RETURNING INTEGER` over a property that is

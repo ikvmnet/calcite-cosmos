@@ -64,14 +64,16 @@ concrete type is learned per row. In practice:
 - **Filtering on it pushes down**, and an equality with a string or a boolean pins the partition:
   `WHERE c."$.category" = 'bikes'` runs against one partition, and with `c."id" = …` beside it becomes
   a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
-  `VARIANT` with no bare number or boolean. A number pins the partition only where the container's
-  schema declares the key an integer, through `RETURNING INTEGER`, for example
-  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or through `RETURNING BIGINT` for keys
-  beyond an `INTEGER`'s range. Calcite fails on `RETURNING BIGINT` over a stored `5`, and on
-  `RETURNING DOUBLE` over any whole number within 64 bits, so through either of those the partition is
-  pinned only by answering where Calcite fails (Chapter 23). Without that declaration Calcite compares such a number
-  by its double, so `= 5` also keeps a stored number written with more digits than a double holds, and
-  the adapter does not yet route on that.
+  `VARIANT` with no bare number or boolean. A number is not written so: `CAST(5 AS VARIANT)` matches no
+  stored `5` in Calcite, which holds a stored integer as a `BIGINT`, and routes nowhere. A number pins
+  the partition only where the container's schema declares the key an integer, through
+  `RETURNING INTEGER`, for example `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or
+  through `RETURNING BIGINT` for keys beyond an `INTEGER`'s range. Calcite fails on
+  `RETURNING BIGINT` over a stored `5`, and on `RETURNING DOUBLE` over any whole number within 64 bits,
+  so through either of those the partition is pinned only by answering where Calcite fails
+  (Chapter 23). Without that declaration Calcite compares such a number by its double, so `= 5` also
+  keeps a stored number written with more digits than a double holds, and the adapter does not yet
+  route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
@@ -170,7 +172,7 @@ digits however it was written, so a stored `30.0` reaches Calcite as `30`:
 | --- | --- | --- |
 | `INTEGER` | whole number in an `INTEGER`'s range, `30` or `30.0` | anything else — a string, a fraction, a larger number |
 | `BIGINT` | whole number *beyond* that range, within 64 bits | anything else — including `30` |
-| `DOUBLE`, `FLOAT` | fraction, `30.5`, or whole number past 64 bits | anything else — including `30` and `30.0` |
+| `DOUBLE`, `FLOAT` | fraction, `30.5`, or whole number past 64 bits, which Azure returns with an exponent | anything else — including `30` and `30.0`, and on the emulator a whole number below 10^20, which it returns as its digits |
 | `SMALLINT`, `TINYINT`, `REAL` | nothing | every value |
 | `BOOLEAN` | `true`, `false` | anything else — including the string `"true"` |
 | `DECIMAL` | any number, **and a string that spells one** — `"30"`, `" 30 "` | a string that does not, a boolean |
@@ -193,9 +195,9 @@ a missing property give `NULL` under every one. So:
   the schema bounds or lists the integers: Calcite fails on every whole number within 64 bits, which
   the service returns as its digits, but the adapter reads `RETURNING DOUBLE` as it reads a column
   typed `DOUBLE`, which reads every number, so `= 1.5` finds nothing, and `= 2` finds the documents
-  holding 2, where Calcite fails (Chapter 23). So is `RETURNING BIGINT` over integers within an `INTEGER`'s range. Over a declared
-  fraction whose double is whole, `6.0000000000000001`, which the service may return as `6`,
-  `RETURNING DOUBLE` is not answered with no rows either.
+  holding 2, where Calcite fails (Chapter 23). So is `RETURNING BIGINT` over integers within an
+  `INTEGER`'s range. Over a declared fraction whose double is whole, `6.0000000000000001`, which the
+  service may return as `6`, `RETURNING DOUBLE` is not answered with no rows either.
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
   that bends to the data would be a suggestion, not a type. So does an integer written outside the
