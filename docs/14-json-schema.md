@@ -163,7 +163,8 @@ Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTE
 ### A predicate no document can satisfy
 
 A value the schema rules out keeps no row, and the plan says so: the query is the empty result, and
-nothing is sent.
+nothing is sent, provided nothing in the `WHERE` can fail on a document the schema admits, and the
+adapter can show that nothing can.
 
 ```sql
 -- "status": { "enum": ["active", "archived"] }
@@ -181,19 +182,47 @@ reads no document.
 
 The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
 
-A range does the same against a bound or an enum, read through a numeric cast:
+A range does the same against a bound or an enum, read through a cast to `DOUBLE`:
 
 ```sql
 -- "n": { "type": "integer", "maximum": 100 }
-SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500
 
 -- "n": { "enum": [1, 2, 3] }
-SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 30
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) = 30
 ```
 
-Both keep nothing. A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast
-converts a stored string too — `> 500` keeps a document storing `"600"`. So without `"type": "integer"`
-the first query is left as it is: a string there is not ruled out.
+Both keep nothing, and the cast fails on no number. A bound binds only numbers, as JSON Schema's
+`minimum` and `maximum` do, and the cast converts a stored string too — `> 500` keeps a document
+storing `"600"`. So without `"type": "integer"` the first query is left as it is: a string there is
+not ruled out.
+
+Some of what a `WHERE` can hold the adapter cannot show never fails: a comparison of two properties, a
+function's result, a `LIKE` over a property read as its stored value, and a cast it holds no
+measurement of. A `WHERE` holding one is sent even where it cannot fail:
+`JSON_VALUE(c."DOC", '$.status') = 'deleted' AND c."id" LIKE 'a%'` is one request that finds nothing.
+
+A `CASE` condition in a projection follows the same rule. One the schema rules out is answered by the
+`CASE`'s other arms, without evaluating it, only where nothing in it can fail: through a cast to
+`DOUBLE` the first range above is, and through a cast to `INTEGER` it is evaluated on every row.
+
+**A query that can fail is not answered in Calcite's place.** The empty result stands in for
+Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.
+
+- Through `CAST(… AS INTEGER)` the same two ranges are sent. Calcite's integer cast of the text fails
+  on `30.0` and on numbers past an `INTEGER`, which an `"integer"` declaration and an enum of integers
+  both admit.
+- The same holds of a `RETURNING` of one type over a property declared another (Chapter 7), and of a
+  type test Calcite cannot implement (Appendix B.5).
+- Where every document the schema admits fails, because the property is required, the filter stays in
+  Calcite and the statement fails as it does there. Where a document may lack the property, the filter
+  may be sent, and the service finds nothing.
+
+One case is not covered yet. Where part of a `WHERE` cannot be sent, the adapter sends the rest and
+keeps that part in process (Chapter 8.1). When the part it sends is one the schema rules out on its
+own, that part is still the empty result, so the part kept in process reads no row and cannot fail.
+Beside the `status` above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body`
+declared a required string answers no rows and sends nothing, where Calcite fails (Chapter 23).
 
 **What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
 and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does

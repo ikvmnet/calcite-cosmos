@@ -994,7 +994,8 @@ domain beside a narrower type; a preimage does.
 a string it cannot parse. Such a row is no row a predicate keeps, so it constrains nothing an assumed predicate
 establishes — the asymmetry *Reading a value back* records for `RETURNING`, the caller's declaration held rather than
 checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
-a pushdown may do is not settled.
+a pushdown may do is not settled. Nor does a raise support the reduce: a filter answered with no request must be one
+Calcite fails on no row of (*The reduce asks every row false*).
 
 An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
 INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
@@ -1063,7 +1064,8 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
 | a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
 | inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
-| whether the filter keeps nothing | every conjunct, admitted or not: a strengthening, which a conjunct's own facts may justify |
+| whether the filter keeps nothing and fails on nothing | the WHERE as one conjunction, assumed by a rule only where it raises on no document the declaration admits (`Reduce`) |
+| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | what the arm's question assumes, each assumed by the same rule only where the WHERE raises on no document the declaration admits (`NeverRead`) |
 | routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
 | whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
@@ -1161,10 +1163,11 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
 | the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
-| `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
+| `CosmosFactRewriter`, the filter made `FALSE`, and a projection's `CASE` conditions through `RewriteConditions` | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document (`Reduce`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
-| the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
+| the rewriter, inside the arm of a `CASE` | `Within` | those siblings and the arm's conditions (`Arm`) |
+| the rewriter, an arm never read, written `FALSE` | `NeverWithin` | what `Arm` assumes, each only where the WHERE raises on no admitted document (`NeverRead`) |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
 | a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
@@ -1214,9 +1217,15 @@ a `VARIANT` field is compared with a literal since the switch (h15), never throu
 query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
 `'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
 whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
+An equality with a number pins the key only where the declaration makes it an integer: `Kept` keeps the literal's
+window (*Which stratum a later round may rest on is a row*), and a window is no domain of one. Routing by the window's
+double, which every number in it shares, is a follow-up that needs a measurement of how the service hashes a number
+(`TODO.md`). A cast of the key to text over the `VARIANT` column pins the stored string, which is all such a cast
+keeps, a number and a boolean casting to null there.
 
 **A filter that keeps nothing is no request, and one that keeps everything has no `WHERE`.** The rewrite answers
-`FALSE` where every conjunct together contradicts the declaration, and `TRUE` where it deleted every conjunct.
+`FALSE` where no document the declaration admits makes the WHERE true, and none makes it raise (*The reduce asks every
+row false*), and `TRUE` where it deleted every conjunct.
 Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
 `false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
 never sees. `CosmosFilterReduceRule` matches the logical filter, over its own convention's container only, and puts
@@ -1294,10 +1303,21 @@ those `Kept` admits for it — and C5, every e-node of the predicate, value and 
 children's representatives against its class's. Where nothing was ever unioned every class has one node and C5 has
 nothing to compare; it is the only check that sees a union, and it is there for the day one is written.
 
+**The reduce is checked more strongly than a scope.** Where the reduce's node is contradictory, no drawn document
+makes a conjunct raise or fail to compile (`IrEval.Raises`, `IrEval.FailsToCompile`), and none makes every conjunct
+TRUE; where a never-read arm's node is, none makes a conjunct raise or fail to compile, and none that makes every
+conjunct the node assumes TRUE makes the condition TRUE. Failures are named `reduce`. So a run draws what may raise
+beside the filter it drew: a raw value in a named column against a parameter, a definedness or type test over a
+`RETURNING` or a raw value, and a reading of doubles against a literal a double holds inexactly, over 8 documents more
+holding such numbers (`PopulationD.Drawn` is 88). Two plants only this check sees are held to it (`PlantedBugTests`:
+the gate without `never raises`, and a `raises` rule reading one side of an `OR`).
+
 **A raise is held at the atoms, not at the verdicts.** The connectives' rules do not model a raise, and whether an
 answer may stand where Calcite fails is the refinement order still to settle; so a verdict is checked on the rows
 Calcite answers, and the connectives decide first, as Calcite may: a conjunction with a FALSE arm is FALSE whatever
-the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so.
+the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so. The reduce asks
+of raises apart from the verdicts, through `never raises`, derived before anything is assumed and read by no verdict
+(*The reduce asks every row false*).
 
 **What it found**: two rows of the table that contradicted Calcite. An integer cast of the accessor is a parse of the
 rendering, which raises on a stored `30.0`, and the table converted the number; `RETURNING DECIMAL` parses the
@@ -3578,6 +3598,11 @@ has not moved and its `TODO.md` entry. Everything else C# does with a fact reads
   run that might stop on a limit and be discarded (*Predicates as facts: the oracle*). It is live through
   `CosmosFilterStatement.IsApplied` and `RedundantConjuncts`. It goes when the verdicts of what a context assumes
   survive a run that stops (`TODO.md`, *A verdict that rests on no run*).
+- **Whether a lowered arm can raise.** `CosmosFactRewriter.IsSafe` passes a comparison of an input reference and
+  refuses every cast, by operator name, before `TryFlattenCase` writes `p AND q`, where Calcite's `CASE` evaluated `q`
+  only where `p` held. The lowered arm is a predicate the rewriter builds after the oracle answers, so no node holds it
+  to ask `never raises` of. It goes when the lowered arm is given a gated term of its own (`TODO.md`, *A flattened
+  `CASE` decides its arm's raise in C#*).
 
 The overlay that answered a schema-less container's strata beside the engine, restating seven rules of JSON and the
 oracle's establishing rules, was on this list and is retired (*Generations, and what a question costs*). So is
@@ -5342,6 +5367,10 @@ comparison through an asserting `RETURNING` pushes exactly, as it always has: fo
 can evaluate, the declared type is the stored type and the service compares the same value. What the
 pushdown changes is the document Calcite would have thrown on, which the service excludes instead —
 the caller's declaration held rather than checked, the same asymmetry the reading side already accepts.
+A filter is not reduced on that asymmetry. Where the declaration types the property otherwise, the comparison keeps
+no row Calcite answers, but Calcite fails on the rest, so the statement is planned, not answered empty: over a
+required property it stays in Calcite and fails there, and over an optional one it is sent and the service finds
+nothing (*The reduce asks every row false*).
 
 **`DECIMAL` converts, and this paragraph used to say it did not.** It was measured only over numbers,
 where `DECIMAL(3, 1)` returning `30.75` unrounded looked like the same assertion. It is a parse: a
@@ -6285,7 +6314,9 @@ So the strings below `""`, those between `l` and `l` + U+0000, and bounds that h
 and nothing the import admits is. Classes are read through `JsonValues.BandsOfText` a unit at a time, so classes the
 string fixes add come through unchanged.
 
-**`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
+**`PredicateAtom.OnCell` stands beside `On`, and the facts graph's verdicts read only `On`.** Its raise question reads
+the cells, through `PredicateAtom.RaisesOver` (*The reduce asks every row false*), and a comparison with a parameter
+there reads its column's parameter key in `rawunion`. A reading's cell methods default to
 its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
 literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell,
 a raw ordering and a raw equality with a number read their columns (*The raw reading's raises*, below);
@@ -6352,7 +6383,9 @@ would refute; at `Pos` false and undefined are alike, and at `Neg` the reading i
 `reads`, `atom` and `point`, and the `analyse` ruleset's nine rules. Each graph defines both, and `PredicateWriter`
 writes the loader's IR into them, a literal's `point` always beside its atom. `JsonRules` and `PredicateRules` forward
 to them, so the facts graph's callers read them where they did; what `PredicateRules` keeps — `possible`, `holds`,
-`chosen`, `arms`, `arm` and the two later rulesets — is F's alone.
+`chosen`, `arms`, `arm`, `gated`, `never raises` and the later rulesets, `raises` among them — is F's alone. The raw
+columns' tables, `rawcolumn`, `rawunion` and the rest, and the rules that derive them are `ReadingVocabulary`'s since
+2026-11-10, so both graphs derive them alike, the two that join a column's parameter key among them.
 
 **A junction's arms are the caller's.** The writer hands each junction, with its arms flattened, to a callback: F's
 numbers them for its split over arms, as it did; S pairs written members with arms by its own rules. A hidden
@@ -6425,17 +6458,62 @@ applying it before Calcite applies the whole filter, so the 127 pushes the raise
 builder wrote over a declared field, were not the owner's to decide, and since h15b the builder writes such a test over
 the path's accessor re-typed `ANY`.
 
-**F's reduce reads a raise as no row kept.** The decision is S's reading, and F's vacuity is not yet one. Where the
-facts graph finds a filter's conjuncts and the declaration contradict (`IsContradictory`), the rewrite answers `FALSE`
-and `CosmosFilterReduceRule` the empty relation, no request made; and F reads a cell Calcite raises on as a row kept by
-neither truth value, a body that raises everywhere keeping none (`PredicateAtom.Reading.Raising`) and a presence test's
-falsehood keeping the absent documents whatever its body does (`PredicateAtom.Kept`). So `CAST(JSON_VALUE(c."DOC",
-'$.n') AS BOOLEAN) = TRUE` over a path declared an integer, which Calcite fails on every document holding one, answers
-no rows on this branch where main failed it, as a `RETURNING INTEGER` compared over a declared key of another kind
-already answers none on main, and so does `NOT IS_DEFINED(CAST(JSON_VALUE(c."DOC", '$.k') AS VARCHAR))` over a path
-declared a required string, which Calcite cannot implement (review 3). F reading the raise as a cell of its own, apart
-from a row kept or not, is the fix; it is F's reading of the cells (`TODO.md`, *A filter that raises is reduced as one
-that keeps nothing*).
+**The reduce asks every row false.** The empty relation stands in for Calcite's answer, so it is given only where
+Calcite answers no rows and fails on none. F used to answer `FALSE` wherever the conjuncts and the declaration
+contradicted, reading a cell Calcite raises on as a row neither truth value keeps; so `CAST(JSON_VALUE(c."DOC", '$.n')
+AS BOOLEAN) = TRUE` over a declared integer, `NOT IS_DEFINED(CAST(JSON_VALUE(c."DOC", '$.k') AS VARCHAR))` over a
+required string and a `RETURNING INTEGER` over a declared string answered no rows where Calcite fails. Since
+2026-11-10 none does.
+
+*The node.* `IsContradictory` asks under `OracleLicence.Reduce`, which opens `StatementTerms.Gated` beneath `D0`: the
+statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts), every path it reads mentioned, and
+`gated(W, W)` asserted where the Kept node asserts `holds`. It runs `PredicateRules.Reduction` in two stages: `Answer`
+and then the `raises` ruleset alone, before anything is assumed; then `Saturation`, as every node runs it.
+
+*The rules.* `raises` holds six: an atom never raises where `PredicateAtom.RaisesOver` finds no raise over any state
+`possible` admits, reading the cells, `readerrows` and `rawunion`, an undecided answer counting as a raise; a truth
+value never raises; and a `NOT`, an `AND`, an `OR` and a `CASE` never raise where every operand never raises, since
+Calcite raises in a connective only where an operand does (`Calcite.ConnectivesAreKleene`). An opaque term, a
+comparison no atom reads and any other constructor get no row, so a WHERE holding one may raise. The gate is one
+Establish rule: `gated(e, w)` and `never raises(w)` give `holds(e, true)`. Every other node asserts no `gated` row, so
+the gate is silent there.
+
+*The rows it reads.* The raw columns' rows live in `ReadingVocabulary`, derived in both graphs, so F's `RaisesOver`
+reads what S reads; and each raw column joins a parameter key into `rawunion`, its answer to a comparison with a
+parameter beside every class it sits beside, so a raw ordering against a parameter carries its column's compile
+failure and its raise across types.
+
+*Why it is sound.* The node's documents are `D0`'s, and nothing is asserted from C#. When `raises` runs only `Answer`
+has, so `possible` over-approximates every admitted document, and `RaisesOver` counts every raise the cells carry:
+`never raises(W)` holds only where no admitted document makes anything in the WHERE raise, whatever order Calcite
+evaluates in. `raises` never runs again and `never raises` is local and never lifted, so nothing assumed reaches it.
+Past the gate, the node runs what the Kept node runs, so a contradiction means no admitted document makes the WHERE
+TRUE, resting on `Kept` over-approximating every reading Establish narrows by (*Which stratum a later round may rest
+on is a row*, below). Together, every admitted document makes the WHERE FALSE or UNKNOWN
+and none raises. The new reduce never fires where the old one did not: past the gate the node holds the Kept node's
+facts.
+
+*What still assumes every conjunct.* `Kept`, for a strengthening and for routing, which read what the rows the filter
+keeps satisfy and never stand in for an answer.
+
+*A statement that no longer reduces* is planned as any filter. Where every cell of a conjunct is a raise, S lifts
+nothing and the filter stays in Calcite, which fails on the first document (*A filter Calcite fails on every row fails
+as Calcite fails it*). Where some cells answer, S may lift the agreement, and the service finds nothing: one request
+where there was none. A conjunct holding a parameter is the translator's, since S owns none (`RenderingFamily.Owns`).
+Routing reads the Kept node, which pins nothing where it is contradictory, so such a statement fans out.
+
+*The never-read arm, and a projection's conditions.* `NeverWithin` asks under `OracleLicence.NeverRead`, a gated node
+of what `Arm` assumes, each gated on `W`: an arm is written `FALSE` only where those contradict and the WHERE raises on
+no admitted document, so the `FALSE` removes no failure with the evaluation it removes. A projected `CASE` condition
+reaches `IsContradictory` through `RewriteConditions`, its own statement, so it is folded only where nothing in it may
+raise.
+
+*Not covered: the split's lower filter.* `CosmosFilterReduceRule` matches any logical filter over its container,
+`CosmosFilterSplitRule`'s lower one among them. Where a conjunct the split keeps above may raise, the conjuncts pushed
+below can still contradict the declaration alone, and that filter is reduced: the residual `ClrCursorFilter` then reads
+`ClrCursorValues` with no tuple, and fails on nothing. The run found it beside `k = 'z'` over a required `enum: ["a"]`
+for each case the reduce stopped answering (`TODO.md`, *A residual beside a reduced split loses its raise*). It is no
+regression: before the gate the whole filter was reduced too.
 
 **What the evaluation fills is held to one value a key.** `partition`, which cuts at the reader's edges, `svc` and
 `outcomes` have no lattice: each is computed once for each match of its rule, and a key two matches reach — a part two
@@ -7227,7 +7305,12 @@ atoms the facts graph makes and asks the rows of each. A reading the row does no
 the same rows. What makes a reading exact is what a stratum needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
 value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
 leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` pins the row: every
-reading it names answers as its cell, and every reading the grid reads is named.
+reading it names answers as its cell, and every reading the grid reads is named. A reading the row does not name is
+still read soundly by `Kept`: it keeps the window such a reading may find equal — the literal's rounding interval for
+one that compares a double, an integer type's column's whole-valued fractions, and for a cast of a raw value to text
+what its column's answer keeps, read from `rawunion` — so a stratum or a reduce resting on it says nothing of the
+documents that is not so (`PredicateAtomTests.WhatARowKeepsCoversEveryValueOnWhichItTakesThatTruthValue`, and
+`PredicateAtomCellTests`' audit of what every reading keeps).
 
 **The run reads what production asked.** For each statement the check run plans, riding its pass, generate mode's run
 reads the bundles of §4.4 production's sites opened (*The production path*): each imported from the statement's root,
@@ -9148,6 +9231,7 @@ under `Production` twice more, over a search that may be absent and one of every
 **The owner's decision** (2026-11-08, *Vacuity is a table*): a filter Calcite fails on every row fails as Calcite fails
 it. The vacuity rule stands as written, S lifts no agreement whose every cell is a raise alone, and a statement holding
 one stays in Calcite where the translator pushed it whole. This step builds what S needs to read such a filter so.
+Since 2026-11-10 the reduce does not answer such a filter with no rows either (*The reduce asks every row false*).
 
 **The atom is of the reading it is asked over, read as its body reads it.** A one-place test's in-process body takes
 apart the `JSON_VALUE` it is handed and asks the document (`CosmosTypeTestImplementor`, *A one-place test is of the
@@ -9239,7 +9323,10 @@ STARTSWITH(c.category, '')`, the order differential's, is proved so.
 column is vacuous, which S lifts not (*Vacuity is a table*). Eight `Production` type-test pushes at the gate are so
 (partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863), the gate proving the text and S lifting no form. The vacuity
 policy is the owner's, so the column reads as the row says; the owner decided on 2026-11-08 that such a filter fails as
-Calcite fails it, and the raises step names the eight (*Vacuity is a table*).
+Calcite fails it, and the raises step names the eight (*Vacuity is a table*). Since 2026-11-10 the reduce does not
+answer such a filter with no rows either, beside a literal: the column's compile failure is a raise `RaisesOver`
+counts. Against a parameter the ordering is the translator's, which sends it under `Production` (`TODO.md`, *A raw
+ordering against a parameter is sent where Calcite fails*).
 
 **Population D through each column.** Each raw atom is drawn again through one column, bare and negated, after the rest
 so the stream before moves not, a `VARCHAR` beside a literal that is no string read as `ANY`, since the loader casts a

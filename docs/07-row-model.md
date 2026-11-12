@@ -61,8 +61,13 @@ A partition key value is a scalar — a string, a number or a boolean — but *w
 each document, not about the container. `VARIANT` is the SQL type for exactly that: a value whose
 concrete type is learned per row. In practice:
 
-- **Filtering on it pushes down**, and an equality pins the partition: `WHERE c."$.category" = 'bikes'`
-  runs against one partition, and with `c."id" = …` beside it becomes a point read (Chapter 8).
+- **Filtering on it pushes down**, and an equality with a string or a boolean pins the partition:
+  `WHERE c."$.category" = 'bikes'` runs against one partition, and with `c."id" = …` beside it becomes
+  a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
+  `VARIANT` with no bare number or boolean. A number pins the partition only where the container's
+  schema declares the key an integer, through `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`
+  (or `BIGINT`): Calcite compares such a number by its double, so `= 5` also keeps a stored number
+  written with more digits than a double holds, and the adapter does not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
@@ -72,6 +77,8 @@ concrete type is learned per row. In practice:
   body over a column (Appendix B.5). Calcite fails either on every row, and a filter holding one fails
   as it fails in Calcite: the adapter does not send it for the service to answer instead. Compare or test
   the path: `JSON_VALUE(c."DOC", '$.category') > 'a'`, `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`.
+  One ordering is still sent: on Azure, the column against a parameter, `c."$.category" < ?`, is
+  answered by the service (Chapter 23).
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **A string function over it does not push.** `UPPER(CAST(c."$.category" AS VARCHAR))` reads the column
@@ -167,6 +174,15 @@ a missing property give `NULL` under every one. So:
   the type's own test — `IS_NUMBER`, `IS_BOOL` — so an object or an array reads null as it does in
   Calcite, and so does a string or a boolean under `RETURNING INTEGER`, which is what SQL says
   (`NULL ON ERROR` is the default) where Calcite fails instead (Chapter 23).
+- A schema does not turn such a failure into an empty answer. `RETURNING INTEGER` over a property
+  declared a string can match no document, but Calcite fails on every one that holds the string, so
+  the adapter does not answer it with no rows on its own. The same holds of `RETURNING DOUBLE` over a
+  property declared a string. Where the property is required, the statement fails as in Calcite; where
+  it may be missing, the statement is sent and answers what the service finds (Chapter 14.2). Over a
+  property declared `"integer"`, `RETURNING DOUBLE` is sent whether it is required or not, since a
+  document the schema admits may write the number `30.0`, which it reads: `= 1.5` finds nothing, and
+  `= 2` finds the documents holding 2 however written, where Calcite fails on one written `2`
+  (Chapter 23).
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
   that bends to the data would be a suggestion, not a type. So does an integer written outside the

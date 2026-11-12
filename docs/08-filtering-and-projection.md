@@ -358,9 +358,11 @@ WHERE c."$.category" = 'bikes' AND JSON_VALUE(c."DOC", '$.price' RETURNING INTEG
 ```
 
 The equality may be on the promoted column (`c."$.category"`) or on the path through `JSON_VALUE`. A
-range or a disjunction names no single value and does not route — though the service itself prunes an
-`IN` list over the partition key to the partitions that hold its values. With a hierarchical key,
-pinning a prefix of the paths routes to the partitions under that prefix.
+number pins the key only where the container's schema declares it an integer: Calcite compares a
+number by its double, and the adapter does not yet route on one (Chapter 7.3). A range or a
+disjunction names no single value and does not route — though the service itself prunes an `IN` list
+over the partition key to the partitions that hold its values. With a hierarchical key, pinning a
+prefix of the paths routes to the partitions under that prefix.
 
 Through `JSON_VALUE` the comparison is with the key's text, and text a number also renders as names two
 partitions: `JSON_VALUE(c."DOC", '$.category') = '30'` matches a stored `"30"` and a stored `30`, so it
