@@ -89,15 +89,21 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             internal int?[] PointedSide(decimal c) => Integral && (Side(-Renderings.DoubleUnitFrom) != 1 || Side(Renderings.DoubleUnitFrom) != -1)
                 ? [DoubleSide(DoubleBound.Of(c)) is int side and not 0 ? side : null] : [];
 
-            /// <summary>Whether some value's double may be whole and below a magnitude: a cell of fractions whose doubles reach a whole double.</summary>
-            internal bool MayRoundToWhole(double below)
+            /// <summary>
+            /// The least and the greatest whole double from <paramref name="least"/> to <paramref name="most"/> a value's double
+            /// may be, <c>null</c> where none may: a cell of fractions whose doubles reach a whole double, or of integers past a
+            /// limit whose doubles round back onto it.
+            /// </summary>
+            internal (double Low, double High)? WholeDoubles(double least, double most)
             {
                 var (lower, upper) = Held;
-                var most = Math.BitDecrement(below);
-                var low = Math.Max(lower is Bound l ? Math.Max(DoubleBound.Of(l.Value), DoubleLow ?? double.NegativeInfinity) : DoubleLow ?? double.NegativeInfinity, -most);
-                var high = Math.Min(upper is Bound u ? Math.Min(DoubleBound.Of(u.Value), DoubleHigh ?? double.PositiveInfinity) : DoubleHigh ?? double.PositiveInfinity, most);
-                return Math.Ceiling(low) <= high;
+                var low = Math.Ceiling(Math.Max(lower is Bound l ? Math.Max(DoubleBound.Of(l.Value), DoubleLow ?? double.NegativeInfinity) : DoubleLow ?? double.NegativeInfinity, least));
+                var high = Math.Floor(Math.Min(upper is Bound u ? Math.Min(DoubleBound.Of(u.Value), DoubleHigh ?? double.PositiveInfinity) : DoubleHigh ?? double.PositiveInfinity, most));
+                return low <= high ? (low, high) : null;
             }
+
+            /// <summary>Whether some value's double may be whole from <paramref name="least"/> to <paramref name="most"/> (<see cref="WholeDoubles"/>).</summary>
+            internal bool MayRoundToWhole(double least, double most) => WholeDoubles(least, most) is not null;
 
             /// <summary>Whether a number's double lies within the double bounds.</summary>
             internal bool Rounds(string value) => DoubleBound.Of(value) is var d && d >= (DoubleLow ?? d) && d <= (DoubleHigh ?? d);

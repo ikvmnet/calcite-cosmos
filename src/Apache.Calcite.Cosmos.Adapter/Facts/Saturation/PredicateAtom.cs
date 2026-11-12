@@ -1768,7 +1768,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     "DOUBLE" => cell switch
                     {
                         PathCell.Point { Value: var v } => Renderings.MayServeAsDigits(v) ? R : Truths.None,
-                        PathCell.Numbers n => n.Integral || n.MayRoundToWhole(Renderings.DigitsBelow) ? R : Truths.None,
+                        PathCell.Numbers n => n.Integral || n.MayRoundToWhole(-Math.BitDecrement(Renderings.DigitsBelow), Math.BitDecrement(Renderings.DigitsBelow)) ? R : Truths.None,
                         _ => R,
                     },
                     "INTEGER" or "BIGINT" => Reads(cell) ? Truths.None : R,
@@ -2051,19 +2051,32 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                                 .. Math.Floor(r) == r && r >= (double)least && r < (double)most + 1 ? [DoubleBound.Compare(r, c)] : Array.Empty<int?>()], ParsesWhole(cell) ? Truths.None : R);
                         }
                         // A fraction raises, though one whose double is whole within the type reads as that double, as the
-                        // service returns it: a cell cut by value holds both, and no service form parts a whole double from
-                        // the integer it equals, so no form sent over the cell read as raising drops a row Calcite keeps
-                        // there (TODO.md).
-                        case PathCell.Numbers { Integral: false }:
-                            return R;
+                        // emulator returns it, and so does an integer past the type whose double rounds back onto its limit,
+                        // -2^63 under BIGINT: beside the raise, the doubles placed where one may be whole within the type.
+                        case PathCell.Numbers { Integral: false } n:
+                            return Whole(n, op, c);
                         case PathCell.Numbers n:
-                            return n.Side(most) == 1 || n.Side(least) == -1 ? R
+                            return n.Side(most) == 1 || n.Side(least) == -1 ? Whole(n, op, c)
                                 : n.Side(least - 1) == 1 && n.Side(most + 1) == -1 ? Placed(op, [n.Side(c), .. n.PointedSide(c)], ParsesWhole(cell) ? Truths.None : R)
                                 : Compare(cell.Coarse, op, literal);
 
                         default:
                             return Compare(cell.Coarse, op, literal);
                     }
+                }
+
+                /// <summary>
+                /// An integer type's parse over a cell whose numbers it reads only where the double is whole within the type:
+                /// the raise, beside each side of the literal the whole doubles there may lie on, compared exactly, as a point's
+                /// whole double is.
+                /// </summary>
+                Truths Whole(PathCell.Numbers n, string op, decimal c)
+                {
+                    if (_saturates is not var (least, most) || n.WholeDoubles((double)least, Math.Min((double)most, Math.BitDecrement(Renderings.LongCeiling))) is not { } whole)
+                        return R;
+
+                    var (low, high) = ((decimal)(long)whole.Low, (decimal)(long)whole.High);
+                    return Placed(op, [.. low < c ? [-1] : Array.Empty<int?>(), .. low <= c && c <= high && c == decimal.Truncate(c) ? [0] : Array.Empty<int?>(), .. high > c ? [1] : Array.Empty<int?>()], R);
                 }
 
                 /// <summary>

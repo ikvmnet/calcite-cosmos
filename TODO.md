@@ -2966,11 +2966,15 @@ across documents* and *A join of a container to itself* is the record.
   target returns it). Both return a whole number within a long as its digits however it was written
   (`Service.IntegralNumbersReadBackAsHeld`), which every reading reads since 2026-11-12; only how Azure spells a
   fraction whose double is whole was not measured, so that one is read both ways.
-- **An integer cast of the text reads a cell of fractions as raising** — *small, precision.* A fraction whose double is
-  whole within the type is returned as its digits, which the parse reads, so `CAST(JSON_VALUE(…) AS INTEGER) = 6` is
-  TRUE of a stored `6.0000000000000001`. A cell cut by value holds it beside the fractions that raise, and no service
-  form parts a whole double from the integer it equals, so the cell reads as raising: sound, since no form sent over it
-  drops a row Calcite keeps. A cut at each whole double within the type would read that cell's answer apart.
+- ~~**An integer cast of the text reads a cell of fractions as raising**~~ — *done, 2026-11-12; it was a cell answer
+  false of its values.* A fraction whose double is whole within the type is returned as its digits, which the parse
+  reads, so `CAST(JSON_VALUE(…) AS INTEGER) = 6` is TRUE of a stored `6.0000000000000001`, and under `BIGINT` an integer
+  below -2^63 whose double is -2^63 reads too; the cell read as raising alone, which a verdict takes for no truth value.
+  Such a cell now answers the raise beside each side of the literal its whole doubles may lie on (`NumberCast.Whole`,
+  `PathCell.WholeDoubles`), and the integer casts' cells cut at the literal's double as well as its rendering
+  (`ReaderEdgesTable`), so the fractions whose double is the literal are a cell of their own and a weakening's number
+  branch is still proved (`CosmosDeclaredFactPlanningTests.ADeclaredTypeDeletesTheGuardThatAdmittedTheOtherTypes`).
+  `PredicateAtomCellTests` found it once it read each value as each target returns it.
 - **A cast of the text to `ANY` reads as a conversion no row measured** — *small, precision.* Calcite holds the text
   through it, so `CAST(JSON_VALUE(c."DOC", '$.q') AS ANY) = '6'` is TRUE of a stored `6`, where the raw value's
   `c.q = "6"` is not. The loader read it as the raw value and the translator wrote it as the path, an empty answer where

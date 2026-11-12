@@ -21,7 +21,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// of a number not written as a long compares (<c>Calcite.RawNullIsSqlNull</c>). An integer type raises past its limits, and a cast to one
     /// truncates within one of a literal and saturates at them. A double compares doubles, and so does the service a
     /// number it holds as one, an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>),
-    /// and <c>DECIMAL</c> one it renders; and a parse of the rendering reads the literal's text as the literal. A numeric
+    /// and <c>DECIMAL</c> one it renders; and a parse of the rendering reads the literal's text as the literal, an integer
+    /// type's a fraction whose double is whole as that double's digits too, so it is cut at the literal's double. A numeric
     /// cast of the raw value has no key, since no <c>Calcite.*</c> row measures one: over a <c>VARIANT</c> Calcite raises
     /// on a number beyond the type, and over an <c>ANY</c> wraps a long beyond an int.
     /// </remarks>
@@ -62,8 +63,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         {
             ["VARCHAR"] = Row(CutKind.Double),
             ["BOOLEAN"] = Row(),
-            ["INTEGER"] = Limits("INTEGER", CutKind.Rendering),
-            ["BIGINT"] = Limits("BIGINT", CutKind.Rendering),
+            ["INTEGER"] = Limits("INTEGER", CutKind.Double, CutKind.Rendering),
+            ["BIGINT"] = Limits("BIGINT", CutKind.Double, CutKind.Rendering),
             ["DOUBLE"] = Row(CutKind.Double, CutKind.Rendering),
         };
 
