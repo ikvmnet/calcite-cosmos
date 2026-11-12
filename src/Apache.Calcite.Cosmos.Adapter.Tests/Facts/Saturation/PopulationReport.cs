@@ -60,6 +60,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         public bool Complete { get; set; }
 
+        /// <summary>Whether what every conjunct assumed contradicted the declaration.</summary>
+        public bool Kept { get; set; }
+
+        /// <summary>Whether the reduce's node was contradictory, the WHERE raising on no document the declaration admits.</summary>
+        public bool Reduced { get; set; }
+
+        /// <summary>Whether the arm asked of was never read: its question's node, gated on the WHERE, contradictory.</summary>
+        public bool NeverRead { get; set; }
+
         public TimeSpan Elapsed { get; set; }
 
         public void Fail(string check, string message)

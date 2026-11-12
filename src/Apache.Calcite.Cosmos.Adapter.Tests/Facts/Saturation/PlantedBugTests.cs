@@ -34,7 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them,
     /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
-    /// one value in every document without the path's presence. The last is <c>D0</c>'s: a declared path read as there.
+    /// one value in every document without the path's presence. Another is <c>D0</c>'s: a declared path read as there.
+    /// The last two are the reduce's, which only the stronger check of a statement made FALSE sees: the gate without its
+    /// guard, and a disjunction read as raising nowhere its left side raises nowhere.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -351,6 +353,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 r.Where(c, pattern => pattern.StartsWith('%'));
                 r.Then(rules.Atom.Of(e, p, Compute.Of(k, op, c, (reader, test, pattern) => PredicateAtom.Affix(reader, test, pattern.TrimStart('%')))));
             })));
+
+        /// <summary>
+        /// The gate without its guard: what a gated node gates assumed whether or not the WHERE raises, so that a
+        /// statement whose conjuncts contradict the declaration is made FALSE where Calcite would fail on a document.
+        /// </summary>
+        [Fact]
+        public void AGateThatAssumesWhereTheWhereMayRaiseIsCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: an assumption the WHERE gates holds", r =>
+            {
+                var (e, w) = r.Vars<Pred, Pred>("e", "w");
+                r.When(rules.Gated.Of(e, w));
+                r.Then(rules.Holds.Of(e, true));
+            })), "reduce");
+
+        /// <summary>
+        /// A disjunction read as raising nowhere its left side raises nowhere: Calcite reads both sides of an
+        /// <c>OR</c> whose left is not TRUE, so a raise on the right is the statement's.
+        /// </summary>
+        [Fact]
+        public void ADisjunctionReadAsRaisingWhereItsLeftSideDoesIsCaught() => Caught(Planted(rules =>
+            rules.RaiseRules.DefineRule("planted: a disjunction raises nowhere its left side raises nowhere", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(rules.Or.Of(a, b)), rules.NeverRaises.Of(a));
+                r.Then(rules.NeverRaises.Of(e));
+            })), "reduce");
 
         /// <summary>
         /// The predicate rules of a graph of the test's own, planted.

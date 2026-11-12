@@ -49,9 +49,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// it keep, and a conjunct the oracle calls redundant drops no row.</item>
     /// </list>
     /// <para>
+    /// The licences include every conjunct kept, the reduce over every conjunct, an arm of one conjunct under one of the
+    /// questions, and the same arm never read, whose assumptions must lie among the conjuncts beside it.
+    /// </para>
+    /// <para>
     /// <b>A verdict may stand over a row Calcite raises on.</b> The connectives do not model a raise, and whether an
     /// answer may stand where Calcite fails is the refinement order still to settle; a raise is held to the table that
     /// says whether one happens, by the atom check, which is where it is decided.
+    /// </para>
+    /// <para>
+    /// <b>Except where a statement is made FALSE.</b> That answer stands in for Calcite's on every row, so it is held to
+    /// more than a contradiction admitting nothing: where the reduce's node is contradictory, no conjunct raises on any
+    /// document drawn, none fails to compile, and no document makes every conjunct true; where the never-read arm's node
+    /// is, no conjunct raises or fails to compile, and no document that makes true everything the arm assumes makes its
+    /// question true.
     /// </para>
     /// </remarks>
     sealed class PopulationD
@@ -65,6 +76,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// their own: what the characters a string is said to hold are checked on (<see cref="Declaration"/>).
         /// </summary>
         public const int BandedPerTrial = 16;
+
+        /// <summary>
+        /// How many more it draws holding a number no double holds exactly where the declaration lets one stand, from a
+        /// stream of their own: what a reading comparing doubles keeps is checked on (<see cref="Declaration.Near"/>).
+        /// </summary>
+        public const int NearPerTrial = 8;
+
+        /// <summary>Every document a trial draws.</summary>
+        public const int Drawn = DocumentsPerTrial + BandedPerTrial + NearPerTrial;
 
         readonly Func<JsonFactTheory, CosmosOracle> _oracle;
 
@@ -92,10 +112,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         internal static (Random Random, Random Bands, World World, Declaration Declaration, J.Obj[] Documents) Trial(int seed)
         {
-            var (random, bands) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)));
+            var (random, bands, near) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)), new Random(unchecked(seed * 6151 + 29)));
             var declaration = Declaration.Random(random, bands, DeclaresNothingConditional(seed));
             return (random, bands, new World(seed), declaration, [.. Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
-                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))]);
+                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
+                .Concat(Enumerable.Range(0, NearPerTrial).Select(_ => declaration.GenerateNear(near)))]);
         }
 
         /// <summary>
@@ -165,15 +186,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 licences.Add(($"rewriting inside conjunct {i}", OracleLicence.Siblings(i), others));
             }
 
-            // Every conjunct, for a strengthening; and an arm of a CASE inside one, read under a condition the trial
-            // draws, which holds of the documents its siblings keep and the condition does.
-            licences.Add(("every conjunct", OracleLicence.Kept, Enumerable.Range(0, conjuncts.Count).ToArray()));
+            // Every conjunct, for a strengthening, and the WHERE assumed where it raises nowhere, for the reduce; and an arm
+            // of a CASE inside one, read under a condition the trial draws, which holds of the documents its siblings keep
+            // and the condition does, and the same arm's question gated on the WHERE, for the arm never read.
+            var every = Enumerable.Range(0, conjuncts.Count).ToArray();
+            licences.Add(("every conjunct", OracleLicence.Kept, every));
+            licences.Add(("the reduce", OracleLicence.Reduce, every));
 
             var arm = random.Next(conjuncts.Count);
             var condition = questions[random.Next(questions.Length)];
             var siblings = Enumerable.Range(0, conjuncts.Count).Where(j => j != arm).ToArray();
-            check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }),
-                Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray(), siblings);
+            var underArm = Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray();
+            check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }), underArm, siblings);
+
+            var neverRead = OracleLicence.NeverRead(arm, new[] { condition });
+            if (scope.AssumedIn(neverRead).Except(siblings).Any())
+                report.Fail("licence", $"the arm never read in conjunct {arm} assumes conjuncts {string.Join(", ", scope.AssumedIn(neverRead))}, beyond its siblings");
+
+            check.Scope($"the arm never read in conjunct {arm} under {condition}", scope, neverRead, underArm, siblings);
+
+            // What the empty relation and an arm's FALSE stand in for: Calcite keeps no row there and fails on none, so
+            // on every document drawn nothing in the WHERE raises or fails to compile, the WHERE is not TRUE, and the arm's
+            // condition is not TRUE where what its question assumes is.
+            void FailsOnNone(string name)
+            {
+                foreach (var c in every.Where(c => IrEval.FailsToCompile(conjuncts[c])))
+                    report.Fail("reduce", $"{name} is contradictory, and conjunct {c} fails to compile");
+
+                foreach (var document in documents)
+                    foreach (var c in every.Where(c => IrEval.Raises(conjuncts[c], document, world)))
+                    {
+                        report.Fail("reduce", $"{name} is contradictory, and conjunct {c} raises on {Documents.Json(document)}");
+                        break;
+                    }
+            }
+
+            report.Kept = scope.IsContradictory(OracleLicence.Kept);
+            report.Reduced = scope.IsContradictory(OracleLicence.Reduce);
+            report.NeverRead = scope.IsContradictory(neverRead);
+            if (report.Reduced)
+            {
+                FailsOnNone("the reduce");
+                for (var d = 0; d < documents.Length; d++)
+                    if (every.All(c => truths[c][d] == Truths.True))
+                    {
+                        report.Fail("reduce", $"the reduce is contradictory, and every conjunct is TRUE of {Documents.Json(documents[d])}");
+                        break;
+                    }
+            }
+
+            if (report.NeverRead)
+            {
+                FailsOnNone($"the arm never read in conjunct {arm} under {condition}");
+                var assumed = scope.AssumedIn(neverRead);
+                for (var d = 0; d < documents.Length; d++)
+                    if (assumed.All(c => truths[c][d] == Truths.True) && IrEval.Truth(condition, documents[d], world) == Truths.True)
+                    {
+                        report.Fail("reduce", $"the arm never read in conjunct {arm} is contradictory, and {condition} is TRUE of {Documents.Json(documents[d])}, "
+                            + $"where conjuncts {string.Join(", ", assumed)} are");
+                        break;
+                    }
+            }
 
             // And a weakening beside the statement, read beside what a filter beneath applies, drawn the same way.
             var beneath = questions[random.Next(questions.Length)];

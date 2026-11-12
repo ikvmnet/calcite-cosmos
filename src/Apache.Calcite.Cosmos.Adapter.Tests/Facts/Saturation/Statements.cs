@@ -37,8 +37,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             for (var n = 1 + random.Next(4); n > 0; n--)
                 conjuncts.Add(Predicate(random, declaration, 0, atoms));
 
+            // Drawn after the rest, so what the stream drew before moves not.
+            if (random.Next(2) == 0)
+                conjuncts.Add(Besides(random));
+
             return conjuncts;
         }
+
+        /// <summary>
+        /// Draws a conjunct whose raise or window the reduce must read: a raw value in a named column against a parameter by
+        /// an ordering or <c>&lt;&gt;</c>, as the loader builds a field, a <c>VARIANT</c>'s ordering failing to compile; a type
+        /// or presence test of a <c>RETURNING</c> or of a raw value in a named column, which raise where the reading does and
+        /// everywhere; or a reading that compares doubles against a number no double holds exactly. Bare or negated.
+        /// </summary>
+        static SqlPredicate Besides(Random random)
+        {
+            var paths = new[] { Declaration.Kind, Declaration.A, Declaration.B, Declaration.N, Declaration.N, Declaration.V };
+            var path = paths[random.Next(paths.Length)];
+            string Column() => PredicateAtom.RawColumns[random.Next(PredicateAtom.RawColumns.Count)];
+            SqlValue Returning() => new SqlValue.Typed(path, new[] { "INTEGER", "BIGINT", "DOUBLE", "DECIMAL", "BOOLEAN" }[random.Next(5)]);
+
+            SqlPredicate drawn;
+            switch (random.Next(3))
+            {
+                case 0:
+                {
+                    var column = Column();
+                    var op = random.Next(5) == 0 ? PredicateAtom.NotEqual : Orderings[random.Next(Orderings.Length)];
+                    drawn = new SqlPredicate.Compare(op, new SqlValue.Raw(path) { Column = column }, new SqlValue.Parameter(random.Next(2), column));
+                    break;
+                }
+
+                case 1:
+                {
+                    SqlValue tested = random.Next(2) == 0 ? Returning() : new SqlValue.Raw(path) { Column = Column() };
+                    drawn = random.Next(3) == 0 ? new SqlPredicate.IsDefined(tested) : new SqlPredicate.TypeTest(TypeTests[random.Next(TypeTests.Length)], tested);
+                    break;
+                }
+
+                default:
+                {
+                    // A VARCHAR column is compared with a number through a cast, which the loader reads as no raw value.
+                    SqlValue reading = random.Next(3) switch
+                    {
+                        0 => new SqlValue.Typed(path, "DOUBLE"),
+                        1 => new SqlValue.Cast("DOUBLE", new SqlValue.Text(path)),
+                        _ => new SqlValue.Raw(path) { Column = random.Next(2) == 0 ? "VARIANT" : "ANY" },
+                    };
+                    var near = Near[random.Next(Near.Length)];
+                    drawn = random.Next(4) == 0
+                        ? new SqlPredicate.In(reading, ValueSet.Of(near.Value, Near[random.Next(Near.Length)].Value))
+                        : new SqlPredicate.Compare(Op(random), reading, near);
+                    break;
+                }
+            }
+
+            return random.Next(4) == 0 ? new SqlPredicate.Not(drawn) : drawn;
+        }
+
+        /// <summary>Numbers no double holds exactly: two spellings of a tenth, a ten-millionth, and a fraction whose double is whole.</summary>
+        static readonly SqlValue.Literal[] Near = [SqlValue.Of(0.1m), SqlValue.Of(0.10000000000000001m), SqlValue.Of(0.0000001m), SqlValue.Of(6.0000000000000001m)];
 
         /// <summary>
         /// Draws one predicate, sharing an atom already drawn now and then.

@@ -180,6 +180,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 case SqlPredicate.IsDefined { Value: SqlValue.Raw { Column: not null } } or SqlPredicate.TypeTest { Value: SqlValue.Raw { Column: not null } }:
                     return R;
 
+                // A test of a RETURNING asks of the value at the path, the statement raising where the RETURNING does
+                // (Calcite.TypeTestsAreTheirBodies), as RETURNING INTEGER does over true.
+                case SqlPredicate.IsDefined { Value: SqlValue.Typed returned } when typed == TypedAs.Returning && Read(returned, document, world, typed) is SqlDatum.Raised:
+                case SqlPredicate.TypeTest { Value: SqlValue.Typed tested } when typed == TypedAs.Returning && Read(tested, document, world, typed) is SqlDatum.Raised:
+                    return R;
+
                 // The service's test of the document, which the in-process body reads too: a null is defined.
                 case SqlPredicate.IsDefined d:
                     return At(document, d.Value.PathRead!.Value) is null ? F : T;
