@@ -137,8 +137,9 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 
 An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
 text an integer renders as is sent as the string or a number equal to it, beside the property's presence,
-and is rechecked — a stored `30.0` renders otherwise; one against text only a double renders as,
-`'1.0E30'`, sends only that the property is there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
+and is rechecked — the number also matches a fraction whose double is 30, which Azure was not measured
+returning as `30`; one against text only a double renders as, `'1.0E30'`, sends only that the property
+is there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
 and compares what it is sent with that, a value holding either — a literal, a parameter, an `IN`
 member, a `LIKE 'abc%'` prefix — is sent in that spelling, so `=`, `IN`, `<>` and the prefix answer
 exactly; a value holding neither is sent as it is, and Azure is sent every value as written

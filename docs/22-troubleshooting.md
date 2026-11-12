@@ -53,12 +53,13 @@ as written; if it is always a number, read it with `RETURNING` rather than a cas
 
 **A query the schema rules out still makes a request.**
 The empty answer stands in for Calcite's, so the adapter gives it only where Calcite would fail on no
-document the schema admits, and it can show so. A cast to `INTEGER`, a `RETURNING` of a type the
-declaration does not name, a comparison of two properties or a function's result keeps the request
-where the service can take the whole `WHERE`, or fails where every document would (*A query the schema
-rules out fails*, below); over a declared number, a cast to `DOUBLE` does not. Where such a part stays
-in process beside a part the schema rules out, there is no request and no failure: the part kept reads
-only the rows the part sent returns, and there are none (Chapter 14.2's last case). Chapters 14.2 and 7.
+document the schema admits, and it can show so. A cast to `INTEGER` over numbers an `INTEGER` may not
+hold, a `RETURNING` of a type the declaration does not name, a comparison of two properties or a
+function's result keeps the request where the service can take the whole `WHERE`, or fails where
+every document would (*A query the schema rules out fails*, below); over a declared number, a cast to
+`DOUBLE` does not. Where such a part stays in process beside a part the schema rules out, there is no
+request and no failure: the part kept reads only the rows the part sent returns, and there are none
+(Chapter 14.2's last case). Chapters 14.2 and 7.
 
 **A filter that pushed before reads the whole container.**
 Watch `cosmos.rendering.declines` (Chapter 20). Its `unavailable` reason on a schema's first plans means

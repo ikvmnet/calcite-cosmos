@@ -157,9 +157,9 @@ disjunction one of whose branches another conjunct asserts: `kind = 'shipment' A
 OR …)` sends the first conjunct alone. Where every conjunct goes, the statement has no `WHERE` at all.
 `required` matters: without it a document may lack the path, and a comparison over an absent path keeps
 no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
-Calcite's integer cast of the text raises on a fraction and on numbers past an `INTEGER`, which an
-`"integer"` declaration with no bounds admits, and dropping the conjunct would answer where the query
-fails. The service returns a whole number as its digits however it was written, so the cast reads a
+Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an `"integer"`
+declaration with no bounds admits, and dropping the conjunct would answer where the query fails. The
+service returns a whole number within 64 bits as its digits however it was written, so the cast reads a
 stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
 adapter does not yet drop a conjunct through that cast.
 

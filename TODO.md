@@ -2501,6 +2501,18 @@ across documents* and *A join of a container to itself* is the record.
   print otherwise (`1.50` as `1.5`). The rendering should be delegated as `GetText`'s is, to the function
   Calcite writes the fragment with, over the value built as Calcite would hold it: a number past int64 is a
   `BigInteger` to Jackson and a `Double` to `GetNatural`, so that reading needs care too.
+- **A projected `JSON_VALUE` of a whole number past int64 served as digits reads as its double** — *small, a wrong
+  answer; measured on the emulators, and older than "fail like Calcite", whose third soundness check found it.*
+  `CosmosJson.GetNatural` reads a number `TryGetInt64` refuses as a `java.lang.Double`, so `GetText` renders the
+  served digits `10000000000000000000` as `1.0E19`, and `9223372036854775808` as `9.223372036854776E18`, where Calcite
+  in process reads the same digits through Jackson as a `BigInteger` and renders them as they are (measured in process
+  on 2026-11-12; served with an exponent, `1E+19`, both read `1.0E19`). Both emulators return a whole double below 1e20
+  as its digits, so `SELECT c."id", JSON_VALUE(c."DOC", '$.v')` over a stored `1e19` answers `1.0E19` there under
+  either target's plan, as main does. Azure stores an integer written outside int64 as a double and prints it with an
+  exponent, 2^63 as `9.223372036854776E+18` (`Service.IntegerOutsideLongIsStoredAsADouble`), which both read alike;
+  that it prints no whole double in [2^63, 1e20) as digits is not pinned. The fix is `GetNatural` boxing an integer
+  outside int64 as a `java.math.BigInteger`, as Jackson does, and keeping `Double` for a fraction or an exponent, then
+  holding the `VARIANT` and `ANY` readers and the `ORDER BY` comparison to Calcite over it.
 - **An integer written in [2^63, 2^64) reads back two ways on the emulator** — *the emulator's alone,
   measured.* The emulator keeps such an integer as written and returns it so in a document read whole,
   but prints it projected as the double nearest it, to 17 significant digits: 2^63 reads
@@ -2858,7 +2870,14 @@ across documents* and *A join of a container to itself* is the record.
   failing as Calcite does — and accepting the split's answer, as the deletions and lowerings below are, and sizing it
   with them (*small*). The pull request's second soundness check found it again (an empty answer where Calcite fails,
   through the split): a lowering by the plan's shape, out of its scope with the deletions and lowerings below, and the
-  owner's to decide.
+  owner's to decide. Its third found more shapes, each answered empty with no request where Calcite fails, and none
+  worse than main, which answered each empty by reducing the whole filter: a condition sent on behalf of a `CASE` and
+  contradicted (`CASE WHEN CAST(n AS BOOLEAN) AND kind = 'C' THEN CAST(body AS INTEGER) = 1 ELSE FALSE END`, which sends
+  `kind = 'C'`, or a `CASE` whose arm raises beside `kind = 'Z'`), `SUBSTRING` with a negative length, a division by
+  zero, a `DATE` cast, `RETURNING INTEGER` arithmetic, a comparison of two properties, a parameter
+  (`CAST(… AS ANY) > ?` beside `k = 'z'`), and a cast of a string that parses as no number to `INTEGER`, `BIGINT` or
+  `DOUBLE`, or `RETURNING DECIMAL`, beside a contradicted sibling; 95 statements on each emulator under both targets
+  (`reports/fail-like-calcite/check-soundness-3`).
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates this pull request.* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
@@ -2947,9 +2966,19 @@ across documents* and *A join of a container to itself* is the record.
   loader, a row for each, would let the raise stand alone. Whether that stands beside "fail like Calcite" is the
   owner's.
 - **A conjunct through an integer parse its declared bounds satisfy is still sent** — *small, precision.* Over a
-  required integer from 0 to 100, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and `RETURNING INTEGER >= 0` raise nowhere
-  since 2026-11-12, yet both are sent where the same range through `CAST(… AS DOUBLE)` is dropped; why the deletion is
-  not reached for them is not traced.
+  required integer from 0 to 100, or listed `[1, 2, 3]`, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and
+  `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)` where the same
+  range through `CAST(… AS DOUBLE)` is dropped
+  (`CosmosDeclaredFactPlanningTests.ARangeAnIntegerParseItsBoundsSatisfyIsStillSent`). A deletion is a verdict
+  (`AlwaysTrue`), and the verdicts read the coarse reading (`PredicateAtom.Over`, from `On(state)`), which reads no
+  spelling the service returns: `NumberCast` puts the parse's raise beside every number (`_parse`), and the typed
+  reading's ordering answers every value of its type undecided beside a raise (`Typed.Order`). Only their cells
+  (`RaisesOver` and `OnCell`, through `NumberCast.ParsesWhole` and `Typed.Raises`) read the served spelling, so the
+  reduce sees that nothing raises and a deletion does not
+  (`PredicateAtomTests.AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber`: `Over` of a stored 30 is TRUE beside a raise,
+  `RaisesOver` false). The proper fix is the coarse integer readings reading the served spelling as the cells do
+  (`Renderings.ServedAsDigits`); it moves plans, so it is a change of its own, and the planning test above flips with
+  it.
 - **A weakening true of every document is pushed where the regroup reads no complement** — *nit, RU.* Partitions 464's
   `CASE` weakens to `IS_NULL(c.category) OR IS_DEFINED(c.category) OR NOT IS_DEFINED(c.category)`, true of every document,
   and S pushes it: the regroup rules read a junction's unit, its own connective and a part twice, not a part beside its
@@ -2964,8 +2993,18 @@ across documents* and *A join of a container to itself* is the record.
   the types the path may hold before they are joined, so a declared string keeps its value
   (`CosmosDeclaredFactPlanningTests.TheTextOfANumberIsTheServicesSpelling`; population D reads each document as each
   target returns it). Both return a whole number within a long as its digits however it was written
-  (`Service.IntegralNumbersReadBackAsHeld`), which every reading reads since 2026-11-12; only how Azure spells a
-  fraction whose double is whole was not measured, so that one is read both ways.
+  (`Service.IntegralNumbersReadBackAsHeld`), which the cells read since 2026-11-12, and the coarse readings the
+  verdicts read do not yet (*A conjunct through an integer parse its declared bounds satisfy is still sent*, *The text
+  reading reads a number by its double*); only how Azure spells a fraction whose double is whole was not measured, so
+  that one is read both ways.
+- **The text reading reads a number by its double, not by the spelling the service returns** — *small, precision.*
+  `Renderings.MayRenderAs` admits every number text whose double is the number's, so `'30.0'` admits a stored 30, which
+  both targets return as `'30'`: `= '30'` over a stored 30 answers TRUE or FALSE where it is TRUE
+  (`PredicateAtomTests.ANumberWhoseValueTheTextSpellsMayRenderOtherwise`), and `<> '30'` keeps the number 30
+  (`ADisequalityExcludesOnlyTheStringItsTextSpells`). Sound, and loose. Reading a whole number within a long as its
+  digits (`Renderings.ServedAsDigits`) in `MayRenderAs`, `MayRenderWithin`, `Reading.RenderedAs` and the text reader's
+  cells would narrow them; a fraction whose double is whole stays read both ways until Azure's spelling of one is
+  measured.
 - ~~**An integer cast of the text reads a cell of fractions as raising**~~ — *done, 2026-11-12; it was a cell answer
   false of its values.* A fraction whose double is whole within the type is returned as its digits, which the parse
   reads, so `CAST(JSON_VALUE(…) AS INTEGER) = 6` is TRUE of a stored `6.0000000000000001`, and under `BIGINT` an integer

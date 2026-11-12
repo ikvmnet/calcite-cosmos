@@ -68,8 +68,8 @@ concrete type is learned per row. In practice:
   schema declares the key an integer, through `RETURNING INTEGER`, for example
   `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or through `RETURNING BIGINT` for keys
   beyond an `INTEGER`'s range. Calcite fails on `RETURNING BIGINT` over a stored `5`, and on
-  `RETURNING DOUBLE` over any whole number, so through either of those the partition is pinned only by
-  answering where Calcite fails (Chapter 23). Without that declaration Calcite compares such a number
+  `RETURNING DOUBLE` over any whole number within 64 bits, so through either of those the partition is
+  pinned only by answering where Calcite fails (Chapter 23). Without that declaration Calcite compares such a number
   by its double, so `= 5` also keeps a stored number written with more digits than a double holds, and
   the adapter does not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
@@ -135,9 +135,11 @@ that is not known until the row is read, and is declined.
 
 `JSON_VALUE` returns text — `VARCHAR` — whatever the property holds. The number `30` comes back as
 `'30'`, `true` as `'true'`, `1e30` as `'1.0E30'` (Calcite renders numbers the Java way). The number is
-the one Cosmos holds: any number but a whole one a 64-bit integer holds is kept as a double, and a
-double whole within that range comes back as its digits, so a document written with `6.0000000000000001` reads
-`'6'`, and one written with `0.10000000000000001` reads `'0.1'`. An object, an array, a JSON `null`
+the one Cosmos holds: any number but a whole one a 64-bit integer holds is kept as a double, so a
+document written with `0.10000000000000001` reads `'0.1'`. A whole number within 64 bits comes back as
+its digits however it was written, `30.0` as `'30'`. A double that is whole within that range, as
+`6.0000000000000001`'s is, comes back as its digits on the emulator, reading `'6'`; how Azure returns
+one was not measured, and the adapter allows for either spelling. An object, an array, a JSON `null`
 and a missing property all come back as SQL `NULL`.
 
 That has a consequence worth knowing for comparisons. In SQL, `JSON_VALUE(c."DOC", '$.code') = '30'`
@@ -188,10 +190,10 @@ a missing property give `NULL` under every one. So:
   property declared a string. Where the property is required, the statement fails as in Calcite; where
   it may be missing, the statement is sent and answers what the service finds (Chapter 14.2). Over a
   property declared `"integer"`, `RETURNING DOUBLE` is sent whether it is required or not, and however
-  the schema bounds or lists the integers: Calcite fails on every whole number the service returns,
-  but the adapter reads `RETURNING DOUBLE` as it reads a column typed `DOUBLE`, which reads every
-  number, so `= 1.5` finds nothing, and `= 2` finds the documents holding 2, where Calcite fails
-  (Chapter 23). So is `RETURNING BIGINT` over integers within an `INTEGER`'s range. Over a declared
+  the schema bounds or lists the integers: Calcite fails on every whole number within 64 bits, which
+  the service returns as its digits, but the adapter reads `RETURNING DOUBLE` as it reads a column
+  typed `DOUBLE`, which reads every number, so `= 1.5` finds nothing, and `= 2` finds the documents
+  holding 2, where Calcite fails (Chapter 23). So is `RETURNING BIGINT` over integers within an `INTEGER`'s range. Over a declared
   fraction whose double is whole, `6.0000000000000001`, which the service may return as `6`,
   `RETURNING DOUBLE` is not answered with no rows either.
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a

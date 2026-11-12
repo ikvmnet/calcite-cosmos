@@ -1000,10 +1000,10 @@ Calcite fails on no row of (*The reduce asks every row false*).
 An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
 INTEGER)` raises on a stored `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have truncated or
 held it at the limit. The service returns a whole number within a long as its digits however it was written, `30.0` as
-`30` (`Service.IntegralNumbersReadBackAsHeld`), so the parse raises on no integer its type holds
+`30` (`Service.IntegralNumbersReadBackAsHeld`), so the parse raises on no integer its type holds, as its cells read
 (`NumberCast.ParsesWhole`); a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
-every rendering, and of a cast of the raw value, and nothing drops it through this cast yet (`TODO.md`). The first table
-said otherwise, and the population-D checker found it.
+every rendering, and nothing drops it through this cast yet, since a deletion reads the coarse answer, which puts the
+parse's raise beside every number (`TODO.md`). The first table said otherwise, and the population-D checker found it.
 
 **A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
 a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
@@ -5378,8 +5378,14 @@ pushdown changes is the document Calcite would have thrown on, which the service
 the caller's declaration held rather than checked, the same asymmetry the reading side already accepts.
 A filter is not reduced on that asymmetry. Where the declaration types the property otherwise, the comparison keeps
 no row Calcite answers, but Calcite fails on the rest, so the statement is planned, not answered empty: over a
-required property it stays in Calcite and fails there, and over an optional one it is sent and the service finds
-nothing (*The reduce asks every row false*).
+required property every cell of which raises, as a declared string's does under `RETURNING INTEGER` or `DOUBLE`, it
+stays in Calcite and fails there, and over an optional one it is sent and the service finds nothing (*The reduce asks
+every row false*). Over a declared integer, `RETURNING DOUBLE`, and `RETURNING BIGINT` within an `INTEGER`, are sent
+though Calcite fails on every document: the loader reads `RETURNING` as a column of its type (`typed`, D12), which
+reads those numbers, so the cells answer beside the raise and the rendering graph lifts the agreement
+(`CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent`,
+`AReturningBigintOverIntegersWithinAnIntegerIsSent`; `TODO.md`, *The rendering graph lifts an agreement where a raise
+sits beside a truth value*).
 
 **`DECIMAL` converts, and this paragraph used to say it did not.** It was measured only over numbers,
 where `DECIMAL(3, 1)` returning `30.75` unrounded looked like the same assertion. It is a parse: a
@@ -7334,10 +7340,17 @@ written: `30`, `30.0`, `3e1` and `300e-1` all come back `30` on both targets, an
 emulator holds as its double, as that double's digits (`Service.IntegralNumbersReadBackAsHeld`). Calcite renders what
 it returns, so the text accessor's preimage of `'6'` is the string and every number whose double is 6,
 `6.0000000000000001` among them, and of `'0.1'` every number whose double is 0.1 (`Renderings.MayRenderAs`,
-`Reading.RenderedAs`), and the text reader's cells cut at a number's double (`ReaderEdgesTable`). The typed readings
-read the same returned text: `RETURNING INTEGER`, `BIGINT` and the integer parses read an integer within their type
-however it was written and raise on no spelling of it (`Renderings.ServedAsDigits`), and `RETURNING DOUBLE` raises on
-every number that may come back as digits (`Renderings.MayServeAsDigits`). Only how Azure spells a fraction whose double
+`Reading.RenderedAs`), and the text reader's cells cut at a number's double (`ReaderEdgesTable`). That preimage reads a
+number by its double and by no spelling, so it is loose, `'30.0'` admitting a stored 30, which comes back `'30'`
+(`TODO.md`, *The text reading reads a number by its double*). The typed readings' cells read the returned text: under
+`RETURNING INTEGER`, `BIGINT` and the integer parses a cell reads an integer within the type however it was written and
+raises on no spelling of it (`Renderings.ServedAsDigits`, `NumberCast.ParsesWhole`), and under `RETURNING DOUBLE` a cell
+raises on every number that may come back as digits (`Renderings.MayServeAsDigits`). The coarse answers the verdicts
+read (`Over`, from `On`) read no spelling yet: the integer parses put their raise beside every number, and the typed
+reading its raise of another class's spelling, so the reduce, which reads the cells (`RaisesOver`), sees that nothing
+raises where a deletion, which reads a verdict, does not, and a range through an integer parse that the declared bounds
+satisfy is still sent (`TODO.md`, *A conjunct through an integer parse its declared bounds satisfy is still sent*;
+`PredicateAtomTests.AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber`). Only how Azure spells a fraction whose double
 is whole within a long was not measured, so that one is read both ways, as its digits and with a point, and population
 D reads each document as each target returns it (`Documents.Returned`). A preimage's
 cases are met with the types the path may hold before they are joined (`PredicateAtom.Kept(truth, readings, columns,
