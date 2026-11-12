@@ -199,8 +199,10 @@ not ruled out.
 
 Some of what a `WHERE` can hold the adapter cannot show never fails: a comparison of two properties, a
 function's result, a `LIKE` over a property read as its stored value, and a cast it holds no
-measurement of. A `WHERE` holding one is sent even where it cannot fail:
+measurement of. A `WHERE` the service can take whole is sent even where it cannot fail:
 `JSON_VALUE(c."DOC", '$.status') = 'deleted' AND c."id" LIKE 'a%'` is one request that finds nothing.
+Where such a part stays in process instead, as a comparison of two properties, `UPPER` and a cast to
+`INTEGER` mostly do, the case at the end of this section applies: no rows, and no request.
 
 A `CASE` condition in a projection follows the same rule. One the schema rules out is answered by the
 `CASE`'s other arms, without evaluating it, only where nothing in it can fail: through a cast to
@@ -218,11 +220,13 @@ Calcite's answer, so the adapter gives it only where Calcite would answer no row
   Calcite and the statement fails as it does there. Where a document may lack the property, the filter
   may be sent, and the service finds nothing.
 
-One case is not covered yet. Where part of a `WHERE` cannot be sent, the adapter sends the rest and
-keeps that part in process (Chapter 8.1). When the part it sends is one the schema rules out on its
-own, that part is still the empty result, so the part kept in process reads no row and cannot fail.
-Beside the `status` above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body`
-declared a required string answers no rows and sends nothing, where Calcite fails (Chapter 23).
+One case answers where Calcite fails. Where part of a `WHERE` cannot be sent, the adapter sends the
+rest and keeps that part in process (Chapter 8.1), and the part kept reads only the rows the part sent
+returns. When the part sent is one the schema rules out on its own, no row reaches the part kept, so it
+cannot fail; and since the service would find nothing, no request is made either. Beside the `status`
+above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body` declared a required string
+answers no rows, where Calcite fails (Chapter 23). Failing as Calcite does here would mean reading the
+whole container in process.
 
 **What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
 and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does

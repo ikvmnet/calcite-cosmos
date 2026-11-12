@@ -65,9 +65,10 @@ concrete type is learned per row. In practice:
   `WHERE c."$.category" = 'bikes'` runs against one partition, and with `c."id" = …` beside it becomes
   a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
   `VARIANT` with no bare number or boolean. A number pins the partition only where the container's
-  schema declares the key an integer, through `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`
-  (or `BIGINT`): Calcite compares such a number by its double, so `= 5` also keeps a stored number
-  written with more digits than a double holds, and the adapter does not yet route on that.
+  schema declares the key an integer, through a `RETURNING` of a number, for example
+  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5` (or `BIGINT`, or `DOUBLE`). Without that
+  declaration Calcite compares such a number by its double, so `= 5` also keeps a stored number written
+  with more digits than a double holds, and the adapter does not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
@@ -130,8 +131,11 @@ that is not known until the row is read, and is declined.
 ### What `JSON_VALUE` means
 
 `JSON_VALUE` returns text — `VARCHAR` — whatever the property holds. The number `30` comes back as
-`'30'`, `true` as `'true'`, `1e30` as `'1.0E30'` (Calcite renders numbers the Java way). An object, an
-array, a JSON `null` and a missing property all come back as SQL `NULL`.
+`'30'`, `true` as `'true'`, `1e30` as `'1.0E30'` (Calcite renders numbers the Java way). The number is
+the one Cosmos holds: any number but a whole one a 64-bit integer holds is kept as a double, and a
+double whole within that range comes back as its digits, so a document written with `6.0000000000000001` reads
+`'6'`, and one written with `0.10000000000000001` reads `'0.1'`. An object, an array, a JSON `null`
+and a missing property all come back as SQL `NULL`.
 
 That has a consequence worth knowing for comparisons. In SQL, `JSON_VALUE(c."DOC", '$.code') = '30'`
 is true of a document storing the *string* `"30"` **and** of one storing the *number* `30`, because
