@@ -755,6 +755,66 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(asserted, Strings).Should().Be(asserted.ToString(), "but RETURNING DOUBLE fails on the string body may hold, as Calcite does");
         }
 
+        /// <summary>Kinds each document declares, and a string <c>body</c>; <c>ref</c>, the partition key, is declared nothing.</summary>
+        const string Kinds = """{ "required": ["kind", "body"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" } } }""";
+
+        RexNode Eq(RexNode left, RexNode right) => _rex.makeCall(SqlStdOperatorTable.EQUALS, left, right);
+
+        /// <summary>
+        /// An arm whose condition contradicts what the conjunct's siblings prove is never read, and is written
+        /// <c>FALSE</c> where nothing in the WHERE raises on a document the declaration admits: <c>kind</c> and
+        /// <c>body</c> read as stored strings raise nowhere. Beside <c>ref = 'x'</c>, a raw value in a <c>VARCHAR</c> over a
+        /// path that may hold a number, the WHERE may raise, and the <c>FALSE</c> would stop Calcite reading it; so the arm
+        /// is lowered as any other, and taken apart, since it raises nowhere itself.
+        /// </summary>
+        [Fact]
+        public void AnArmNeverReadIsWrittenFalseOnlyWhereTheWhereRaisesNowhere()
+        {
+            var either = _rex.makeCall(SqlStdOperatorTable.OR,
+                Case(KindIs("B"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()),
+                Eq(Ref(2, SqlTypeName.VARCHAR), Str("y")));
+
+            Rewrite(And(KindIs("A"), either), Kinds).Should().Be("AND(=($1, 'A'), =($2, 'y'))",
+                "kind cannot be both A and B, and nothing in the WHERE raises, so the arm is FALSE");
+
+            var keyed = And(KindIs("A"), either, Eq(Ref(0, SqlTypeName.VARCHAR), Str("x")));
+            Statement(keyed, Kinds).IsContradictory.Should().BeFalse();
+            Rewrite(keyed, Kinds).Should().Be("AND(=($1, 'A'), OR(AND(=($1, 'B'), =($2, 'z')), =($2, 'y')), =($0, 'x'))",
+                "ref may hold a number, which its VARCHAR field raises on, so the arm is taken apart as any other");
+        }
+
+        /// <summary>
+        /// A projected <c>CASE</c> whose condition contradicts the declaration has that condition folded to <c>FALSE</c>
+        /// where nothing in it raises on a document the declaration admits (<see cref="CosmosFactRewriter.RewriteConditions"/>
+        /// asks as the WHERE's reduce does): the cast of the text to <c>DOUBLE</c> over an integer of at most 100 is never
+        /// more than 500. Through <c>INTEGER</c> the condition keeps no row either, but the cast raises on <c>30.0</c>, which
+        /// the declaration admits, so it stays and Calcite fails as it would.
+        /// </summary>
+        [Fact]
+        public void AProjectedConditionTheDeclarationContradictsIsFalseOnlyWhereNothingInItRaises()
+        {
+            const string Bounded = """{ "properties": { "body": { "type": "integer", "maximum": 100 } } }""";
+
+            RexNode Sized(SqlTypeName type) => Case(
+                _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
+                    _rex.makeCast(_types.createTypeWithNullability(_types.createSqlType(type), true), _rex.makeCall(
+                        _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true),
+                        SqlStdOperatorTable.JSON_VALUE,
+                        new java.util.ArrayList { Ref(3, SqlTypeName.VARCHAR), Str("$.body") })),
+                    _rex.makeExactLiteral(new java.math.BigDecimal(500))),
+                Str("big"),
+                Str("small"));
+
+            string Conditions(RexNode expression) =>
+                CosmosFactRewriter.RewriteConditions(expression, _fields, Container(Bounded), "c", _rex).ToString();
+
+            Conditions(Sized(SqlTypeName.DOUBLE)).Should().Be("CASE(false, 'big', 'small')");
+
+            var integer = Sized(SqlTypeName.INTEGER);
+            Statement((RexNode)((RexCall)integer).getOperands().get(0), Bounded).Kept.IsContradictory.Should().BeTrue("no integer of at most 100 is more than 500");
+            Conditions(integer).Should().Be(integer.ToString(), "the cast to INTEGER raises on 30.0");
+        }
+
 
     }
 

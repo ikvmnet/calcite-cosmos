@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
@@ -378,6 +379,76 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var raising = Declared(Theory(), Eq(Text(Kind), "a"), @case, Opaque(9));
             raising.IsContradictory(OracleLicence.Arm(1, conditions)).Should().BeTrue("kind cannot be both a and b");
             raising.IsContradictory(OracleLicence.NeverRead(1, conditions)).Should().BeFalse("no rule says an opaque conjunct never raises");
+        }
+
+        /// <summary>
+        /// A container's declaration beside the service's facts, which make <c>id</c> a present string, as a planner reads one.
+        /// </summary>
+        static JsonFactTheory Container(string schema) =>
+            Theory([.. CosmosServiceFacts.Rules, .. JsonSchemaFacts.ReadFrom(JsonNode.Parse(schema)!)]);
+
+        /// <summary>
+        /// The reduce (<see cref="OracleLicence.Reduce"/>) asks every row FALSE: its node is contradictory only where the
+        /// WHERE keeps no row the declaration admits and raises on none. A text contradiction is reduced, alone or beside an
+        /// equality that raises nowhere: <c>c."id" = 'x'</c>, a raw value in a <c>VARCHAR</c> over the string the service
+        /// makes it; an equality over the <c>VARIANT</c> column a partition key is promoted to, whatever the declaration says
+        /// of the key; the same key read through a field typed <c>VARCHAR</c>, where the declaration makes it a string; and
+        /// <c>c."id" = ?</c> and the partition key's <c>= ?</c>. It is not reduced where a conjunct may raise, though what
+        /// every conjunct keeps still contradicts: <c>RETURNING INTEGER</c> over a declared string, the first design's
+        /// counterexample (the cast of the text to <c>DOUBLE</c> over a path that may hold a string), the partition key's
+        /// <c>&lt; ?</c>, a <c>VARIANT</c> ordering Calcite does not compile, and an <c>ANY</c> field's <c>&gt; ?</c> over a
+        /// path declared an integer or a string, which raises across types.
+        /// </summary>
+        [Fact]
+        public void TheReduceAsksEveryRowFalse()
+        {
+            var (id, body, category) = (P("id"), P("body"), P("category"));
+            const string Declaration = """
+                { "type": "object", "required": ["kind", "body"], "properties": {
+                    "kind": { "enum": ["a"] }, "body": { "type": "string" }, "n": { "type": ["integer", "string"] } } }
+                """;
+            var theory = Container(Declaration);
+            var contradiction = Eq(Text(Kind), "z");
+            var variant = new SqlValue.Raw(category) { Column = "VARIANT" };
+
+            void Reduced(JsonFactTheory declared, string because, params SqlPredicate[] conjuncts)
+            {
+                var scope = Declared(declared, conjuncts);
+                scope.IsContradictory(OracleLicence.Kept).Should().BeTrue("every conjunct together keeps no row, {0}", because);
+                scope.IsContradictory(OracleLicence.Reduce).Should().BeTrue("nothing raises, {0}", because);
+            }
+
+            void NotReduced(JsonFactTheory declared, string because, params SqlPredicate[] conjuncts)
+            {
+                var scope = Declared(declared, conjuncts);
+                scope.IsContradictory(OracleLicence.Kept).Should().BeTrue("every conjunct together keeps no row, {0}", because);
+                scope.IsContradictory(OracleLicence.Reduce).Should().BeFalse("a conjunct may raise, {0}", because);
+            }
+
+            Reduced(theory, "for a text comparison", contradiction);
+            Reduced(theory, "beside c.\"id\" = 'x'", contradiction, Eq(new SqlValue.Raw(id) { Column = "VARCHAR" }, "x"));
+
+            var keys = new[]
+            {
+                ("nothing", "{}"), ("a string", """{ "type": "string" }"""), ("an integer", """{ "type": "integer" }"""),
+                ("a structure", """{ "type": ["object", "array"] }"""),
+            };
+            foreach (var (name, key) in keys)
+            {
+                var declared = Container(Declaration.Replace("\"n\":", $"\"category\": {key}, \"n\":"));
+                Reduced(declared, $"beside the partition key's VARIANT equality, the key declared {name}", contradiction, Eq(variant, "x"));
+                Reduced(declared, $"beside the partition key's = ?, the key declared {name}", contradiction, Cmp(variant, "=", Param(0, "VARIANT")));
+            }
+
+            var aString = Container(Declaration.Replace("\"n\":", "\"category\": { \"type\": \"string\" }, \"n\":"));
+            Reduced(aString, "beside the key read through a field typed VARCHAR, the key declared a string", contradiction,
+                Eq(new SqlValue.Raw(category) { Column = "VARCHAR" }, "x"));
+            Reduced(theory, "beside c.\"id\" = ?", contradiction, Cmp(new SqlValue.Raw(id) { Column = "VARCHAR" }, "=", Param(0, "VARCHAR")));
+
+            NotReduced(theory, "for RETURNING INTEGER over a declared string", Eq(Typed(body, "INTEGER"), 2m));
+            NotReduced(theory, "for the first design's counterexample", Cmp(Cast("DOUBLE", Text(N)), ">", Lit(0m)), contradiction);
+            NotReduced(theory, "beside the partition key's < ?", contradiction, Cmp(variant, "<", Param(0, "VARIANT")));
+            NotReduced(theory, "beside an ANY field's > ? over an integer or a string", contradiction, Cmp(new SqlValue.Raw(N) { Column = "ANY" }, ">", Param(0, "ANY")));
         }
 
         [Fact]
