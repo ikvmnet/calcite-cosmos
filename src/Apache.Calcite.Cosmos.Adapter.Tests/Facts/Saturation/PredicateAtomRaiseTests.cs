@@ -84,8 +84,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             .DistinctBy(v => v is null ? "absent" : v.GetType().Name + Documents.Json(v))
             .ToArray();
 
-        /// <summary>The worlds asked: what a coin may say where nothing was measured, each as population D draws one.</summary>
-        static readonly int[] Worlds = [.. Enumerable.Range(0, 8)];
+        /// <summary>
+        /// The worlds asked: every world population D draws in a run of the suite, each trial's seeded as its own, so that
+        /// what a coin or a parameter may say where nothing was measured is asked as the population asks it.
+        /// </summary>
+        static readonly int[] Worlds = [.. Enumerable.Range(0, PredicateSoundnessTests.Trials).Select(t => PredicateSoundnessTests.Seed + t)];
 
         /// <summary>
         /// Wherever the evaluator raises on a value of a class, through any reader the atom's reading stands for and in any
@@ -124,7 +127,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             readers.Should().BeEquivalentTo(Readers, "every reading is asked");
         }
 
-        /// <summary>The first value of a class, reader and world on which the evaluator raises, as it is read; <c>null</c> for none.</summary>
+        /// <summary>
+        /// The first value of a class, reader and world on which the evaluator raises, as it is read; <c>null</c> for none.
+        /// An answer that read no parameter and tossed no coin is the same in every world, and is asked in the first alone.
+        /// </summary>
         static string? FirstRaise(PredicateAtom atom, SqlPredicate predicate, PathValues values, ref int asked)
         {
             foreach (var value in Pool.Where(v => PopulationD.Admits(values, v)))
@@ -132,9 +138,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     foreach (var seed in Worlds)
                     {
                         asked++;
-                        var document = Document(value);
-                        if (IrEval.Truth(predicate, document, new World(seed), typed, raw) == Truths.Raises || IrEval.Raises(predicate, document, new World(seed), typed, raw))
+                        var (document, world) = (Document(value), new World(seed));
+                        if (IrEval.Truth(predicate, document, world, typed, raw) == Truths.Raises || IrEval.Raises(predicate, document, world, typed, raw))
                             return $"{PathCellTests.Show(value)} read {typed} {raw} in world {seed}";
+
+                        if (atom.Parameter == false && world.Tossed == 0)
+                            break;
                     }
 
             return null;
