@@ -3627,9 +3627,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
         /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
-        /// required, the facts graph reads the conjunction as keeping no row and the filter is reduced to the empty
-        /// relation, F's reading of a raise, which is <c>TODO.md</c>'s (<i>A filter that raises is reduced as one that keeps
-        /// nothing</i>), not this test's.
+        /// required, the conjunction keeps no row, but the test raises on every document, so the filter is not reduced to
+        /// the empty relation and fails as Calcite's does
+        /// (<c>CosmosDeclaredFactPlanningTests.APresenceTestOverATextCastToVarcharFailsAsCalciteDoes</c>).
         /// </para>
         /// </remarks>
         [Theory]

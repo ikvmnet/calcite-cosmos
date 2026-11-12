@@ -80,9 +80,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// Over a declared boolean every shape is Proven under <c>Emulator</c>, each with a form of S's own over the path; under
-        /// <c>Production</c> so is every one but a truth test S reads as a <c>CASE</c> whose ternary row Azure has not measured
-        /// (S1, h14b's run 1): those it may leave Unproven until then, and refutes none.
+        /// Over a declared boolean every shape is Proven under both sets, each with a form of S's own over the path: a truth
+        /// test S reads as a <c>CASE</c> too, since Azure has measured the ternary (<c>Service.TernaryTakesThenOnTrueAlone</c>,
+        /// S1 at h14b's run 1), so <c>Production</c> licenses it as <c>Emulator</c> does.
         /// </summary>
         [Fact]
         public void EveryShapeOverADeclaredBooleanIsProven()
@@ -94,13 +94,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                         var read = Loading.Read(shape);
                         read.Should().NotBeOfType<SqlPredicate.Opaque>();
                         var answer = Generate(read, set, values);
-                        if (set == RenderingSet.Production && read.Subterms.Any(t => t is SqlPredicate.Case))
-                        {
-                            answer.Kind.Should().BeOneOf([RenderingVerdictKind.Proven, RenderingVerdictKind.Unproven], $"{shape} may wait on S1 under {set}");
-                            TestContext.Current.TestOutputHelper?.WriteLine($"{shape} under {set} over {values}: {answer.Kind}");
-                            continue;
-                        }
-
                         answer.Kind.Should().Be(RenderingVerdictKind.Proven, $"{shape} under {set} over {values}: {answer.Reason}");
                         answer.Best!.Paths.Should().BeEquivalentTo([SqlValue.Spell(FlagPath)]);
                     }

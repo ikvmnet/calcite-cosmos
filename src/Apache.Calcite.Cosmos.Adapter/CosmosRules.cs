@@ -119,8 +119,8 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             yield return CosmosFilterRule.Create(convention);
 
-            // A filter no document satisfies is the empty relation, and one every document satisfies is its
-            // input: what the rewrite reaches, made a plan that sends nothing, or no WHERE.
+            // A filter no document satisfies and none fails is the empty relation, and one every document satisfies
+            // is its input: what the rewrite reaches, made a plan that sends nothing, or no WHERE.
             yield return CosmosFilterReduceRule.Create(convention);
 
             // Partial pushdown: where only some of a predicate renders, the service still evaluates
