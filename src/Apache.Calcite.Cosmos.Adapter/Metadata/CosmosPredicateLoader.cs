@@ -256,13 +256,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Reads a one-place test's operand as it stands: a cast of the text to <c>VARCHAR</c>, which reads the text it
-            /// renders, written apart as a form of its own (<see cref="Cosmos.Facts.Saturation.PredicateAtom.TextCastForm"/>), which the
-            /// in-process body cannot take apart, as a field, an item and a cast to <c>ANY</c> are (h15b). What the test reads over
-            /// it is its row's (<c>testreads</c>); a comparison reads the cast as the text.
+            /// renders, and a cast to <c>ANY</c>, each written apart as a form of its own
+            /// (<see cref="Cosmos.Facts.Saturation.PredicateAtom.TextCastForm"/>, <c>AnyCastForm</c>), which the in-process
+            /// body cannot take apart, as a field and an item are (h15b). What the test reads over it is its row's
+            /// (<c>testreads</c>); a comparison reads the first as the text, and the second as the cast it is.
             /// </summary>
-            SqlValue? Tested(RexNode operand) => Value(operand) is SqlValue.Text { Form: null } text
-                && (ReferenceEquals(CosmosRexShapes.StripRedundantTextCast(operand), operand) == false || CosmosRexShapes.TryTextCastValue(operand) is not null)
-                ? text with { Form = Cosmos.Facts.Saturation.PredicateAtom.TextCastForm } : Value(operand);
+            SqlValue? Tested(RexNode operand) => Value(operand) switch
+            {
+                SqlValue.Text { Form: null } text when ReferenceEquals(CosmosRexShapes.StripRedundantTextCast(operand), operand) == false
+                    || CosmosRexShapes.TryTextCastValue(operand) is not null => text with { Form = Cosmos.Facts.Saturation.PredicateAtom.TextCastForm },
+                SqlValue.Cast { Target: "ANY", Value: { PathRead: JsonDocumentPath raw } } => new SqlValue.Raw(raw) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm },
+                var value => value,
+            };
 
             /// <summary>
             /// Reads a truth reading written as a whole condition as its equality with <c>TRUE</c>, which Calcite defines it
@@ -532,8 +537,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <remarks>
             /// Each largest node read as a reading of a path, inside an opaque term too, and beneath a cast the reading it
             /// converts as well, a cast's reader being its own. The raw value is a raw reading itself, and a rendering or a
-            /// typed <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field typed
-            /// otherwise has none to re-type, the translator writing a cast to <c>ANY</c> only over a rendering. The first
+            /// typed <c>JSON_VALUE</c> re-typed <c>ANY</c> (<see cref="RenderingRexBuilder.RawValue"/>); a field has none to
+            /// re-type, so one read as text is named by the accessor over the document column below. The first
             /// raw value, and the first node of each reader, is kept, each being the same value. Beside them, each path's
             /// accessor over the input's document column re-typed <c>ANY</c>, which a test is written over where the conjunct
             /// reads the path through a field, an item or a cast alone (h15b): over the column's reference as the conjunct
@@ -594,7 +599,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return rexBuilder.makeCall(rexBuilder.getTypeFactory().createSqlType(SqlTypeName.ANY), org.apache.calcite.sql.fun.SqlStdOperatorTable.JSON_VALUE, operands);
                 }
 
-                return readers.ToDictionary(r => r.Key, r => new RenderingRexBuilder.Accessor(raws.GetValueOrDefault(r.Key), r.Value) { Retyped = Retyped(r.Key) }, StringComparer.Ordinal);
+                // A path read through a field as text has no raw value of its own (RenderingRexBuilder.RawValue): its accessor
+                // over the document column is.
+                return readers.ToDictionary(r => r.Key, r => new RenderingRexBuilder.Accessor(raws.GetValueOrDefault(r.Key)
+                    ?? (r.Value.ContainsKey(Cosmos.Facts.Saturation.PredicateAtom.TextReader) ? Retyped(r.Key) : null), r.Value) { Retyped = Retyped(r.Key) }, StringComparer.Ordinal);
             }
 
             /// <summary>
@@ -775,9 +783,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
 
             /// <summary>
-            /// Reads a cast: the coercion Calcite puts around a literal, the split rule's <c>ANY</c> naming the raw value
-            /// under a rendering, the cast to text over a raw value, and any other conversion of the text or a raw value as
-            /// the conversion it is, by its target type.
+            /// Reads a cast: the coercion Calcite puts around a literal, the cast to text over a raw value, and any other
+            /// conversion of the text or a raw value as the conversion it is, by its target type, a cast to <c>ANY</c> among
+            /// them: Calcite evaluates one of the text as the text it holds, so <c>'6'</c> is equal to a stored <c>6</c>
+            /// through it, which the raw value is not, and no row measured it.
             /// </summary>
             /// <remarks>
             /// Which conversion is a reading is the rows' (<c>measuredcast</c>): the shared cast rule reads one a row measured,
@@ -805,12 +814,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                 if (operand is RexLiteral)
                     return null;
-
-                // The split rule's marker of the raw value, written apart as a cast to ANY, which a test's body cannot take
-                // apart (h15b); of an element, the element reading.
-                if (target == SqlTypeName.ANY)
-                    return Value(operand) is { PathRead: JsonDocumentPath raw } inner && inner is SqlValue.Text or SqlValue.Raw
-                        ? new SqlValue.Raw(raw) { Form = Cosmos.Facts.Saturation.PredicateAtom.AnyCastForm } : null;
 
                 if (CosmosRexShapes.TryTextCastValue(call) is RexNode rendered)
                     return Value(rendered) switch

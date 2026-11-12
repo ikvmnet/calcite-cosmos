@@ -94,6 +94,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         RexNode Any(RexNode node) => _rex.makeCast(_types.createSqlType(SqlTypeName.ANY), node);
 
+        /// <summary>The raw value at a path as S's Rex builder names it: the accessor over the document, field 2, re-typed <c>ANY</c>.</summary>
+        RexNode RawOf(string path) => _rex.makeCall(_types.createSqlType(SqlTypeName.ANY), SqlStdOperatorTable.JSON_VALUE, java.util.Arrays.asList(Ref(2, SqlTypeName.VARCHAR), Str(path)));
+
         RexNode Ref(int index, SqlTypeName type) => _rex.makeInputRef(_types.createSqlType(type), index);
 
         RexNode Str(string value) => _rex.makeLiteral(value, _types.createSqlType(SqlTypeName.VARCHAR, System.Math.Max(1, value.Length)));
@@ -368,7 +371,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// <c>NOT IS_PRIMITIVE</c> adds.
         /// </para>
         /// <para>
-        /// The same comparison against the raw value, the cast to <c>ANY</c> naming it on purpose,
+        /// The same comparison against the raw value, the accessor re-typed <c>ANY</c> naming it,
         /// takes the path's null set alone: the raw object is a value the service compares, and it
         /// is the value the comparison is about.
         /// </para>
@@ -381,7 +384,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, inner))
                 .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name) OR NOT IS_PRIMITIVE(c.name)))");
 
-            var raw = Call(SqlStdOperatorTable.EQUALS, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes"));
+            var raw = Call(SqlStdOperatorTable.EQUALS, RawOf("$.name"), Str("bikes"));
 
             TranslatorOverARendering().Translate(Call(SqlStdOperatorTable.NOT, raw))
                 .Should().Be("(NOT ((c.name = @p0) OR IS_NULL(c.name) OR NOT IS_DEFINED(c.name)))");
@@ -499,7 +502,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.EQUALS, fold, Str("TRUE"))).Should().BeFalse();
             CanTranslate(TranslatorOverARendering(), Call(SqlStdOperatorTable.CHAR_LENGTH, Ref(0, SqlTypeName.VARCHAR))).Should().BeFalse();
 
-            CanTranslate(DeclaredOverARendering(StringsOf(JsonCharacterBand.None)), Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))))
+            CanTranslate(DeclaredOverARendering(StringsOf(JsonCharacterBand.None)), Call(SqlStdOperatorTable.UPPER, RawOf("$.name")))
                 .Should().BeFalse("no row of UPPER was read through the raw value");
 
             Declared(StringsOf(JsonCharacterBand.None)).Translate(fold).Should().Be("UPPER(c.name)", "and a field read as its own type is not a rendering");
@@ -759,24 +762,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         }
 
         /// <remarks>
-        /// S's Rex builder names the raw value at the path by casting the field to <c>ANY</c> — a cast
-        /// rather than a re-typed reference, because a host's transpose through the projection
-        /// replaces the reference and keeps a cast — and the comparison over that is the raw one. A
+        /// A query's cast of a rendered field to <c>ANY</c> holds the text Calcite renders, which a
+        /// string compares with as text: <c>'6'</c> is equal to a stored <c>6</c> through it, where
+        /// <c>c.name = "6"</c> is not. It converts, so the translator declines it, a test of it among
+        /// them, whose body raises in process. S's Rex builder names the raw value by the accessor
+        /// re-typed <c>ANY</c>, which no query writes, and the comparison over that is the raw one. A
         /// case fold of it is not: no row of the fold was read through the raw value, so S has no image
         /// of it and the match stays in process.
         /// </remarks>
         [Fact]
-        public void ACastOfARenderedFieldToAnyIsTheRawValue()
+        public void ACastOfARenderedFieldToAnyIsDeclinedAndTheRetypedAccessorIsTheRawValue()
         {
             var t = DeclaredOverARendering(StringsOf(JsonCharacterBand.None));
 
-            t.Translate(Call(SqlStdOperatorTable.GREATER_THAN, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes")))
+            foreach (var cast in new[] { Call(SqlStdOperatorTable.GREATER_THAN, Any(Ref(0, SqlTypeName.VARCHAR)), Str("bikes")),
+                Call(SqlStdOperatorTable.EQUALS, Any(Ref(0, SqlTypeName.VARCHAR)), Str("6")), Call(CosmosOperators.IsString, Any(Ref(0, SqlTypeName.VARCHAR))) })
+                CanTranslate(t, cast).Should().BeFalse($"Calcite holds the text through the cast: {cast}");
+
+            t.Translate(Call(SqlStdOperatorTable.GREATER_THAN, RawOf("$.name"), Str("bikes")))
                 .Should().Be("(c.name > @p0)");
 
-            CanTranslate(t, Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, Any(Ref(0, SqlTypeName.VARCHAR))), Str("%BIKE%")))
+            CanTranslate(t, Call(SqlStdOperatorTable.LIKE, Call(SqlStdOperatorTable.UPPER, RawOf("$.name")), Str("%BIKE%")))
                 .Should().BeFalse("no row of UPPER was read through the raw value");
 
-            t.Translate(Call(CosmosOperators.IsString, Any(Ref(0, SqlTypeName.VARCHAR))))
+            t.Translate(Call(CosmosOperators.IsString, RawOf("$.name")))
                 .Should().Be("IS_STRING(c.name)");
         }
 

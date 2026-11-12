@@ -509,6 +509,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var shown = $"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct} {w.Mine}";
                 var loading = new CosmosPredicateLoader.Loading(statement.BindingForCheck.Fields, statement.BindingForCheck.Readings, CosmosImplementor.DefaultRootAlias);
                 Builder built = form => RenderingRexBuilder.Build(form, statement.RexBuilderForCheck, accessors);
+                // A weakening over an input holding no document column, of a path read through a field as text alone: no node
+                // names its raw value, a cast to ANY being the text Calcite holds, so none is built, and the split rule weakens no
+                // filter over a projection (OverProjection), the only input that drops the column.
+                if (HoldsNoRawValue(w.Mine!, accessors) && built(w.Mine!) is null)
+                {
+                    declined.Add(shown + ": no raw value over an input holding no document column, not pushed");
+                    continue;
+                }
+
                 // A weakening testing a path over a node the body raises over, a field or a call, read back as that node's test:
                 // S declines it beneath, and the split rule drops what that filter declines, RU, never rows.
                 if (TestsAField(w.Mine!, accessors) && built(w.Mine!) is { } tested && Sent(loading.Read(tested), w.Set, w.Claim?.Imports, Ordered(w.Set)) is null)
@@ -702,6 +711,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var statement = w.Source!;
                 var (first, again) = (RenderingRexBuilder.Build(w.Mine!, statement.RexBuilderForCheck, statement.AccessorsOf(w.Conjunct)),
                     RenderingRexBuilder.Build(w.Mine!, statement.RexBuilderForCheck, statement.AccessorsOf(w.Conjunct)));
+                if (first is null && again is null && HoldsNoRawValue(w.Mine!, statement.AccessorsOf(w.Conjunct)))
+                    continue;
                 var loading = new CosmosPredicateLoader.Loading(statement.BindingForCheck.Fields, statement.BindingForCheck.Readings, CosmosImplementor.DefaultRootAlias);
                 if (first is null || again is null || first.Equals(again) == false || first.toString() != again.toString()
                     || new HashSet<RexNode> { first }.Contains(again) == false || loading.Read(first).Digest != loading.Read(again).Digest)
@@ -710,6 +721,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             parted.Should().BeEmpty();
         }
+
+        /// <summary>
+        /// Whether a weakening reads a path no node names the raw value of, over an input holding no document column: read
+        /// through a field as text alone, which no cast to <c>ANY</c> names (<see cref="RenderingRexBuilder.RawValue"/>).
+        /// </summary>
+        static bool HoldsNoRawValue(ServiceForm form, IReadOnlyDictionary<string, RenderingRexBuilder.Accessor> accessors) =>
+            form.Paths.Any(p => accessors.GetValueOrDefault(p) is { Raw: null, Retyped: null });
 
         /// <summary>
         /// A weakening pushed is applied beneath (#210, over S): the residual's statement, asked again with the conjuncts of
