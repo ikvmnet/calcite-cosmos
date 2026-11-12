@@ -114,8 +114,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Gap 4: a range beyond a declared bound keeps no number, so over a path declared an integer it keeps
         /// no document: through the cast to <c>DOUBLE</c>, which raises on no number, the plan says so. Through the
-        /// cast to <c>INTEGER</c> it is sent, since that cast fails on a stored <c>30.0</c> and on a number past an
-        /// <c>INTEGER</c>, which an integer declaration admits, and Calcite would fail there.
+        /// cast to <c>INTEGER</c> it is sent, since that cast fails on a number past an <c>INTEGER</c>, which an integer
+        /// declaration with no lower bound admits, and Calcite would fail there; it reads <c>30.0</c>, which the service
+        /// returns as <c>30</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         /// <remarks>
         /// The cast puts the raw value above 499, the declaration below 100. Bounds bind numbers, so crossing them
@@ -134,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(beyond).Should().Contain(KeepsNothing, "no number is above 500 and at most 100, and the cast to DOUBLE fails on none: " + PlanText(beyond));
 
             var cast = PlanToCosmos(Where($"{N} > 500"), integer, out _);
-            PlanText(cast).Should().NotContain(KeepsNothing, "the integer cast fails on 30.0 and on numbers past an INTEGER: " + PlanText(cast));
+            PlanText(cast).Should().NotContain(KeepsNothing, "the integer cast fails on numbers past an INTEGER: " + PlanText(cast));
             Query(FindCosmos(cast), integer).Sql.Should().EndWith("WHERE (c.n > @p0)", "and the service finds nothing");
 
             var within = PlanToCosmos(Where($"{N} > 50"), integer, out _);
@@ -147,26 +148,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, where a closure rechecked it over
-        /// every document in process: through the cast to <c>DOUBLE</c> the plan says so. Through the cast to
-        /// <c>INTEGER</c>, which fails on a stored <c>1.0</c> the enum admits, the range is sent, and the service finds
-        /// nothing.
+        /// every document in process: through the cast to <c>DOUBLE</c> and to <c>INTEGER</c> the plan says so, since the
+        /// service returns a stored <c>1.0</c> as <c>1</c>, which the integer cast parses
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         [Fact]
         public void ARangeOutsideAnEnumKeepsNothing()
         {
             var enumerated = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
 
-            foreach (var outside in new[] { $"{D} > 499 AND {D} < 501", $"{D} = 30" })
+            foreach (var outside in new[] { $"{D} > 499 AND {D} < 501", $"{D} = 30", $"{N} > 499 AND {N} < 501", $"{N} = 30" })
             {
                 var best = PlanToCosmos(Where(outside), enumerated, out _);
-                PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}: " + PlanText(best));
-            }
-
-            foreach (var (outside, sent) in new[] { ($"{N} > 499 AND {N} < 501", "WHERE ((c.n > @p0) AND (c.n < @p1))"), ($"{N} = 30", "WHERE (c.n = @p0)") })
-            {
-                var best = PlanToCosmos(Where(outside), enumerated, out _);
-                PlanText(best).Should().NotContain(KeepsNothing, $"the integer cast fails on 1.0, which the enum admits: {outside}: " + PlanText(best));
-                Query(FindCosmos(best), enumerated).Sql.Should().EndWith(sent, "and the service finds nothing");
+                PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}, and the cast fails on none as returned: " + PlanText(best));
             }
 
             foreach (var inside in new[] { $"{N} = 2", $"{N} > 1" })

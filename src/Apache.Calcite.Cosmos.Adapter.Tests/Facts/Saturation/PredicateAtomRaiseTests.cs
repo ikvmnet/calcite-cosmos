@@ -128,19 +128,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The first value of a class, reader and world on which the evaluator raises, as it is read; <c>null</c> for none.
-        /// An answer that read no parameter and tossed no coin is the same in every world, and is asked in the first alone.
+        /// The first value of a class, reader and world on which the evaluator raises, as each target returns the value
+        /// (<see cref="Documents.Returned"/>), which is what Calcite reads; <c>null</c> for none. An answer that read no
+        /// parameter and tossed no coin is the same in every world, and is asked in the first alone.
         /// </summary>
         static string? FirstRaise(PredicateAtom atom, SqlPredicate predicate, PathValues values, ref int asked)
         {
             foreach (var value in Pool.Where(v => PopulationD.Admits(values, v)))
+                foreach (var returned in Documents.Returned(value))
                 foreach (var (typed, raw) in Modes(atom))
                     foreach (var seed in Worlds)
                     {
                         asked++;
-                        var (document, world) = (Document(value), new World(seed));
+                        var (document, world) = (Document(returned), new World(seed));
                         if (IrEval.Truth(predicate, document, world, typed, raw) == Truths.Raises || IrEval.Raises(predicate, document, world, typed, raw))
-                            return $"{PathCellTests.Show(value)} read {typed} {raw} in world {seed}";
+                            return $"{PathCellTests.Show(value)}, returned as {PathCellTests.Show(returned)}, read {typed} {raw} in world {seed}";
 
                         if (atom.Parameter == false && world.Tossed == 0)
                             break;

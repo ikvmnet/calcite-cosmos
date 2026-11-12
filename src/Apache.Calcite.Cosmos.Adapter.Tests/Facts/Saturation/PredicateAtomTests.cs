@@ -45,8 +45,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             kept.IsPresent.Should().BeTrue("a comparison over SQL null keeps no row");
             foreach (var value in new[] { Of("30"), Of(30m), Of(30.000000000000001m) })
                 kept.Admits(value).Should().BeTrue($"the stored number 30 renders as '30' too, and one whose double is 30 is returned as 30: {value}");
-            // The join of a string and the numbers whose double is 30, which the lattice holds as their kinds alone.
-            foreach (var value in new[] { Of(true), Of(false), JsonValues.NullValue })
+            // The join of a string and the numbers whose double is 30, which the lattice holds as their kinds and the numbers' window.
+            foreach (var value in new[] { Of(true), Of(false), JsonValues.NullValue, Of(31m), Of(29.5m) })
                 kept.Admits(value).Should().BeFalse(value);
         }
 
@@ -253,15 +253,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// <c>RETURNING DECIMAL</c> compares the number the rendering parses as, exactly: past 2^53, two numbers a unit apart
-        /// are not one, as they are to a double.
+        /// <c>RETURNING DECIMAL</c> compares the number the rendering parses as, exactly: below 2^53 a number is its double,
+        /// and past it two numbers a unit apart are one to a double but not to the parse, where Azure returns an integer as
+        /// itself; the emulator holds one written with a point as its double, and returns that double's digits
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>, 9007199254740993.0 as 9007199254740992), so there the stored
+        /// 2^60 + 1 may be 2^60, and what the comparison keeps holds it.
         /// </summary>
         [Fact]
         public void ADecimalReturningComparesExactlyPastADouble()
         {
             const decimal Big = 1152921504606846976m;   // 2^60
+            var parse = PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(Big));
 
-            PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(Big)).Over(Holding(Of(Big + 1)), FactsReadings.Rows).Should().Be(Truths.False);
+            parse.Over(Holding(Of(Big + 1)), FactsReadings.Rows).Should().Be(Truths.True | Truths.False, "Azure returns 2^60 + 1, the emulator may return 2^60");
+            parse.Kept(true, FactsReadings.Rows, FactsReadings.Columns).Admits(Of(Big + 1)).Should().BeTrue("a TRUE row may hold 2^60 + 1 written with a point");
+            PredicateAtom.Compare(PredicateAtom.TypedReader("DECIMAL"), "=", Of(30m)).Over(Holding(Of(31m)), FactsReadings.Rows).Should().Be(Truths.False, "below 2^53 no double moves an integer");
             PredicateAtom.Compare(PredicateAtom.CastReader("DOUBLE", Text), "=", Of(Big)).Over(Holding(Of(Big + 1)), FactsReadings.Rows).Should().Be(Truths.True);
         }
 
@@ -273,7 +279,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var kept = membership.Kept(true, FactsReadings.Rows, FactsReadings.Columns);
             foreach (var value in new[] { Of("x"), Of("30"), Of(30m), Of(30.000000000000001m) })
                 kept.Admits(value).Should().BeTrue(value);
-            kept.Admits(Of(true)).Should().BeFalse();
+            foreach (var value in new[] { Of(true), Of(31m), Of(29.5m) })
+                kept.Admits(value).Should().BeFalse(value);
             membership.Over(Holding(Of("x"), Of("y")), FactsReadings.Rows).Should().Be(Truths.True | Truths.False);
             membership.Over(Holding(Of("x")), FactsReadings.Rows).Should().Be(Truths.True);
         }

@@ -53,10 +53,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// questions, and the same arm never read, whose assumptions must lie among the conjuncts beside it.
     /// </para>
     /// <para>
-    /// <b>Each document is read as written and as served.</b> The service holds a number as its double and returns a whole
-    /// one as its digits (<see cref="Documents.Served"/>), so Calcite reads 6.0000000000000001 as 6 through the service
-    /// and as 6.0 over the document as written: every truth is checked over both, and every fact, being of what was
-    /// written, over the written one.
+    /// <b>Each document is read as each target returns it.</b> Both return an integer a long holds as its digits however
+    /// it was written, 30.0 as 30, and the emulator a fraction whose double is whole as that double's digits, which Azure
+    /// may return with a point (<see cref="Documents.Returned"/>), so Calcite reads 6.0000000000000001 as 6 or 6.0 and
+    /// never as written: every truth is checked over each form, and every fact, being of what was written, over the
+    /// written one.
     /// </para>
     /// <para>
     /// <b>A verdict may stand over a row Calcite raises on.</b> The connectives do not model a raise, and whether an
@@ -142,13 +143,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 if (declaration.Admits(document) == false)
                     report.Fail("generator", $"drew {Documents.Json(document)}, which the declaration does not admit");
 
-            // Each document as written and, where it differs, as the service returns it: the documents truths are read over.
+            // Each document as each target returns it, which is what Calcite reads: the documents truths are read over.
             var written = new Dictionary<J.Obj, J.Obj>(ReferenceEqualityComparer.Instance);
             var drawn = documents;
-            documents = [.. drawn.SelectMany(d => Documents.Served(d) is J.Obj served && ReferenceEquals(served, d) == false ? new[] { d, served } : new[] { d })];
+            documents = [.. drawn.SelectMany(d => Documents.Returned(d).Cast<J.Obj>())];
             foreach (var d in drawn)
-                if (Documents.Served(d) is J.Obj served && ReferenceEquals(served, d) == false)
-                    written[served] = d;
+                foreach (var returned in Documents.Returned(d).Cast<J.Obj>().Where(r => ReferenceEquals(r, d) == false))
+                    written[returned] = d;
 
             var statement = new PredicateStatement(conjuncts);
             var oracle = _oracle(new JsonFactTheory(declaration.Rules));
@@ -564,7 +565,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 }
 
                 // What an atom means is a property of the term, so it holds of every declared document, the truth read
-                // over it as written and as served, and the atom read over the value written.
+                // over it as each target returns it, and the atom read over the value written.
                 foreach (var row in context.Rows(rules.Atom))
                 {
                     if (graph.Predicate((ClassId)row.Keys[0]) is not SqlPredicate term || graph.DocumentPath((ClassId)row.Keys[1]) is not JsonDocumentPath path)

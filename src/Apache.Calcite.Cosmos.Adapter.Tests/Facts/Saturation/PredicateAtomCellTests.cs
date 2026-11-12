@@ -26,8 +26,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// where the reader's edges row cuts them.
     /// </summary>
     /// <remarks>
-    /// A cell's answer holds of every value in it, as <see cref="IrEval"/> reads the value through each reader the reading
-    /// stands for: <c>RETURNING</c> and a column for <c>typed</c>, three columns for <c>raw</c> and its cast to text. It is
+    /// A cell's answer holds of every value in it, as <see cref="IrEval"/> reads the value as each target returns it
+    /// (<see cref="Documents.Returned"/>) through each reader the reading stands for: <c>RETURNING</c> and a column for <c>typed</c>, three columns for <c>raw</c> and its cast to text. It is
     /// within the coarse answer on the cell's state, but for what the coarse readings leave out (<c>TODO.md</c>), and a
     /// sub-cell's is within its cell's.
     /// </remarks>
@@ -52,8 +52,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         static readonly JsonDocumentPath A = JsonDocumentPath.Root.Property("a");
 
         /// <summary>
-        /// Nothing known, a declared string, a non-negative integer, a domain, a value excluded, and a fraction a decimal's
-        /// cast to a double misses.
+        /// Nothing known, a declared string, a non-negative integer, a domain, a value excluded, a fraction a decimal's cast
+        /// to a double misses, and an integer past 2^53, which the emulator holds as its double where it is written with a
+        /// point (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         static readonly PathValues[] Imports =
         {
@@ -63,11 +64,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             PathValues.OneOf(ValueSet.Of(Of("30"), Of("x"), Of(30m), Of(2.5m), Of(true), NullValue)),
             PathValues.Meet(PathValues.AnythingThere, PathValues.Not(Of("x"))),
             PathValues.OneOf(ValueSet.Of(Of(9007199254740994.4m))),
+            PathValues.OneOf(ValueSet.Of(Of(9007199254740993.0m))),
         };
 
         /// <summary>The values a cell is asked of, beside its witness: the grid's stored values and population D's.</summary>
         static readonly J?[] Pool = PredicateAtomTests.Stored.Select(PathCellTests.Decode).Concat(Declaration.Values)
-            .Concat([new J.Num(9007199254740993m), new J.Num(9007199254740994.4m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(2m), new J.Num(2147483648m), new J.Str("2"), new J.Str("2.5")])
+            .Concat([new J.Num(9007199254740993m), new J.Num(9007199254740993.0m), new J.Num(9007199254740994.4m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(2m), new J.Num(2147483648m), new J.Str("2"), new J.Str("2.5")])
             .ToArray();
 
         /// <summary>The typed columns the loader types a field by beside the grid's: each reads a number as its own type.</summary>
@@ -105,10 +107,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 {
                     var answers = atom.OnCell(cell, Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows);
                     foreach (var value in Inside(cell))
+                        foreach (var returned in Documents.Returned(value))
                         foreach (var (typed, raw) in Modes(atom))
                         {
                             var world = new World(asked + tossed);
-                            var truth = IrEval.Truth(predicate, Document(value), world, typed, raw);
+                            var truth = IrEval.Truth(predicate, Document(returned), world, typed, raw);
                             if (world.Tossed > 0)
                             {
                                 tossed++;
@@ -118,7 +121,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             asked++;
                             readers.Add(atom.Reader);
                             if ((answers & truth) == 0)
-                                faults.Add($"{predicate} is {truth} of {PathCellTests.Show(value)} read {typed} {raw}, in {cell}, where the atom answers {answers}");
+                                faults.Add($"{predicate} is {truth} of {PathCellTests.Show(value)}, returned as {PathCellTests.Show(returned)}, read {typed} {raw}, in {cell}, where the atom answers {answers}");
                         }
                 }
             }
@@ -418,7 +421,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 var column = new SqlValue.Typed(A, atom.Reader.Substring("typed:".Length));
                 foreach (var cell in Partitions(atom).SelectMany(p => p.Coarse.Cells.Concat(p.Fine.Cells)))
-                    if (Inside(cell).Any(v => IrEval.Read(column, Document(v), new World(0), IrEval.TypedAs.Column) is not (SqlDatum.Raised or SqlDatum.NullDatum))
+                    if (Inside(cell).SelectMany(Documents.Returned).Any(v => IrEval.Read(column, Document(v), new World(0), IrEval.TypedAs.Column) is not (SqlDatum.Raised or SqlDatum.NullDatum))
                         && (onCell(atom, cell) & (Truths.True | Truths.False)) == 0)
                         unkept.Add($"{atom} answers {onCell(atom, cell)} on {cell}");
             }

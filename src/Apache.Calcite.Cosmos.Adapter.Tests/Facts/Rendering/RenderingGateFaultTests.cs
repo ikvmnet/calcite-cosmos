@@ -132,11 +132,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G4, over templates (critic-check §3.2): the second disjunct's form offered by a planted template to the first,
-        /// inside a disjunction of one path. It is never the first's best nor within the root's, and under <c>DOUBLE</c> it is
-        /// refuted where the service drops a number Calcite keeps; the second disjunct's own form is exact on its own cells.
+        /// inside a disjunction of one path. It is never the first's best nor within the root's, and it is refuted where the
+        /// service drops a number Calcite keeps: under <c>DOUBLE</c> a fraction, and under <c>INTEGER</c> an integer the cast
+        /// parses, which the service returns as its digits however it was written
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>). The second disjunct's own form is exact on its own cells.
         /// </summary>
         [Theory]
-        [InlineData("INTEGER", null)]
+        [InlineData("INTEGER", "$[\"price\"]=integers > 5 < 2147483647 (T,f)")]
         [InlineData("DOUBLE", "$[\"price\"]=fractions > 5 double >= 5.000000000000001 (T,f)")]
         public void G4_AContaminatedCandidateIsNeverBest(string type, string? refuted)
         {

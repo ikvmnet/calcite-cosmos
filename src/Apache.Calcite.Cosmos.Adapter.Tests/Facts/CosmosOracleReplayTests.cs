@@ -262,7 +262,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(loaded.Statement.FactsFor(0), Label, String).Should().BeFalse();
             loaded.Statement.IsAdmitted(0).Should().BeFalse("so the translator does not render it exactly");
             loaded.Statement.Kept.TryGetConstant(Label, out _).Should().BeFalse("a stored 30 renders as '30' too");
-            Knows(loaded.Statement.Kept, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue("the preimage, and nothing narrower");
+            Knows(loaded.Statement.Kept, Label, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue("the preimage is the string or a number whose double is 30's, every one above 29");
+            Knows(loaded.Statement.Kept, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue("and below 31");
             Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeFalse("30.000000000000001 is held as the double 30, and returned as '30' too");
         }
 
@@ -407,8 +408,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <summary>
         /// Gap 4: a range beyond a declared bound keeps no number. Through the cast to <c>DOUBLE</c>, which raises on no
         /// number, the filter keeps nothing and is reduced; through the cast to <c>INTEGER</c> what it keeps is still a
-        /// contradiction, but the cast raises on a stored <c>30.0</c> and on a number past an <c>INTEGER</c>, which an
-        /// integer declaration admits, so it is not reduced.
+        /// contradiction, but the cast raises on a number past an <c>INTEGER</c>, which an integer declaration with no lower
+        /// bound admits, so it is not reduced. A whole number is returned as its digits however it was written, so the cast
+        /// reads <c>30.0</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         [Fact]
         public void Gap4ARangeBeyondADeclaredBoundKeepsNoNumber()
@@ -418,16 +420,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             Where(Integer, $"{NDouble} > 500").Statement.IsContradictory.Should().BeTrue();
             var integer = Where(Integer, $"{NCast} > 500");
-            integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on 30.0 and on numbers past an INTEGER");
+            integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on numbers past an INTEGER");
             integer.Statement.Kept.IsContradictory.Should().BeTrue("and keeps no number above 499 and at most 100");
             Where(Integer, $"{NCast} > 50").Statement.IsContradictory.Should().BeFalse();
             Where(Untyped, $"{NCast} > 500").Statement.IsContradictory.Should().BeFalse("a stored \"600\" passes the cast");
         }
 
         /// <summary>
-        /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing. Through the cast to <c>DOUBLE</c> it is
-        /// reduced; through the cast to <c>INTEGER</c>, which raises on a stored <c>1.0</c> the enum admits, it is not,
-        /// though what it keeps is still a contradiction.
+        /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, and is reduced through the cast to
+        /// <c>DOUBLE</c> and to <c>INTEGER</c> alike: the service returns a stored <c>1.0</c> as <c>1</c>, which the integer
+        /// cast parses (<c>Service.IntegralNumbersReadBackAsHeld</c>), so neither raises on a number the enum admits.
         /// </summary>
         [Fact]
         public void Gap5ARangeOutsideAnEnumKeepsNothing()
@@ -438,8 +440,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             {
                 Where(Enumerated, $"{NDouble} " + string.Format(outside, NDouble)).Statement.IsContradictory.Should().BeTrue(outside);
                 var integer = Where(Enumerated, $"{NCast} " + string.Format(outside, NCast));
-                integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on 1.0, which the enum admits: {0}", outside);
-                integer.Statement.Kept.IsContradictory.Should().BeTrue("and no member of the enum satisfies {0}", outside);
+                integer.Statement.IsContradictory.Should().BeTrue("the integer cast parses every member of the enum as it is returned, and none satisfies {0}", outside);
+                integer.Statement.Kept.IsContradictory.Should().BeTrue("no member of the enum satisfies {0}", outside);
             }
 
             Where(Enumerated, $"{NCast} = 2").Statement.IsContradictory.Should().BeFalse();

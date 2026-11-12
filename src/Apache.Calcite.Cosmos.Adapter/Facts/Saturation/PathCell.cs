@@ -81,6 +81,24 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>Which side of a number every value's double lies on, by value: below the number's double is below it.</summary>
             internal int? RoundedSide(decimal c) => DoubleSide(DoubleBound.Of(c)) is 0 ? DoubleBound.Compare(DoubleBound.Of(c), c) : DoubleSide(DoubleBound.Of(c));
 
+            /// <summary>
+            /// The side of a literal integers of the cell lie on as the emulator may return them, holding one written with a
+            /// point as its double from 2^53 on (<see cref="Renderings.PointedSide"/>): by their doubles, <c>null</c> where not
+            /// one way; none for a cell no double moves.
+            /// </summary>
+            internal int?[] PointedSide(decimal c) => Integral && (Side(-Renderings.DoubleUnitFrom) != 1 || Side(Renderings.DoubleUnitFrom) != -1)
+                ? [DoubleSide(DoubleBound.Of(c)) is int side and not 0 ? side : null] : [];
+
+            /// <summary>Whether some value's double may be whole and below a magnitude: a cell of fractions whose doubles reach a whole double.</summary>
+            internal bool MayRoundToWhole(double below)
+            {
+                var (lower, upper) = Held;
+                var most = Math.BitDecrement(below);
+                var low = Math.Max(lower is Bound l ? Math.Max(DoubleBound.Of(l.Value), DoubleLow ?? double.NegativeInfinity) : DoubleLow ?? double.NegativeInfinity, -most);
+                var high = Math.Min(upper is Bound u ? Math.Min(DoubleBound.Of(u.Value), DoubleHigh ?? double.PositiveInfinity) : DoubleHigh ?? double.PositiveInfinity, most);
+                return Math.Ceiling(low) <= high;
+            }
+
             /// <summary>Whether a number's double lies within the double bounds.</summary>
             internal bool Rounds(string value) => DoubleBound.Of(value) is var d && d >= (DoubleLow ?? d) && d <= (DoubleHigh ?? d);
 

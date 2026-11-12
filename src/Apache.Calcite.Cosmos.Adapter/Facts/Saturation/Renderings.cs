@@ -25,10 +25,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// rendering — in some spellings and not others.
     /// </para>
     /// <para>
-    /// <b>And as the service holds it</b>: an int64 as itself, any other number as its double, which it returns as
-    /// the double's digits where that is whole, so 6.0000000000000001 renders as <c>6</c> and 0.10000000000000001
-    /// as <c>0.1</c> (<c>Service.NumbersBeyondLongCompareAsDoubles</c>). So a number may render as every text whose
-    /// double its double is, and as no other.
+    /// <b>And as the service holds it</b>: an int64 as itself, any other number as its double
+    /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), returned as its digits where it is whole within a long, as every
+    /// integer a long holds is however it was written (<c>Service.IntegralNumbersReadBackAsHeld</c>): 30.0 renders as
+    /// <c>30</c>, 0.10000000000000001 as <c>0.1</c>, and 6.0000000000000001 as <c>6</c> on the emulator, Azure's spelling
+    /// of that one unmeasured. So a number may render as every text whose double its double is, and as no other.
     /// </para>
     /// <para>
     /// <b>A domain names the number only where a decimal holds the text exactly</b>, at most 28 significant digits. Text
@@ -180,9 +181,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static bool NumberWithin(string value, bool integral, Bound? lower, Bound? upper) => MayHoldDouble(DoubleBound.Of(value), integral, lower, upper);
 
         /// <summary>
-        /// The number as the service returns it, where a decimal holds that: an integer within a long as itself, and any other
-        /// number as its double's shortest digits (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), 0.10000000000000001
-        /// as 0.1; <c>null</c> where no decimal holds them.
+        /// The number as Azure returns it, where a decimal holds that: an integer within a long as itself, and any other
+        /// number as its double's shortest digits (<c>Service.NumbersBeyondLongCompareAsDoubles</c> holds it so,
+        /// <c>Service.IntegralNumbersReadBackAsHeld</c> returns it so), 0.10000000000000001 as 0.1; <c>null</c> where no
+        /// decimal holds them. The emulator holds an integer written with a point as its double (<see cref="PointedSide"/>).
         /// </summary>
         public static decimal? AsServed(string value)
         {
@@ -192,6 +194,38 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             var d = DoubleBound.Of(value);
             return double.IsFinite(d) && TryExactNumber(d.ToString("R", CultureInfo.InvariantCulture), out var shortest) ? shortest : null;
         }
+
+        /// <summary>2^63, the least double past a long.</summary>
+        public const double LongCeiling = 9.2233720368547758E18;
+
+        /// <summary>1e20, from which a whole double was measured coming back with an exponent (<c>Service.IntegralNumbersReadBackAsHeld</c>).</summary>
+        public const double DigitsBelow = 1e20;
+
+        /// <summary>
+        /// Whether both targets return the number as digits (<c>Service.IntegralNumbersReadBackAsHeld</c>): an integer a long
+        /// holds, however written, since Azure holds one written with a point as an int64 and the emulator as its double, whose
+        /// digits it returns, so one whose double is below 2^63 too; 30.0 and 3e1 come back <c>30</c>.
+        /// </summary>
+        public static bool ServedAsDigits(string value) =>
+            TypeOf(value) == IntegerType && TryNumberOf(value, out var x) && x >= long.MinValue && x <= long.MaxValue && DoubleBound.Of(x) is var d && d >= -LongCeiling && d < LongCeiling;
+
+        /// <summary>
+        /// Whether the service may return a number as digits: an integer, and a fraction whose double is whole below 1e20, which
+        /// the emulator returns as that double's digits, as it does a whole number it holds as a double, and Azure was not
+        /// measured returning.
+        /// </summary>
+        public static bool MayServeAsDigits(string value) =>
+            TypeOf(value) == IntegerType || TypeOf(value) == FractionType && DoubleBound.Of(value) is var d && Math.Floor(d) == d && Math.Abs(d) < DigitsBelow;
+
+        /// <summary>
+        /// The side of a literal an integer lies on as the emulator may return it, which holds one written with a point as its
+        /// double from 2^53 on (<c>Service.IntegralNumbersReadBackAsHeld</c>, 9007199254740993.0 as 9007199254740992): the
+        /// double's side of the literal's, <c>null</c> where the two are one double, since digits whose double that is lie on
+        /// either side; none for a number no double moves.
+        /// </summary>
+        public static int?[] PointedSide(string value, decimal c) =>
+            TypeOf(value) == IntegerType && TryNumberOf(value, out var x) && Math.Abs(x) >= DoubleUnitFrom
+                ? [DoubleBound.Of(x).CompareTo(DoubleBound.Of(c)) is var side && side != 0 ? Math.Sign(side) : null] : [];
 
         /// <summary>
         /// Whether a decimal is its double's shortest digits, as every bound or literal written short enough is: then a number

@@ -15,8 +15,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// </summary>
     /// <remarks>
     /// Text and the cast of a raw value to text answer at the literals and at a number's double, the last as each of its
-    /// columns does (<c>Calcite.CastOfARawValueToText</c>), since the service returns a number as its double and a whole
-    /// one as its digits (<c>Service.NumbersBeyondLongCompareAsDoubles</c>); raw at a number's double too, which the box
+    /// columns does (<c>Calcite.CastOfARawValueToText</c>), since the service holds a number as its double
+    /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>) and returns a whole one within a long as its digits
+    /// (<c>Service.IntegralNumbersReadBackAsHeld</c>); raw at a number's double too, which the box
     /// of a number not written as a long compares (<c>Calcite.RawNullIsSqlNull</c>). An integer type raises past its limits, and a cast to one
     /// truncates within one of a literal and saturates at them. A double compares doubles, and so does the service a
     /// number it holds as one, an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>),

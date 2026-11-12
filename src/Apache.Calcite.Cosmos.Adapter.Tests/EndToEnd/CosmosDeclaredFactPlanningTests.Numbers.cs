@@ -6,8 +6,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
     /// <summary>
     /// A number's text is what the service returns, which Calcite renders: the service holds an int64 as itself and any
-    /// other number as its double, and returns a whole double as its digits (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
-    /// So a declared <c>6.0000000000000001</c> reaches Calcite as <c>6</c>, whose text is <c>'6'</c>, and a declared
+    /// other number as its double (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), and returns a whole number within a
+    /// long as its digits however it was written (<c>Service.IntegralNumbersReadBackAsHeld</c>). So a declared
+    /// <c>6.0000000000000001</c> reaches Calcite as <c>6</c> from the emulator, whose text is <c>'6'</c>, and a declared
     /// <c>0.10000000000000001</c> as <c>0.1</c>, whose text is <c>'0.1'</c>.
     /// </summary>
     /// <remarks>
@@ -20,6 +21,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         const string Sixes = """{ "type": "object", "required": ["q"], "properties": { "q": { "enum": [6.0000000000000001] } } }""";
         const string Tenths = """{ "type": "object", "required": ["p"], "properties": { "p": { "enum": [0.10000000000000001, 0.25] } } }""";
+
+        const string Hundred = """{ "type": "object", "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 0, "maximum": 100 } } }""";
+
+        const string PastADouble = """{ "type": "object", "required": ["v"], "properties": { "v": { "enum": [9007199254740993.0] } } }""";
+
+        /// <summary>
+        /// <c>RETURNING DOUBLE</c> over a declared <c>6.0000000000000001</c>, or a range of fractions holding one, is never the
+        /// empty relation: the emulator returns the number as <c>6</c>, digits, over which Calcite fails, and Azure was not
+        /// measured returning it, so the comparison may raise wherever it is FALSE.
+        /// </summary>
+        [Fact]
+        public void AReturningDoubleOverAFractionReturnedAsDigitsIsNeverEmpty()
+        {
+            foreach (var (schema, sql) in new[]
+            {
+                (Sixes, """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.q' RETURNING DOUBLE) = 7"""),
+                (Sixes, """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.q' RETURNING DOUBLE) IN (7, 8)"""),
+                (Sixes, """SELECT COUNT(*) FROM items AS c WHERE JSON_VALUE(c."DOC", '$.q' RETURNING DOUBLE) = 7"""),
+                ("""{ "type": "object", "required": ["q"], "properties": { "q": { "type": "number", "minimum": 5.9, "maximum": 5.99999999999999999 } } }""",
+                    """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.q' RETURNING DOUBLE) = 7"""),
+            })
+            {
+                var plan = PlanToCosmos(sql, Declaring(schema), out _);
+                PlanText(plan).Should().NotContain(KeepsNothing, "Calcite fails on the 6 the emulator returns: " + PlanText(plan));
+            }
+        }
+
+        /// <summary>
+        /// An integer parse over integers its type holds is the empty relation where it keeps none of them: the service
+        /// returns each as its digits however it was written, <c>30.0</c> as <c>30</c>, which <c>RETURNING INTEGER</c> and
+        /// the integer cast of the text both read (<c>Service.IntegralNumbersReadBackAsHeld</c>). Where the declaration
+        /// admits an integer an <c>INTEGER</c> does not hold, the cast fails on it, and the filter is sent.
+        /// </summary>
+        [Fact]
+        public void AnIntegerParseOverIntegersItsTypeHoldsIsReduced()
+        {
+            foreach (var sql in new[]
+            {
+                """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 300""",
+                """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) = 300""",
+                """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS BIGINT) > 200""",
+            })
+            {
+                var plan = PlanToCosmos(sql, Declaring(Hundred), out _);
+                PlanText(plan).Should().Contain(KeepsNothing, "no integer from 0 to 100 satisfies it, and none fails the parse: " + PlanText(plan));
+            }
+
+            var wide = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 300""",
+                Declaring("""{ "type": "object", "required": ["n"], "properties": { "n": { "type": "integer", "maximum": 100 } } }"""), out _);
+            PlanText(wide).Should().NotContain(KeepsNothing, "the cast fails on an integer below an INTEGER's range: " + PlanText(wide));
+        }
+
+        /// <summary>
+        /// A number written with a point past 2^53 is held by the emulator as its double, and returned as that double's
+        /// digits, <c>9007199254740993.0</c> as <c>9007199254740992</c>, where Azure returns <c>9007199254740993</c>
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>): compared with 9007199254740992, by <c>RETURNING DECIMAL</c>, by
+        /// <c>RETURNING BIGINT</c> or through the cast of the text to <c>BIGINT</c>, it may be equal, and the filter is never
+        /// the empty relation.
+        /// </summary>
+        [Fact]
+        public void ANumberTheEmulatorHoldsAsItsDoubleIsNeverEmpty()
+        {
+            foreach (var reading in new[]
+            {
+                """JSON_VALUE(c."DOC", '$.v' RETURNING DECIMAL)""",
+                """JSON_VALUE(c."DOC", '$.v' RETURNING BIGINT)""",
+                """CAST(JSON_VALUE(c."DOC", '$.v') AS BIGINT)""",
+            })
+            {
+                var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {reading} = 9007199254740992""", Declaring(PastADouble), out _);
+                PlanText(plan).Should().NotContain(KeepsNothing, "the emulator returns 9007199254740992: " + PlanText(plan));
+            }
+        }
 
         /// <summary>
         /// The text of a declared <c>6.0000000000000001</c> equals <c>'6'</c>, counted or not: sent with the numeric arm that
