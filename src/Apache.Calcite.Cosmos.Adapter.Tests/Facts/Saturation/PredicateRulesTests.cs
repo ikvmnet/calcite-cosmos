@@ -587,8 +587,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A range the declared bounds satisfy is a tautology of the number, converted by a double's parse of the rendering.
-        /// An integer's parse of the rendering raises on a stored <c>30.0</c> or <c>3000000000</c>, which the declaration
-        /// admits, so there it is decided neither way; and a cast of the raw value is decided neither way since h15b, being
+        /// An integer's parse of the rendering raises on a stored <c>3000000000</c>, which the declaration admits, so there it
+        /// is decided neither way; it reads <c>30.0</c>, which the service returns as <c>30</c>, though a verdict reads the
+        /// coarse reading, which puts the parse's raise beside every number (<c>TODO.md</c>). A cast of the raw value is
+        /// decided neither way since h15b, being
         /// each column's own, which no row measured (<c>measuredcast</c>): an <c>ANY</c> wraps a long beyond an int, so a
         /// stored 2147483648 the bound admits casts to -2147483648
         /// (<c>CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn</c>).
@@ -603,7 +605,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
             scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
 
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 3000000000");
             scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 

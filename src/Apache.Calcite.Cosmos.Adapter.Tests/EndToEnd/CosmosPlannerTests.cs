@@ -1587,14 +1587,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         //
         // `= '30'` is declined as a translation because Calcite keeps the document storing the number
         // 30, having rendered it, and the service would not. The translator pushed the string or the
-        // number as its weakening, which S does not prove (a stored 30.0 renders otherwise), so S sends
+        // number as its weakening, which S does not prove exact (the number keeps a fraction whose double
+        // is 30, which Azure was not measured returning as 30, and S reads no spelling the service
+        // returns of any number), so S sends
         // the path's presence: O7's listed loss 1, until a spelling S proves. RU, never rows. Where the
         // text is what a boolean renders as, the two alternatives are exact, and S sends them whole.
 
         /// <summary>
         /// A text equality against text an integer renders as sends the alternatives, the string or a number equal to it,
-        /// beside the path's presence (the text-equality alternatives, h09), and is rechecked above: a stored 30.0 renders
-        /// otherwise.
+        /// beside the path's presence (the text-equality alternatives, h09), and is rechecked above: the number keeps a
+        /// fraction whose double is 30, which Azure was not measured returning as <c>30</c>.
         /// </summary>
         [Fact]
         public void ATextEqualityAgainstTextAnIntegerRendersAsSendsTheAlternatives()
@@ -1665,8 +1667,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// The alternatives are not the comparison, a stored 30.0 rendering otherwise, so the comparison is still made
-        /// above them.
+        /// The alternatives are not the comparison, the number keeping a fraction whose double is 30, which Azure was not
+        /// measured returning as <c>30</c>, so the comparison is still made above them.
         /// </remarks>
         [Fact]
         public void TheComparisonStaysAboveTheAlternatives()

@@ -477,9 +477,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// over a declared integer of at least 1, and <c>… BETWEEN 1 AND 9</c> under a maximum of 9, were tautologies,
         /// resting on an integer-cast row the population-D checker then proved wrong: over the accessor the cast is Java's
         /// integer parse of the rendering, which raises on <c>1e30</c> and <c>3000000000</c> (both integers JSON Schema
-        /// admits) and on any rendering with a point. Deleting either would answer where the query raises. Under the
-        /// maximum only a <c>5.0</c>-style spelling could raise, which the emulator renders as <c>5</c>; it stays
-        /// undecided, soundly.
+        /// admits) and on any rendering with a point. Deleting the first would answer where the query raises. Under the
+        /// maximum nothing raises, since both targets return <c>5.0</c> as <c>5</c>
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>), but a deletion is a verdict, which reads the coarse reading, and
+        /// that puts the parse's raise beside every number; it stays undecided, soundly (<c>TODO.md</c>, <em>A conjunct
+        /// through an integer parse its declared bounds satisfy is still sent</em>).
         /// </para>
         /// <para>
         /// The same ranges through a cast to <c>DOUBLE</c>, whose parse raises on no number, are the tautologies; and
@@ -496,8 +498,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NCast + " > 1", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NDouble + " > 0", true)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NDouble + " > 1", false)]
-        // A declared integer may be stored 30.0, which RETURNING INTEGER raises on: deleting the comparison would answer
-        // where the query raises, so it is not deleted, though every value satisfies it.
+        // A declared integer of at least 1 may be 3000000000, past an INTEGER, which RETURNING INTEGER raises on: deleting
+        // the comparison would answer where the query raises, so it is not deleted, though every value satisfies it.
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", """JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) > 0""", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1, "maximum": 9 } } }""", NCast + " BETWEEN 1 AND 9", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1, "maximum": 9 } } }""", NDouble + " BETWEEN 1 AND 9", true)]

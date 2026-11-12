@@ -1103,14 +1103,15 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// </summary>
             /// <remarks>
             /// A string renders as itself and a boolean as Calcite's lowercase <c>true</c> or <c>false</c>. A number
-            /// renders as Java spells it, which is one of several texts with the number's value: a stored <c>30</c> reads
-            /// <c>30</c> and a stored <c>30.0</c> reads <c>30.0</c>, and the theory spells both <c>integer|30</c>. So a
-            /// number whose value is the text's may render as the text or not, and one whose value is not never does.
-            /// That is the rendering preimage: <c>'30'</c> admits the string <c>"30"</c> and the number 30, and a declared
-            /// string leaves only the first. The service holds a number not written as an int64 as its double, and returns a
-            /// whole one as its digits, so every number whose double the text's is may render as it: <c>'0.1'</c> admits a
-            /// stored <c>0.10000000000000001</c> and <c>'6'</c> a stored 6.0000000000000001, each beside every number of its
-            /// rounding interval (<see cref="Renderings.MayRenderAs"/>).
+            /// renders as Java spells what the service returns, a whole number within a long as its digits however it was
+            /// written, <c>30.0</c> as <c>30</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>), and the theory spells both
+            /// <c>integer|30</c>. The reading reads no spelling, only the number's double
+            /// (<see cref="Renderings.MayRenderAs"/>): a number whose double is the text's may render as the text or not,
+            /// and one whose double is not never does, which is sound and loose, <c>'30.0'</c> admitting a stored 30
+            /// (<c>TODO.md</c>). That is the rendering preimage: <c>'30'</c> admits the string <c>"30"</c> and every number
+            /// whose double is 30, and a declared string leaves only the first. The service holds a number not written as
+            /// an int64 as its double, so <c>'0.1'</c> admits a stored <c>0.10000000000000001</c> and <c>'6'</c> a stored
+            /// 6.0000000000000001, each beside every number of its rounding interval.
             /// </remarks>
             class Text : Reading
             {
@@ -1918,10 +1919,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <para>
             /// <b>It is a parse of the rendering</b>, which is a measurement
             /// (<c>CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering</c>): Java's integer parse
-            /// for <c>INTEGER</c> and <c>BIGINT</c>, which raises on <c>30.0</c>, <c>2.5</c>, <c>1.0E30</c> and anything
-            /// beyond the type, where a cast of the number would have truncated or saturated. The theory spells a stored
-            /// <c>30</c> and <c>30.0</c> alike, so any number may raise there, and nothing is decided of one. A double's
-            /// parse reads every rendering of a number, and raises on none.
+            /// for <c>INTEGER</c> and <c>BIGINT</c>, which raises on the rendering <c>30.0</c>, <c>2.5</c>, <c>1.0E30</c> and
+            /// anything beyond the type, where a cast of the number would have truncated or saturated. The service returns a
+            /// whole number within a long as its digits however it was written, <c>30.0</c> as <c>30</c>
+            /// (<c>Service.IntegralNumbersReadBackAsHeld</c>), and the cells read that spelling (<see cref="ParsesWhole"/>,
+            /// <see cref="Whole"/>); the coarse answers, which the verdicts read, read none and put the parse's raise beside
+            /// every number (<see cref="_parse"/>), so nothing is decided of one there (<c>TODO.md</c>). A double's parse
+            /// reads every rendering of a number, and raises on none.
             /// </para>
             /// <para>
             /// <b>What it does to anything else is not</b>, and a string, a boolean, and over a raw value a null or a

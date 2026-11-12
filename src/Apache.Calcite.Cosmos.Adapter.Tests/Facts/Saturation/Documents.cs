@@ -22,8 +22,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public static readonly string[] Keys = { "a", "b", "c", "dd" };
 
         /// <summary>
-        /// Numbers a document holds. <c>30</c> and <c>30.0</c> are one value to the theory and two renderings to the text
-        /// accessor, which is the collision a predicate over the rendering has to keep apart.
+        /// Numbers a document holds. <c>30</c> and <c>30.0</c> are one value to the theory and two spellings as written,
+        /// which both targets return as <c>30</c> (<see cref="Returned"/>), so a reading of the rendering must answer for
+        /// both as for one.
         /// </summary>
         static readonly decimal[] NumbersSeen = { -1m, 0m, 1m, 2m, 2.5m, 10m, 499.5m, 500m, 30m, 30.0m };
 

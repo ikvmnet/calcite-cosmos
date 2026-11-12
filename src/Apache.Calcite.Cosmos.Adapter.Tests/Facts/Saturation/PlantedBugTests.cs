@@ -47,8 +47,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A rendering's preimage read as exact: an equality with text is decided TRUE where every value its path may
-        /// hold is one the preimage admits. A stored 30.0 is in the preimage of <c>'30'</c> as the theory spells it, the
-        /// service returning it as <c>30</c>, and renders as <c>30.0</c> as written.
+        /// hold is one the preimage admits. A number whose double is the text's is in the preimage, which reads no spelling,
+        /// and need not render as the text: a stored 30 is in that of <c>'30.0'</c>, and the service returns it as
+        /// <c>30</c>.
         /// </summary>
         /// <remarks>
         /// The facts graph's tables are read before the plant, not in its filter: building them builds a graph, which no

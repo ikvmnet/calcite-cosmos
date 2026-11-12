@@ -49,8 +49,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter through no named
     /// column (through one, the parameter is typed as the column, <c>Calcite.AParameterComparesAsItsComparand</c>), a raw number
     /// in a <c>VARIANT</c> compared with a number whose SQL type the IR does not keep, an <c>ANY</c>'s structure cast to
-    /// text, the cast to text over a raw value read through no named column, which is the facts graph's rendering, and a
-    /// numeric cast over one where it is not a number.
+    /// text, and a numeric cast over one where it is not a number. The cast to text over a raw value read through no named
+    /// column is of the accessor typed <c>ANY</c>, which the loader reads a raw value as: it is read as an <c>ANY</c> renders
+    /// a null or a scalar, and only a structure's cast is a coin, as an <c>ANY</c>'s is.
     /// </para>
     /// </remarks>
     static class IrEval

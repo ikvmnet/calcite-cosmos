@@ -389,7 +389,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Since the switch the rendering graph writes it: for <c>'true'</c> and <c>'false'</c> the conjunct is sent whole,
         /// written at implementation as the string or the boolean, exact, so the plan's filter is the conjunct itself; for
-        /// <c>'30'</c>, which a stored 30.0 renders otherwise, the string or a number equal to it beside the property's
+        /// <c>'30'</c>, which a fraction whose double is 30 was not measured rendering as on Azure, the string or a number
+        /// equal to it beside the property's
         /// presence, the text-equality alternatives (h09), rechecked above, its rows the same.
         /// </para>
         /// </remarks>
