@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
@@ -97,6 +98,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     : planted;
             }).Should().NotBeEmpty("the plant keeps the interval below the empty string");
         }
+
+        /// <summary>
+        /// A fraction cell's witness search ends at a decimal's last digit, and finds what the interval holds there: the
+        /// fractions whose double is zero, as their rounding interval holds them, at the end it holds, where the halving
+        /// reached 0, an integer, and stood still forever; nothing where both ends are left out; and the one decimal between
+        /// two ends two apart at the last digit.
+        /// </summary>
+        [Fact]
+        public async Task AFractionsWitnessEndsAtTheLastDigit()
+        {
+            var tiny = new decimal(1, 0, 0, false, 28);
+            var cases = new (PathCell.Numbers Cell, decimal? Witness)[]
+            {
+                (Fractions(Bound.AtLeast(-tiny), Bound.AtMost(tiny)), -tiny),
+                (Fractions(Bound.Above(-tiny), Bound.AtMost(tiny)), tiny),
+                (Fractions(Bound.Above(-tiny), Bound.Below(tiny)), null),
+                (Fractions(Bound.Above(0.1000000000000000000000000001m), Bound.Below(0.1000000000000000000000000003m)), 0.1000000000000000000000000002m),
+            };
+
+            foreach (var (cell, witness) in cases)
+            {
+                var search = Task.Run(cell.Witness, TestContext.Current.CancellationToken);
+                (await Task.WhenAny(search, Task.Delay(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken))).Should().BeSameAs(search, $"{cell}'s witness search ends");
+                var found = await search;
+                (found is null ? null : (decimal?)NumberOf(found)).Should().Be(witness, $"{cell} holds {witness?.ToString() ?? "nothing"}");
+                if (found is not null)
+                    cell.Contains(found).Should().BeTrue($"{cell} holds its witness {found}");
+            }
+        }
+
+        static PathCell.Numbers Fractions(Bound lower, Bound upper) => new(false, lower, upper, ValueSet<string>.Empty);
 
         /// <summary>Imports, classes and cuts, drawn as population D draws a declaration: from its values and edges.</summary>
         static IEnumerable<(Import Facts, ValueSet<CutPoint> Cuts)> Cases()

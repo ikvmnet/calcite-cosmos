@@ -636,8 +636,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         /// <summary>
         /// A fraction of an interval that is not excepted: halfway from its lower end to the least excepted value above it
-        /// or its upper end, halved toward the lower until it is no integer.
+        /// or its upper end, halved toward the lower until it is no integer, or until no decimal lies between; and else an
+        /// end the interval holds.
         /// </summary>
+        /// <remarks>
+        /// Each candidate lies below the last, so the halving ends. Past a decimal's last digit, <c>low / 2 + x / 2</c> may
+        /// round back onto <c>x</c>: the fractions whose double is zero, from -0.0000000000000000000000000001 to
+        /// 0.0000000000000000000000000001 both held as the rounding interval's decimals (<see cref="DoubleBound.Rounding"/>),
+        /// halve to 0, an integer, and stood still there forever. Two ends that close are subtracted without overflow, and
+        /// half their difference is the decimal between them where one is. The halving tries neither end, so an end the
+        /// interval holds is tried last: that interval's only fractions are its two ends.
+        /// </remarks>
         static string? SomeFraction(Numbers n)
         {
             // An interval of one value, or of none.
@@ -649,16 +658,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var excepted = n.Except.AsEnumerable().Where(IsExactNumber).Select(NumberOf).ToList();
                 var low = n.Lower?.Value ?? excepted.Append(n.Upper?.Value ?? 1m).Min() - 1;
                 var high = excepted.Where(e => e > low).Append(n.Upper?.Value ?? low + 1).Min();
-                for (var x = low / 2 + high / 2; x > low; x = low / 2 + x / 2)
+                for (var x = low / 2 + high / 2; x > low;)
+                {
                     if (n.Contains(JsonValues.Of(x)))
                         return JsonValues.Of(x);
+
+                    var next = low / 2 + x / 2;
+                    if (next >= x)
+                        next = low + (x - low) / 2;
+                    if (next >= x)
+                        break;
+
+                    x = next;
+                }
             }
             catch (OverflowException)
             {
                 // No decimal lies there, and no double past 2^53 is a fraction.
             }
 
-            return null;
+            return new[] { n.Lower?.Value, n.Upper?.Value }.OfType<decimal>().Select(JsonValues.Of).FirstOrDefault(n.Contains);
         }
 
     }
