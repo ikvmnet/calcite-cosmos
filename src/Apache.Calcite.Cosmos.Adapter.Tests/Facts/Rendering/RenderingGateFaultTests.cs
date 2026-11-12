@@ -138,7 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// (<c>Service.IntegralNumbersReadBackAsHeld</c>). The second disjunct's own form is exact on its own cells.
         /// </summary>
         [Theory]
-        [InlineData("INTEGER", "$[\"price\"]=integers > 5 < 2147483647 (T,f)")]
+        [InlineData("INTEGER", "$[\"price\"]=integers > 5 < 2147483647 double >= 5.000000000000001 (T,f)")]
         [InlineData("DOUBLE", "$[\"price\"]=fractions > 5 double >= 5.000000000000001 (T,f)")]
         public void G4_AContaminatedCandidateIsNeverBest(string type, string? refuted)
         {
