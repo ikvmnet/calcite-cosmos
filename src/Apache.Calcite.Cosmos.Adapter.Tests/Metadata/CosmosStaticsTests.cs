@@ -212,6 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.Reading.Typed", ["Rows"], StaticFact, "a reader's rows"),
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
+            ("Facts.Saturation.PredicateRules", ["Strings"], StaticFact, "the one type a string is, which a path's characters are read among"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
             ("Facts.Saturation.StringCalls", ["Cut", "Rows", "TextCasts", "Upper"], StaticFact, "the rows of which operands each string function draws characters from and what it makes of them, and of which casts write which kinds as text, the root's data"),
         ];
