@@ -157,8 +157,11 @@ disjunction one of whose branches another conjunct asserts: `kind = 'shipment' A
 OR …)` sends the first conjunct alone. Where every conjunct goes, the statement has no `WHERE` at all.
 `required` matters: without it a document may lack the path, and a comparison over an absent path keeps
 no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
-Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTEGER`, which an
-`"integer"` declaration admits, and dropping the conjunct would answer where the query fails.
+Calcite's integer cast of the text raises on a fraction and on numbers past an `INTEGER`, which an
+`"integer"` declaration with no bounds admits, and dropping the conjunct would answer where the query
+fails. The service returns a whole number as its digits however it was written, so the cast reads a
+stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
+adapter does not yet drop a conjunct through that cast.
 
 ### A predicate no document can satisfy
 
@@ -211,9 +214,10 @@ A `CASE` condition in a projection follows the same rule. One the schema rules o
 **A query that can fail is not answered in Calcite's place.** The empty result stands in for
 Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.
 
-- Through `CAST(… AS INTEGER)` the same two ranges are sent. Calcite's integer cast of the text fails
-  on `30.0` and on numbers past an `INTEGER`, which an `"integer"` declaration and an enum of integers
-  both admit.
+- Through `CAST(… AS INTEGER)` the first range is sent: Calcite's integer cast of the text fails on
+  numbers past an `INTEGER`, which an `"integer"` declaration with no `minimum` admits. The second
+  keeps nothing, as through `DOUBLE`: the service returns each member of the enum as its digits,
+  which the cast parses (Chapter 7.4).
 - The same holds of a `RETURNING` of one type over a property declared another (Chapter 7), and of a
   type test Calcite cannot implement (Appendix B.5).
 - Where every document the schema admits fails, because the property is required, the filter stays in

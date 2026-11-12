@@ -990,7 +990,7 @@ string alone, which is the deletion of the stored-number disjunct `TODO.md` reco
 theory of JSON never needed: a domain keeps only values of a type its path may hold. The planner never states a
 domain beside a narrower type; a preimage does.
 
-**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.0`, and a numeric cast on
+**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.7`, and a numeric cast on
 a string it cannot parse. Such a row is no row a predicate keeps, so it constrains nothing an assumed predicate
 establishes — the asymmetry *Reading a value back* records for `RETURNING`, the caller's declaration held rather than
 checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
@@ -998,11 +998,12 @@ a pushdown may do is not settled. Nor does a raise support the reduce: a filter 
 Calcite fails on no row of (*The reduce asks every row false*).
 
 An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
-INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
-truncated or held it at the limit. The theory spells `30` and `30.0` alike, so a number there may always raise, and
-nothing is decided of one; a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
-every rendering, and of a cast of the raw value, and not of this. The first table said otherwise, and the population-D
-checker found it.
+INTEGER)` raises on a stored `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have truncated or
+held it at the limit. The service returns a whole number within a long as its digits however it was written, `30.0` as
+`30` (`Service.IntegralNumbersReadBackAsHeld`), so the parse raises on no integer its type holds
+(`NumberCast.ParsesWhole`); a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
+every rendering, and of a cast of the raw value, and nothing drops it through this cast yet (`TODO.md`). The first table
+said otherwise, and the population-D checker found it.
 
 **A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
 a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
@@ -2444,9 +2445,10 @@ which is a decision rather than a fix.
 `= '30'` keeps a stored string `'30'` and every stored number Java renders as `30`, and every such
 number has the value 30 — so the value is that string or it is that number, and the rule pushes
 `c.x = '30' OR c.x = 30` under the comparison Calcite still makes. It is implied and not exact, by one
-spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
-service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
-row crossing the wire is the whole cost, against a container read whole. The branches follow the
+spelling: a stored `30.000000000000001` is the number 30 at the service, which the emulator returns as
+`30` and Azure was not measured to (`Service.IntegralNumbersReadBackAsHeld`), so the number branch keeps
+it and the recheck may drop it; a stored `30.0` comes back `30`, which the recheck keeps. That row
+crossing the wire is the whole cost, against a container read whole. The branches follow the
 rendering: a number-like literal takes the parsed number — the whole number it spells, as a `BIGINT`,
 past where a double holds every whole number, since the service keeps a stored integer exactly and the
 double `'9007199254740993'` rounds to is another number there (measured on the emulator: it lost the
@@ -2654,8 +2656,9 @@ wrote as the path; but that cast is one a query can write, and Calcite evaluates
 `c.q = "6"` is not, and reading it as the raw value answered no rows where Calcite answers one. So a
 field read as text is named by its path's accessor over the document column, re-typed `ANY`
 (`RenderingRexBuilder.Accessor.Retyped`), which no query writes, and a cast to `ANY` is the conversion
-it is, which no row measured and the translator refuses. The residual half of the split needs no such care: no rule converts it, because the filter rule
-declines it in either spelling, and nothing copies a Cosmos filter that was never made.
+it is, which no row measured and the translator refuses. The residual half of the split needs no such
+care: no rule converts it, because the filter rule declines it in either spelling, and nothing copies a
+Cosmos filter that was never made.
 
 **`JSON_QUERY` is the other half, and it is guarded by the complement.** SQL/JSON splits the two
 accessors on the same line: `JSON_VALUE` answers for a string, a number, a boolean and a JSON null,
@@ -5364,7 +5367,8 @@ against Calcite's runtime, `RETURNING` a numeric or boolean type other than `DEC
 conversion at all: the scalar is cast to the Java class the JSON reader would have built for the type,
 and anything else throws. `RETURNING INTEGER` returns a stored `30` and throws on `30.7`, on `"30"`, on
 `true` and on `3000000000`, which parses as a long; `RETURNING DOUBLE` and `FLOAT` return `30.0` and
-throw on `30`, which parses as an integer, and `RETURNING BIGINT` throws on `30` for the same reason;
+throw on `30`, which parses as an integer and is what the service returns of a stored `30.0`
+(`Service.IntegralNumbersReadBackAsHeld`), and `RETURNING BIGINT` throws on `30` for the same reason;
 `SMALLINT`, `TINYINT` and `REAL` name classes the reader never builds and throw on every scalar;
 `BOOLEAN` throws on `"true"`; and `NULL ON ERROR` does not catch any of it
 (`CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal`). So a
@@ -7324,12 +7328,18 @@ what its column's answer keeps, read from `rawunion` — so a stratum or a reduc
 documents that is not so (`PredicateAtomTests.WhatARowKeepsCoversEveryValueOnWhichItTakesThatTruthValue`, and
 `PredicateAtomCellTests`' audit of what every reading keeps).
 
-**A number's text is the service's.** The service holds an int64 as itself and any other number as its double, and
-returns a whole double as its digits (`Service.NumbersBeyondLongCompareAsDoubles`); Calcite renders what it returns, so
-the text accessor's preimage of `'6'` is the string and every number whose double is 6, `6.0000000000000001` among them,
-and of `'0.1'` every number whose double is 0.1 (`Renderings.MayRenderAs`, `Reading.RenderedAs`), and the text reader's
-cells cut at a number's double (`ReaderEdgesTable`). How Azure spells a number it returns was not measured apart, so
-the spelling as written is kept beside the one served, and population D reads each document both ways. A preimage's
+**A number's text is the service's.** The service holds an int64 as itself and any other number as its double
+(`Service.NumbersBeyondLongCompareAsDoubles`), and returns a whole number within a long as its digits however it was
+written: `30`, `30.0`, `3e1` and `300e-1` all come back `30` on both targets, and a pointed integer past 2^53, which the
+emulator holds as its double, as that double's digits (`Service.IntegralNumbersReadBackAsHeld`). Calcite renders what
+it returns, so the text accessor's preimage of `'6'` is the string and every number whose double is 6,
+`6.0000000000000001` among them, and of `'0.1'` every number whose double is 0.1 (`Renderings.MayRenderAs`,
+`Reading.RenderedAs`), and the text reader's cells cut at a number's double (`ReaderEdgesTable`). The typed readings
+read the same returned text: `RETURNING INTEGER`, `BIGINT` and the integer parses read an integer within their type
+however it was written and raise on no spelling of it (`Renderings.ServedAsDigits`), and `RETURNING DOUBLE` raises on
+every number that may come back as digits (`Renderings.MayServeAsDigits`). Only how Azure spells a fraction whose double
+is whole within a long was not measured, so that one is read both ways, as its digits and with a point, and population
+D reads each document as each target returns it (`Documents.Returned`). A preimage's
 cases are met with the types the path may hold before they are joined (`PredicateAtom.Kept(truth, readings, columns,
 types)`): a window names no domain, and joined with the string's value it would leave any string. So one rule states
 the domain among the types the path may hold and another the characters among its strings, and a declared string keeps

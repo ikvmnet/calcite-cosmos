@@ -2729,13 +2729,13 @@ across documents* and *A join of a container to itself* is the record.
   `RETURNING` does, which `NeverTrue` reads as leave to decide. Read from the code and modelled in `IrEval`'s column
   mode; the column measurement holds no structure. The typed cells answer the raise, and the reduce's raise question
   reads them since 2026-11-10, so a reduce never rests on it; the verdicts still read the coarse reading.
-- **The typed reading compares numbers exactly, and says a fraction raises alone** — *small, and it touches plans.*
-  `Typed.Equal` decides a stored number equal to the literal by value, where a `DOUBLE` column and `RETURNING DOUBLE`
-  compare the doubles they round to; and an integer type's column reads any number not written as an integer as its
-  double where that is whole (`CosmosJson.GetInteger`): a fraction that rounds to one, which the coarse reading says
-  raises alone, and past 2^53 another integer. The typed cells read both, and since 2026-11-10 `Kept` keeps both — the
-  literal's rounding window, and an integer type's column's whole-valued fractions — so what an assumption establishes
-  loses neither; `On` and the verdicts still decide by value.
+- ~~**The typed reading compares numbers exactly, and says a fraction raises alone**~~ — *done, 2026-11-12.* A
+  `DOUBLE` or `FLOAT` column and `RETURNING DOUBLE` compare the doubles they round to, correctly rounded, and an integer
+  type's column reads a number not written as an integer as its double where that is whole within the type
+  (`CosmosJson.GetInteger`); `On`, `Over` and the cells place a number so (`PredicateAtom.Typed.Number`), and since
+  2026-11-10 `Kept` keeps the literal's rounding window and an integer type's column's whole-valued fractions. What
+  raises is read as the service returns the number (`Typed.Raises`): `RETURNING DOUBLE` over every number that may come
+  back as digits, `RETURNING INTEGER` and `BIGINT` nowhere they read every number as their column does.
 - **A numeric cast of a raw value is each column's own, and the facts graph reads it as a truncation** — *done at
   h15b.* `CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn`: an `ANY` converts the Java number the
   reader built, so `CAST(… AS INTEGER)` wraps a long beyond an int (4294967297 is 1) and holds a double at the limit; a
@@ -2856,7 +2856,9 @@ across documents* and *A join of a container to itself* is the record.
   lower filter's reduce on the whole condition would only add the request, the answer the same. The choice is between
   keeping such a filter whole in Calcite where its pushed part keeps nothing and its residual may raise — a full read,
   failing as Calcite does — and accepting the split's answer, as the deletions and lowerings below are, and sizing it
-  with them (*small*).
+  with them (*small*). The pull request's second soundness check found it again (an empty answer where Calcite fails,
+  through the split): a lowering by the plan's shape, out of its scope with the deletions and lowerings below, and the
+  owner's to decide.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates this pull request.* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
@@ -2879,7 +2881,7 @@ across documents* and *A join of a container to itself* is the record.
   the conjunct may fail, never a C# check of the column in `Compare`.
 - **A deletion stops evaluating a conjunct that may raise** — *small, an answer where Calcite fails.* `Redundant`, and
   every conjunct a deletion drops, removes the conjunct's evaluation with it; population D's redundancy check lets a
-  raise pass (`PopulationD.cs:279-287`). Ask `never raises` of the conjunct before deleting it.
+  raise pass (`PopulationD`, its *Redundancy* check). Ask `never raises` of the conjunct before deleting it.
 - **A lowering removes a raise on documents its siblings do not keep** — *small, an answer where Calcite fails.* A
   comparison lowered onto its stored form under `Siblings` no longer evaluates what raised, on documents the siblings
   exclude, where Calcite evaluates every conjunct.
@@ -2935,10 +2937,19 @@ across documents* and *A join of a container to itself* is the record.
   (`CalciteParameterMeasurementTests`, exact for every column). Its literal keys still read the union, which no row
   measured.
 - **The rendering graph lifts an agreement where a raise sits beside a truth value** — *the owner's call.* So a filter
-  Calcite fails on some documents may be sent and answered by the service: `JSON_VALUE(c."DOC", '$.body' RETURNING
-  DOUBLE) = 2` over a required `"integer"` is sent as `WHERE (c.body = @p0)`
-  (`CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent`), where Calcite fails
-  on a 2 written without a point. Whether that stands beside "fail like Calcite" is the owner's.
+  Calcite fails on some documents, or on every one, may be sent and answered by the service: `JSON_VALUE(c."DOC",
+  '$.body' RETURNING DOUBLE) = 2` over a required `"integer"` is sent as `WHERE (c.body = @p0)`, unbounded, bounded
+  within a long or listed (`CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent`), where Calcite
+  fails on every whole number, which the service returns as its digits however it was written
+  (`Service.IntegralNumbersReadBackAsHeld`); so is `RETURNING BIGINT = 5` over integers from 0 to 100. The loader writes
+  `RETURNING` and a column of the type alike (`typed`), and a `DOUBLE` or `BIGINT` column reads those numbers, so the
+  cells are no raise alone and the vacuity rule does not keep the statement in Calcite; telling the two apart in the
+  loader, a row for each, would let the raise stand alone. Whether that stands beside "fail like Calcite" is the
+  owner's.
+- **A conjunct through an integer parse its declared bounds satisfy is still sent** — *small, precision.* Over a
+  required integer from 0 to 100, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and `RETURNING INTEGER >= 0` raise nowhere
+  since 2026-11-12, yet both are sent where the same range through `CAST(… AS DOUBLE)` is dropped; why the deletion is
+  not reached for them is not traced.
 - **A weakening true of every document is pushed where the regroup reads no complement** — *nit, RU.* Partitions 464's
   `CASE` weakens to `IS_NULL(c.category) OR IS_DEFINED(c.category) OR NOT IS_DEFINED(c.category)`, true of every document,
   and S pushes it: the regroup rules read a junction's unit, its own connective and a part twice, not a part beside its
@@ -2951,9 +2962,10 @@ across documents* and *A join of a container to itself* is the record.
   `Renderings.MayRenderAs` and the `ANY` reading's `MayRender` decide by that double, the text reader's and the raw
   cast's cells cut at a number's double, and `Kept` keeps every number whose double the text's is, each case met with
   the types the path may hold before they are joined, so a declared string keeps its value
-  (`CosmosDeclaredFactPlanningTests.TheTextOfANumberIsTheServicesSpelling`; population D reads each document as written
-  and as served). How Azure spells a number it returns was not measured apart, so the written spelling is kept beside
-  the served one.
+  (`CosmosDeclaredFactPlanningTests.TheTextOfANumberIsTheServicesSpelling`; population D reads each document as each
+  target returns it). Both return a whole number within a long as its digits however it was written
+  (`Service.IntegralNumbersReadBackAsHeld`), which every reading reads since 2026-11-12; only how Azure spells a
+  fraction whose double is whole was not measured, so that one is read both ways.
 - **An integer cast of the text reads a cell of fractions as raising** — *small, precision.* A fraction whose double is
   whole within the type is returned as its digits, which the parse reads, so `CAST(JSON_VALUE(…) AS INTEGER) = 6` is
   TRUE of a stored `6.0000000000000001`. A cell cut by value holds it beside the fractions that raise, and no service

@@ -65,10 +65,13 @@ concrete type is learned per row. In practice:
   `WHERE c."$.category" = 'bikes'` runs against one partition, and with `c."id" = …` beside it becomes
   a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
   `VARIANT` with no bare number or boolean. A number pins the partition only where the container's
-  schema declares the key an integer, through a `RETURNING` of a number, for example
-  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5` (or `BIGINT`, or `DOUBLE`). Without that
-  declaration Calcite compares such a number by its double, so `= 5` also keeps a stored number written
-  with more digits than a double holds, and the adapter does not yet route on that.
+  schema declares the key an integer, through `RETURNING INTEGER`, for example
+  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or through `RETURNING BIGINT` for keys
+  beyond an `INTEGER`'s range. Calcite fails on `RETURNING BIGINT` over a stored `5`, and on
+  `RETURNING DOUBLE` over any whole number, so through either of those the partition is pinned only by
+  answering where Calcite fails (Chapter 23). Without that declaration Calcite compares such a number
+  by its double, so `= 5` also keeps a stored number written with more digits than a double holds, and
+  the adapter does not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
@@ -157,14 +160,15 @@ compares and returns the stored value directly. `DECIMAL` is the exception, belo
 
 Know what it does and does not do. **`RETURNING` asserts the type; it does not convert.** In Calcite,
 `RETURNING INTEGER` over a stored `30` gives 30, but over `"30"`, `30.7` or `true` it fails rather
-than converting. The type it checks for is the one the JSON reader builds, which is narrower than it
-looks:
+than converting. The type it checks for is the one the JSON reader builds from what the service
+returns, which is narrower than it looks. The service returns a whole number within 64 bits as its
+digits however it was written, so a stored `30.0` reaches Calcite as `30`:
 
 | `RETURNING` | answers for a stored | fails for |
 | --- | --- | --- |
-| `INTEGER` | whole number in an `INTEGER`'s range | anything else — a string, a fraction, a larger number |
-| `BIGINT` | whole number *beyond* that range | anything else — including `30` |
-| `DOUBLE`, `FLOAT` | number written with a point or an exponent, `30.0` | anything else — including `30` |
+| `INTEGER` | whole number in an `INTEGER`'s range, `30` or `30.0` | anything else — a string, a fraction, a larger number |
+| `BIGINT` | whole number *beyond* that range, within 64 bits | anything else — including `30` |
+| `DOUBLE`, `FLOAT` | fraction, `30.5`, or whole number past 64 bits | anything else — including `30` and `30.0` |
 | `SMALLINT`, `TINYINT`, `REAL` | nothing | every value |
 | `BOOLEAN` | `true`, `false` | anything else — including the string `"true"` |
 | `DECIMAL` | any number, **and a string that spells one** — `"30"`, `" 30 "` | a string that does not, a boolean |
@@ -183,10 +187,13 @@ a missing property give `NULL` under every one. So:
   the adapter does not answer it with no rows on its own. The same holds of `RETURNING DOUBLE` over a
   property declared a string. Where the property is required, the statement fails as in Calcite; where
   it may be missing, the statement is sent and answers what the service finds (Chapter 14.2). Over a
-  property declared `"integer"`, `RETURNING DOUBLE` is sent whether it is required or not, since a
-  document the schema admits may write the number `30.0`, which it reads: `= 1.5` finds nothing, and
-  `= 2` finds the documents holding 2 however written, where Calcite fails on one written `2`
-  (Chapter 23).
+  property declared `"integer"`, `RETURNING DOUBLE` is sent whether it is required or not, and however
+  the schema bounds or lists the integers: Calcite fails on every whole number the service returns,
+  but the adapter reads `RETURNING DOUBLE` as it reads a column typed `DOUBLE`, which reads every
+  number, so `= 1.5` finds nothing, and `= 2` finds the documents holding 2, where Calcite fails
+  (Chapter 23). So is `RETURNING BIGINT` over integers within an `INTEGER`'s range. Over a declared
+  fraction whose double is whole, `6.0000000000000001`, which the service may return as `6`,
+  `RETURNING DOUBLE` is not answered with no rows either.
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
   that bends to the data would be a suggestion, not a type. So does an integer written outside the

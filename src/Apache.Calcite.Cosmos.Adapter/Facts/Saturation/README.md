@@ -353,24 +353,34 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `value chars(v) = S` | **if** the value is a string, its characters are of the classes `S`: `chars` said of a value |
 | `walk(v, i, a)`, `drawn(v, a) = S` | a call's operands from position `i` on, an analysis of terms alone; the classes the call draws from them |
 | `always true(e)`, `always false(e)`, `never true(e)` | the verdicts |
+| `gated(e, w)` | assume `e` where the `WHERE` `w` never raises; stated by a gated node alone, local, never lifted |
+| `never raises(w)` | Calcite raises on no row the context admits, nor fails to compile; judged before anything is assumed, local, read by the gate alone |
 
 **What an atom means is `PredicateAtom`'s, in one place**, and no rule names a reading or an operator. It answers two
 questions, each an over-approximation: what a row on which the atom takes a truth value can hold at its path
 (`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
 on is no truth value: it is no row a predicate keeps, and it supports no verdict.
 
-**The rules**, 45 of them and a split.
+**The rules**, 54 of them and a split.
 - **Analysis** (9): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
   parameter, a membership, a null test and a definedness test are each an atom of what they read.
-- **What a predicate taking a truth value establishes** (12):
+- **What a predicate taking a truth value establishes** (15):
   - a conjunction that holds holds on both sides, and a disjunction that fails fails on both;
   - a negation takes the other truth value of its operand;
   - the arm a case chose takes the junction's truth value;
   - a predicate is not both true and false of a row;
-  - an atom says what `Kept` says of its path: that it is there, its types, its values, its bounds, and which of
-    its points it does not hold. The rendering preimage is here: `= '30'` keeps the string and the number;
+  - an atom says what `Kept` says of its path: that it is there, its types, its values, its values among the types
+    it may hold, its strings' characters, its bounds, and which of its points it does not hold. The rendering
+    preimage is here: `= '30'` keeps the string and the number;
   - a domain an atom's path holds keeps only values of a type the path may hold. The rules of JSON leave this out,
-    because nothing the planner states needed it; it is what lets a declared string meet a preimage.
+    because nothing the planner states needed it; it is what lets a declared string meet a preimage;
+  - the gate: what a node gates beside a `WHERE` holds only where that `WHERE` never raises.
+- **Raises** (6, ruleset `raises`), run only in a gated node, before anything is assumed: an atom never raises where
+  `PredicateAtom.RaisesOver` finds no raise in the cells of any state its path may hold, read through the facts
+  graph's reading rows and the raw columns' answers, an undecided answer counted as a raise; a truth value never
+  raises; and a negation, a conjunction, a disjunction and a `CASE` never raise where their operands never raise
+  (`Calcite.ConnectivesAreKleene`). An opaque term gets no row. No verdict reads `never raises`: a row Calcite raises
+  on supports none.
 - **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
   before discriminators.
 - **Decide** (24), run once the facts have settled:
@@ -407,11 +417,18 @@ argument (`JsonFactSet.CharactersOf`), in a context made for the question beneat
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
 then the verdicts. `Answer`, for a context that assumes nothing, runs JSON and analysis without a split, then the
 verdicts. `CharacterSaturation` runs JSON, JSON Schema and the rules of a value's characters, for a question of one.
+`Reduction`, for a gated node — the reduce's, gating the `WHERE` itself, and the never-read arm's, gating what the arm's
+question assumes — runs `Answer` and the raises before anything is assumed, then `Saturation`, so nothing assumed
+reaches what the raises derived: the node is contradictory only where no document the declaration admits makes the
+`WHERE` true and none makes it raise.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
   lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
+- `PredicateAtomRaiseTests`: wherever `IrEval` raises on a value of a class, read as each target returns it, through
+  any reader a reading stands for and in every world population D draws, or fails to compile an atom, `RaisesOver`
+  says the atom may raise over the class; and over the atoms a reduce rests on, that it raises nowhere;
 - `CosmosOracleTests`: the strata, #117's self-certification, the licence table, redundancy, what a scope assumes, an
   incomplete run, a container that declares no schema, whose strata are the engine's contexts as any other's are, and
   a path no conjunct reads beneath a scalar one pins, absent under every clause's licence once the context is told of
