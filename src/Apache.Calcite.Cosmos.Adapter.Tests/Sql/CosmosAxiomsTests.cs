@@ -133,7 +133,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             foreach (var axiom in CosmosAxioms.All.Where(a => a.Outcomes is not null || a.Subjects is not null || a.FunctionOutcomes is not null || a.Columns is not null || a.StoredAs is not null
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.NullThrough is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
-                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null || a.AsOfAPath is not null))
+                || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null || a.AsOfAPath is not null
+                || a.ParametersAs is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -242,6 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
             CosmosAxiomRows.ReadAsOfAPath(all).Should().BeEquivalentTo(PredicateAtom.TextReader, PredicateAtom.TypedReaders, PredicateAtom.QueryReader, PredicateAtom.RawReader);
             CosmosAxiomRows.ReadCalcite(all).AsOfAPath.Should().Contain(PredicateAtom.RawReader, "an element's raw value, and a test's body over it, are as of a path holding it");
+            CosmosAxiomRows.ReadParametersAs(all).Should().Equal([("CHAR", "VARCHAR")], "a CHAR column's comparison with a parameter answers as a VARCHAR column's, class by class");
             CosmosAxiomRows.ReadTestReads(all).Should().BeEquivalentTo(new[] { (PredicateAtom.TextReader, PredicateAtom.RawReader), (PredicateAtom.RawReader, PredicateAtom.RawReader),
                 (PredicateAtom.TypedReaders, PredicateAtom.RawReader), (PredicateAtom.QueryReader, PredicateAtom.RawReader), (PredicateAtom.RawIn("VARIANT"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("ANY"), PredicateAtom.RaisesReader),
                 (PredicateAtom.RawIn("VARCHAR"), PredicateAtom.RaisesReader), (PredicateAtom.RawIn("CHAR"), PredicateAtom.RaisesReader), (PredicateAtom.CallReaders, PredicateAtom.RaisesReader),

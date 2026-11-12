@@ -26,6 +26,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="AsOfAPath">The readings an index reads as of a path holding the element, a test's body over each among it.</param>
     /// <param name="Columns">What each raw column states, one fact a field (h12, G5), from which both graphs derive each column's answers and their union.</param>
     /// <param name="ClassTypes">The JSON type of each class of value, which says two are of one type (<see cref="CosmosValueClasses.Types"/>).</param>
+    /// <param name="ParametersAs">Each raw column whose comparison with a parameter a row says answers as another column's, by its class.</param>
     internal sealed record CalciteRows(
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> Reads,
         IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> Bands,
@@ -44,11 +45,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(string Target, string Reader, string Row)> Casts,
         IReadOnlyList<string> AsOfAPath,
         RawColumnRows Columns,
-        IReadOnlyList<(CosmosValueClass Class, string Type)> ClassTypes)
+        IReadOnlyList<(CosmosValueClass Class, string Type)> ClassTypes,
+        IReadOnlyList<(string Column, string As)> ParametersAs)
     {
 
         /// <summary>No row.</summary>
-        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], RawColumnRows.None, []);
+        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], RawColumnRows.None, [], []);
 
     }
 

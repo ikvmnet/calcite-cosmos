@@ -32,8 +32,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// key of the reading through that column alone (rawtyped), each the rules' answer for that column, and nothing else:
         /// every class a column states, an absent path its own (F3), beside each literal it is compared beside, and beside a
         /// parameter, a comparison's key with no literal's class, the column's answers beside every class it is beside
-        /// joined. A column no row measured (<see cref="PredicateAtom.UnionColumns"/>, a <c>CHAR</c>'s) answers each key as
-        /// the union does. Both lattices keep their laws over the answers and unions S gives.
+        /// joined. A column no row measured (<see cref="PredicateAtom.UnionColumns"/>, a <c>CHAR</c>'s) answers a literal's
+        /// key as the union does and a parameter's as the column a row says it answers one as (parameteras, a
+        /// <c>VARCHAR</c>'s). Both lattices keep their laws over the answers and unions S gives.
         /// </summary>
         [Fact]
         public void TheUnionIsEveryKeysColumnsJoined()
@@ -67,8 +68,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 beside.Should().NotBeEmpty(key.ToString());
                 answer.Should().Be(beside.Aggregate(new RawAnswer(), (a, o) => RawAnswer.Join(a, s.Theory.Get(s.RawColumn.Of(Columnless(key) with { Operand = o }, column)))), key + " beside a parameter");
             }
+            var parameterAs = ProbeRows.Measured.ParametersAs.ToDictionary(p => p.Column, p => p.As);
             foreach (var (key, answer) in columns.Except(measured))
-                answer.Should().Be(joined.Single(e => e.Key == Columnless(key)).Value, key + " reads as the union");
+                answer.Should().Be(Parameter(key) ? union[Columnless(key).In(parameterAs[PredicateAtom.ColumnOf(key.Reader)!])] : joined.Single(e => e.Key == Columnless(key)).Value,
+                    key + (Parameter(key) ? " answers a parameter as its row's column" : " reads as the union"));
 
             RawTruths.AnswerUnion.Verify([.. union.Entries.Select(e => e.Value).Distinct(), RawAnswer.Unanswered]);
             RawTruths.Union.Verify([RawTruths.Empty, union, .. union.Entries.Take(40).Select(e => RawTruths.Of(e.Key, e.Value))]);

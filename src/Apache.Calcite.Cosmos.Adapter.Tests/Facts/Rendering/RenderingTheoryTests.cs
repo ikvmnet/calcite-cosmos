@@ -187,7 +187,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a raw reading's answer on a key is the union of its columns', and a column's reading's its own",
                     "a raw column no row measured answers each key as the union of those that were",
                     "a raw reading's comparison with a parameter over a class answers what its column answers beside any class",
-                    "a raw column no row measured answers a parameter as the union of those that were",
+                    "a raw column answers a parameter as the column a row says it answers one as",
                     "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
                     "a raw column no row measured reads each class as the union of those that were",
                     "a raw column no row measured is null over an absent path where the union's reading is",

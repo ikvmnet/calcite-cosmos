@@ -107,9 +107,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The keys are the readings rules' join over every class a column is compared beside, and the driver binds fewer:
         /// no structure, and to a <c>VARIANT</c> only null. So a key holds every truth value measured, and some no caller
         /// can reach, which nothing reads: the evaluator reads a key's raise alone, and the raises are exactly the
-        /// measurement's on every column a literal's rows measured. A <c>CHAR</c> column reads as their union, a
-        /// <c>VARIANT</c>'s failure to compile among it, where Calcite reads it as a <c>VARCHAR</c>'s: a raise more than
-        /// Calcite makes, which loses a reduce and never a row.
+        /// measurement's on every column. A <c>CHAR</c> column, which no literal's row measured, answers a parameter as a
+        /// <c>VARCHAR</c> column does (<c>parameteras</c>), as Calcite answers it class by class.
         /// </para>
         /// </remarks>
         [Fact, CosmosPins("Calcite.AParameterComparesAsItsComparand")]
@@ -144,7 +143,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     for (var s = 0; s < Stored.Length; s++)
                         union[o * Stored.Length + s] |= answered.Truths[s];
 
-                    Check(PredicateAtom.RawIn(column), op, answered.Truths, exact: column != "CHAR");
+                    Check(PredicateAtom.RawIn(column), op, answered.Truths, exact: true);
                 }
 
             foreach (var (op, o) in Ops.Select((op, o) => (op, o)))
@@ -153,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             // The cast of a raw value to text through each column.
             foreach (var (column, type) in RawColumns)
                 foreach (var op in Ops)
-                    Check(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn(column)), op, Measure(connection, Cast(type), op).Truths, exact: column != "CHAR");
+                    Check(PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn(column)), op, Measure(connection, Cast(type), op).Truths, exact: true);
 
             // A typed reading, the union of RETURNING and the column the reader fills, as the loader reads both.
             foreach (var type in Scalars)
@@ -178,8 +177,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             lacking.Should().BeEmpty("the facts graph's answer to a parameter holds every answer Calcite gives");
 
             // Measured truths against the facts graph's answer to a parameter on each stored value's cell, and for a raw
-            // reader against its column's key beside a parameter; exact: a column a literal's rows measured, whose key's
-            // raises are the measurement's.
+            // reader against its column's key beside a parameter; exact: a column's, whose key's raises are the
+            // measurement's, a CHAR's read as a VARCHAR's.
             void Check(string reader, string op, Truths[] measured, bool exact)
             {
                 var atom = PredicateAtom.CompareParameter(reader, op);

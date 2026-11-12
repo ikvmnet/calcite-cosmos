@@ -873,6 +873,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
 
+            // A CHAR column beside a parameter answers class by class as a VARCHAR column (Calcite.AParameterComparesAsItsComparand):
+            // it fails over anything but a string, null bound or not, and a string, read against a CHAR of the column's length, is a coin.
+            if (reading is SqlValue.Raw { Column: "CHAR" } && operand is SqlValue.Parameter)
+                return stored is null or J.Null ? U : stored is J.Str ? world.Choose(T | F | U, reading + " " + op + " " + operand + " @ " + Documents.Json(stored)) : R;
+
             // A number Calcite wrote cast (G8) is the value the cast makes, a cast that raises raising on every row; beside the
             // raw value itself, whose box a column compares by, what it compares as is not modelled.
             if (operand is SqlValue.Cast { PathRead: null } or SqlValue.DecimalCast)
@@ -1071,14 +1076,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// The text a scalar or a null is cast to through no named column, as an <c>ANY</c> renders it; <c>null</c> for a
+        /// structure, which it renders unmeasured.
+        /// </summary>
+        static SqlDatum? Unnamed(J stored) => CastText(stored, RawAs.Any);
+
+        /// <summary>
         /// The cast to text of a stored value through one column (<c>Calcite.CastOfARawValueToText</c>): a string is itself
         /// and a null null; a <c>VARIANT</c> casts a number or a boolean to null and raises over a structure, a
         /// <c>VARCHAR</c> column reads nothing else, and an <c>ANY</c> renders a scalar as Java renders the reader's box, a
         /// long in its digits. An <c>ANY</c>'s structure, Java's map or list, is <c>null</c>: <see cref="RawText"/>'s coin.
         /// </summary>
-        /// <summary>The text a scalar or a null is cast to through no named column, as an <c>ANY</c> renders it; <c>null</c> for a structure, which it renders unmeasured.</summary>
-        static SqlDatum? Unnamed(J stored) => CastText(stored, RawAs.Any);
-
         static SqlDatum? CastText(J stored, RawAs raw) => (stored, raw) switch
         {
             (J.Null, _) => SqlDatum.Null,

@@ -58,6 +58,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// literal of a class (<see cref="CosmosAxiomRows.ReadExactReadings"/>), which a statement's strata rest on.</param>
     /// <param name="AsOfAPath">The readings a <c>Calcite</c> row says an index reads as of a path holding the element, a
     /// test's body over each among it (<see cref="CosmosAxiomRows.ReadAsOfAPath"/>).</param>
+    /// <param name="ParametersAs">Each raw column a <c>Calcite</c> row says compares with a parameter as another column does, by
+    /// its class (<see cref="CosmosAxiomRows.ReadParametersAs"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,
@@ -68,6 +70,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null,
         IReadOnlyList<CosmosFold>? Folds = null, IReadOnlyList<CosmosCalciteReadAs>? ReadAs = null, IReadOnlyList<CosmosCalciteThrough>? Through = null,
         IReadOnlyList<CosmosLikeUnit>? LikeUnits = null, IReadOnlyList<CosmosTestRead>? TestReads = null, IReadOnlyList<CosmosExactReading>? ExactReadings = null,
-        IReadOnlyList<string>? AsOfAPath = null);
+        IReadOnlyList<string>? AsOfAPath = null, IReadOnlyList<(string Column, string As)>? ParametersAs = null);
 
 }

@@ -76,6 +76,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             RawUnion = graph.DefineFunction<RawTruths>("rawunion", RawTruths.Union);
             // Read beside the terms by S's rule that gives such a column's reading the union's order, so an analysis.
             UnionColumn = graph.DefineRelation<string>("unioncolumn", analysis);
+            ParameterAs = graph.DefineRelation<string, string>("parameteras");
         }
 
         /// <summary>The JSON kinds each type test is TRUE of, by its name: the predicate vocabulary's, which this one's rule writes.</summary>
@@ -190,6 +191,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Relation<string> UnionColumn { get; }
 
         /// <summary>
+        /// A column whose comparison with a parameter answers as another column's, by its class (<c>Calcite.AParameterComparesAsItsComparand</c>):
+        /// a <c>CHAR</c>'s as a <c>VARCHAR</c>'s, where no literal's row measured it.
+        /// </summary>
+        public Relation<string, string> ParameterAs { get; }
+
+        /// <summary>
         /// The facts a root holds: the rows, the truth table and the comparisons the cell decides, and the table empty; the raw
         /// columns' rows, each class's type, the columns no row measured, and the union empty.
         /// </summary>
@@ -278,6 +285,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             foreach (var column in PredicateAtom.UnionColumns)
                 yield return UnionColumn.Of(column);
+
+            foreach (var (column, @as) in rows.ParametersAs)
+                yield return ParameterAs.Of(column, @as);
 
             yield return RawUnion.Of().Is(RawTruths.Empty);
         }
@@ -475,11 +485,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(RawUnion.Of().Is(Compute.Of(k, c, t, RawTruths.OfParameter)));
             });
 
-            reads.DefineRule("a raw column no row measured answers a parameter as the union of those that were", r =>
+            // A column whose parameter a row measured answering as another's, a CHAR's as a VARCHAR's, answers each key beside
+            // a parameter as that column does; one no row names, none, so a raw reading's cells read anything and a raise there.
+            reads.DefineRule("a raw column answers a parameter as the column a row says it answers one as", r =>
             {
                 var (k, c, u) = r.Vars<RawKey, string, string>("k", "c", "u");
                 var t = r.Var<RawAnswer>("t");
-                r.When(t.Is(RawColumn.Of(k, c)), UnionColumn.Of(u));
+                r.When(t.Is(RawColumn.Of(k, c)), ParameterAs.Of(u, c));
                 r.Then(RawUnion.Of().Is(Compute.Of(k, u, t, RawTruths.OfParameter)));
             });
         }
