@@ -94,8 +94,9 @@ Cosmos `LIKE` for any other. One run between two `%` stops at the same U+0000 wh
 `'%b%'` does not find the `b` of `a`U+0000`b`, so that shape pushes where `x` is proved to hold none.
 `_` is one code point to both engines, but the service's matches a line terminator and Calcite's never
 does, so a pattern holding `_` — `'a_b'` — pushes only where `x` is proved to hold no line terminator,
-and runs in process elsewhere. Every other shape — `'a%'`, `'%a'`, `'%a%b%'` — pushes wherever `LIKE`
-does.
+and runs in process elsewhere. In a select list it is not yet held to that: it is sent, and a string
+holding a line terminator can read true where Calcite reads false (Chapter 23). Every other shape —
+`'a%'`, `'%a'`, `'%a%b%'` — pushes wherever `LIKE` does.
 
 The value matters as much as the pattern. Calcite's `UPPER` is Java's, which writes `ß` as `SS`; the
 service's `UPPER` and its case-insensitive match leave `ß` as it is, so `UPPER(x) LIKE '%SS%'` keeps
@@ -563,7 +564,7 @@ documents it has to read.
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with a `[` no equality, `STARTSWITH`, `ENDSWITH` or `CONTAINS` says, `ESCAPE`, a computed pattern or U+0000 in the pattern | Cosmos reads `[…]` as a range, and Calcite reads U+0000 as an escape; a `]` that closes none and a backslash are themselves to both |
-| `LIKE` with a `_`, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2) |
+| `LIKE` with a `_` in a filter, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2); in a select list it is sent (Chapter 23) |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | `JSON_VALUE(… RETURNING VARIANT)` in any filter: a comparison, a null test or a type test | Calcite holds its value in no `VARIANT` box, so it equals no value cast to one, and its null test is true over an object, where the service compares and tests the stored value (8.3) |

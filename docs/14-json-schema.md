@@ -398,9 +398,9 @@ push over the path:
 `UPPER(x) LIKE '%A%'` asks both its columns: the service's `UPPER` folds the service's way, so the
 string has to be ASCII, and its `CONTAINS` stops at a U+0000, so it has to hold none. The first two rows
 prove both, and it is sent as `CONTAINS(UPPER(c.x), @p0)`; a `LIKE` of any other shape —
-`'a%'`, `'%a%b%'` — pushes over any declared string. One holding `_` — `'a_b'` — pushes only over a string
-proved to hold no line terminator, as the first row's are: the service's `_` matches one, which Calcite's
-never does (Chapter 8.2). On the
+`'a%'`, `'%a%b%'` — pushes over any declared string. One holding `_` — `'a_b'` — pushes in a filter only
+over a string proved to hold no line terminator, as the first row's are: the service's `_` matches one,
+which Calcite's never does (Chapter 8.2); in a select list it is sent regardless (Chapter 23). On the
 emulator, which stores U+0000 and U+FDD0 as two units each, a count, a window, a `LIKE` holding `_`, `0`
 or `1` beyond a prefix, and the other functions Appendix B.2 names push only over strings holding neither,
 and U+FDD0 lies above U+E000, so the rows proving nothing beyond U+FFFF do not prove it (Appendix B.2).

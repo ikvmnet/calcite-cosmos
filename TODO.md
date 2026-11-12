@@ -2851,6 +2851,25 @@ across documents* and *A join of a container to itself* is the record.
   `out6.jsonl`'s `cols` lines). The `WHERE`'s are S's and right since the switch; the column is the translator's until
   S writes it (h37), where the test is written over the path's accessor as the `WHERE`'s is, its body's row
   (`testreads`) saying what it reads.
+- **A projected `LIKE` holding `_` is sent over a string that may hold a line terminator** — *medium, a wrong
+  answer; the column's, h37, and older than "fail like Calcite", whose checks found it.* The translator writes a
+  column's `LIKE` as Cosmos `LIKE` (`CosmosRexTranslator.WriteLike`), refusing an `ESCAPE`, a computed pattern, a
+  pattern Calcite's rows leave unread and a bracket, and asks nothing of what the subject may hold, where the service's
+  `_` matches each line terminator (`Service.LikeOneOverEachClass`) and Calcite's none
+  (`Calcite.LikeReadsItsPatternsUnits`). So `SELECT c."id", CASE WHEN JSON_VALUE(c."DOC", '$.k') LIKE 'a_b' THEN 1
+  ELSE 0 END AS v` over `k` declared `{"enum": ["a\nb"]}` sends `(((IS_PRIMITIVE(c.k) ? c.k : null) LIKE @p0) ?
+  @p1 : @p2)` under both targets' plans and answers 1 where Calcite answers 0; so do `\r`, U+0085, U+2028 and
+  U+2029, `'a__b'` over `"a\r\nb"`, and an enum holding `"axb"` beside, and over `{"type": "string"}` the
+  Production plan (the Emulator plan keeps that one in Calcite): 30 wrong statement and target pairs on each emulator,
+  measured against Calcite in process on 2026-11-12, alike before "fail like Calcite". A bare `k LIKE 'a_b'` column and a
+  `NOT LIKE` the facts do not fold are written by the same writer and planned alike, their answers over a line
+  terminator not measured. The `WHERE`'s are S's and right: a `_` there stays in Calcite (*Run 2's declines*, below).
+  The proper fix is the column's: S writing it (h37), or until then a bridge question that asks S the leaf question the
+  filter asks, over what the projection's facts hold of the subject, as `FoldOf` and `ImageOf` do (`RenderingOracle`),
+  and sends the `LIKE` only where every class the subject may hold reads alike; never a C# check of the classes in
+  `WriteLike`. It moves projection plans, so it is a pull request of its own, with a planning test and a differential
+  case over a declared enum holding `"a\nb"`, and a string beside `"axb"`, for the `CASE`, the bare column and
+  `NOT LIKE`.
 - ~~**A filter that raises is reduced as one that keeps nothing**~~ — *done, 2026-11-10.* The reduce asks every row
   false and none raising (`DESIGN.md`, *The reduce asks every row false*).
 - **A residual beside a contradicted split loses its raise** — *the owner's call: an answer where Calcite fails, never
@@ -3175,13 +3194,14 @@ across documents* and *A join of a container to itself* is the record.
   ligatures, and the service's `_` matches a line terminator, which Calcite's never does. The owner accepted the declines
   by name before the run, and the branch's triage listed each by its text until h16 (reason `run 2: the service differs`,
   `OwnerDecisions`): at the gate over post2's capture, `_` 6 under `Production` and 3 under `Emulator`, the case mapping
-  4 and 3. A `_` is RU, never rows: the filter runs in process, and an unpaired surrogate, which no target stores as one,
-  would keep it there too. Every case mapping named is beneath a conjunct that narrows its path to letters each target
-  maps as Calcite does (differential 477, partitions 240 and 2763, `AFiltersValuesProveWhatAFunctionAsks` and a planted
-  `UPPER(category) <> 'SPRINT'`): the census asked it at the statement's root, where the path may hold any letter, while
-  S's admission states it beneath its round's node and proves it there. From the switch S pushes each, and the seven
-  names went with the census at h16 (DESIGN.md, *What line 6 asks after run 2*); a `_` stays in process, which the plan
-  digests hold.
+  4 and 3. A `_` in a filter is RU, never rows: the filter runs in process, and an unpaired surrogate, which no target
+  stores as one, would keep it there too. A `_` in a column is not declined at all and answers wrong values (*A
+  projected `LIKE` holding `_` is sent over a string that may hold a line terminator*, above). Every case mapping
+  named is beneath a conjunct that narrows its path to letters each target maps as Calcite does (differential 477,
+  partitions 240 and 2763, `AFiltersValuesProveWhatAFunctionAsks` and a planted `UPPER(category) <> 'SPRINT'`): the
+  census asked it at the statement's root, where the path may hold any letter, while S's admission states it beneath
+  its round's node and proves it there. From the switch S pushes each, and the seven names went with the census at h16
+  (DESIGN.md, *What line 6 asks after run 2*); a `_` in a filter stays in process, which the plan digests hold.
 - **Two declines are overridden for 3A, their translator code kept** — *Stage 3, 3D and 3E.* The owner overrode by name
   (2026-11-03) a value `CASE` compared (1 real push under `Production`, 2 under `Emulator`), which S reads at h31's
   `Yield`, and an unnest element (3 and 2: `Unnest.FilteredElement`, `Unnest.TwoArrays` and a planner test), whose
