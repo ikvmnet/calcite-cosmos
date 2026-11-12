@@ -36,7 +36,8 @@ namespace Apache.Calcite.Cosmos.Facts
     {
 
         /// <summary>
-        /// What is known when nothing is declared and nothing was established.
+        /// What is known reading no context of the theory: nothing, so every question is answered as though the rules
+        /// proved nothing, even of a literal.
         /// </summary>
         public static readonly JsonFactSet Empty = new(null, null);
 
@@ -170,13 +171,22 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// <para>
         /// <b>A fact of the theory, of every value alike</b>, derived in a context made for the question beneath this
-        /// one. A reading of a path holds the path's characters where it reads the path, as the analysis says: of a
-        /// path holding an element, where the readings an index reads as of a path name it
-        /// (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>). A literal holds its own. A call — a concatenation, a case
+        /// one. The text and the raw value of a path hold the path's characters where they read the path, as the
+        /// analysis says: of a path holding an element, where the readings an index reads as of a path name it
+        /// (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>). A literal holds its own wherever the question's run completes
+        /// beneath a context that admits a document, as it does in a filter's conjunct, which reads a context of its
+        /// statement, the declaration's or one beneath it, and in a read outside a filter's statement, which reads the
+        /// declaration's (<see cref="JsonFactTheory.Declared"/>): each container's theory holds the service's rules,
+        /// even where its schema states nothing. The empty set (<see cref="Empty"/>) reads no context. A translation
+        /// without a container is handed it, and so, among others, is a read of a declaration the engine could not
+        /// compile or of a statement beneath one. It, and the set of a stratum that admits no document, answer
+        /// <see cref="JsonCharacterBand.Any"/> for every value, a literal among them. A call — a concatenation, a case
         /// mapping, a window over a computed string — holds what its function draws from each operand
         /// (<c>StringCalls</c>) and what each operand holds; nothing here combines one operand's with another's. So it
         /// derives a cast to text of the value a path holds, where the path holds scalars alone. A parameter, a reading
-        /// of an element the cell does not name, and a call of a function the theory does not read, may hold anything.
+        /// no rule of characters reads (<c>JSON_QUERY</c>, and a <c>RETURNING</c> of a type that is not a character
+        /// type), a reading of an element the cell does not name, and a call of a function the theory does not read,
+        /// may hold anything.
         /// </para>
         /// <para>
         /// Silent, as a path's are, about whether a string is there.

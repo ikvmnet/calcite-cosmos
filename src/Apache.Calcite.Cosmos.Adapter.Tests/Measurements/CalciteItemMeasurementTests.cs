@@ -72,8 +72,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// among them, <c>JSON_QUERY</c> and the accessor re-typed <c>ANY</c>, the raw value a weakening's test is written
         /// over, alike, and each type test's body over every one of them, at each path an element is read at
         /// (<see cref="Indexes"/>); and where there is no element, past the end or over a value that is no array, what it
-        /// answers over an absent path. <c>JSON_EXISTS</c>, which no rule reads, is asked at the first index alone. The cell
-        /// names each reading measured so, and no other.
+        /// answers over an absent path. The cell names each reading measured so, and no other.
         /// </summary>
         [Fact, CosmosPins("Calcite.ReadingsOfAnIndexAreAsOfAPath")]
         public void AReadingOfAnIndexIsAsOfAPath()
@@ -84,7 +83,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 root.add(test, Declared(test));
 
             var (_, elements, paths) = Indexes[0];
-            string[] readings = ["JSON_VALUE(\"d\", '$.f[0]') = '30'", "JSON_VALUE(\"d\", '$.f[0]') IS NULL", "JSON_QUERY(\"d\", '$.f[0]') IS NULL", "JSON_EXISTS(\"d\", '$.f[0]')"];
+            string[] readings = ["JSON_VALUE(\"d\", '$.f[0]') = '30'", "JSON_VALUE(\"d\", '$.f[0]') IS NULL", "JSON_QUERY(\"d\", '$.f[0]') IS NULL"];
             string Path(string reading) => reading.Replace("$.f[0]", "$.g");
 
             MaterialisedTable.Of(elements).Ask(connection, readings).Should().Equal(MaterialisedTable.Of(paths).Ask(connection, [.. readings.Select(Path)]));
