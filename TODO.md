@@ -2895,7 +2895,17 @@ across documents* and *A join of a container to itself* is the record.
   negative length, a division by zero, a `DATE` cast, `RETURNING INTEGER` arithmetic, a comparison of two properties,
   a parameter (`CAST(… AS ANY) > ?` beside `k = 'z'`), and a cast of a string that parses as no number to `INTEGER`,
   `BIGINT` or `DOUBLE`, or `RETURNING DECIMAL`, beside a contradicted sibling: 95 statements, measured on each
-  emulator under both targets' plans.
+  emulator under both targets' plans. Later runs found more, each again an empty answer with no request where Calcite
+  raises and none a wrong row (380 statement-target pairs take the split route on one emulator, 376 on the other): a
+  `CASE` whose arm or `ELSE` casts text to `INTEGER` beside a contradicted `k = 'z'`, with three arms, as a simple
+  `CASE`, under a `NOT` or beside an `OR`; an arm reached past an earlier one (`CASE WHEN kind = 'C' THEN TRUE WHEN
+  kind = 'A' THEN CAST(body AS INTEGER) = 1 AND kind = 'B' ELSE FALSE END`); a cast to `BOOLEAN` under a `NOT`;
+  `JSON_EXISTS(c."DOC", 'strict $.o' ERROR ON ERROR)` beside `k = 'z'`, which raises where `o` is missing; an `ANY`
+  compared with a parameter beside `k = 'z'` or under a `NOT`; `RETURNING INTEGER` beside `k = 'z'`; a disjunction
+  holding a cast to `INTEGER` beside a never-read arm (`(CAST(body AS INTEGER) = 1 OR kind IN ('A', 'B')) AND CASE WHEN
+  kind = 'C' THEN … ELSE FALSE END`); and `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND kind = 'C'`, whose
+  residual after the split is itself deleted as redundant (*A deletion stops evaluating a conjunct that may raise*), so
+  that the plan shows no residual over the empty `Values` at all and reads as a whole filter reduced.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates "fail like Calcite".* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
@@ -2918,7 +2928,13 @@ across documents* and *A join of a container to itself* is the record.
   the conjunct may fail, never a C# check of the column in `Compare`.
 - **A deletion stops evaluating a conjunct that may raise** — *small, an answer where Calcite fails.* `Redundant`, and
   every conjunct a deletion drops, removes the conjunct's evaluation with it; population D's redundancy check lets a
-  raise pass (`PopulationD`, its *Redundancy* check). Ask `never raises` of the conjunct before deleting it.
+  raise pass (`PopulationD`, its *Redundancy* check). Ask `never raises` of the conjunct before deleting it. The
+  never-read arm no longer depends on it: its `FALSE` is asked of the WHERE as written, a deleted conjunct among it
+  (`CosmosDeclaredFactPlanningTests.AnArmBesideADeletedConjunctThatMayRaiseIsNotWrittenFalse`), so a deletion beside
+  it is sent rather than answered empty with no request. A projected `CASE` condition deletes too: in `CASE WHEN NOT
+  (CAST(body AS INTEGER) = 1 AND kind = 'C') AND CASE WHEN kind = 'C' THEN … ELSE FALSE END THEN 1 ELSE 0 END` the
+  `NOT` is deleted, cast and all, and what is left raises nowhere, so the projection answers `0` where Calcite fails
+  (`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`; `docs/23`).
 - **A lowering removes a raise on documents its siblings do not keep** — *small, an answer where Calcite fails.* A
   comparison lowered onto its stored form under `Siblings` no longer evaluates what raised, on documents the siblings
   exclude, where Calcite evaluates every conjunct.
@@ -2935,8 +2951,9 @@ across documents* and *A join of a container to itself* is the record.
   (`Metadata/CosmosFactRewriter.cs:519`) writes `p AND CASE WHEN p THEN … ELSE FALSE END`. Whether Calcite evaluates a
   strict operator's other operand where one operand is null is unmeasured; where it does and that operand may raise,
   the rewrite stops it evaluating there.
-- **A finer gate on a never-read arm** — *small, precision.* The gate reads the whole WHERE's raise; the `CASE`'s own
-  raise, where its `FALSE` cannot decide the conjunct, would keep more arms.
+- **A finer gate on a never-read arm** — *small, precision.* The gate reads the raise of the whole WHERE as written,
+  and in a projection of every predicate of the projected expression; the `CASE`'s own raise, where its `FALSE` cannot
+  decide the conjunct or let the simplifier drop a sibling, would keep more arms.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a WHERE holding one never reduces.
   Finer rules where rows exist.
@@ -2957,15 +2974,18 @@ across documents* and *A join of a container to itself* is the record.
   (`CosmosDeclaredFactPlanningTests.ATypedComparisonWithAParameterBesideAContradictionIsSent`). A typed `ParameterOn`
   that answers as the reading's own cell answer does, from
   `CalciteParameterMeasurementTests`' rows, would keep those reductions.
-- **A number pins no partition unless the declaration makes the key an integer** — *medium, routing.* Since
-  2026-11-10 `Kept` keeps a numeric equality's window, which is no domain of one, so an equality with a number on a key
-  routes to no single partition, makes no point read and deletes no partition in one request, through an `ANY`,
-  `DOUBLE` or integer field or a boxed number against the `VARIANT` key column. The proper fix is a facts-graph rule
-  that routes by the window's double, which every number in it shares, read by `Pinned`; it needs a measurement of how
-  the service hashes a number into a partition key, whole numbers past 2^53 and a fraction whose double is whole among
-  them, since a whole-partition delete applies no predicate. A promoted key's `VARIANT` column compares a number only in
-  its own box (`Calcite.VariantEqualsOnlyItsOwnBox`), so a `Kept` that read that cell's boxes would keep the point and
-  the pin there too. `docs/07`, `08` and `13` say a number pins only over an integer declaration until then.
+- **A number pins no partition unless the declaration leaves the key one value** — *medium, routing.* Since 2026-11-10
+  `Kept` keeps a numeric equality's window, which is no domain of one, so an equality with a number on a key routes to
+  no single partition, makes no point read and deletes no partition in one request, through an `ANY`, `DOUBLE` or
+  integer field or a boxed number against the `VARIANT` key column, unless the declaration leaves one value in the
+  window: an integer, or an `enum` or a `const` with one member there, a fraction among them
+  (`CosmosDeclaredFactPlanningTests.ANumberPinsTheKeyOnlyWhereTheDeclarationLeavesItOneValue`). The proper fix is a
+  facts-graph rule that routes by the window's double, which every number in it shares, read by `Pinned`; it needs a
+  measurement of how the service hashes a number into a partition key, whole numbers past 2^53 and a fraction whose
+  double is whole among them, since a whole-partition delete applies no predicate. A promoted key's `VARIANT` column
+  compares a number only in its own box (`Calcite.VariantEqualsOnlyItsOwnBox`), so a `Kept` that read that cell's boxes
+  would keep the point and the pin there too. `docs/07`, `08` and `13` say a number pins only where the declaration
+  leaves the key one value until then.
 - **A bare raw value reads the union's raise** — *small, precision.* Naming its column where the loader builds it
   (`Metadata/CosmosPredicateLoader.cs`) would read one column's rows.
 - ~~**A `CHAR` column's parameter keys read the union**~~ — *done, 2026-11-12.* A row says a `CHAR` column answers a

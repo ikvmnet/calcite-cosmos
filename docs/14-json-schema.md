@@ -161,7 +161,10 @@ Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an
 declaration with no bounds admits, and dropping the conjunct would answer where the query fails. The
 service returns a whole number within 64 bits as its digits however it was written, so the cast reads a
 stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
-adapter does not yet drop a conjunct through that cast.
+adapter does not yet drop a conjunct through that cast. A conjunct the schema makes true wherever it
+does not fail is dropped all the same: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1 AND
+JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, goes though the cast fails on a `body`
+that is no number, and the rest of the filter answers where Calcite fails (Chapter 23).
 
 ### A predicate no document can satisfy
 
@@ -208,8 +211,12 @@ Where such a part stays in process instead, as a comparison of two properties, `
 `INTEGER` mostly do, the case at the end of this section applies: no rows, and no request.
 
 A `CASE` condition in a projection follows the same rule. One the schema rules out is answered by the
-`CASE`'s other arms, without evaluating it, only where nothing in it can fail: through a cast to
-`DOUBLE` the first range above is, and through a cast to `INTEGER` it is evaluated on every row.
+`CASE`'s other arms, without evaluating it, only where nothing in the projected expression can fail:
+through a cast to `DOUBLE` the first range above is, and through a cast to `INTEGER` it is evaluated on
+every row. That covers the conditions beside it too, since a condition answered so lets Calcite stop
+evaluating more than itself — another condition whose arm then gives the same value, the condition
+around a `CASE` nested in one, a test joined to it by `AND` — so beside a cast to `INTEGER` of a string
+property every condition is evaluated as written.
 
 **A query that can fail is not answered empty in Calcite's place.** The empty result stands in for
 Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.

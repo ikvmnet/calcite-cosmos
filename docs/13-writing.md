@@ -125,8 +125,9 @@ can be carried out as one request — Cosmos's *delete all items by partition ke
 and a delete per document. The adapter counts the partition first, for the affected-row count, and
 then issues the single delete.
 
-A numeric key is pinned so only where the container's schema declares it an integer; otherwise the
-`DELETE` runs the ordinary way (Chapter 8.5).
+A numeric key is pinned so only where the container's schema leaves it one value whose double is
+the literal's, an integer it declares or a value its `enum` or `const` lists; otherwise the `DELETE`
+runs the ordinary way (Chapter 8.5).
 
 This needs an account capability that Azure enables **only on request to Azure Support**. The adapter
 probes for it the first time a statement could use it (with a request that cannot delete anything)

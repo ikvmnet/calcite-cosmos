@@ -32,7 +32,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether the filter keeps nothing and fails on nothing, so that it may be made <c>FALSE</c>: the WHERE as one
-        /// conjunction, assumed by a rule only where it raises on no document the declaration admits.
+        /// conjunction, assumed by a rule only where it raises on no document the declaration admits, or for a projected
+        /// <c>CASE</c> condition where no predicate of the projected expression does.
         /// </summary>
         Reduce,
 
@@ -44,8 +45,9 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether an arm of a <c>CASE</c> in a conjunct is never read, so that it may be written <c>FALSE</c>: what
-        /// <see cref="Arm"/> assumes, each assumed by the same rule only where the WHERE raises on no document the
-        /// declaration admits.
+        /// <see cref="Arm"/> assumes of the statement as written, a conjunct the deletions drop among it, each assumed by
+        /// the same rule only where the WHERE as written raises on no document the declaration admits, or for a projected
+        /// <c>CASE</c> condition where no predicate of the projected expression does.
         /// </summary>
         NeverRead,
 

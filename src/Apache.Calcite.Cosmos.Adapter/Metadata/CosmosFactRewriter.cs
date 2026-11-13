@@ -275,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Returns the predicates of a projected expression as one conjunction, written as it is and
-        /// never simplified: each boolean node whose parent is none, the expression's own where it is
+        /// never simplified: each boolean node whose parent is not one, the expression's own where it is
         /// boolean, so that every predicate Calcite evaluates in it is one of them or inside one.
         /// </summary>
         static RexNode PredicatesOf(RexNode expression, RexBuilder rexBuilder)
@@ -475,7 +475,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the <c>CASE</c> is part of. And where those facts cannot hold together <c>p</c> is never
         /// true, so the <c>CASE</c> is the constant; but the constant stops Calcite evaluating <c>p</c>,
         /// <c>q</c> and, where it decides the filter, every conjunct, so it is written only where nothing
-        /// in the WHERE raises (<see cref="OracleLicence.NeverRead"/>). Where the WHERE may raise, the arm
+        /// in the WHERE as written raises, a conjunct the deletions drop among it, or in a projected
+        /// condition nothing in any predicate of the expression (<see cref="OracleLicence.NeverRead"/>).
+        /// Where something there may raise, the arm
         /// is lowered under the contradiction's view, which licenses nothing, and taken apart or rebuilt
         /// as any other.
         /// </para>

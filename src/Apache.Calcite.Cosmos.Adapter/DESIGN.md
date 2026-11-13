@@ -1065,8 +1065,8 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
 | a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
 | inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
-| whether the filter keeps nothing and fails on nothing | the WHERE as one conjunction, assumed by a rule only where it raises on no document the declaration admits (`Reduce`) |
-| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | what the arm's question assumes, each assumed by the same rule only where the WHERE raises on no document the declaration admits (`NeverRead`) |
+| whether the filter keeps nothing and fails on nothing | the WHERE as one conjunction, assumed by a rule only where it raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`Reduce`) |
+| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | every other conjunct of the statement as written, one the deletions drop among them, and the conditions the arm is read under, each assumed by the same rule only where the WHERE as written raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`NeverRead`) |
 | routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
 | whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
@@ -1097,6 +1097,16 @@ because another implies it holds wherever the other does; lent to that other as 
 other be lowered on what the other itself establishes — #117's self-certification one step removed — and the lowered
 form would be the original only where a conjunct the filter no longer applies holds. An ordering onto a stored form
 is no strengthening, so a row the original drops could be kept.
+
+**A never-read arm is asked of the statement as written**, a conjunct the deletions drop among its siblings and in
+the WHERE its gate reads. A deleted conjunct is no longer evaluated, and where the arm's `FALSE` then decides the
+filter, a gate that never saw it answered no rows where it raises: `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND
+CASE WHEN kind = 'C' THEN … ELSE FALSE END` over a `kind` never `C` deletes the `NOT` as redundant, and a gate on what
+was left wrote the arm `FALSE` and the filter with it, though the cast raises on any `body` that is no number
+(`CosmosDeclaredFactPlanningTests.AnArmBesideADeletedConjunctThatMayRaiseIsNotWrittenFalse`). Assuming a deleted
+conjunct is sound here where it is not for a lowering: the `FALSE` stands only where `AND` and `OR` reach it, so the
+rewritten conjunct is true only where the conjunct as written is, and that with the kept siblings implies every
+deleted one; on a row the rewritten filter keeps, every conjunct holds, and the arm is not read there.
 
 **The arm of a `CASE` is a licence of its own**, which the plan's table lacked and the shadow's judge found it
 needed. A merged view's column is `CASE WHEN <that view's filter> THEN … END`, and what its arm is lowered by is what
@@ -1164,11 +1174,11 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
 | the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
-| `CosmosFactRewriter`, the filter made `FALSE`, and a projection's `CASE` conditions through `RewriteConditions` | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document (`Reduce`) |
+| `CosmosFactRewriter`, the filter made `FALSE`, and a projection's `CASE` conditions through `RewriteConditions` | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
 | the rewriter, inside the arm of a `CASE` | `Within` | those siblings and the arm's conditions (`Arm`) |
-| the rewriter, an arm never read, written `FALSE` | `NeverWithin` | what `Arm` assumes, each only where the WHERE raises on no admitted document (`NeverRead`) |
+| the rewriter, an arm never read, written `FALSE` | `NeverWithin` | what `Arm` assumes of the statement as written, a deleted conjunct among it, each only where the WHERE as written raises on no admitted document, or for a projected condition no predicate of the projected expression does (`NeverRead`) |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
 | a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
@@ -1218,8 +1228,10 @@ a `VARIANT` field is compared with a literal since the switch (h15), never throu
 query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
 `'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
 whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
-An equality with a number pins the key only where the declaration makes it an integer: `Kept` keeps the literal's
-window (*Which stratum a later round may rest on is a row*), and a window is no domain of one. Routing by the window's
+An equality with a number pins the key only where the declaration leaves the key one value whose double is the
+literal's: `Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no
+domain of one, and only a declaration that leaves one value in it is — an integer, whose window holds one whole number,
+or an `enum` or a `const` with one member there, a fraction among them, sent as a `double`. Routing by the window's
 double, which every number in it shares, is a follow-up that needs a measurement of how the service hashes a number
 (`TODO.md`). A cast of the key to text over the `VARIANT` column pins the stored string, which is all such a cast
 keeps, a number and a boolean casting to null there.
@@ -6487,16 +6499,19 @@ required string and a `RETURNING INTEGER` over a declared string answered no row
 2026-11-10 none does.
 
 *The node.* `IsContradictory` asks under `OracleLicence.Reduce`, which opens `StatementTerms.Gated` beneath `D0`: the
-statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts), every path it reads mentioned, and
-`gated(W, W)` asserted where the Kept node asserts `holds`. It runs `PredicateRules.Reduction` in two stages: `Answer`
-and then the `raises` ruleset alone, before anything is assumed; then `Saturation`, as every node runs it.
+statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts as written, one a deletion drops among
+them), every path it reads mentioned, and `gated(W, W)` asserted where the Kept node asserts `holds`; for a projected
+`CASE` condition, `gated(W, G)`, `G` every predicate of the projected expression (*The never-read arm, and a
+projection's conditions*). It runs `PredicateRules.Reduction` in two stages: `Answer` and then the `raises` ruleset
+alone, before anything is assumed; then `Saturation`, as every node runs it.
 
 *The rules.* `raises` holds six: an atom never raises where `PredicateAtom.RaisesOver` finds no raise over any state
 `possible` admits, reading the cells, `readerrows` and `rawunion`, an undecided answer counting as a raise, except in a
-comparison with a parameter, which raises only where its column's answer to one raises (`ParameterOn`); a truth value
-never raises; and a `NOT`, an `AND`, an `OR` and a `CASE` never raise where every operand never raises, since
-Calcite raises in a connective only where an operand does (`Calcite.ConnectivesAreKleene`). An opaque term, a
-comparison no atom reads and any other constructor get no row, so a WHERE holding one may raise. The gate is one
+comparison with a parameter, which raises only where the reading's answer to one raises (`ParameterOn`; a raw value's
+answer is its column's parameter key); a truth value never raises; and a `NOT`, an `AND`, an `OR` and a `CASE` never
+raise where every operand never raises, since Calcite raises in a connective only where an operand does
+(`Calcite.ConnectivesAreKleene`). An opaque term, a comparison no atom reads and any other constructor get no row, so a
+WHERE holding one may raise. The gate is one
 Establish rule: `gated(e, w)` and `never raises(w)` give `holds(e, true)`. Every other node asserts no `gated` row, so
 the gate is silent there.
 
@@ -6529,10 +6544,20 @@ where there was none. A conjunct holding a parameter is the translator's, since 
 Routing reads the Kept node, which pins nothing where it is contradictory, so such a statement fans out.
 
 *The never-read arm, and a projection's conditions.* `NeverWithin` asks under `OracleLicence.NeverRead`, a gated node
-of what `Arm` assumes, each gated on `W`: an arm is written `FALSE` only where those contradict and the WHERE raises on
-no admitted document, so the `FALSE` removes no failure with the evaluation it removes. A projected `CASE` condition
-reaches `IsContradictory` through `RewriteConditions`, its own statement, so it is folded only where nothing in it may
-raise.
+of what `Arm` assumes of the statement as written, each gated on `W`: an arm is written `FALSE` only where those
+contradict and the WHERE as written raises on no admitted document, so the `FALSE` removes no failure with the
+evaluation it removes, nor with a conjunct a deletion beside it stops evaluating (*A never-read arm is asked of the
+statement as written*). A projected `CASE` condition reaches `IsContradictory` and `NeverWithin` through
+`RewriteConditions`, its own statement, gated on `G`: every predicate of the projected expression that no predicate
+holds, as one conjunction written as it is, the expression itself where it is a predicate and otherwise each
+condition of its `CASE`s, so that every predicate Calcite evaluates in it is one of them or inside one. A `FALSE` in one
+condition lets Calcite's simplifier drop more than it: `X AND FALSE` is `FALSE` however `X` reads, an arm left with
+its sibling's value merges into it and takes the sibling's condition along, and a `CASE` so merged may merge into the
+one around it. So a condition is folded only where nothing in any predicate of the expression may raise, its own and
+every one Calcite evaluates beside it
+(`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`). A conjunct
+of a projected condition that the declaration makes true is still deleted as redundant, whatever it may raise, before
+what is left is folded (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
 
 *Not covered: the split.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads
 only the rows the pushed conjuncts keep. Where those contradict the declaration alone, no row reaches a residual that

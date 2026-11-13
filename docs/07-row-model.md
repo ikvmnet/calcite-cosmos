@@ -66,14 +66,16 @@ concrete type is learned per row. In practice:
   a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
   `VARIANT` with no bare number or boolean. A number is not written so: `CAST(5 AS VARIANT)` matches no
   stored `5` in Calcite, which holds a stored integer as a `BIGINT`, and routes nowhere. A number pins
-  the partition only where the container's schema declares the key an integer, through
-  `RETURNING INTEGER`, for example `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or
-  through `RETURNING BIGINT` for keys beyond an `INTEGER`'s range. Calcite fails on
-  `RETURNING BIGINT` over a stored `5`, and on `RETURNING DOUBLE` over any whole number within 64 bits,
-  so through either of those the partition is pinned only by answering where Calcite fails
-  (Chapter 23). Without that declaration Calcite compares such a number by its double, so `= 5` also
-  keeps a stored number written with more digits than a double holds, and the adapter does not yet
-  route on that.
+  the partition only where the container's schema leaves the key one value whose double is the
+  number's. A key declared an integer is pinned through `RETURNING INTEGER`, for example
+  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or through `RETURNING BIGINT` for keys
+  beyond an `INTEGER`'s range. Calcite fails on `RETURNING BIGINT` over a stored `5`, and on
+  `RETURNING DOUBLE` over any whole number within 64 bits, so through either of those the partition
+  is pinned only by answering where Calcite fails (Chapter 23). A key whose `enum` or `const` leaves
+  one value there, a fraction among them, is pinned through `RETURNING DOUBLE` or a cast to `DOUBLE`:
+  `= 5.5` where the schema lists `[5.5, 7.25]`. Without such a declaration Calcite compares the
+  number by its double, so `= 5` also keeps a stored number written with more digits than a double
+  holds, and the adapter does not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the

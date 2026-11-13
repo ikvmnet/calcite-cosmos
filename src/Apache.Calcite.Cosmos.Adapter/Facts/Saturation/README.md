@@ -377,12 +377,14 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
   - the gate: what a node gates beside a `WHERE` holds only where that `WHERE` never raises.
 - **Raises** (6, ruleset `raises`), run only in a gated node, before anything is assumed: an atom never raises where
   `PredicateAtom.RaisesOver` finds no raise in the cells of any state its path may hold, read through the facts
-  graph's reading rows and the raw columns' answers, an undecided answer counted as a raise; a truth value never
-  raises; and a negation, a conjunction, a disjunction and a `CASE` never raise where their operands never raise
+  graph's reading rows and the raw columns' answers, an undecided answer counted as a raise except in a comparison
+  with a parameter, whose undecided truth value is no raise; a truth value never raises; and a negation, a
+  conjunction, a disjunction and a `CASE` never raise where their operands never raise
   (`Calcite.ConnectivesAreKleene`). An opaque term gets no row. No verdict reads `never raises`: a row Calcite raises
   on supports none. A gated node — the reduce's, gating the `WHERE` itself, and the never-read arm's, gating what the
-  arm's question assumes — runs the schedule `Reduction`: `Answer` and the raises before anything is assumed, then
-  `Saturation`, so nothing assumed reaches what the raises derived, and the node is contradictory only where no
+  arm's question assumes of the statement as written; in a projected `CASE` condition, each gated on every predicate
+  of the projected expression — runs the schedule `Reduction`: `Answer` and the raises before anything is assumed,
+  then `Saturation`, so nothing assumed reaches what the raises derived, and the node is contradictory only where no
   document the declaration admits makes the `WHERE` true and none makes it raise.
 - **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
   before discriminators.

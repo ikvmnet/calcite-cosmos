@@ -65,13 +65,14 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether an arm of a <c>CASE</c> inside a conjunct is never read, so that it may be written <c>FALSE</c>: what
-        /// <see cref="Arm"/> assumes, each assumed only where the WHERE raises on no document the declaration admits.
+        /// <see cref="Arm"/> assumes of the statement as written, each assumed only where the WHERE as written raises on
+        /// no document the declaration admits, or for a projected <c>CASE</c> condition no predicate of its expression.
         /// </summary>
         /// <remarks>
         /// The <c>FALSE</c> removes evaluation: of the arm's condition and value, and where it decides the conjunct, of
-        /// the whole filter. That removes no failure only where nothing in the WHERE raises, which the node's gate
-        /// decides, so the rewrite reads one contradiction. <see cref="Arm"/>'s own node stays what a rewrite inside the
-        /// arm leans on.
+        /// the whole filter, and a conjunct deleted beside it is no longer evaluated either. That removes no failure only
+        /// where nothing in the WHERE as written raises, which the node's gate decides, so the rewrite reads one
+        /// contradiction. <see cref="Arm"/>'s own node stays what a rewrite inside the arm leans on.
         /// </remarks>
         public static OracleLicence NeverRead(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
             new(OracleQuestion.NeverRead, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));

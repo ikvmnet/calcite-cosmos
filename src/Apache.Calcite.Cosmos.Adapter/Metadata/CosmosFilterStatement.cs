@@ -40,7 +40,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
     /// the arm's question assumes of the statement as written, a sibling the deletions drop among them, each assumed only
-    /// where the WHERE as written raises on no document the declaration admits</description></item>
+    /// where the WHERE as written raises on no document the declaration admits, or for a projected <c>CASE</c> condition
+    /// no predicate of the projected expression</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
     /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
