@@ -1,4 +1,9 @@
+using System.Collections.Generic;
+
+using Apache.Calcite.Cosmos.Adapter.Sql;
+
 using org.apache.calcite.plan;
+using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
 using org.apache.calcite.rel.logical;
 using org.apache.calcite.rex;
@@ -28,6 +33,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// convention is not this rule's. When a conversion could still reach another container's filter, the constant
     /// read off it was a reading of other documents, and a filter over one container became the empty relation beside
     /// a statement over another (<see cref="CosmosConvention.Owns"/>).
+    /// </para>
+    /// <para>
+    /// <b>The empty relation stops the evaluation of what is beneath the filter too.</b> Calcite applies a filter beneath
+    /// this one to every row before this one reads any, so a cast there that fails on a document fails the query whatever
+    /// this one keeps; and the outer filter of two, written over a subquery, was the empty relation over a cast Calcite
+    /// fails on. So the reduce is gated on this condition and every filter's beneath it, each read through its own input's
+    /// binding: the empty relation only where nothing in any of them raises. A window is computed over every row beneath it
+    /// as well, and binds nothing, so a filter over one is never reduced (<see cref="CosmosImplementor.TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out IReadOnlyList{CosmosReading}, out IReadOnlyList{CosmosOrdering}, out CosmosClauses, out Metadata.CosmosContainerMetadata?)"/>).
     /// </para>
     /// </remarks>
     public class CosmosFilterReduceRule : RelOptRule
@@ -107,13 +120,83 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         static bool KeepsEverything(RexNode rewritten) => rewritten is RexLiteral literal && literal.isAlwaysTrue();
 
         /// <summary>
-        /// The filter's condition as the filter rule pushes it, rewritten under this convention's declaration;
-        /// remembered against the condition, so asking twice reads one statement.
+        /// The filter's condition as the filter rule pushes it, rewritten under this convention's declaration, its reduce
+        /// gated on every filter beneath it as well; remembered against the condition, so asking twice reads one statement.
         /// </summary>
-        RexNode? Rewritten(Filter filter) =>
-            CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _)
-                ? Metadata.CosmosFactRewriter.Rewrite(filter.getCondition(), fields, _convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder(), readings)
-                : null;
+        RexNode? Rewritten(Filter filter)
+        {
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
+                return null;
+
+            var condition = filter.getCondition();
+            var rexBuilder = filter.getCluster().getRexBuilder();
+
+            if (Beneath(filter.getInput()) is not { } beneath)
+                return null;
+
+            if (beneath.Count == 0)
+                return Metadata.CosmosFactRewriter.Rewrite(condition, fields, _convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
+
+            // Each condition beneath read through its own binding, set after this one's so that this one's ordinals stay
+            // its own: the gate is the conjunction, over the bindings side by side.
+            var gateFields = new List<CosmosPath?>(fields);
+            var gateReadings = new List<CosmosReading>(Padded(readings, fields.Count));
+            var gate = new java.util.ArrayList();
+            gate.add(condition);
+
+            foreach (var (below, belowFields, belowReadings) in beneath)
+            {
+                gate.add(RexUtil.shift(below, gateFields.Count));
+                gateFields.AddRange(belowFields);
+                gateReadings.AddRange(Padded(belowReadings, belowFields.Count));
+            }
+
+            return Metadata.CosmosFactRewriter.Rewrite(condition, gateFields, _convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder, gateReadings,
+                rexBuilder.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.AND, gate));
+        }
+
+        /// <summary>
+        /// Returns the condition of every filter beneath a node, each with the binding of its own input, or <c>null</c>
+        /// where one has no binding to read it through.
+        /// </summary>
+        static List<(RexNode Condition, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings)>? Beneath(RelNode? node)
+        {
+            var found = new List<(RexNode, IReadOnlyList<CosmosPath?>, IReadOnlyList<CosmosReading>)>();
+            return Visit(node) ? found : null;
+
+            bool Visit(RelNode? at)
+            {
+                if (at is org.apache.calcite.plan.volcano.RelSubset subset)
+                    at = subset.getOriginal() ?? subset.getBest();
+
+                if (at is null)
+                    return true;
+
+                if (at is Filter below)
+                {
+                    if (CosmosImplementor.TryBindOutput(below.getInput(), out var fields, out var readings, out _) == false)
+                        return false;
+
+                    found.Add((below.getCondition(), fields, readings));
+                }
+
+                var inputs = at.getInputs();
+                for (var i = 0; i < inputs.size(); i++)
+                    if (Visit((RelNode)inputs.get(i)) == false)
+                        return false;
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Returns readings parallel to a binding of the given width, a field the walk left unread read as its type.
+        /// </summary>
+        static IEnumerable<CosmosReading> Padded(IReadOnlyList<CosmosReading> readings, int width)
+        {
+            for (var i = 0; i < width; i++)
+                yield return i < readings.Count ? readings[i] : CosmosReading.Typed;
+        }
 
     }
 

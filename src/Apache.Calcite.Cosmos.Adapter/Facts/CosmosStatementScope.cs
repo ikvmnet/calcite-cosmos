@@ -584,8 +584,9 @@ namespace Apache.Calcite.Cosmos.Facts
         SqlPredicate Where => _where ??= SqlPredicate.AllOf(Statement.Conjuncts);
 
         /// <summary>
-        /// What a gated node's assumptions wait on: the WHERE, or for a projected <c>CASE</c> condition every predicate of
-        /// its expression, which a <c>FALSE</c> written in it may stop Calcite evaluating (<c>CosmosFactRewriter.RewriteConditions</c>).
+        /// What a gated node's assumptions wait on: the WHERE; for a reduce over filters beneath it, the WHERE and their
+        /// conditions, which the empty relation stops Calcite evaluating too (<c>Rel.Convert.CosmosFilterReduceRule</c>); or for
+        /// a projected <c>CASE</c> condition the predicates of its expression (<c>CosmosFactRewriter.RewriteConditions</c>).
         /// </summary>
         SqlPredicate Gate => _gate ?? Where;
 

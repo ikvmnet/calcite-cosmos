@@ -102,9 +102,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Returns the predicate rewritten as <see cref="Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>
         /// does, each <c>FALSE</c> written only where nothing in <paramref name="gate"/> raises, or the predicate itself
-        /// where it is <c>null</c>.
+        /// where it is <c>null</c>: a projected condition's every predicate of its expression, and a filter's reduce, its
+        /// condition and every filter's beneath it (<see cref="Rel.Convert.CosmosFilterReduceRule"/>).
         /// </summary>
-        static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate)
+        internal static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate)
         {
             if (condition is null || fields is null || rexBuilder is null)
                 return condition!;
@@ -124,7 +125,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         static RexNode Rewritten(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder)
         {
             // Where no document the container's declaration admits makes the predicate true, and
-            // none makes anything in it raise, Calcite answers no rows and fails on none -- so the
+            // none makes anything in it or in the statement's gate raise (the filters beneath a
+            // reduced one, a projected expression's predicates), Calcite answers no rows and fails on none -- so the
             // equivalent predicate is the constant, and every rule that reduces one takes it from
             // there. Where something may raise, the filter stays as it is: the rewriter removes no failure.
             if (statement is { IsContradictory: true })

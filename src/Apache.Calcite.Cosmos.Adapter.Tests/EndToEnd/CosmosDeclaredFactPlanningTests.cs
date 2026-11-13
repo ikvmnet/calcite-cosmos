@@ -58,7 +58,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Ref = """CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)""";
         const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
 
-        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table)
+        /// <summary>
+        /// Plans a statement over one container to the CLR convention; with <paramref name="windows"/>, with the rule every
+        /// host adds to lift an <c>OVER</c> out of its projection, without which no window plans (Chapter 21.3).
+        /// </summary>
+        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             table = new CosmosTable(container);
@@ -92,6 +96,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // plannable rather than a failure.
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
+
+            if (windows)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_TO_LOGICAL_PROJECT_AND_WINDOW);
 
             var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));

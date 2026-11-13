@@ -496,6 +496,12 @@ namespace Apache.Calcite.Cosmos.Adapter
                     return true;
                 }
 
+                // A window is computed over every row beneath it before anything above it reads one, and no statement can
+                // hold it, Cosmos having no window: so nothing above it is a clause of the statement beneath, and a filter
+                // over it is no WHERE, to push or to reduce. CosmosProjectRule refuses it for the same reason.
+                case Project project when project.containsOver():
+                    return false;
+
                 case Project project:
                 {
                     if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)

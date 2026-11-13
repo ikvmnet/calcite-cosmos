@@ -70,6 +70,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(text).Should().Contain(KeepsNothing, "the text's test raises nowhere, and every document holds k: " + PlanText(text));
         }
 
+        /// <summary>
+        /// A filter written over a filter whose cast of the text <c>body</c> to <c>INTEGER</c> may raise: Calcite evaluates
+        /// the one beneath on every document and fails on a string that is no number, whatever the one above keeps. The one
+        /// above is contradicted, but its reduce is asked of every filter beneath it too, so neither is reduced, a
+        /// <c>COUNT</c> over them neither, and the cast stays in Calcite. Where the one beneath raises nowhere the one above
+        /// is still the empty relation.
+        /// </summary>
+        [Fact]
+        public void AFilterOverAFilterThatMayRaiseIsNotReduced()
+        {
+            var container = Declaring(Listed);
+            string Over(string selected, string beneath) => $"""SELECT {selected} FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {beneath}) AS x WHERE JSON_VALUE(x."DOC", '$.kind') = 'C'""";
+
+            foreach (var sql in new[] { Over("x.\"id\"", $"{AsInteger("body")} = 1"), Over("COUNT(*) AS n", $"{AsInteger("body")} = 1") })
+            {
+                var plan = PlanToCosmos(sql, container, out _);
+                PlanText(plan).Should().NotContain(KeepsNothing, "the filter beneath raises where body is no number: " + PlanText(plan));
+                PlanText(plan).Should().Contain("ClrCursorFilter(condition=[=(CAST(JSON_VALUE($0, '$.body')):INTEGER, 1)])", PlanText(plan));
+                Query(FindCosmos(plan), container).Sql.Should().Be("SELECT VALUE c FROM items c", PlanText(plan));
+            }
+
+            var safe = PlanToCosmos(Over("x.\"id\"", $"{Read("body")} = 'q'"), container, out _);
+            PlanText(safe).Should().Contain(KeepsNothing, "nothing beneath raises, and no document is of kind C: " + PlanText(safe));
+        }
+
+        /// <summary>
+        /// A window is computed over every row beneath it before a filter above reads one, and no statement holds one, so a
+        /// filter above a window is no clause of the statement beneath it and is never reduced, however the declaration
+        /// contradicts it: with the rule every host adds, the window is computed in process over every document, its cast of
+        /// the text <c>body</c> to <c>INTEGER</c> with it, which fails on a string that is no number as Calcite's does.
+        /// Without that rule nothing plans a window, so each fails to plan, as it does with the filter satisfiable, rather
+        /// than answering no rows.
+        /// </summary>
+        [Fact]
+        public void AFilterAboveAWindowIsNeverReduced()
+        {
+            var container = Declaring(Listed);
+
+            foreach (var window in new[] { $"ROW_NUMBER() OVER (ORDER BY {AsInteger("body")})", $"SUM({AsInteger("body")}) OVER ()" })
+                foreach (var (kind, read) in new[] { ("C", ", x.r"), ("C", ""), ("A", ", x.r") })
+                {
+                    var sql = $"""SELECT x."id"{read} FROM (SELECT c."id", {Read("kind")} AS k, {window} AS r FROM items AS c) AS x WHERE x.k = '{kind}'""";
+                    FluentActions.Invoking(() => PlanToCosmos(sql, container, out _)).Should().Throw<System.Exception>(sql)
+                        .Which.GetType().Name.Should().Be("CannotPlanException", sql);
+
+                    var hosted = PlanToCosmos(sql, container, out _, windows: true);
+                    PlanText(hosted).Should().NotContain(KeepsNothing, "the window's cast raises where body is no number: " + PlanText(hosted));
+                    PlanText(hosted).Should().Contain("Window").And.Contain("CAST(", "the window and its cast are Calcite's: " + PlanText(hosted));
+                }
+        }
+
     }
 
 }
