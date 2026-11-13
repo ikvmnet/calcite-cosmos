@@ -1174,11 +1174,11 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
 | the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
-| `CosmosFactRewriter`, the filter made `FALSE`, and a projection's `CASE` conditions through `RewriteConditions` | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`) |
+| `CosmosFactRewriter`, the filter made `FALSE`, and a projection's `CASE` conditions, in the text sent alone, through `RewriteConditions` | `IsContradictory` | the reduce's: the WHERE, assumed only where neither it nor a filter beneath it raises on an admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
 | the rewriter, inside the arm of a `CASE` | `Within` | those siblings and the arm's conditions (`Arm`) |
-| the rewriter, an arm never read, written `FALSE` | `NeverWithin` | what `Arm` assumes of the statement as written, a deleted conjunct among it, each only where the WHERE as written raises on no admitted document, or for a projected condition no predicate of the projected expression does (`NeverRead`) |
+| the rewriter, an arm never read, written `FALSE` | `NeverWithin` | what `Arm` assumes of the statement as written, a deleted conjunct among it, each only where the WHERE as written raises on no admitted document, and for the reduce no filter beneath it either, or for a projected condition, in the text sent alone, no predicate of the projected expression does (`NeverRead`) |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
 | a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
@@ -1245,6 +1245,20 @@ never sees. `CosmosFilterReduceRule` matches the logical filter, over its own co
 the empty relation, or the filter's input, beside it; a host with a rule for an empty `Values` answers the first with
 no request at all. Only the logical filter: a converted one carries a condition some convention already rewrote, and
 a filter in a host's convention is not the adapter's to reduce.
+
+**The reduce stops what is beneath it too, so it asks that.** The empty relation stops Calcite evaluating everything
+beneath the filter, not only its condition. The rule set moves a filter beneath a projection
+(`CoreRules.FILTER_PROJECT_TRANSPOSE`) but merges no two filters, so a filter written over a subquery's filter is
+evaluated over every row the one beneath keeps, and the one beneath over every row: in `SELECT … FROM (SELECT … WHERE
+CAST(body AS INTEGER) = 1) AS x WHERE kind = 'C'` Calcite casts every body, and fails on a string that is no number,
+whatever the declaration says of `kind`. So the reduce's gate is the WHERE and the condition of every filter beneath it
+that `TryBindOutput` binds through, each over its own input's fields (`CosmosFilterReduceRule.Beneath`), asked
+`never raises` in the reduce's own node; where one of them cannot be bound, nothing is reduced
+(`CosmosDeclaredFactPlanningTests.AFilterOverAFilterThatMayRaiseIsNotReduced`). A window is not bound through at all:
+it is computed over every row beneath it before anything above reads one, and no statement holds it, so a filter over
+it is no `WHERE` of the statement beneath, to push or to reduce; with the rule every host adds to lift the `OVER`, the
+window is Calcite's, its arguments evaluated over every document as Calcite's are
+(`CosmosImplementor.TryBindOutput`; `CosmosDeclaredFactPlanningTests.AFilterAboveAWindowIsNeverReduced`).
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and
@@ -5054,8 +5068,9 @@ key's null test over a `UUID` cast — the conjunct the paragraph above lowers i
 lowered in a projection. A `CASE` takes an arm where its condition is true and passes over it where the
 condition is false or unknown, which is the distinction a filter draws and the only one the rewriter
 preserves; so `CosmosFactRewriter.RewriteConditions` rewrites each condition as a predicate, and the
-projection rules push what it gives them. It mattered most for a page: a sort above a projection that
-stays in process stays in process with it.
+projection rules push a projection wherever the text it gives renders. The node holds what the query
+wrote, and only the text sent holds the rewrite (*The never-read arm, and a projection's conditions*).
+It mattered most for a page: a sort above a projection that stays in process stays in process with it.
 
 **A filter through two merged views is a filter through two `CASE`s, and nothing walked into one
 (#183).** Through one view a host's simplifier takes `CASE WHEN M THEN q END = X` apart itself. Through
@@ -6500,10 +6515,12 @@ required string and a `RETURNING INTEGER` over a declared string answered no row
 
 *The node.* `IsContradictory` asks under `OracleLicence.Reduce`, which opens `StatementTerms.Gated` beneath `D0`: the
 statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts as written, one a deletion drops among
-them), every path it reads mentioned, and `gated(W, W)` asserted where the Kept node asserts `holds`; for a projected
-`CASE` condition, `gated(W, G)`, `G` every predicate of the projected expression (*The never-read arm, and a
-projection's conditions*). It runs `PredicateRules.Reduction` in two stages: `Answer` and then the `raises` ruleset
-alone, before anything is assumed; then `Saturation`, as every node runs it.
+them), every path it reads mentioned, and `gated(W, W)` asserted where the Kept node asserts `holds`; where a filter
+lies beneath the reduced one, `gated(W, B)`, `B` the WHERE and the condition of every filter beneath it (*The reduce
+stops what is beneath it too, so it asks that*); for a projected `CASE` condition, `gated(W, G)`, `G` the predicates of
+the projected expression (*The never-read arm, and a projection's conditions*). It runs `PredicateRules.Reduction` in
+two stages: `Answer` and then the `raises` ruleset alone, before anything is assumed; then `Saturation`, as every node
+runs it.
 
 *The rules.* `raises` holds six: an atom never raises where `PredicateAtom.RaisesOver` finds no raise over any state
 `possible` admits, reading the cells, `readerrows` and `rawunion`, an undecided answer counting as a raise, except in a
@@ -6548,16 +6565,28 @@ of what `Arm` assumes of the statement as written, each gated on `W`: an arm is 
 contradict and the WHERE as written raises on no admitted document, so the `FALSE` removes no failure with the
 evaluation it removes, nor with a conjunct a deletion beside it stops evaluating (*A never-read arm is asked of the
 statement as written*). A projected `CASE` condition reaches `IsContradictory` and `NeverWithin` through
-`RewriteConditions`, its own statement, gated on `G`: every predicate of the projected expression that no predicate
-holds, as one conjunction written as it is, the expression itself where it is a predicate and otherwise each
-condition of its `CASE`s, so that every predicate Calcite evaluates in it is one of them or inside one. A `FALSE` in one
-condition lets Calcite's simplifier drop more than it: `X AND FALSE` is `FALSE` however `X` reads, an arm left with
-its sibling's value merges into it and takes the sibling's condition along, and a `CASE` so merged may merge into the
-one around it. So a condition is folded only where nothing in any predicate of the expression may raise, its own and
-every one Calcite evaluates beside it
-(`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`). A conjunct
-of a projected condition that the declaration makes true is still deleted as redundant, whatever it may raise, before
-what is left is folded (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
+`RewriteConditions`, its own statement, gated on `G`: the predicates of the projected expression as one conjunction
+written as it is, each boolean node whose parent is not one, the expression's own where it is boolean, so that every
+predicate Calcite evaluates in it is one of them or inside one (`PredicatesOf`). A condition is answered only where
+nothing in any of them may raise
+(`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`).
+
+*Rendered, never planned.* A projection node holds the expressions the query wrote. `CosmosProjectRule.Rendered`
+rewrites their conditions only in the text `CosmosProject` sends and in the test each projection rule asks of that
+text, whether it renders; `CosmosProjectSplitRule` and `CosmosProjectResidualRule` build both halves from what was
+written too. A rewritten condition once reached the plan, and Calcite's simplifier carried its `FALSE` past any gate:
+a `CASE` whose two conditions were folded became `NULL`, a comparison of it with `CAST(body AS INTEGER)` in a filter
+above became `FALSE`, and the plan the empty relation, with no request where Calcite fails on a body that is no number
+(`CosmosDeclaredFactPlanningTests.AProjectedConditionTheDeclarationContradictsEmptiesNoFilterAbove`). No gate over the
+expression covers that, since the simplifier reaches a sibling column, a value operand such as the cast in
+`CAST(body AS INTEGER) + CASE …`, and every filter, aggregate and sort above that reads the column. In the text the
+service evaluates the `CASE` as written, so a condition answered there is answered nowhere else; `G` was drawn against
+the simplifier, and is wider than the text needs (`TODO.md`, *A finer gate on a never-read arm*). A cast outside `G`, in an arm's value or in the part a split leaves in process, is evaluated wherever
+Calcite reaches it, an answered condition keeping the `CASE`'s value on every admitted document. The text keeps an arm
+it answers `FALSE` with its value, which the plan's simplifier used to drop, so a value the service is never sent, a
+cast of text to `INTEGER` among them, keeps the column in Calcite. A conjunct of a projected condition that the
+declaration makes true is still deleted in the text as redundant, whatever it may raise (`TODO.md`, *A deletion stops
+evaluating a conjunct that may raise*).
 
 *Not covered: the split.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads
 only the rows the pushed conjuncts keep. Where those contradict the declaration alone, no row reaches a residual that

@@ -2905,7 +2905,13 @@ across documents* and *A join of a container to itself* is the record.
   holding a cast to `INTEGER` beside a never-read arm (`(CAST(body AS INTEGER) = 1 OR kind IN ('A', 'B')) AND CASE WHEN
   kind = 'C' THEN … ELSE FALSE END`); and `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND kind = 'C'`, whose
   residual after the split is itself deleted as redundant (*A deletion stops evaluating a conjunct that may raise*), so
-  that the plan shows no residual over the empty `Values` at all and reads as a whole filter reduced.
+  that the plan shows no residual over the empty `Values` at all and reads as a whole filter reduced. So do a cast
+  conjunct beside a never-read arm (`kind IN ('A', 'B') AND CAST(body AS INTEGER) >= -2147483648 AND CASE WHEN kind =
+  'C' THEN CAST(n AS INTEGER) = 1 ELSE FALSE END`), and a filter casting text to `INTEGER` written over a subquery
+  whose own `WHERE` the declaration contradicts (`SELECT … FROM (SELECT … WHERE kind = 'C') AS x WHERE
+  CAST(JSON_VALUE(x."DOC", '$.body') AS INTEGER) = 1`) or is a never-read `CASE`: the filter above is the residual, the
+  one beneath is reduced, and Calcite in process still fails on the cast. Each answers no rows with no request where
+  Calcite fails on `"abc"`, measured on both emulators under both targets' plans.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates "fail like Calcite".* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
@@ -2931,10 +2937,17 @@ across documents* and *A join of a container to itself* is the record.
   raise pass (`PopulationD`, its *Redundancy* check). Ask `never raises` of the conjunct before deleting it. The
   never-read arm no longer depends on it: its `FALSE` is asked of the WHERE as written, a deleted conjunct among it
   (`CosmosDeclaredFactPlanningTests.AnArmBesideADeletedConjunctThatMayRaiseIsNotWrittenFalse`), so a deletion beside
-  it is sent rather than answered empty with no request. A projected `CASE` condition deletes too: in `CASE WHEN NOT
-  (CAST(body AS INTEGER) = 1 AND kind = 'C') AND CASE WHEN kind = 'C' THEN … ELSE FALSE END THEN 1 ELSE 0 END` the
-  `NOT` is deleted, cast and all, and what is left raises nowhere, so the projection answers `0` where Calcite fails
-  (`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`; `docs/23`).
+  it is sent rather than answered empty with no request. A projected `CASE` condition deletes too, in the text sent:
+  `CASE WHEN NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') THEN 1 ELSE 0 END` sends its condition as `TRUE`, cast and
+  all, so the column answers `1` where Calcite fails
+  (`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`; `docs/23`),
+  and a filter above it, `WHERE x.v = 0`, or `x.v IS NULL` over `THEN 1 END`, keeps none of the rows the request
+  returns: an empty answer after a request where Calcite fails, measured on both emulators under both targets' plans,
+  which is more than an answer. Where the filter above merges with the column, the deletion is the filter's own, and
+  `CASE WHEN NOT (…) AND CASE WHEN kind = 'C' THEN … ELSE FALSE END THEN 1 END AS v … WHERE x.v = 1` sends the arm's
+  `kind = 'C' AND n = 1`, and the service finds nothing where Calcite fails. Beside a never-read arm whose cast the service is never sent, no
+  text is written, and the column is Calcite's and fails as it does. Asking `never raises` of the conjunct before
+  deleting it covers each.
 - **A lowering removes a raise on documents its siblings do not keep** — *small, an answer where Calcite fails.* A
   comparison lowered onto its stored form under `Siblings` no longer evaluates what raised, on documents the siblings
   exclude, where Calcite evaluates every conjunct.
@@ -2947,13 +2960,36 @@ across documents* and *A join of a container to itself* is the record.
   holds, so the swap gives it a term of its own in a gated node opened beneath `D0`, as the reduce's and the never-read
   arm's are (`StatementTerms.Gated`), that runs `Reduction`'s unassumed stage, `Answer` then `Saturate(raises)`, and
   reads `never raises` of it there. It moves `CASE` plans both ways. It is the one decision about a raise left in C#.
-- **A strict comparison's other operands move under a `CASE`'s guard** — *small, unmeasured.* `TryLiftStrictCase`
-  (`Metadata/CosmosFactRewriter.cs:519`) writes `p AND CASE WHEN p THEN … ELSE FALSE END`. Whether Calcite evaluates a
-  strict operator's other operand where one operand is null is unmeasured; where it does and that operand may raise,
-  the rewrite stops it evaluating there.
+- **A strict comparison's other operands move under a `CASE`'s guard** — *small, an empty answer with no request where
+  Calcite fails.* `TryLiftStrictCase` (`Metadata/CosmosFactRewriter.cs`) writes `p AND CASE WHEN p THEN … ELSE FALSE
+  END`, so a strict operator's other operand is evaluated only where `p` holds, where Calcite evaluates it on every row.
+  Over a string `body` holding `"abc"` and a `kind` never `C`, Calcite in process fails, measured on both emulators, on
+  `WHERE CAST(body AS INTEGER) + CASE WHEN kind = 'C' THEN 1 END > 0`, alone or beside
+  `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C')`; a projected one-armed `CASE` compared with, or added to, a cast
+  above (`WHERE CAST(x.b AS INTEGER) = x.v`, `CAST(x.b AS INTEGER) + x.v > 0`); and with the cast projected too
+  (`CAST(body AS INTEGER) + CASE … END AS v … WHERE x.v > 0`, `x.w + x.v > 0`, `x.w <> x.v`, a simple `CASE`, a
+  `WHERE` beneath, a `DISTINCT` and a `COUNT` over it). The lift's `p` is contradicted, so the split reduces it and
+  the lifted `CASE` reads no row (*A residual beside a contradicted split loses its raise*), and
+  each answers no rows with no request. Where `p` is not contradicted the lift still skips the operand on the rows `p`
+  excludes, an answer where Calcite fails. The fix is the lift asking `never raises` of the operands it moves under the
+  guard, in the facts graph, and keeping the comparison as written where one may.
 - **A finer gate on a never-read arm** — *small, precision.* The gate reads the raise of the whole WHERE as written,
   and in a projection of every predicate of the projected expression; the `CASE`'s own raise, where its `FALSE` cannot
-  decide the conjunct or let the simplifier drop a sibling, would keep more arms.
+  decide the conjunct or let the simplifier drop a sibling, would keep more arms. A projected condition is answered in
+  the text sent alone, where nothing carries it further, so its gate could be the condition's own raise.
+- **A projected arm the text answers `FALSE` keeps its value** — *small, precision.* The text sent keeps a `CASE` arm
+  whose condition it answers `FALSE`, value and all, where the plan's simplifier used to drop it, so a value the service
+  is never sent, a cast of text to `INTEGER` among them, keeps the column in Calcite: `CASE WHEN kind = 'C' THEN
+  CAST(body AS INTEGER) ELSE 0 END`, and `CASE WHEN kind = 'A' AND CASE WHEN kind = 'C' THEN CAST(n AS INTEGER) = 1 ELSE
+  FALSE END THEN 1 ELSE 0 END` over an `n` whose text parses, each computed in Calcite from the properties sent.
+  Dropping, in the text, an arm it answers `FALSE` is exact, and so is an `AND` holding a `FALSE` where the gate holds;
+  it would send both again.
+- **A filter over a window the declaration contradicts reads the container** — *small, precision.* A window binds
+  nothing (`CosmosImplementor.TryBindOutput`), so a filter over one is never reduced: `WHERE x.k = 'C'` over `ROW_NUMBER()
+  OVER (ORDER BY CAST(body AS INTEGER))` or `SUM(CAST(body AS INTEGER)) OVER ()`, with `kind` never `C`, computes the
+  window in Calcite over every document, and fails where Calcite does. The reduce reading the filter's columns through
+  the window, its gate holding the window's partition, order and argument expressions, each asked `never raises`, would
+  answer it empty with no request where nothing raises.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a WHERE holding one never reduces.
   Finer rules where rows exist.

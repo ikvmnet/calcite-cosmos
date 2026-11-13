@@ -210,14 +210,19 @@ measurement of. A `WHERE` the service can take whole is sent even where it canno
 Where such a part stays in process instead, as a comparison of two properties, `UPPER` and a cast to
 `INTEGER` mostly do, the case at the end of this section applies: no rows, and no request.
 
-A `CASE` condition in a projection follows the same rule. One the schema rules out is answered by the
-`CASE`'s other arms, without evaluating it, only where nothing in the projected expression can fail:
-through a cast to `DOUBLE` the first range above is, and through a cast to `INTEGER` it is evaluated on
-every row. That covers the conditions beside it too, since a condition answered so lets Calcite stop
-evaluating more than itself — another condition whose arm then gives the same value, the condition
-around a `CASE` nested in one, a test joined to it by `AND` — so beside a cast to `INTEGER` of a string
-property every condition is evaluated as written, except where the cast sits in a conjunct the schema
-makes true, which is dropped as one in a `WHERE` is (Chapter 23).
+A `CASE` condition in a projection follows the same rule, in the request alone: the plan keeps the
+condition as the query wrote it, so nothing the schema says of it reaches a column beside it or a filter
+above it. In the request, one the schema rules out is answered by the `CASE`'s other arms, without
+evaluating it, only where nothing in any condition, comparison or test of the projected expression can
+fail: through a cast to `DOUBLE` the first range above is, and through a cast to `INTEGER` it is
+evaluated on every row. So beside a test that casts a string property to `INTEGER`, every condition is
+evaluated as written, except where the cast sits in a conjunct the schema makes true, which is dropped
+as one in a `WHERE` is (Chapter 23). A cast in an arm's value, or in the part of the select list that
+runs in process, is evaluated wherever Calcite would reach it.
+
+A filter written over another, in a subquery, is answered empty only where neither can fail: Calcite
+applies the inner one to every document before the outer one reads any. A filter over a window
+function's result is never answered empty, the window being computed over every document first.
 
 **A query that can fail is not answered empty in Calcite's place.** The empty result stands in for
 Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.
