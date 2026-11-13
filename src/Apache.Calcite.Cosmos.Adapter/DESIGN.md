@@ -1242,23 +1242,72 @@ row false*), and `TRUE` where it deleted every conjunct.
 Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
 `false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
 never sees. `CosmosFilterReduceRule` matches the logical filter, over its own convention's container only, and puts
-the empty relation, or the filter's input, beside it; a host with a rule for an empty `Values` answers the first with
-no request at all. Only the logical filter: a converted one carries a condition some convention already rewrote, and
-a filter in a host's convention is not the adapter's to reduce.
+the empty relation, `CosmosNoRows`, or the filter's input, beside it; the first answers with no request in any host.
+Only the logical filter: a converted one carries a condition some convention already rewrote, and a filter in a
+host's convention is not the adapter's to reduce.
 
-**The reduce stops what is beneath it too, so it asks that.** The empty relation stops Calcite evaluating everything
-beneath the filter, not only its condition. The rule set moves a filter beneath a projection
-(`CoreRules.FILTER_PROJECT_TRANSPOSE`) but merges no two filters, so a filter written over a subquery's filter is
-evaluated over every row the one beneath keeps, and the one beneath over every row: in `SELECT … FROM (SELECT … WHERE
-CAST(body AS INTEGER) = 1) AS x WHERE kind = 'C'` Calcite casts every body, and fails on a string that is no number,
-whatever the declaration says of `kind`. So the reduce's gate is the WHERE and the condition of every filter beneath it
-that `TryBindOutput` binds through, each over its own input's fields (`CosmosFilterReduceRule.Beneath`), asked
-`never raises` in the reduce's own node; where one of them cannot be bound, nothing is reduced
-(`CosmosDeclaredFactPlanningTests.AFilterOverAFilterThatMayRaiseIsNotReduced`). A window is not bound through at all:
-it is computed over every row beneath it before anything above reads one, and no statement holds it, so a filter over
-it is no `WHERE` of the statement beneath, to push or to reduce; with the rule every host adds to lift the `OVER`, the
-window is Calcite's, its arguments evaluated over every document as Calcite's are
-(`CosmosImplementor.TryBindOutput`; `CosmosDeclaredFactPlanningTests.AFilterAboveAWindowIsNeverReduced`).
+**The empty relation is no `Values`.** `CosmosNoRows` holds no rows and makes no request: it is in the cursor
+convention and implements itself (`CosmosCursors.None`). An empty `Values` did the same in a host with a rule for it,
+but Calcite's prune-empty rules read one as empty. `PruneEmptyRules.isEmpty` asks whether an input is a `Values` with
+no tuples, or a Hep vertex or Volcano subset holding one, and the rules over `RelMdMaxRowCount` ask whether an input's
+maximum row count is 0; either way they answered a join, set operation, semi-join or decorrelated lateral beside it
+without reading the other side, which Calcite reads and fails on where something in it fails (ix3, ex1, sj1, lj1,
+jl10 and lat3 through the README's connection, where the same statement undeclared fails on `"abc"`). `CosmosNoRows`
+is no `Values`, and no metadata handler states a maximum row count for it, so none of them prunes beside it: the other
+side is read as Calcite reads it and fails where Calcite fails
+(`CosmosConnectionEmptySideTests.ASideCalciteFailsOnBesideAnEmptiedSideFailsAsCalciteDoes`). That costs the other
+side's request, one, even where nothing in it can fail (`TODO.md`, *An empty side's sibling*); an aggregate over it is
+the host's, over no rows, `COUNT` 0 and `MAX` null. It estimates the rows of the filter it stands for, not none, so a
+choice beside it by cost reads it as the filter; its own cost is an empty `Values`'s, so it is chosen wherever one
+was; its digest holds its row type, as a `Values`'s does. A semi-join over it can still answer empty with no request
+where Calcite fails, where the planner drives a lookup join by its keys: that is the lookup join's, chosen alike
+where nothing is reduced (`TODO.md`, *A filter above a lookup join*).
+
+**The reduce stops what is beneath it too, so it asks that, as Calcite evaluates it.** The empty relation stops
+Calcite evaluating everything beneath the filter, not only its condition. The adapter's rule set moves a filter beneath
+a projection (`CoreRules.FILTER_PROJECT_TRANSPOSE`) but merges no two filters, so in a host that merges none while it
+plans, as Chapter 21's, a filter written over a subquery's filter stays apart from it until Calcite's calc pass merges
+them: `CALC_MERGE` conjoins the condition beneath first, and `RexProgramBuilder` simplifies `IS TRUE` of the
+conjunction under the input's pulled-up predicates before it evaluates a row. Where that is `FALSE`, nothing in it is
+evaluated and Calcite answers no rows, whatever a cast beneath could do: `kind IN ('A', 'B')` under `kind = 'C'` over
+`CAST(body AS INTEGER) = 1` (dm7). Where it is not, Calcite evaluates the merged condition on every row and fails on a
+string that is no number, whatever the declaration says of `kind`: `kind = 'C'` over the cast alone (ff). So the
+reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them (`CosmosFilterReduceRule.Beneath`):
+
+- *A run.* A filter, and the filters and plain projections beneath it down to the lowest filter, are one run, which
+  the calc pass merges into one condition. Each condition is composed onto the lowest filter's input through the
+  projections between (`RelOptUtil.pushPastProject`), conjoined the filter beneath first, and simplified by Calcite's
+  own `RexSimplify` as the calc pass configures it: the input's pulled-up predicates, `RexUtil.EXECUTOR`, and `IS TRUE`
+  of the conjunction. The gate holds what is left, read through the lowest filter's input, and the reduce's own node
+  asks it `never raises`; the decision is the facts graph's, and C# only builds the term.
+- *The run the filter heads is assumed too.* Every row the filter reads passed the run beneath it, so the node assumes
+  the run's condition beside the WHERE where the gate raises nowhere; a run the simplifier reads as `FALSE` is then a
+  contradiction by one rule, a truth value holding as nothing but itself (`PredicateRules`).
+- *Beneath a node no calc merges across* — a join, a correlate, an aggregate — each run is gated beside the rest
+  through its own binding, merged with no run above it; where one cannot be bound, nothing is reduced.
+- *Which filters, and why each is one Calcite evaluates.* A filter is read once, the first time the planner shows it,
+  and remembered against the filter (`CosmosFilterReduceRule.Read`). A filter of the tree the planner was handed is
+  shown while the tree is registered, bottom-up and before any rule fires (`VolcanoPlanner` has no root yet, or only
+  one a `clear` left behind): the walk reads each set's first member, the filter or projection the query wrote, so it
+  reads every filter the query stacked, a filter a deletion later merges away among them, since none is deleted yet.
+  Those are the filters the calc pass merges. A filter a rule makes later — transposed beneath a projection, pushed or
+  inferred — holds a condition Calcite's evaluation of the query need not, and conjoined into a gate could make it say
+  nothing raises where Calcite raises; so for a filter first shown after the tree, nothing is merged, simplified or
+  assumed, and each filter the walk finds beneath it is gated as it stands, which is stricter than Calcite. Such a
+  filter, whose written counterpart's filter beneath a deletion merged away, finds nothing beneath and is reduced:
+  dm11 and dm12 (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
+- *A window* is not bound through at all: it is computed over every row beneath it before anything above reads one,
+  and no statement holds it, so a filter over it is no `WHERE` of the statement beneath, to push or to reduce; with the
+  rule every host adds to lift the `OVER`, the window is Calcite's, its arguments evaluated over every document as
+  Calcite's are (`CosmosImplementor.TryBindOutput`; `CosmosDeclaredFactPlanningTests.AFilterAboveAWindowIsNeverReduced`).
+- *Only while the filters stay apart.* A host that merges filters while it plans, as a connection with Calcite's
+  default rules does (`FILTER_MERGE`), makes the two one `WHERE` before the adapter's rules see it, and that `WHERE`
+  takes the split route; it may move a filter on a window's partition key beneath the window too. And the filter
+  beneath is reduced on its own run, so a filter above it that may raise reads no row where Calcite, merging the two,
+  fails (nfkind). Both are the split's (`TODO.md`, *A residual beside a contradicted split loses its raise*).
+
+`CosmosDeclaredFactPlanningTests.AStackCalciteSimplifiesToFalseIsTheEmptyRelation` pins dm7, its `COUNT`, dm7m and dm7p
+beside ff, and `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast.
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and
@@ -6516,8 +6565,10 @@ required string and a `RETURNING INTEGER` over a declared string answered no row
 *The node.* `IsContradictory` asks under `OracleLicence.Reduce`, which opens `StatementTerms.Gated` beneath `D0`: the
 statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts as written, one a deletion drops among
 them), every path it reads mentioned, and `gated(W, W)` asserted where the Kept node asserts `holds`; where a filter
-lies beneath the reduced one, `gated(W, B)`, `B` the WHERE and the condition of every filter beneath it (*The reduce
-stops what is beneath it too, so it asks that*); for a projected `CASE` condition, `gated(W, G)`, `G` the predicates of
+lies beneath the reduced one, `gated(W, B)`, `B` the WHERE and the filters beneath it as Calcite evaluates them, and
+where the filter heads a run Calcite merges, `gated(R, B)` beside it, `R` the run's condition as Calcite simplifies it
+(*The reduce stops what is beneath it too, so it asks that, as Calcite evaluates it*); for a projected `CASE`
+condition, `gated(W, G)`, `G` the predicates of
 the projected expression (*The never-read arm, and a projection's conditions*). It runs `PredicateRules.Reduction` in
 two stages: `Answer` and then the `raises` ruleset alone, before anything is assumed; then `Saturation`, as every node
 runs it.
@@ -6530,7 +6581,9 @@ raise where every operand never raises, since Calcite raises in a connective onl
 (`Calcite.ConnectivesAreKleene`). An opaque term, a comparison no atom reads and any other constructor get no row, so a
 WHERE holding one may raise. The gate is one
 Establish rule: `gated(e, w)` and `never raises(w)` give `holds(e, true)`. Every other node asserts no `gated` row, so
-the gate is silent there.
+the gate is silent there. Another reads a truth value as itself: `FALSE` holding true, or `TRUE` false, or `UNKNOWN`
+either, is a contradiction, so a run assumed where Calcite's simplifier left `FALSE` keeps no row, and a `CASE` whose
+`ELSE FALSE` is the only arm a row can reach is never true.
 
 *The rows it reads.* The raw columns' rows live in `ReadingVocabulary`, derived in both graphs, so F's `RaisesOver`
 reads what S reads; and each raw column joins a parameter key into `rawunion`, its answer to a comparison with a
@@ -6591,7 +6644,7 @@ evaluating a conjunct that may raise*).
 *Not covered: the split.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads
 only the rows the pushed conjuncts keep. Where those contradict the declaration alone, no row reaches a residual that
 may raise, and it fails on nothing, whether the lower filter is reduced (`CosmosFilterReduceRule` matches it as any
-logical filter over its container, and the residual reads `ClrCursorValues` with no tuple) or sent (the service finds
+logical filter over its container, and the residual reads `CosmosNoRows`) or sent (the service finds
 nothing). Reducing it saves only the request: gating its reduce on the whole condition would send the request and
 answer the same. Failing as Calcite does means keeping such a filter whole in Calcite, a full read, which is a planning
 choice and not this gate's (`TODO.md`, *A residual beside a contradicted split loses its raise*). It is no regression:

@@ -79,6 +79,13 @@ answer a full join would:
 Anything else is joined by reading both sides, with the container side still filtered by whatever
 predicates of its own push down.
 
+One answer differs from Calcite's. A condition on the container's side that stays above the join, as
+one beside an `IN` does once Calcite turns the `IN` into a join, is evaluated only on the documents
+the keys fetch, where Calcite evaluates it on every document. Where it can fail, on a cast of text to
+`INTEGER` say, on a document no key fetches, Calcite fails and the lookup join answers; with no keys,
+it answers no rows, and with no request where the schema rules out the small side (Chapter 14.2).
+That is not decided yet (Chapter 23).
+
 ### Which side is fetched by key
 
 The side whose keys are collected is read normally; the container on the other side is fetched by

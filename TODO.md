@@ -1825,9 +1825,9 @@ reduce asks every row false*).
 **Built since: it costs no round trip.** The constant was reached inside the converter, so it landed
 on a `CosmosFilter`, and `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`, never
 saw it. `CosmosFilterReduceRule` now matches the logical filter, asks the predicate oracle whether it
-keeps anything, and puts the empty relation beside it, which a host with a rule for an empty `Values` answers
-with no request (`AContradictedPredicateIsReducedToTheConstant`). The paragraph below is what a planner
-without such a rule still does.
+keeps anything, and puts the adapter's own empty relation (`CosmosNoRows`) beside it, which answers with no
+request in any host (`AContradictedPredicateIsReducedToTheConstant`). The paragraph below is what it sent
+before: a converted filter carrying the constant.
 
 **And one thing is measured only on CI.** The constant renders as `WHERE @p0` with a boolean
 parameter, because the translator binds every literal rather than inlining — deliberately, so that
@@ -2363,9 +2363,9 @@ across documents* and *A join of a container to itself* is the record.
   documents; and facts carry across the paths. It wants path equality in the fact theory, whose atoms are `(path, claim)`
   today — and path equality is also what would let a contradiction like `foo = 1 AND bar = 2` over
   `foo == bar` be decided.
-- **A contradiction should send nothing** — *done.* `CosmosFilterReduceRule` puts the empty relation beside a
-  filter the oracle says keeps nothing and Calcite fails on no admitted document of, and a host with a rule for an
-  empty `Values` sends no request.
+- **A contradiction should send nothing** — *done.* `CosmosFilterReduceRule` puts the adapter's empty relation
+  (`CosmosNoRows`) beside a filter the oracle says keeps nothing and Calcite fails on no admitted document of, and it
+  sends no request in any host.
 - **A partition key pinned by both sides makes `id` alone unique** — *medium.* Both sides proving
   `pk = 'X'` puts every candidate document in one logical partition, where `id` is unique. A filter that is
   a function of the query rather than a constant, so it does not fit a `UNIQUE`'s fixed predicate and wants
@@ -2876,7 +2876,7 @@ across documents* and *A join of a container to itself* is the record.
   a wrong row.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads only the rows
   the pushed conjuncts keep. Where those contradict the declaration alone and a conjunct kept above may raise, no row
   reaches that conjunct and nothing fails, whether the lower filter is reduced (`CosmosFilterReduceRule` matches it as
-  any logical filter over its container, and the residual reads `ClrCursorValues(tuples=[[]])`: no request) or sent
+  any logical filter over its container, and the residual reads `CosmosNoRows`: no request) or sent
   (the service finds nothing). Beside `JSON_VALUE(c."DOC", '$.status') = 'deleted'` over a required
   `enum: ["active", "archived"]`, `RETURNING INTEGER` over a required string, `UPPER` and a comparison of two properties
   each answer no rows (`CosmosDeclaredFactPlanningTests.ThePartKeptInProcessReadsOnlyWhatTheSplitSends`); planned in
@@ -2905,13 +2905,25 @@ across documents* and *A join of a container to itself* is the record.
   holding a cast to `INTEGER` beside a never-read arm (`(CAST(body AS INTEGER) = 1 OR kind IN ('A', 'B')) AND CASE WHEN
   kind = 'C' THEN … ELSE FALSE END`); and `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND kind = 'C'`, whose
   residual after the split is itself deleted as redundant (*A deletion stops evaluating a conjunct that may raise*), so
-  that the plan shows no residual over the empty `Values` at all and reads as a whole filter reduced. So do a cast
+  that the plan shows no residual over the empty relation at all and reads as a whole filter reduced. So do a cast
   conjunct beside a never-read arm (`kind IN ('A', 'B') AND CAST(body AS INTEGER) >= -2147483648 AND CASE WHEN kind =
   'C' THEN CAST(n AS INTEGER) = 1 ELSE FALSE END`), and a filter casting text to `INTEGER` written over a subquery
   whose own `WHERE` the declaration contradicts (`SELECT … FROM (SELECT … WHERE kind = 'C') AS x WHERE
   CAST(JSON_VALUE(x."DOC", '$.body') AS INTEGER) = 1`) or is a never-read `CASE`: the filter above is the residual, the
   one beneath is reduced, and Calcite in process still fails on the cast. Each answers no rows with no request where
-  Calcite fails on `"abc"`, measured on both emulators under both targets' plans.
+  Calcite fails on `"abc"`, measured on both emulators under both targets' plans. **And the reverse, wherever a host
+  merges filters.** The reduce's gate on the filters beneath it (`CosmosFilterReduceRule.Beneath`) decides only
+  while they stay apart, as in the host Chapter 21 describes. Through a connection, Calcite's `FILTER_MERGE` makes a
+  filter written over a subquery's filter one `WHERE` before the adapter's rules see it, and that `WHERE` takes this
+  route: `kind = 'C'` over a subquery filtering on `CAST(body AS INTEGER) = 1` (ff), with `RETURNING`, a cast to
+  `BOOLEAN`, an `OR`, three levels, the middle one a projected column, a `DISTINCT` and a `GROUP BY` between (ffret,
+  ffbool, ffor, ff3, ff3mid, ffcol, ffdist, ffgroup; ff3deep, ffdistinct and ffagg under the three rewrites
+  `CosmosPlannerTests.PlanToAsync`'s host brings), the deletion shapes dm1 to dm4, dm6, dm8 and dm9, and a semi-join
+  over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
+  the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
+  takes this route. Each answers no rows with no request where Calcite fails on `"abc"`, and undeclared answers no
+  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets). A planning
+  test under the host's rewrites, as `PlanToAsync`'s, would pin it once the owner decides the split.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates "fail like Calcite".* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
@@ -2946,13 +2958,20 @@ across documents* and *A join of a container to itself* is the record.
   which is more than an answer. Where the filter above merges with the column, the deletion is the filter's own, and
   `CASE WHEN NOT (…) AND CASE WHEN kind = 'C' THEN … ELSE FALSE END THEN 1 END AS v … WHERE x.v = 1` sends the arm's
   `kind = 'C' AND n = 1`, and the service finds nothing where Calcite fails. Beside a never-read arm whose cast the service is never sent, no
-  text is written, and the column is Calcite's and fails as it does. Asking `never raises` of the conjunct before
-  deleting it covers each.
+  text is written, and the column is Calcite's and fails as it does. A filter beneath that the declaration makes
+  true is deleted before a filter above it is read: `SELECT x."id" FROM (SELECT … WHERE kind <> 'C' OR CAST(body AS
+  INTEGER) > 0) AS x WHERE kind = 'C'` (dm11), and the same with the `OR`'s operands swapped (dm12), answer no rows
+  with no request where Calcite fails on `"abc"`, in the host Chapter 21 describes and on main alike. The query's own
+  filter above is no longer reduced, its gate reading the two as Calcite merges and simplifies them, which keeps the
+  cast; but the deletion merges that filter away, and the same condition moved beneath the projection, a filter a rule
+  made after it, finds nothing beneath and is reduced, so the reduce's reading of the filters beneath alone leaves
+  both as they were.
+  Asking `never raises` of the conjunct before deleting it covers each, these among them.
 - **A lowering removes a raise on documents its siblings do not keep** — *small, an answer where Calcite fails.* A
   comparison lowered onto its stored form under `Siblings` no longer evaluates what raised, on documents the siblings
   exclude, where Calcite evaluates every conjunct.
 - **A flattened `CASE` decides its arm's raise in C#** — *small, an answer where Calcite fails; the owner's call.*
-  `IsSafe` (`Metadata/CosmosFactRewriter.cs:621-657`) decides by operator name that a lowered arm cannot raise, before
+  `CosmosFactRewriter.IsSafe` (`Metadata/CosmosFactRewriter.cs`) decides by operator name that a lowered arm cannot raise, before
   `TryFlattenCase` writes `p AND q`. It passes any comparison of an input reference, an ordering of an `ANY` column
   among them, which raises across types (`Calcite.RawNullIsSqlNull`): a hole that predates "fail like Calcite", where
   flattening adds a raise Calcite would not make. It refuses every cast, a cast to `DOUBLE` over declared numbers among
@@ -2973,23 +2992,44 @@ across documents* and *A join of a container to itself* is the record.
   each answers no rows with no request. Where `p` is not contradicted the lift still skips the operand on the rows `p`
   excludes, an answer where Calcite fails. The fix is the lift asking `never raises` of the operands it moves under the
   guard, in the facts graph, and keeping the comparison as written where one may.
-- **A finer gate on a never-read arm** — *small, precision.* The gate reads the raise of the whole WHERE as written,
-  and in a projection of every predicate of the projected expression; the `CASE`'s own raise, where its `FALSE` cannot
+- **A finer gate on a never-read arm** — *small, precision.* The gate reads the raise of the whole WHERE as written
+  and the filters beneath it, and in a projection of every predicate of the projected expression; the `CASE`'s own raise, where its `FALSE` cannot
   decide the conjunct or let the simplifier drop a sibling, would keep more arms. A projected condition is answered in
   the text sent alone, where nothing carries it further, so its gate could be the condition's own raise.
 - **A projected arm the text answers `FALSE` keeps its value** — *small, precision.* The text sent keeps a `CASE` arm
   whose condition it answers `FALSE`, value and all, where the plan's simplifier used to drop it, so a value the service
   is never sent, a cast of text to `INTEGER` among them, keeps the column in Calcite: `CASE WHEN kind = 'C' THEN
-  CAST(body AS INTEGER) ELSE 0 END`, and `CASE WHEN kind = 'A' AND CASE WHEN kind = 'C' THEN CAST(n AS INTEGER) = 1 ELSE
-  FALSE END THEN 1 ELSE 0 END` over an `n` whose text parses, each computed in Calcite from the properties sent.
-  Dropping, in the text, an arm it answers `FALSE` is exact, and so is an `AND` holding a `FALSE` where the gate holds;
-  it would send both again.
+  CAST(body AS INTEGER) ELSE 0 END`, computed in Calcite from the properties sent. Dropping, in the text, an arm it
+  answers `FALSE` is exact; it would send it again. A condition such an arm decides is answered whole since the facts
+  graph reads a `FALSE` held true as no row: `CASE WHEN kind = 'A' AND CASE WHEN kind = 'C' THEN CAST(n AS INTEGER) = 1
+  ELSE FALSE END THEN 1 ELSE 0 END` over an `n` whose text parses is sent as `@p0` bound to `false`.
 - **A filter over a window the declaration contradicts reads the container** — *small, precision.* A window binds
   nothing (`CosmosImplementor.TryBindOutput`), so a filter over one is never reduced: `WHERE x.k = 'C'` over `ROW_NUMBER()
   OVER (ORDER BY CAST(body AS INTEGER))` or `SUM(CAST(body AS INTEGER)) OVER ()`, with `kind` never `C`, computes the
   window in Calcite over every document, and fails where Calcite does. The reduce reading the filter's columns through
   the window, its gate holding the window's partition, order and argument expressions, each asked `never raises`, would
   answer it empty with no request where nothing raises.
+- **An empty side's sibling** — *small, precision; a request where there was none.* The reduce answers with
+  `CosmosNoRows`, which no prune-empty rule reads as empty, so a join, set operation, semi-join or lateral beside a
+  reduced side reads its other side as Calcite does and fails where Calcite fails. Where the host prunes empty inputs,
+  as the connection the README opens does, that other side is now read, one request, where an empty `Values` had it
+  answered at once with none, even where nothing in it can fail. An adapter rule that prunes such a sibling only where
+  the facts graph says nothing in it can fail, every expression it evaluates asked `never raises` in a gated node as
+  the reduce's are, would take the request back. Not built.
+- **A filter above a lookup join** — *medium, an empty answer where Calcite fails; the owner's call.* `CosmosLookupJoin`
+  fetches the probe side's documents by the build side's keys, and a filter the query wrote over the probe side above
+  the join (a conjunct beside an `IN`, which Calcite's subquery removal leaves above the join it makes) is evaluated
+  only on the documents fetched. Calcite pushes it beneath its own join and evaluates it on every document. Declared,
+  `CAST(body AS INTEGER) = 1` is kept from the service, so reading every document costs more than fetching by keys,
+  and the lookup join is chosen: `SELECT d."id" FROM … AS d WHERE CAST(body AS INTEGER) = 1 AND d."id" IN (SELECT
+  c."id" FROM … AS c WHERE c."id" = 'zz')` answers no rows after one request where the undeclared twin fails on
+  `"abc"`; with `kind = 'C'`, which the declaration contradicts, in the subquery (sj1), the build side is reduced and
+  the answer is no rows with no request. The reduce does not decide it: it prunes nothing, and the cost of the shared
+  build side cancels between the two plans
+  (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedSubqueryAnswersAsOneWithNothingReduced`; whether main does
+  the same is not measured). The fix wants the lookup join offered only where nothing above it that reads the probe
+  side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every document
+  and fails as Calcite does.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a WHERE holding one never reduces.
   Finer rules where rows exist.
