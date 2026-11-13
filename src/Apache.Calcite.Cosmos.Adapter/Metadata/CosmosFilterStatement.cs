@@ -39,8 +39,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
     /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
-    /// the arm's question assumes, each assumed only where the WHERE the deletions leave raises on no document the
-    /// declaration admits</description></item>
+    /// the arm's question assumes of the statement as written, a sibling the deletions drop among them, each assumed only
+    /// where the WHERE as written raises on no document the declaration admits</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
     /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
@@ -669,15 +669,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Determines whether an arm of a <c>CASE</c> is read under conditions its kept siblings contradict, so that it is
-        /// never read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE the deletions leave raises, so
-        /// that a <c>FALSE</c> written for it stops no failure (<see cref="OracleLicence.NeverRead"/>).
+        /// Determines whether an arm of a <c>CASE</c> is read under conditions its siblings contradict, so that it is never
+        /// read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE as written raises, so that a
+        /// <c>FALSE</c> written for it stops no failure (<see cref="OracleLicence.NeverRead"/>).
         /// </summary>
-        public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions)
-        {
-            var (scope, index) = Remaining;
-            return scope.IsContradictory(OracleLicence.NeverRead(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
-        }
+        /// <remarks>
+        /// Of the statement as written, not the one the deletions leave. A deleted conjunct is no longer evaluated, and
+        /// where the <c>FALSE</c> then decides the filter, a gate that never saw it answered no rows where it raises.
+        /// Assuming it is sound, as it is not for a lowering (<see cref="Siblings"/>): the <c>FALSE</c> stands only in a
+        /// positive position, so the rewritten conjunct is true only where the conjunct as written is, which with the kept
+        /// siblings implies every deleted one.
+        /// </remarks>
+        public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions) =>
+            Scope.IsContradictory(OracleLicence.NeverRead(conjunct, conditions.Select(_loading.Read).ToArray()));
 
         // ── A weakening beside what is applied ───────────────────────────────────────────────────────────────────────
 

@@ -819,6 +819,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Conditions(integer, Within).Should().Be("CASE(false, 'big', 'small')", "an integer from 0 to 100 parses, however it was written");
         }
 
+        /// <summary><c>CAST(body AS INTEGER) = 1</c>, which raises on a declared string that is no number.</summary>
+        RexNode BodyIsOne() => _rex.makeCall(SqlStdOperatorTable.EQUALS,
+            _rex.makeCast(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.INTEGER), true), Ref(2, SqlTypeName.VARCHAR)),
+            _rex.makeExactLiteral(java.math.BigDecimal.ONE));
+
+        RexNode Not(RexNode operand) => _rex.makeCall(SqlStdOperatorTable.NOT, operand);
+
+        /// <summary>
+        /// The never-read arm is asked of the WHERE as written. <c>NOT (… AND kind = 'C')</c> is true wherever it does not
+        /// raise, so it is deleted as redundant, and the arm beside it reads <c>kind = 'C'</c>, which no document holds. Where
+        /// the deleted conjunct casts <c>body</c> to <c>INTEGER</c>, which raises on a string that is no number, the arm is
+        /// not written <c>FALSE</c>, so what is left is not the constant, and is sent; where it compares the text, nothing
+        /// raises, and the arm and the filter are <c>FALSE</c>.
+        /// </summary>
+        [Fact]
+        public void AnArmNeverReadIsGatedOnTheWhereAsWrittenADeletedConjunctAmongIt()
+        {
+            var arm = _rex.makeCall(SqlStdOperatorTable.OR, Eq(Ref(2, SqlTypeName.VARCHAR), Str("y")), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()));
+
+            var raising = And(Not(And(BodyIsOne(), KindIs("C"))), arm);
+            Statement(raising, Kinds).Redundant.Should().Equal(0);
+            Rewrite(raising, Kinds).Should().Be("OR(=($2, 'y'), AND(=($1, 'C'), =($2, 'z')))",
+                "the deleted cast raises, so the arm is taken apart as any other");
+
+            var safe = And(Not(And(Eq(Ref(2, SqlTypeName.VARCHAR), Str("q")), KindIs("C"))), arm);
+            Statement(safe, Kinds).Redundant.Should().Equal(0);
+            Rewrite(safe, Kinds).Should().Be("=($2, 'y')", "nothing in the WHERE raises, so the arm is FALSE");
+        }
+
 
     }
 

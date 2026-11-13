@@ -209,8 +209,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Gets whether the arm the rewrite is inside is never read, and may be written <c>FALSE</c>:
-            /// its conditions contradict what its siblings establish, and nothing in the WHERE raises, so
-            /// the evaluation the <c>FALSE</c> removes removes no failure.
+            /// its conditions contradict what every sibling establishes, a deleted one among them, and
+            /// nothing in the WHERE as written raises, so neither the evaluation the <c>FALSE</c> removes
+            /// nor a deletion beside it removes a failure.
             /// </summary>
             public bool NeverRead => _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
 
