@@ -310,13 +310,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <c>5.0000000000000001</c> too, and <c>= 5.5</c> every number whose double is 5.5's: neither is one partition. Where
         /// the declaration makes the key an integer, <c>= 5</c> keeps 5 alone, which is pinned and sent as the client sends a
         /// literal of it, a <see cref="long"/>, which a whole-partition delete takes; where it narrows the key to one fraction,
-        /// <c>= 5.5</c> keeps that fraction alone, sent as a <see cref="double"/>.
+        /// <c>= 5.5</c> keeps that fraction alone, sent as a <see cref="double"/>. So a number is pinned wherever the
+        /// declaration leaves the key one value whose double is the literal's.
         /// </summary>
         /// <remarks>
         /// The oracle holds a number as a <see cref="decimal"/>, which no partition key component is.
         /// </remarks>
         [Fact]
-        public void ANumberIsPinnedOnlyWhereTheDeclarationMakesTheKeyAnInteger()
+        public void ANumberIsPinnedOnlyWhereTheDeclarationLeavesTheKeyOneValue()
         {
             var container = Container("/category");
 

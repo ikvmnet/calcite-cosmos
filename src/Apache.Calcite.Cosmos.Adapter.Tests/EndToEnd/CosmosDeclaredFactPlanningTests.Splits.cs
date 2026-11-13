@@ -183,14 +183,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A number pins the key only where the declaration makes it an integer, required or not: through <c>RETURNING
-        /// INTEGER</c>, or <c>RETURNING BIGINT</c> past an <c>INTEGER</c>'s range (<c>docs/07</c>, 7.3). <c>RETURNING BIGINT</c>
-        /// over a stored 5 and <c>RETURNING DOUBLE</c> pin it too, answering where Calcite fails (<c>docs/23</c>). Undeclared,
-        /// Calcite compares the number by its double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal
-        /// to no stored integer, a <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or not.
+        /// A number pins the key only where the declaration leaves it one value whose double is the literal's
+        /// (<c>docs/07</c>, 7.3). A key declared an integer, required or not, is pinned through <c>RETURNING INTEGER</c>, or
+        /// <c>RETURNING BIGINT</c> past an <c>INTEGER</c>'s range; <c>RETURNING BIGINT</c> over a stored 5 and
+        /// <c>RETURNING DOUBLE</c> pin it too, answering where Calcite fails (<c>docs/23</c>). A key an <c>enum</c> or a
+        /// <c>const</c> narrows to fractions is pinned through <c>RETURNING DOUBLE</c> or a cast of the text to
+        /// <c>DOUBLE</c>, sent as a double, and Calcite answers there. Undeclared, Calcite compares the number by its
+        /// double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal to no stored integer, a
+        /// <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or not.
         /// </summary>
         [Fact]
-        public void ANumberPinsTheKeyOnlyThroughADeclaredInteger()
+        public void ANumberPinsTheKeyOnlyWhereTheDeclarationLeavesItOneValue()
         {
             const string Returning = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING {0}) = {1}""";
             const string Boxed = """SELECT c."id" FROM items AS c WHERE c."$.ref" = CAST(5 AS VARIANT)""";
@@ -208,6 +211,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 Query(FindCosmos(PlanToCosmos(string.Format(Returning, type, value), undeclared, out _)), undeclared).PartitionKeyValues
                     .Should().BeNull($"RETURNING {type} = {value}, undeclared");
             Query(FindCosmos(PlanToCosmos(Boxed, undeclared, out _)), undeclared).PartitionKeyValues.Should().BeNull("a boxed 5, undeclared");
+
+            foreach (var declared in new[] { """{ "enum": [5.5] }""", """{ "enum": [5.5, 7.25] }""", """{ "const": 5.5 }""" })
+            {
+                var container = Declaring($$"""{ "type": "object", "properties": { "ref": {{declared}} } }""");
+                foreach (var read in new[] { """JSON_VALUE(c."DOC", '$.ref' RETURNING DOUBLE)""", """CAST(JSON_VALUE(c."DOC", '$.ref') AS DOUBLE)""" })
+                {
+                    var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {read} = 5.5""", container, out _);
+                    var query = Query(FindCosmos(plan), container);
+                    query.PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"{read} = 5.5 over {declared}");
+                    query.Sql.Should().EndWith("WHERE (c.ref = @p0)", PlanText(plan));
+                }
+            }
         }
 
     }

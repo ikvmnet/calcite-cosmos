@@ -126,7 +126,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // Where no document the container's declaration admits makes the predicate true, and
             // none makes anything in it raise, Calcite answers no rows and fails on none -- so the
             // equivalent predicate is the constant, and every rule that reduces one takes it from
-            // there. Where something may raise, the filter stays, and fails as Calcite fails it.
+            // there. Where something may raise, the filter stays as it is: the rewriter removes no failure.
             if (statement is { IsContradictory: true })
                 return rexBuilder.makeLiteral(false);
 

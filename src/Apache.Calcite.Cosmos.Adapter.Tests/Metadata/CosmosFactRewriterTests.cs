@@ -701,12 +701,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// The lattice still excludes what it should: a fraction on a path declared an integer, and a
         /// number on a path declared a string, keep nothing. But <c>RETURNING DOUBLE</c> fails on an
         /// integer written so, <c>30</c>, and on a string, each of which the declaration admits, so the
-        /// filter is not written <c>FALSE</c>: it fails as Calcite fails it.
+        /// filter is not written <c>FALSE</c>. What follows is the planner's: over a property that may be
+        /// missing, as here, or is declared an integer, it is sent and the service finds nothing
+        /// (<c>CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent</c>,
+        /// <c>AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>); over a required string it
+        /// stays in Calcite, which fails.
         /// </summary>
         [Theory]
         [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "1.5")]
         [InlineData("""{ "properties": { "body": { "type": "string" } } }""", "2")]
-        public void AValueOutsideTheDeclaredTypeKeepsNothingYetFailsAsCalciteDoes(string schema, string value)
+        public void AValueOutsideTheDeclaredTypeKeepsNothingYetIsNotReduced(string schema, string value)
         {
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
                 Number(),
@@ -730,8 +734,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <para>
         /// What it establishes is what a cast to a number does: the path is there, and a number there is within one of
         /// the literal. Neither is a contradiction with a string. Beside it, <c>RETURNING DOUBLE</c> asserts, and over a
-        /// declared string keeps no row; but it fails on every string, so it is not written <c>FALSE</c> either: it fails
-        /// as Calcite fails it.
+        /// declared string keeps no row; but it fails on every string, so it is not written <c>FALSE</c> either. Over a
+        /// <c>body</c> that may be missing, as here, the planner sends it and the service finds nothing; over a required
+        /// one it stays in Calcite, which fails
+        /// (<c>CosmosDeclaredFactPlanningTests.AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>).
         /// </para>
         /// </remarks>
         [Fact]
@@ -752,7 +758,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             var asserted = _rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2)));
             Statement(asserted, Strings).Kept.IsContradictory.Should().BeTrue("an asserted type is a claim, and the declaration contradicts it");
-            Rewrite(asserted, Strings).Should().Be(asserted.ToString(), "but RETURNING DOUBLE fails on the string body may hold, as Calcite does");
+            Rewrite(asserted, Strings).Should().Be(asserted.ToString(), "but RETURNING DOUBLE fails on the string body may hold, so it is not reduced");
         }
 
         /// <summary>Kinds each document declares, and a string <c>body</c>; <c>ref</c>, the partition key, is declared nothing.</summary>

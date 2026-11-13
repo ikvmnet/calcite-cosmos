@@ -94,6 +94,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <c>gated(W, W)</c> where <paramref name="gated"/> is set and no <c>holds</c> row, runs
         /// <see cref="PredicateRules.Reduction"/>, and returns whether it is contradictory and whether the WHERE never raises.
         /// </summary>
+        /// <remarks>
+        /// By hand, mirroring the gated branch of <c>StatementTerms.Open</c> that <c>StatementTerms.Gated</c> reaches for the
+        /// reduce's node and the never-read arm's, so that a node with no <c>gated</c> row is asked beside it; a change to
+        /// that branch is made here too. The nodes themselves are held through their licences by
+        /// <see cref="TheReduceAsksEveryRowFalse"/>, <see cref="AnArmIsNeverReadWhereItsFactsContradictAndTheWhereRaisesNowhere"/>
+        /// and <c>CosmosOracleTests</c>.
+        /// </remarks>
         static (bool Contradictory, bool NeverRaises) Reduced(JsonFactTheory theory, SqlPredicate where, bool gated = true)
         {
             var terms = Declared(theory, where).Terms;

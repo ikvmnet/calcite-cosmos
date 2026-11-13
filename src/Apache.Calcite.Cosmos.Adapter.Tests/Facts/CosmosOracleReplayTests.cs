@@ -332,10 +332,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// <summary>
         /// A number through a <c>RETURNING</c> the declaration refuses keeps no row, so what the statement keeps is a
         /// contradiction, as before; but <c>RETURNING INTEGER</c> raises on a stored string, which the declaration admits,
-        /// so the filter is not reduced, and fails as Calcite fails it.
+        /// so the filter is not reduced. Over a <c>rate</c> that may be missing, as here, the planner sends it and the
+        /// service finds nothing; over a required one it stays in Calcite, which fails
+        /// (<c>CosmosDeclaredFactPlanningTests.AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>).
         /// </summary>
         [Fact]
-        public void ANumberTheDeclarationRefusesKeepsNoRowYetFailsAsCalciteDoes()
+        public void ANumberTheDeclarationRefusesKeepsNoRowYetIsNotReduced()
         {
             var loaded = Where("""{ "properties": { "rate": { "type": "string" } } }""", """JSON_VALUE(c."DOC", '$.rate' RETURNING INTEGER) = 2""");
 
