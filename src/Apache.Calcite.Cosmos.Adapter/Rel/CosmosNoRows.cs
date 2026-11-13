@@ -25,7 +25,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// answer a join, set operation, semi-join or lateral over it without reading the other side. Calcite itself reads that
     /// side, and fails where something in it fails; so an empty <c>Values</c> answered a query with no request where
     /// Calcite fails. This relation is no <c>Values</c> and states no maximum row count, so a host reads the side beside it
-    /// as Calcite does.
+    /// as Calcite does; but a host's semi-join reads its outer side first, and over this one never opens the subquery
+    /// (<c>TODO.md</c>, <em>A semi-join over an emptied outer side reads no subquery</em>).
     /// </para>
     /// <para>
     /// <b>What that costs.</b> Where the host prunes empty inputs, as the connection the README opens does, the other side

@@ -2922,14 +2922,18 @@ across documents* and *A join of a container to itself* is the record.
   over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
   the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
   takes this route. Each answers no rows with no request where Calcite fails on `"abc"`, and undeclared answers no
-  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets). Three levels
+  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets), but for
+  ff3mid, whose undeclared twin never finishes planning through the README's connection, on main too (*A filter
+  stacked three deep over a projected column does not finish planning*). A `COUNT` over this route answers `0` where
+  Calcite fails, the host's aggregate over no rows (ffcnt, and dm10 through a deletion). Three levels
   under those rewrites (ff3deep) end as an empty `Values`, not `CosmosNoRows`: `CosmosFilterRule` offers a
   `CosmosFilter` holding its condition as the rewrite answers it, here `FALSE` for `kind = 'C'`, and `FILTER_MERGE`,
   which matches a filter of any convention, merges that `FALSE` with the filter beneath it into an empty `Values`, the
   cast and all (measured offline under the three rewrites). A host's prune-empty rules read that `Values` as empty, so
   a join or set operation beside such a side answers without reading its other side, as one beside the reduce's own
-  empty relation did before it was `CosmosNoRows`; the side alone already answers no rows where Calcite fails, so the
-  join adds no new wrong answer. It ends with the converted filter holding the condition as the query wrote it,
+  empty relation did before it was `CosmosNoRows`. Two levels do the same through the README's connection, and
+  beside a join whose other side Calcite fails on that is a wrong answer of its own (*A side emptied over a filter
+  beneath answers a join beside it*). It ends with the converted filter holding the condition as the query wrote it,
   rewritten only where the text is made, as a projection's is (`DESIGN.md`, *Rendered, never planned*), or with the
   split. A planning test under the host's rewrites, as `PlanToAsync`'s, would pin it once the owner decides the
   split.
@@ -3019,12 +3023,47 @@ across documents* and *A join of a container to itself* is the record.
   the window, its gate holding the window's partition, order and argument expressions, each asked `never raises`, would
   answer it empty with no request where nothing raises.
 - **An empty side's sibling** — *small, precision; a request where there was none.* The reduce answers with
-  `CosmosNoRows`, which no prune-empty rule reads as empty, so a join, set operation, semi-join or lateral beside a
-  reduced side reads its other side as Calcite does and fails where Calcite fails. Where the host prunes empty inputs,
+  `CosmosNoRows`, which no prune-empty rule reads as empty, so a join, set operation or lateral beside a reduced side
+  reads its other side as Calcite does and fails where Calcite fails; a semi-join does where the subquery is the
+  reduced side, but for a lookup join's (*A filter above a lookup join*), and not where the outer side is (*A
+  semi-join over an emptied outer side reads no subquery*), and a side a connection's filter merge empties is pruned
+  still (*A side emptied over a filter beneath answers a join beside it*). Where the host prunes empty inputs,
   as the connection the README opens does, that other side is now read, one request, where an empty `Values` had it
   answered at once with none, even where nothing in it can fail. An adapter rule that prunes such a sibling only where
   the facts graph says nothing in it can fail, every expression it evaluates asked `never raises` in a gated node as
   the reduce's are, would take the request back. Not built.
+- **A semi-join over an emptied outer side reads no subquery** — *medium, an empty answer with no request where
+  Calcite fails; older, main the same.* Through the connection the README opens, `SELECT c."id" FROM … AS c WHERE kind
+  = 'C' AND c."id" IN (SELECT d."id" FROM … AS d WHERE CAST(body AS INTEGER) = 1)`, `kind` never `C` (sj2), plans as
+  the host's hash semi-join over `CosmosNoRows` and the subquery that casts, and the host's semi-join reads its outer
+  side first and, finding no rows, never opens the subquery, as linq4j's does (CALCITE-2909); Calcite reads it and
+  fails on `"abc"`. Undeclared, the statement is a lookup join with the subquery as its build side, read first, and
+  fails as Calcite does. A correlated `EXISTS` (j3) and an `IN` over a cast in the subquery's select list (j6) answer
+  alike; where the outer side matches nothing and nothing is reduced (j2, j7) both plans fail, so it is the reduced
+  outer side's plan. The anti-joins (j4, j5, j8) answer no rows undeclared too, the host's semi-join and not the
+  reduce. Main answers sj2 the same, through an empty `Values` its prune-empty rules read. The fix is an adapter rule
+  over a semi-join or correlate whose outer side is `CosmosNoRows`: where the facts graph says the subquery may raise,
+  it evaluates the subquery, and where nothing in it can, answers empty without reading it; it is the other half of
+  *An empty side's sibling*. `CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedOuterSideReadsNoSubquery` records
+  it, docs/14.2 and Chapter 23 say so.
+- **A side emptied over a filter beneath answers a join beside it** — *medium, an empty answer with no request where
+  Calcite fails; older, main the same.* Through the connection the README opens, a join side whose filter is written
+  over a subquery's filter, where the declaration rules the upper filter out (h1, h3 to h7, h9, h12, h14, h15, h17,
+  h18, h20, h22, h23, h26, h27) or makes part of it true (x1, x2), answers the whole join with no rows and no request
+  where Calcite fails on the other side's cast. `CosmosFilterRule` offers a `CosmosFilter` holding the condition as
+  the rewrite answers it, `FALSE` or what the deletion left; Calcite's `FILTER_MERGE`, which matches a filter of any
+  convention, merges it with the filter beneath, its simplifier reads the merge as `FALSE`, and the prune-empty rules
+  read the empty `Values` that leaves and answer the join without reading its other side. The reduce's own
+  `CosmosNoRows` is not what is pruned, and its gate on the filters beneath never sees the merge. The fix is the
+  converted filter holding the condition as the query wrote it, rewritten only where the text is made, as a
+  projection's is (`DESIGN.md`, *Rendered, never planned*); it moves every plan that prints a `CosmosFilter`'s
+  condition, and is its own change. Until then docs/14.2 and Chapter 23 record it.
+- **A filter stacked three deep over a projected column does not finish planning** — *small, a query that never
+  answers; older, main the same.* Through the connection the README opens, ff3mid over a container that declares
+  nothing — three filters, the middle one over a projected column, the cast beneath — never finishes planning. The
+  split route, the connection's `FILTER_MERGE` and the residual the split leaves look to feed one another; not yet
+  traced. Stabilizing that cycle is the fix. Declared, the same statement plans, and answers no rows with no request
+  (*A residual beside a contradicted split loses its raise*).
 - **A filter above a lookup join** — *medium, an empty answer where Calcite fails; the owner's call.* `CosmosLookupJoin`
   fetches the probe side's documents by the build side's keys, and a filter the query wrote over the probe side above
   the join (a conjunct beside an `IN`, which Calcite's subquery removal leaves above the join it makes) is evaluated
@@ -3035,10 +3074,10 @@ across documents* and *A join of a container to itself* is the record.
   `"abc"`; with `kind = 'C'`, which the declaration contradicts, in the subquery (sj1), the build side is reduced and
   the answer is no rows with no request. The reduce does not decide it: it prunes nothing, and the cost of the shared
   build side cancels between the two plans
-  (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedSubqueryAnswersAsOneWithNothingReduced`; whether main does
-  the same is not measured). The fix wants the lookup join offered only where nothing above it that reads the probe
-  side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every document
-  and fails as Calcite does.
+  (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedSubqueryAnswersAsOneWithNothingReduced`); main answers the
+  same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
+  the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
+  document and fails as Calcite does.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a WHERE holding one never reduces.
   Finer rules where rows exist.

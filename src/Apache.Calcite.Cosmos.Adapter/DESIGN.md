@@ -1254,8 +1254,12 @@ maximum row count is 0; either way they answered a join, set operation, semi-joi
 without reading the other side, which Calcite reads and fails on where something in it fails (ix3, ex1, sj1, lj1,
 jl10 and lat3 through the README's connection, where the same statement undeclared fails on `"abc"`). `CosmosNoRows`
 is no `Values`, and no metadata handler states a maximum row count for it, so none of them prunes beside it: the other
-side is read as Calcite reads it and fails where Calcite fails
-(`CosmosConnectionEmptySideTests.ASideCalciteFailsOnBesideAnEmptiedSideFailsAsCalciteDoes`). That costs the other
+side of a join, set operation or lateral is read as Calcite reads it and fails where Calcite fails
+(`CosmosConnectionEmptySideTests.ASideCalciteFailsOnBesideAnEmptiedSideFailsAsCalciteDoes`). A semi-join whose outer
+side it is still reads no subquery: the host's semi-join reads its outer side first and, finding no rows, never opens
+the subquery, which Calcite reads and fails on (sj2, j3, j6; recorded in
+`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedOuterSideReadsNoSubquery`; `TODO.md`, *A semi-join over an
+emptied outer side reads no subquery*). That costs the other
 side's request, one, even where nothing in it can fail (`TODO.md`, *An empty side's sibling*); an aggregate over it is
 the host's, over no rows, `COUNT` 0 and `MAX` null. It estimates the rows of the filter it stands for, not none, so a
 choice beside it by cost reads it as the filter; its own cost is an empty `Values`'s, so it is chosen wherever one
@@ -1330,9 +1334,13 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
   takes the split route; it may move a filter on a window's partition key beneath the window too. And the filter
   beneath is reduced on its own run, so a filter above it that may raise reads no row where Calcite, merging the two,
   fails (nfkind). Both are the split's (`TODO.md`, *A residual beside a contradicted split loses its raise*). There,
-  too, a stack of three can end as an empty `Values` rather than `CosmosNoRows`: `FILTER_MERGE` matches a filter of
-  any convention, and merges the `FALSE` a `CosmosFilter` holds, the rewrite's answer for its condition, with the
-  filter beneath it (ff3deep); a host's prune-empty rules read that one as empty.
+  too, a filter over a subquery's filter can end as an empty `Values` rather than `CosmosNoRows`: `FILTER_MERGE`
+  matches a filter of any convention, and merges the condition a `CosmosFilter` holds, the rewrite's answer for it —
+  `FALSE`, or what a deletion left — with the filter beneath it, which Calcite's simplifier then reads as `FALSE` (h1,
+  x1; ff3deep under the three rewrites). A host's prune-empty rules read that one as empty, and answer a join beside it
+  without reading its other side, where Calcite reads it and fails (`TODO.md`, *A side emptied over a filter beneath
+  answers a join beside it*). The fix is the converted filter holding the condition as written, rewritten only where
+  the text is made.
 
 `CosmosDeclaredFactPlanningTests.AStackCalciteSimplifiesToFalseIsTheEmptyRelation` pins dm7, its `COUNT`, dm7m and dm7p
 beside ff, `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast, `AStackOnAGroupingsKeysIsReadThroughIt`

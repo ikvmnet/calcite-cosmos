@@ -185,8 +185,8 @@ with one           no request: the plan is CosmosNoRows, an empty relation
 The empty relation is the adapter's own, not an empty `Values`, and needs no rule in the host. Nor
 does a host's rule for pruning an empty input read it as empty, as a connection with Calcite's
 default rules would an empty `Values`: a join or set operation beside it reads its other side as
-Calcite does, and fails where Calcite fails. That costs the other side's request, one, even where
-nothing there can fail.
+Calcite does, and fails where Calcite fails, but for two of the recorded cases below. That costs the
+other side's request, one, even where nothing there can fail.
 
 The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
 
@@ -243,16 +243,26 @@ over every document first; a connection may move a filter on the window's partit
 drop a window nothing reads, and the filter then meets the documents as a `WHERE` the same case
 describes.
 
-**A query that can fail is not answered empty in Calcite's place, but for three recorded cases.**
+**A query that can fail is not answered empty in Calcite's place, but for five recorded cases.**
 The empty result stands in for Calcite's answer, so the adapter gives a filter it only where Calcite
 would answer no rows and fail on none: where nothing in the `WHERE`, or in the filters beneath it as
-Calcite merges them, can fail on a document the schema admits. Three cases still answer no rows with
-no request where Calcite fails (Chapter 23): a part of a `WHERE` kept in process beside a part sent
-that the schema rules out, the case at the end of this section, which is not yet decided; a condition
-the schema makes true, dropped though it can fail (above); and a semi-join over a
-subquery the schema rules out, which the adapter may answer by fetching the outer documents by the
-subquery's keys, of which there are none, so the condition beside the `IN` is never evaluated
-(Chapter 12.1).
+Calcite merges them, can fail on a document the schema admits. These still answer no rows with no
+request where Calcite fails (Chapter 23):
+
+- a part of a `WHERE` kept in process beside a part sent that the schema rules out, the case at the
+  end of this section, which is not yet decided; a `COUNT` over it answers 0;
+- a condition the schema makes true, dropped though it can fail (above);
+- a semi-join over a subquery the schema rules out, which the adapter may answer by fetching the
+  outer documents by the subquery's keys, of which there are none, so the condition beside the `IN`
+  is never evaluated (Chapter 12.1);
+- a semi-join or correlated `EXISTS` whose outer documents the schema rules out: the host reads the
+  outer side first and, finding none, never evaluates the subquery Calcite fails on;
+- through a connection with Calcite's default rules, a filter written over a subquery's filter beside
+  a join, where the schema rules the upper filter out or makes part of it true: the connection merges
+  the two once the adapter has answered the upper one's condition, reads the result as empty, and
+  answers the join without reading its other side, which Calcite reads and fails on.
+
+Of the ranges above, and of other casts:
 
 - Through `CAST(… AS INTEGER)` the first range is sent: Calcite's integer cast of the text fails on
   numbers past an `INTEGER`, which an `"integer"` declaration with no `minimum` admits. The second

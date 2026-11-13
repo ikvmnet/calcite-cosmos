@@ -38,8 +38,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// what the host evaluates knowing nothing of the documents, which fails as Calcite does.
     /// </para>
     /// <para>
-    /// A semi-join is the exception, and not the reduce's: the plan chosen for it is a join the adapter drives by the
-    /// subquery's keys, with the cast above it, whether the subquery is reduced or merely matches nothing.
+    /// Two semi-joins are exceptions. One over a reduced subquery is planned as a join the adapter drives by the
+    /// subquery's keys, with the cast above it, whether the subquery is reduced or merely matches nothing: the lookup
+    /// join's, not the reduce's. One whose outer side is reduced is the host's semi-join over <c>CosmosNoRows</c>, which
+    /// reads its outer side first and never opens the subquery Calcite fails on: recorded, not yet decided.
     /// </para>
     /// </remarks>
     public class CosmosConnectionEmptySideTests : IClassFixture<CosmosConnectionEmptySideTests.Fixture>
@@ -208,6 +210,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "ex1" => $"""SELECT c."id" FROM {t} AS c WHERE {Kind} EXCEPT SELECT d."id" FROM {t} AS d WHERE {Body} = 1""",
                 "sj1" => $"""SELECT d."id" FROM {t} AS d WHERE {Body} = 1 AND d."id" IN (SELECT c."id" FROM {t} AS c WHERE {Kind})""",
                 "sj1none" => $"""SELECT d."id" FROM {t} AS d WHERE {Body} = 1 AND d."id" IN (SELECT c."id" FROM {t} AS c WHERE c."id" = 'zz')""",
+                "sj2" => $"""SELECT c."id" FROM {t} AS c WHERE {Kind} AND c."id" IN (SELECT d."id" FROM {t} AS d WHERE {Body} = 1)""",
                 "lj1" => $"""SELECT a."id", b.w FROM (SELECT c."id" FROM {t} AS c WHERE {Kind}) AS a LEFT JOIN (SELECT d."id", {Body} AS w FROM {t} AS d) AS b ON (a."id" = b."id")""",
                 "jl10" => $"""SELECT COUNT(*) AS n FROM (SELECT c."id" FROM {t} AS c WHERE {Kind}) AS a JOIN (SELECT d."id" FROM {t} AS d WHERE {Body} = 1) AS b ON (a."id" = b."id")""",
                 "lat3" => $"""SELECT c."id", l.w FROM {t} AS c CROSS JOIN LATERAL (SELECT CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) AS w, JSON_VALUE(c."DOC", '$.kind') AS k2 FROM (VALUES (1)) AS v(x)) AS l WHERE l.k2 = 'C'""",
@@ -301,6 +304,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             none.Plan.Should().NotContain("CosmosNoRows").And.Contain("CosmosLookupJoin", none.Plan);
 
             (reduced.Raised is null).Should().Be(none.Raised is null, "the join, not the reduce, decides where the cast is evaluated\n" + reduced.Plan + "\n" + none.Plan);
+        }
+
+        /// <summary>
+        /// Recorded, not decided: a semi-join whose outer side the declaration empties answers no rows where Calcite fails
+        /// on the subquery. The plan is the host's semi-join over <c>CosmosNoRows</c> and the subquery that casts
+        /// <c>body</c>, and the host's semi-join reads its outer side first and, finding no rows, never opens the subquery.
+        /// The undeclared twin is a join the adapter drives by the subquery's keys, the subquery read first, and fails as
+        /// Calcite does (<c>TODO.md</c>, <em>A semi-join over an emptied outer side reads no subquery</em>).
+        /// </summary>
+        [Fact]
+        public async Task ASemiJoinOverAnEmptiedOuterSideReadsNoSubquery()
+        {
+            RequireService();
+
+            await using var connection = await OpenAsync();
+
+            var plain = await Run(connection, Statement("sj2", "\"PLAIN\".\"sides\""));
+            plain.Raised.Should().NotBeNull("the control reads the subquery and casts \"abc\" as Calcite does\n" + plain.Plan);
+
+            var declared = await Run(connection, Statement("sj2", "\"COSMOS\".\"sides\""));
+            declared.Plan.Should().Contain("CosmosNoRows", "the declaration empties the outer side");
+            declared.Raised.Should().BeNull("recorded: beside an empty outer side the host's semi-join opens no subquery\n" + declared.Plan);
         }
 
     }
