@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // No document satisfies the filter and none fails it, so the relation holds no rows, and no request at all
                 // is what answers it.
                 case RexNode rewritten when KeepsNothing(rewritten):
-                    call.transformTo(CosmosNoRows.Create(filter.getCluster(), filter.getRowType(), call.getMetadataQuery().getRowCount(filter)?.doubleValue() ?? 1d));
+                    call.transformTo(CosmosNoRows.Create(filter.getCluster(), filter.getRowType(), call.getMetadataQuery().getRowCount(filter)?.doubleValue() ?? 1d, filter.getId()));
                     break;
 
                 // Every conjunct is one the rest of the filter and the declaration make true of every document: the

@@ -1259,9 +1259,16 @@ side is read as Calcite reads it and fails where Calcite fails
 side's request, one, even where nothing in it can fail (`TODO.md`, *An empty side's sibling*); an aggregate over it is
 the host's, over no rows, `COUNT` 0 and `MAX` null. It estimates the rows of the filter it stands for, not none, so a
 choice beside it by cost reads it as the filter; its own cost is an empty `Values`'s, so it is chosen wherever one
-was; its digest holds its row type, as a `Values`'s does. A semi-join over it can still answer empty with no request
-where Calcite fails, where the planner drives a lookup join by its keys: that is the lookup join's, chosen alike
-where nothing is reduced (`TODO.md`, *A filter above a lookup join*).
+was. Its digest holds its row type, as a `Values`'s does, and the filter it stands for, so no two reduced filters
+share one. One relation for every empty of a row type merged the sets of the filters it answered, and in a stack of
+three whose lower two contradict each other the merged set held a filter over itself, beneath which
+`FILTER_PROJECT_TRANSPOSE` and `PROJECT_MERGE` built new filters and sets without end, until binding one overflowed the
+stack (t15 and its twins, after five to six minutes;
+`CosmosDeclaredFactPlanningTests.AStackWhoseLowerFiltersContradictPlans`). A set can still read itself, a filter that
+keeps everything being merged with its input, so `CosmosImplementor.TryBindOutput` binds nothing through a node it
+has already resolved. A semi-join over it can still answer empty with no request where Calcite fails, where the
+planner drives a lookup join by its keys: that is the lookup join's, chosen alike where nothing is reduced (`TODO.md`,
+*A filter above a lookup join*).
 
 **The reduce stops what is beneath it too, so it asks that, as Calcite evaluates it.** The empty relation stops
 Calcite evaluating everything beneath the filter, not only its condition. The adapter's rule set moves a filter beneath
@@ -1328,9 +1335,10 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
   filter beneath it (ff3deep); a host's prune-empty rules read that one as empty.
 
 `CosmosDeclaredFactPlanningTests.AStackCalciteSimplifiesToFalseIsTheEmptyRelation` pins dm7, its `COUNT`, dm7m and dm7p
-beside ff, `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast, and
-`AStackOnAGroupingsKeysIsReadThroughIt` and `ARunOverACorrelateIsReadAsCalciteSplitsIt` the runs through a grouping and
-at a correlate.
+beside ff, `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast, `AStackOnAGroupingsKeysIsReadThroughIt`
+and `ARunOverACorrelateIsReadAsCalciteSplitsIt` the runs through a grouping and at a correlate, and
+`AStackWhoseLowerFiltersContradictPlans` t15, its plain twin and the older kind = 'C', id <> 'zz', kind = 'D', declared
+and not.
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and

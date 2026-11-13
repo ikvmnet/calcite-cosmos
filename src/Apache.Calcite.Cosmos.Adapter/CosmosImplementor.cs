@@ -405,6 +405,18 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </param>
         internal static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
         {
+            return TryBindOutput(node, out fields, out readings, out ordering, out written, out container, resolved: null);
+        }
+
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each output field is read back.</param>
+        /// <param name="ordering">On success, per ordinal, the path a sort may order by where the ordinal binds to none.</param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        /// <param name="container">On success, the container the subtree reads.</param>
+        /// <param name="resolved">The members this walk has resolved a set to, or <c>null</c> before it has resolved one.</param>
+        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
+        {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
@@ -413,9 +425,15 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
-            // do, and a set with none is not something to guess about.
+            // do, and a set with none is not something to guess about. Once two sets merge, as a filter that
+            // keeps everything merges with its input, the member a set was built from can read the set
+            // itself: a member met twice on one walk is that cycle, and binds nothing rather than recursing.
             if (node is org.apache.calcite.plan.volcano.RelSubset subset)
+            {
                 node = subset.getOriginal() ?? subset.getBest();
+                if (node is not null && (resolved ??= new HashSet<RelNode>(ReferenceEqualityComparer.Instance)).Add(node) == false)
+                    return false;
+            }
 
             switch (node)
             {
@@ -434,7 +452,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
                 {
-                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container) == false)
+                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
                         return false;
 
                     // A filter onto it is conjoined with it: see CosmosClauses.Where.
@@ -450,7 +468,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -472,7 +490,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // calls binds nothing at all: its output is computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -504,7 +522,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -563,7 +581,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // alias, and the walk knowing less declines and never fails (TODO.md, section 5).
                 default:
                     if (TraversedInput(node) is RelNode traversed)
-                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
+                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container, resolved);
 
                     return false;
             }
@@ -609,13 +627,13 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// traversal writes no clause of its own: it completes a projection beneath it rather than
         /// starting one.
         /// </remarks>
-        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
 
-            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container) == false)
+            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container, resolved) == false)
                 return false;
 
             var paths = new CosmosPath?[fieldCount];

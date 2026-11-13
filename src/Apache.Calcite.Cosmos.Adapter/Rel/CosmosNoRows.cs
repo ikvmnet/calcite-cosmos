@@ -39,6 +39,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// side, as one driven by a side that matches nothing reads only that side (<c>TODO.md</c>, <em>A filter above a
     /// lookup join</em>).
     /// </para>
+    /// <para>
+    /// <b>It names the filter it stands for</b>, in its digest only, so that two reduced filters are two relations. One
+    /// relation for every empty of a row type merged the sets of the filters it answered, and where one was stacked on
+    /// the other the merged set held a filter over itself, beneath which the planner's transposes and merges built new
+    /// filters without end until the stack overflowed.
+    /// </para>
     /// </remarks>
     public class CosmosNoRows : AbstractRelNode, ClrCursorRel
     {
@@ -52,14 +58,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="cluster">The planner cluster.</param>
         /// <param name="rowType">The row type of the filter it answers for.</param>
         /// <param name="rows">The rows the planner estimates that filter keeps.</param>
+        /// <param name="standsFor">The planner's identifier of that filter.</param>
         /// <returns>The relation.</returns>
-        public static CosmosNoRows Create(RelOptCluster cluster, RelDataType rowType, double rows)
+        public static CosmosNoRows Create(RelOptCluster cluster, RelDataType rowType, double rows, int standsFor)
         {
-            return new CosmosNoRows(cluster, cluster.traitSetOf(ClrCursorConvention.Instance), rowType, rows);
+            return new CosmosNoRows(cluster, cluster.traitSetOf(ClrCursorConvention.Instance), rowType, rows, standsFor);
         }
 
         readonly RelDataType _rowType;
         readonly double _rows;
+        readonly int _standsFor;
 
         /// <summary>
         /// Initializes a new instance.
@@ -68,12 +76,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <param name="traitSet">The trait set, which must carry the cursor convention.</param>
         /// <param name="rowType">The row type.</param>
         /// <param name="rows">The rows the planner estimates the filter it stands for keeps.</param>
+        /// <param name="standsFor">The planner's identifier of the filter it stands for.</param>
         /// <exception cref="ArgumentNullException"><paramref name="rowType"/> is <c>null</c>.</exception>
-        public CosmosNoRows(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, double rows) :
+        public CosmosNoRows(RelOptCluster cluster, RelTraitSet traitSet, RelDataType rowType, double rows, int standsFor) :
             base(cluster, traitSet)
         {
             _rowType = rowType ?? throw new ArgumentNullException(nameof(rowType));
             _rows = rows;
+            _standsFor = standsFor;
         }
 
         /// <inheritdoc />
@@ -85,18 +95,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// <inheritdoc />
         public override RelNode copy(RelTraitSet traitSet, java.util.List inputs)
         {
-            return new CosmosNoRows(getCluster(), traitSet, _rowType, _rows);
+            return new CosmosNoRows(getCluster(), traitSet, _rowType, _rows, _standsFor);
         }
 
         /// <inheritdoc />
         /// <remarks>
-        /// The row type is in the digest, as an empty <c>Values</c>'s is, so that two of different types are two
-        /// relations.
+        /// The row type is in the digest, as an empty <c>Values</c>'s is, and the filter it stands for, so that no two
+        /// filters' are one relation. Neither is printed in a plan.
         /// </remarks>
         public override RelWriter explainTerms(RelWriter pw)
         {
             return base.explainTerms(pw)
-                .itemIf("type", _rowType, pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES);
+                .itemIf("type", _rowType, pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
+                .itemIf("for", java.lang.Integer.valueOf(_standsFor), pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES);
         }
 
         /// <inheritdoc />

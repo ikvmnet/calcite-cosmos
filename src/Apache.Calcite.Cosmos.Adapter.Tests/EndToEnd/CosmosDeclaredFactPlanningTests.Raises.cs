@@ -136,6 +136,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Three filters stacked whose lower two contradict each other, so that the filter above each is reduced as well
+        /// as the one it stands on. The two empty relations were once one, which merged the sets of the filters they
+        /// answered: the merged set held a filter over itself, beneath which the planner's transposes and merges built new
+        /// filters until the stack overflowed. Each now plans, declared or not, to the empty relation with no request,
+        /// Calcite's answer, since its simplifier reads the merged stack as <c>FALSE</c> before evaluating the cast above.
+        /// </summary>
+        [Fact]
+        public void AStackWhoseLowerFiltersContradictPlans()
+        {
+            static string Stack(string bottom, string middle, string top) =>
+                $"""SELECT y."id" FROM (SELECT x."id", x."DOC" FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {bottom}) AS x WHERE {middle}) AS y WHERE {top}""";
+
+            static string Kind(string alias) => $"""JSON_VALUE({alias}."DOC", '$.kind')""";
+
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Listed)), ("undeclared", TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))) })
+                foreach (var (name, sql) in new[]
+                {
+                    ("t15", Stack($"{Kind("c")} = 'A'", $"{Kind("x")} = 'B'", """CAST(JSON_VALUE(y."DOC", '$.body') AS INTEGER) = 1""")),
+                    ("plain", Stack($"{Kind("c")} = 'A'", $"{Kind("x")} = 'B'", """JSON_VALUE(y."DOC", '$.n') = '1'""")),
+                    ("apart", Stack($"{Kind("c")} = 'C'", """x."id" <> 'zz'""", $"{Kind("y")} = 'D'")),
+                })
+                {
+                    var plan = PlanToCosmos(sql, container, out _);
+                    PlanText(plan).Should().Contain(KeepsNothing, $"{name} {declared}: Calcite simplifies the stack to FALSE: " + PlanText(plan));
+                    PlanText(plan).Should().NotContain("CosmosToClrCursorConverter", $"{name} {declared}: and nothing is sent: " + PlanText(plan));
+                }
+        }
+
+        /// <summary>
         /// A stack of filters on a grouping's keys over the cast of the text <c>body</c> to <c>INTEGER</c>: Calcite moves
         /// each beneath the grouping (<c>FILTER_AGGREGATE_TRANSPOSE</c>) and merges it with the filter there, so where the
         /// conjunction is <c>FALSE</c> to its simplifier nothing of it is evaluated and Calcite answers no rows. The reduce
