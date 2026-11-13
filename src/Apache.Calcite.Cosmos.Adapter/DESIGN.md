@@ -1304,7 +1304,10 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
   default rules does (`FILTER_MERGE`), makes the two one `WHERE` before the adapter's rules see it, and that `WHERE`
   takes the split route; it may move a filter on a window's partition key beneath the window too. And the filter
   beneath is reduced on its own run, so a filter above it that may raise reads no row where Calcite, merging the two,
-  fails (nfkind). Both are the split's (`TODO.md`, *A residual beside a contradicted split loses its raise*).
+  fails (nfkind). Both are the split's (`TODO.md`, *A residual beside a contradicted split loses its raise*). There,
+  too, a stack of three can end as an empty `Values` rather than `CosmosNoRows`: `FILTER_MERGE` matches a filter of
+  any convention, and merges the `FALSE` a `CosmosFilter` holds, the rewrite's answer for its condition, with the
+  filter beneath it (ff3deep); a host's prune-empty rules read that one as empty.
 
 `CosmosDeclaredFactPlanningTests.AStackCalciteSimplifiesToFalseIsTheEmptyRelation` pins dm7, its `COUNT`, dm7m and dm7p
 beside ff, and `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast.

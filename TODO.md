@@ -2922,8 +2922,17 @@ across documents* and *A join of a container to itself* is the record.
   over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
   the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
   takes this route. Each answers no rows with no request where Calcite fails on `"abc"`, and undeclared answers no
-  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets). A planning
-  test under the host's rewrites, as `PlanToAsync`'s, would pin it once the owner decides the split.
+  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets). Three levels
+  under those rewrites (ff3deep) end as an empty `Values`, not `CosmosNoRows`: `CosmosFilterRule` offers a
+  `CosmosFilter` holding its condition as the rewrite answers it, here `FALSE` for `kind = 'C'`, and `FILTER_MERGE`,
+  which matches a filter of any convention, merges that `FALSE` with the filter beneath it into an empty `Values`, the
+  cast and all (measured offline under the three rewrites). A host's prune-empty rules read that `Values` as empty, so
+  a join or set operation beside such a side answers without reading its other side, as one beside the reduce's own
+  empty relation did before it was `CosmosNoRows`; the side alone already answers no rows where Calcite fails, so the
+  join adds no new wrong answer. It ends with the converted filter holding the condition as the query wrote it,
+  rewritten only where the text is made, as a projection's is (`DESIGN.md`, *Rendered, never planned*), or with the
+  split. A planning test under the host's rewrites, as `PlanToAsync`'s, would pin it once the owner decides the
+  split.
 - **A `CASE` the split leaves without its sibling may raise where Calcite answers** — *medium, a failure where Calcite
   answers; it predates "fail like Calcite".* `JSON_VALUE(c."DOC", '$.o') = 'o1' AND CASE WHEN CAST(JSON_VALUE(c."DOC",
   '$.m') AS BOOLEAN) AND JSON_VALUE(c."DOC", '$.o') = 'o3' THEN FALSE ELSE TRUE END` over an integer `m` sends
