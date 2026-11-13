@@ -848,6 +848,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             Rewrite(safe, Kinds).Should().Be("=($2, 'y')", "nothing in the WHERE raises, so the arm is FALSE");
         }
 
+        /// <summary>
+        /// A projected condition is folded only where no predicate of its expression raises, since a <c>FALSE</c> in one
+        /// lets the simplifier drop a sibling condition, the condition around it, or a predicate beside it: beside
+        /// <c>CAST(body AS INTEGER) = 1</c>, which raises on a declared string that is no number, <c>kind = 'C'</c> is left
+        /// as it is, and so is the arm inside a condition holding the cast. Alone it folds.
+        /// </summary>
+        [Fact]
+        public void AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises()
+        {
+            string Conditions(RexNode expression) => CosmosFactRewriter.RewriteConditions(expression, _fields, Container(Kinds), "c", _rex).ToString();
+            RexNode Many(params RexNode[] operands)
+            {
+                var list = new java.util.ArrayList();
+                foreach (var operand in operands)
+                    list.add(operand);
+
+                return _rex.makeCall(SqlStdOperatorTable.CASE, list);
+            }
+
+            Conditions(Case(KindIs("C"), Str("c"), Str("one"))).Should().Be("CASE(false, 'c', 'one')", "nothing in it raises");
+
+            var sibling = Many(BodyIsOne(), Str("one"), KindIs("C"), Str("c"), Str("one"));
+            Conditions(sibling).Should().Be(sibling.ToString(), "folded, the arm would merge with the ELSE, the cast with it");
+
+            var around = Many(BodyIsOne(), Case(KindIs("C"), Str("c"), Str("one")), Str("one"));
+            Conditions(around).Should().Be(around.ToString(), "folded, the inner CASE would merge into the outer, the cast with it");
+
+            var conjoined = And(BodyIsOne(), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()));
+            Conditions(conjoined).Should().Be(conjoined.ToString(), "folded, the CASE would be FALSE, and the cast beside it dropped");
+
+            var enclosing = Case(And(Not(And(BodyIsOne(), KindIs("A"))), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False())), Str("one"), Str("none"));
+            Conditions(enclosing).Should().Be("CASE(AND(NOT(AND(=(CAST($2):INTEGER, 1), =($1, 'A'))), =($1, 'C'), =($2, 'z')), 'one', 'none')",
+                "the arm inside is taken apart as any other, never FALSE");
+        }
+
 
     }
 

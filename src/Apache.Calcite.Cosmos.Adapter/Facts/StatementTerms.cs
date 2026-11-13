@@ -193,12 +193,13 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <remarks>
         /// Its <see cref="Node.Holding"/> is its parent's, since whether the gate fired is the rules' to say. It mentions
         /// what the gated predicates read, as a child assuming them does, so the same discriminator splits open; its key
-        /// is that child's followed by what it is for, which no other child takes.
+        /// is that child's followed by what it is for and the WHERE it waits on, which no other child takes: a tree serves
+        /// every statement of its digest, and a projected condition's gate is more than its own WHERE.
         /// </remarks>
         /// <param name="parent">The context: the declaration's <c>D0</c>.</param>
         /// <param name="question">What the node is for, which keys it apart: <c>reduce</c>, or <c>gated</c> for an arm.</param>
         /// <param name="gated">What the node assumes where the WHERE raises nowhere.</param>
-        /// <param name="where">The WHERE, as one conjunction.</param>
+        /// <param name="where">The WHERE, as one conjunction, or what stands for it (<c>CosmosStatementScope</c>'s gate).</param>
         public Node Gated(Node parent, string question, IEnumerable<SqlPredicate> gated, SqlPredicate where)
         {
             var distinct = new Dictionary<string, SqlPredicate>(StringComparer.Ordinal);
@@ -208,7 +209,7 @@ namespace Apache.Calcite.Cosmos.Facts
             if (distinct.Count == 0 || parent.Scope is null || _rules is null)
                 return parent;
 
-            var key = KeyOf(parent, distinct.Keys) + "#" + question;
+            var key = KeyOf(parent, distinct.Keys) + "#" + question + "@" + where.Digest;
 
             lock (_lock)
             {

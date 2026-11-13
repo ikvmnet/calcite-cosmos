@@ -96,7 +96,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="readings">How each field is read back, where the caller knows: a field read as text compares
         /// its rendering, and establishes what a rendering does.</param>
         /// <returns>The rewritten predicate, or <paramref name="condition"/> where nothing applied.</returns>
-        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null)
+        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null) =>
+            Rewrite(condition, fields, container, rootAlias, rexBuilder, readings, gate: null);
+
+        /// <summary>
+        /// Returns the predicate rewritten as <see cref="Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>
+        /// does, each <c>FALSE</c> written only where nothing in <paramref name="gate"/> raises, or the predicate itself
+        /// where it is <c>null</c>.
+        /// </summary>
+        static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate)
         {
             if (condition is null || fields is null || rexBuilder is null)
                 return condition!;
@@ -106,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (container is null)
                 return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
 
-            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias, gate);
             return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
         }
 
@@ -241,6 +249,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the text. Unlowered, the whole projection stayed in process — and with it a sort or a page
         /// above it (#192).
         /// </para>
+        /// <para>
+        /// <b>A <c>FALSE</c> is gated on every predicate of the expression.</b> Each condition is its
+        /// own statement, but a <c>FALSE</c> written in one lets the simplifier drop more than it:
+        /// <c>X AND FALSE</c> is <c>FALSE</c> however <c>X</c> reads, an arm left with its sibling's
+        /// value merges into it and takes its condition along, and a <c>CASE</c> so merged may merge into
+        /// the one around it. So the reduce and a never-read arm inside any condition assume only where
+        /// nothing in any predicate of the expression raises: its conditions, and the expression
+        /// itself where it is one (<see cref="PredicatesOf"/>).
+        /// </para>
         /// </remarks>
         /// <param name="expression">The projected expression, over <paramref name="fields"/>.</param>
         /// <param name="fields">The ordinal-to-path binding of the projected input.</param>
@@ -253,11 +270,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (expression is null || fields is null || rexBuilder is null || ContainsCase(expression) == false)
                 return expression!;
 
-            return (RexNode)expression.accept(new Conditions(fields, container, rootAlias, rexBuilder));
+            return (RexNode)expression.accept(new Conditions(fields, container, rootAlias, rexBuilder, PredicatesOf(expression, rexBuilder)));
         }
 
         /// <summary>
-        /// Rewrites the conditions of every <c>CASE</c> beneath a node, innermost first.
+        /// Returns the predicates of a projected expression as one conjunction, written as it is and
+        /// never simplified: each boolean node whose parent is none, the expression's own where it is
+        /// boolean, so that every predicate Calcite evaluates in it is one of them or inside one.
+        /// </summary>
+        static RexNode PredicatesOf(RexNode expression, RexBuilder rexBuilder)
+        {
+            var predicates = new java.util.ArrayList();
+            Collect(expression, within: false);
+
+            return predicates.size() switch
+            {
+                0 => rexBuilder.makeLiteral(true),
+                1 => (RexNode)predicates.get(0),
+                _ => rexBuilder.makeCall(SqlStdOperatorTable.AND, predicates),
+            };
+
+            void Collect(RexNode node, bool within)
+            {
+                var predicate = node.getType().getSqlTypeName() == SqlTypeName.BOOLEAN;
+                if (predicate && within == false)
+                    predicates.add(node);
+
+                if (node is RexCall call)
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        Collect((RexNode)call.getOperands().get(i), predicate);
+            }
+        }
+
+        /// <summary>
+        /// Rewrites the conditions of every <c>CASE</c> beneath a node, innermost first, each gated
+        /// on the expression's predicates.
         /// </summary>
         sealed class Conditions : RexShuttle
         {
@@ -266,13 +313,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosContainerMetadata? _container;
             readonly string _rootAlias;
             readonly RexBuilder _rexBuilder;
+            readonly RexNode _gate;
 
-            public Conditions(IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder)
+            public Conditions(IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, RexNode gate)
             {
                 _fields = fields;
                 _container = container;
                 _rootAlias = rootAlias;
                 _rexBuilder = rexBuilder;
+                _gate = gate;
             }
 
             public override RexNode visitCall(RexCall call)
@@ -292,7 +341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     if (i % 2 == 0 && i < @case.getOperands().size() - 1)
                     {
-                        var rewritten = Rewrite(operand, _fields, _container, _rootAlias, _rexBuilder);
+                        var rewritten = Rewrite(operand, _fields, _container, _rootAlias, _rexBuilder, readings: null, _gate);
                         changed |= ReferenceEquals(rewritten, operand) == false;
                         operand = rewritten;
                     }

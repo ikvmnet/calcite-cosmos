@@ -84,6 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly RexBuilder _rexBuilder;
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
+        readonly RexNode? _gate;
         readonly object _lock = new();
         bool[]? _owned;
 
@@ -95,7 +96,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         JsonFactSet?[]? _siblings;
         (CosmosStatementScope Scope, int[] Index)? _remaining;
 
-        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias)
+        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias, RexNode? gate)
         {
             Condition = condition;
             _fields = fields;
@@ -103,6 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _container = container;
             _rexBuilder = rexBuilder;
             _rootAlias = rootAlias;
+            _gate = gate;
             _loading = new CosmosPredicateLoader.Loading(fields, readings, rootAlias);
 
             Conjuncts = ConjunctsOf(condition);
@@ -148,8 +150,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="container">The container, whose declaration the oracle reasons from.</param>
         /// <param name="rexBuilder">A builder over the condition's types, for the translator.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="gate">What a <c>FALSE</c> written in the condition may stop Calcite evaluating, or <c>null</c> for
+        /// the condition itself: for a projected <c>CASE</c> condition, every predicate of its expression. The reduce and
+        /// a never-read arm assume only where nothing in it raises.</param>
         /// <returns>The statement.</returns>
-        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias)
+        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias, RexNode? gate = null)
         {
             if (condition is null)
                 throw new ArgumentNullException(nameof(condition));
@@ -167,10 +172,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // is no statement for a rule's translator to render.
                 foreach (var statement in read)
                     if (ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
-                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings))
+                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings) && Equals(statement._gate, gate))
                         return statement;
 
-                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias);
+                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias, gate);
                 read.Add(made);
                 return made;
             }
@@ -208,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, Render);
+                    return _scope ??= Oracle.Admit(Statement, Render, _gate is null ? null : _loading.Read(_gate));
             }
         }
 
