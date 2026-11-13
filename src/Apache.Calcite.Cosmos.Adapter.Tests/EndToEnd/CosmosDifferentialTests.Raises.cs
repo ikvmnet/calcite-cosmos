@@ -43,9 +43,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Calcite fails on <c>"abc"</c>, and beside it something the declaration contradicts: a projected <c>CASE</c>'s
         /// conditions compared with the cast above (the plan holds the <c>CASE</c> as written, and only the text sent
         /// answers them), a filter over the filter that casts, a window ordered or summed by the cast under a contradicted
-        /// filter, and a projected deletion beside a never-read arm. Each fails pushed too, never answering no rows, and the
-        /// controls, where nothing raises or where Calcite's simplifier reads a stack of filters over the cast as
-        /// <c>FALSE</c> before evaluating any of it, answer as Calcite does. A Calcite error refines to anything in
+        /// filter, a projected deletion beside a never-read arm, a stack over a lateral that casts beneath it, and a filter on
+        /// a <c>DISTINCT</c>'s keys over the cast. Each fails pushed too, never answering no rows, and the controls, where
+        /// nothing raises or where Calcite's simplifier reads a stack of filters over the cast as <c>FALSE</c> before
+        /// evaluating any of it, a stack on a grouping's keys among them, answer as Calcite does. A Calcite error refines to anything in
         /// <see cref="Refines"/>, so this asks the failure itself. Its container is its own, outside the corpus.
         /// </summary>
         [Fact]
@@ -60,6 +61,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string N = "CAST(JSON_VALUE(c.\"DOC\", '$.n') AS INTEGER)";
             var never = $"CASE WHEN {Kind} = 'C' THEN {N} = 1 ELSE FALSE END";
             var arms = $"SELECT c.\"id\", CASE WHEN {Kind} = 'C' THEN 1 WHEN {Kind} = 'Z' THEN 2 END AS v, {Body} AS w FROM raises_listed AS c";
+            var lateral = $"SELECT c.\"id\", l.k2 FROM raises_listed AS c CROSS JOIN LATERAL (SELECT {Kind} AS k2 FROM (VALUES (1)) AS v(x0)) AS l WHERE {Body} = 1";
+            var distinct = $"SELECT DISTINCT c.\"id\", {Kind} AS k FROM raises_listed AS c WHERE {Body} = 1";
 
             var failing = new[]
             {
@@ -72,6 +75,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"SELECT x.\"id\", x.r FROM (SELECT c.\"id\", {Kind} AS k, ROW_NUMBER() OVER (ORDER BY {Body}) AS r FROM raises_listed AS c) AS x WHERE x.k = 'C'",
                 $"SELECT x.\"id\", x.s FROM (SELECT c.\"id\", {Kind} AS k, SUM({Body}) OVER () AS s FROM raises_listed AS c) AS x WHERE x.k = 'C'",
                 $"SELECT c.\"id\", CASE WHEN NOT ({Body} = 1 AND {Kind} = 'C') AND {never} THEN 1 ELSE 0 END AS v FROM raises_listed AS c",
+                $"SELECT z.\"id\" FROM (SELECT y.\"id\", y.k2 FROM (SELECT x.\"id\", x.k2 FROM ({lateral}) AS x WHERE x.k2 IN ('A', 'B')) AS y WHERE y.k2 = 'C') AS z",
+                $"SELECT COUNT(*) AS n FROM (SELECT x.\"id\", x.k2 FROM ({lateral}) AS x WHERE x.k2 = 'A') AS y WHERE y.k2 = 'B'",
+                $"SELECT x.\"id\" FROM ({distinct}) AS x WHERE x.k = 'C'",
             };
 
             var answering = new[]
@@ -82,6 +88,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"SELECT c.\"id\", CASE WHEN {Kind} = 'A' AND {never} THEN 1 ELSE 0 END AS v FROM raises_listed AS c",
                 $"SELECT y.\"id\" FROM (SELECT x.\"id\", x.\"DOC\" FROM (SELECT c.\"id\", c.\"DOC\" FROM raises_listed AS c WHERE {Body} = 1) AS x WHERE JSON_VALUE(x.\"DOC\", '$.kind') IN ('A', 'B')) AS y WHERE JSON_VALUE(y.\"DOC\", '$.kind') = 'C'",
                 $"SELECT COUNT(*) AS n FROM (SELECT x.\"id\", x.\"DOC\" FROM (SELECT c.\"id\", c.\"DOC\" FROM raises_listed AS c WHERE {Body} = 1) AS x WHERE JSON_VALUE(x.\"DOC\", '$.kind') IN ('A', 'B')) AS y WHERE JSON_VALUE(y.\"DOC\", '$.kind') = 'C'",
+                $"SELECT y.\"id\" FROM (SELECT x.\"id\", x.k FROM ({distinct}) AS x WHERE x.k IN ('A', 'B')) AS y WHERE y.k = 'C'",
+                $"SELECT y.k FROM (SELECT x.k, x.n FROM (SELECT {Kind} AS k, COUNT(*) AS n FROM raises_listed AS c WHERE {Body} = 1 GROUP BY {Kind}) AS x WHERE x.k IN ('A', 'B')) AS y WHERE y.k = 'C'",
             };
 
             var wrong = new List<string>();

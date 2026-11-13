@@ -1283,8 +1283,25 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
 - *The run the filter heads is assumed too.* Every row the filter reads passed the run beneath it, so the node assumes
   the run's condition beside the WHERE where the gate raises nowhere; a run the simplifier reads as `FALSE` is then a
   contradiction by one rule, a truth value holding as nothing but itself (`PredicateRules`).
-- *Beneath a node no calc merges across* — a join, a correlate, an aggregate — each run is gated beside the rest
-  through its own binding, merged with no run above it; where one cannot be bound, nothing is reduced.
+- *Through a grouping's keys.* `FILTER_AGGREGATE_TRANSPOSE` moves a filter that reads only a simple grouping's keys
+  beneath it before the calc pass, and the calc pass merges it there with the filter beneath. So the walk passes a
+  grouping wherever every condition above reads only its keys, each mapped onto the input as that rule's converter
+  maps it, and a filter over a grouping is read with the run it heads, the grouping binding nothing above it: dd1,
+  dd7, dg1 and ps2 are the empty relation, as Calcite answers them, and a filter on the keys over the cast alone stays
+  in Calcite (`CosmosDeclaredFactPlanningTests.AStackOnAGroupingsKeysIsReadThroughIt`). A condition that reads an
+  aggregate's result stays above, and the grouping ends the run.
+- *At a correlate.* `FILTER_CORRELATE` splits a filter over a correlate before the calc pass: each conjunct that
+  reads one side alone is pushed into that side, in a filter `RelBuilder.filter` builds and simplifies with no
+  predicates, and evaluated there before anything above; one holding a correlation variable stays above. So a run
+  whose lowest filter reads a correlate, through the plain projections beneath it, is split as that rule classifies
+  it (`RelOptUtil.classifyFilters`, the right side only where the join type lets it), what stays above simplified as
+  the calc pass simplifies it, each pushed part alone, and the parts conjoined unsimplified, so that no part the
+  simplifier reads as `FALSE` is read as stopping one pushed beside it: latrun, unrun and sqrun3 keep their cast in
+  Calcite, declared or not, which fails as it does
+  (`CosmosDeclaredFactPlanningTests.ARunOverACorrelateIsReadAsCalciteSplitsIt`).
+- *Beneath a node no calc merges across* — a join, a correlate, a grouping a condition above reads more than the keys
+  of — each run is gated beside the rest through its own binding, merged with no run above it; where one cannot be
+  bound, nothing is reduced.
 - *Which filters, and why each is one Calcite evaluates.* A filter is read once, the first time the planner shows it,
   and remembered against the filter (`CosmosFilterReduceRule.Read`). A filter of the tree the planner was handed is
   shown while the tree is registered, bottom-up and before any rule fires (`VolcanoPlanner` has no root yet, or only
@@ -1293,9 +1310,10 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
   Those are the filters the calc pass merges. A filter a rule makes later — transposed beneath a projection, pushed or
   inferred — holds a condition Calcite's evaluation of the query need not, and conjoined into a gate could make it say
   nothing raises where Calcite raises; so for a filter first shown after the tree, nothing is merged, simplified or
-  assumed, and each filter the walk finds beneath it is gated as it stands, which is stricter than Calcite. Such a
-  filter, whose written counterpart's filter beneath a deletion merged away, finds nothing beneath and is reduced:
-  dm11 and dm12 (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
+  assumed, and each filter the walk finds beneath it is gated as it stands. That is no reading of Calcite's
+  evaluation: it asks more where the filters beneath are all there, and less where one is gone. Such a filter, whose
+  written counterpart's filter beneath a deletion merged away, finds nothing beneath and is reduced: dm11 and dm12
+  (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
 - *A window* is not bound through at all: it is computed over every row beneath it before anything above reads one,
   and no statement holds it, so a filter over it is no `WHERE` of the statement beneath, to push or to reduce; with the
   rule every host adds to lift the `OVER`, the window is Calcite's, its arguments evaluated over every document as
@@ -1310,7 +1328,9 @@ reduce's gate is the WHERE and the filters beneath it as Calcite evaluates them 
   filter beneath it (ff3deep); a host's prune-empty rules read that one as empty.
 
 `CosmosDeclaredFactPlanningTests.AStackCalciteSimplifiesToFalseIsTheEmptyRelation` pins dm7, its `COUNT`, dm7m and dm7p
-beside ff, and `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast.
+beside ff, `AFilterOverAFilterThatMayRaiseIsNotReduced` the filter over a cast, and
+`AStackOnAGroupingsKeysIsReadThroughIt` and `ARunOverACorrelateIsReadAsCalciteSplitsIt` the runs through a grouping and
+at a correlate.
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and

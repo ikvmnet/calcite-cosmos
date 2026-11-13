@@ -49,8 +49,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// conjunction) before it evaluates a row; where that is <c>FALSE</c> nothing in it is evaluated and Calcite answers
     /// no rows. So a run is composed onto its lowest filter's input and simplified by Calcite's own simplifier, configured
     /// as that pass configures it, and the gate holds what is left. The run the filter heads is assumed as well, since
-    /// every row the filter reads passed it. A run beneath a node no calc merges across (a join, a correlate, a window)
-    /// is gated beside it, through its own binding. The decision is the facts graph's; this builds the term.
+    /// every row the filter reads passed it. A grouping whose keys alone the conditions above it read is walked through,
+    /// since <c>FILTER_AGGREGATE_TRANSPOSE</c> moves them beneath it before the calc pass; and a run whose lowest filter
+    /// reads a correlate is split as <c>FILTER_CORRELATE</c> splits it, what it pushes into each side simplified apart.
+    /// A run beneath a node no calc merges across (a join, a correlate, a window) is gated beside it, through its own
+    /// binding. The decision is the facts graph's; this builds the term.
     /// </para>
     /// <para>
     /// <b>Only filters the query wrote, each read once.</b> A filter is read the first time the planner shows it, and
@@ -105,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var filter = (Filter)call.rel(0);
 
-            if (CosmosFilterSplitRule.FindTable(filter.getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
+            if (CosmosFilterSplitRule.FindTable(filter.getInput(), throughGroupings: true) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
             return Read(filter, call.getPlanner()) is RexNode rewritten && (KeepsNothing(rewritten) || KeepsEverything(rewritten));
@@ -165,15 +168,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         RexNode? Rewritten(Filter filter, bool written)
         {
-            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
-                return null;
-
             var condition = filter.getCondition();
             var rexBuilder = filter.getCluster().getRexBuilder();
 
             var runs = new List<(RexNode Condition, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings, bool Reaching)>();
             if (Beneath(filter, written, rexBuilder, runs) == false)
                 return null;
+
+            // A grouping that computes binds nothing above it, so its keys are read beneath it, in the run the filter heads
+            // (Run): the WHERE is then read through no binding, the run being what the reduce asks.
+            if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
+            {
+                if (runs.Exists(r => r.Reaching) == false)
+                    return null;
+
+                fields = new CosmosPath?[filter.getInput().getRowType().getFieldCount()];
+                readings = System.Array.Empty<CosmosReading>();
+            }
 
             if (runs.Count == 0)
                 return Metadata.CosmosFactRewriter.Rewrite(condition, fields, _convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
@@ -231,16 +242,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             // A run: the filter, then each filter or plain projection beneath it down to the lowest filter, which the calc
-            // pass merges into one condition. Returns the lowest filter's input, or null where the run has no binding.
+            // pass merges into one condition, and each grouping whose keys alone the conditions above it read, beneath which
+            // Calcite moves them (FILTER_AGGREGATE_TRANSPOSE). Returns the lowest filter's input, or null where the run has
+            // no binding.
             RelNode? Run(Filter top, bool reaching)
             {
                 var run = new List<RelNode> { top };
                 var lowest = 0;
 
+                // The run's conditions composed onto the node the walk stands on, and as they stood at the lowest filter.
+                var conditions = new List<RexNode> { top.getCondition() };
+                var composed = conditions;
+
                 var walked = new HashSet<RelNode>(ReferenceEqualityComparer.Instance) { top };
-                for (var at = Resolve(top.getInput()); at is Filter || at is Project project && project.containsOver() == false; at = Resolve(at.getInput(0)))
+                for (var at = Resolve(top.getInput()); at is not null && walked.Add(at); at = Resolve(at.getInput(0)))
                 {
-                    if (walked.Add(at) == false)
+                    if (at is Filter each)
+                        composed = conditions = new List<RexNode>(conditions) { each.getCondition() };
+                    else if (at is Project project && project.containsOver() == false)
+                        conditions = conditions.ConvertAll(condition => RelOptUtil.pushPastProject(condition, project));
+                    else if (at is Aggregate aggregate && ThroughKeys(aggregate, conditions, rexBuilder) is { } beneath)
+                        conditions = beneath;
+                    else
                         break;
 
                     run.Add(at);
@@ -276,33 +299,109 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return input;
                 }
 
-                if (CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _) == false)
+                // A correlate beneath the run, through the plain projections beneath its lowest filter, which
+                // FILTER_PROJECT_TRANSPOSE moves the merged filter past, is where FILTER_CORRELATE splits it (AtCorrelate).
+                var onto = composed;
+                var under = Resolve(input);
+                var unwalked = new HashSet<RelNode>(ReferenceEqualityComparer.Instance);
+                while (under is Project beneath && beneath.containsOver() == false && unwalked.Add(beneath))
+                {
+                    onto = onto.ConvertAll(condition => RelOptUtil.pushPastProject(condition, beneath));
+                    under = Resolve(beneath.getInput());
+                }
+
+                var correlate = under as Correlate;
+                var bound = correlate ?? input;
+                if (CosmosImplementor.TryBindOutput(bound, out var fields, out var readings, out _) == false)
                     return null;
 
                 // Each condition composed onto the lowest filter's input, then conjoined the filter beneath first, as the
                 // calc pass merges them, and simplified as it simplifies the merged condition.
-                var conditions = new List<RexNode>();
-                foreach (var node in run)
-                {
-                    if (node is Filter each)
-                    {
-                        conditions.Add(each.getCondition());
-                        continue;
-                    }
-
-                    for (var k = 0; k < conditions.Count; k++)
-                        conditions[k] = RelOptUtil.pushPastProject(conditions[k], (Project)node);
-                }
-
                 var merged = new java.util.ArrayList();
-                for (var k = conditions.Count - 1; k >= 0; k--)
-                    merged.add(conditions[k]);
+                var conjoined = correlate is null ? composed : onto;
+                for (var k = conjoined.Count - 1; k >= 0; k--)
+                    merged.add(conjoined[k]);
 
-                var simplify = new RexSimplify(rexBuilder, top.getCluster().getMetadataQuery().getPulledUpPredicates(input), RexUtil.EXECUTOR);
-                runs.Add((simplify.simplify(rexBuilder.makeCall(SqlStdOperatorTable.IS_TRUE, rexBuilder.makeCall(SqlStdOperatorTable.AND, merged))), fields, readings, reaching));
+                var simplify = new RexSimplify(rexBuilder, top.getCluster().getMetadataQuery().getPulledUpPredicates(bound), RexUtil.EXECUTOR);
+                runs.Add((correlate is null ? simplify.simplify(rexBuilder.makeCall(SqlStdOperatorTable.IS_TRUE, rexBuilder.makeCall(SqlStdOperatorTable.AND, merged))) : AtCorrelate(correlate, merged, simplify, rexBuilder), fields, readings, reaching));
 
                 return input;
             }
+        }
+
+        /// <summary>
+        /// Returns a run's conditions read through a grouping onto its input, as <c>FILTER_AGGREGATE_TRANSPOSE</c> moves
+        /// them beneath it; or <c>null</c> where the grouping is not a simple one with keys, or a condition reads anything
+        /// but its keys, which that rule leaves above it.
+        /// </summary>
+        static List<RexNode>? ThroughKeys(Aggregate aggregate, List<RexNode> conditions, RexBuilder rexBuilder)
+        {
+            var keys = aggregate.getGroupCount();
+            if (keys == 0 || aggregate.getGroupType() != Aggregate.Group.SIMPLE)
+                return null;
+
+            // Each key's ordinal moved to the input's field it groups, as that rule's own converter moves it.
+            var output = aggregate.getRowType().getFieldList();
+            var adjustments = new int[output.size()];
+            var j = 0;
+            for (var key = aggregate.getGroupSet().iterator(); key.hasNext(); j++)
+                adjustments[j] = ((java.lang.Integer)key.next()).intValue() - j;
+
+            var converter = new RelOptUtil.RexInputConverter(rexBuilder, output, aggregate.getInput().getRowType().getFieldList(), adjustments);
+            var bits = org.apache.calcite.util.ImmutableBitSet.range(0, keys);
+
+            var beneath = new List<RexNode>(conditions.Count);
+            foreach (var condition in conditions)
+            {
+                if (bits.contains(RelOptUtil.InputFinder.bits(condition)) == false)
+                    return null;
+
+                beneath.Add((RexNode)condition.accept(converter));
+            }
+
+            return beneath;
+        }
+
+        /// <summary>
+        /// Returns a merged run whose lowest filter reads a correlate as Calcite evaluates it: <c>FILTER_CORRELATE</c>
+        /// pushes each conjunct that reads one side alone into that side, where it is evaluated before anything above, so
+        /// what it pushes into each side is simplified apart, as the filter it builds there is, and only what stays above
+        /// as the calc pass simplifies it. The parts are conjoined, not simplified together: a part Calcite's simplifier
+        /// reads as <c>FALSE</c> stops nothing it pushed beside it.
+        /// </summary>
+        static RexNode AtCorrelate(Correlate correlate, java.util.List merged, RexSimplify simplify, RexBuilder rexBuilder)
+        {
+            // As FILTER_CORRELATE classifies: a conjunct holding a correlation variable stays above, the rest by the sides
+            // they read and what the correlate's type lets it push.
+            var above = new java.util.ArrayList();
+            var correlated = new java.util.ArrayList();
+            for (var i = 0; i < merged.size(); i++)
+            {
+                var conjuncts = RelOptUtil.conjunctions((RexNode)merged.get(i));
+                for (var k = 0; k < conjuncts.size(); k++)
+                {
+                    var conjunct = (RexNode)conjuncts.get(k);
+                    if (RexUtil.containsCorrelation(conjunct))
+                        correlated.add(conjunct);
+                    else
+                        above.add(conjunct);
+                }
+            }
+
+            var left = new java.util.ArrayList();
+            var right = new java.util.ArrayList();
+            RelOptUtil.classifyFilters(correlate, above, false, true, correlate.getJoinType().canPushRightFromAbove(), above, left, right);
+            above.addAll(correlated);
+
+            // What it pushes is simplified as the builder it pushes with simplifies a filter, and the right side's read back
+            // onto the correlate's own ordinals.
+            var alone = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
+            var parts = new java.util.ArrayList();
+            foreach (var (part, simplifier, shift) in new[] { (above, simplify, 0), (left, alone, 0), (right, alone, correlate.getLeft().getRowType().getFieldCount()) })
+                if (part.isEmpty() == false)
+                    parts.add(RexUtil.shift(simplifier.simplify(rexBuilder.makeCall(SqlStdOperatorTable.IS_TRUE, RexUtil.composeConjunction(rexBuilder, part))), shift));
+
+            return parts.size() == 1 ? (RexNode)parts.get(0) : rexBuilder.makeCall(SqlStdOperatorTable.AND, parts);
         }
 
         /// <summary>

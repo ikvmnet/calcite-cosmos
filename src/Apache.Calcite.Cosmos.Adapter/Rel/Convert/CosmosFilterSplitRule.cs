@@ -105,7 +105,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         internal static CosmosTable? FindTable(RelNode? node)
         {
-            return FindTable(node, CosmosPlanMembers.NewSeen());
+            return FindTable(node, CosmosPlanMembers.NewSeen(), throughGroupings: false);
+        }
+
+        /// <inheritdoc cref="FindTable(RelNode?)" />
+        /// <param name="node">The subtree.</param>
+        /// <param name="throughGroupings">
+        /// Whether a grouping reads the container its input reads, as it does for the reduce, whose run passes a grouping's
+        /// keys (<see cref="CosmosFilterReduceRule"/>); a split or a lowering above one is no clause of the statement beneath.
+        /// </param>
+        internal static CosmosTable? FindTable(RelNode? node, bool throughGroupings)
+        {
+            return FindTable(node, CosmosPlanMembers.NewSeen(), throughGroupings);
         }
 
         /// <inheritdoc cref="FindTable(RelNode?)" />
@@ -116,7 +127,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         /// <param name="node">The subtree.</param>
         /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
-        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
+        /// <param name="throughGroupings">Whether a grouping reads the container its input reads.</param>
+        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen, bool throughGroupings)
         {
             foreach (var member in CosmosPlanMembers.Of(node))
             {
@@ -126,9 +138,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var found = member switch
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
-                    Filter filter => FindTable(filter.getInput(), seen),
-                    Project project => FindTable(project.getInput(), seen),
-                    Correlate correlate => FindTable(correlate.getLeft(), seen),
+                    Filter filter => FindTable(filter.getInput(), seen, throughGroupings),
+                    Project project => FindTable(project.getInput(), seen, throughGroupings),
+                    Correlate correlate => FindTable(correlate.getLeft(), seen, throughGroupings),
+                    Aggregate aggregate when throughGroupings => FindTable(aggregate.getInput(), seen, throughGroupings),
                     _ => null,
                 };
 

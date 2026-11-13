@@ -60,9 +60,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Plans a statement over one container to the CLR convention; with <paramref name="windows"/>, with the rule every
-        /// host adds to lift an <c>OVER</c> out of its projection, without which no window plans (Chapter 21.3).
+        /// host adds to lift an <c>OVER</c> out of its projection, without which no window plans (Chapter 21.3); with
+        /// <paramref name="subqueries"/>, after the pass that makes each sub-query a correlate, as that host runs it.
         /// </summary>
-        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false)
+        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false, bool subqueries = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             table = new CosmosTable(container);
@@ -87,6 +88,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
+
+            if (subqueries)
+            {
+                var pass = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder()
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.FILTER_SUB_QUERY_TO_CORRELATE)
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.PROJECT_SUB_QUERY_TO_CORRELATE)
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.JOIN_SUB_QUERY_TO_CORRELATE)
+                    .build());
+                pass.setRoot(logical);
+                logical = pass.findBestExp();
+            }
 
             foreach (var rule in CosmosRules.GetRules(table.Convention))
                 planner.addRule(rule);

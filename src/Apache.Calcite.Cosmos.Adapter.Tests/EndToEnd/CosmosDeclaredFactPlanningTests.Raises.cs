@@ -1,3 +1,5 @@
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+
 using FluentAssertions;
 using Xunit;
 
@@ -131,6 +133,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             PlanText(ff).Should().NotContain(KeepsNothing, "Calcite evaluates the cast beneath on every document: " + PlanText(ff));
             PlanText(ff).Should().Contain("ClrCursorFilter(condition=[=(CAST(JSON_VALUE($0, '$.body')):INTEGER, 1)])", PlanText(ff));
             Query(FindCosmos(ff), container).Sql.Should().Be("SELECT VALUE c FROM items c", PlanText(ff));
+        }
+
+        /// <summary>
+        /// A stack of filters on a grouping's keys over the cast of the text <c>body</c> to <c>INTEGER</c>: Calcite moves
+        /// each beneath the grouping (<c>FILTER_AGGREGATE_TRANSPOSE</c>) and merges it with the filter there, so where the
+        /// conjunction is <c>FALSE</c> to its simplifier nothing of it is evaluated and Calcite answers no rows. The reduce
+        /// reads the run through the grouping's keys, a <c>DISTINCT</c>'s or a <c>GROUP BY</c>'s, so each is the empty
+        /// relation with no request. A filter on the keys over the cast alone, which Calcite merges with it and evaluates,
+        /// is not reduced, and fails as Calcite fails.
+        /// </summary>
+        [Fact]
+        public void AStackOnAGroupingsKeysIsReadThroughIt()
+        {
+            var container = Declaring(Listed);
+            var distinct = $"""SELECT DISTINCT c."id", {Read("kind")} AS k FROM items AS c WHERE {AsInteger("body")} = 1""";
+            var grouped = $"""SELECT {Read("kind")} AS k, COUNT(*) AS n FROM items AS c WHERE {AsInteger("body")} = 1 GROUP BY {Read("kind")}""";
+            var keyed = $"""SELECT DISTINCT c."id", {Read("kind")} AS k, {Read("body")} AS b FROM items AS c WHERE {Read("kind")} IN ('A', 'B')""";
+
+            foreach (var (name, sql) in new[]
+            {
+                ("dd1", $"""SELECT y."id" FROM (SELECT x."id", x.k FROM ({distinct}) AS x WHERE x.k IN ('A', 'B')) AS y WHERE y.k = 'C'"""),
+                ("dd7", $"""SELECT y."id" FROM (SELECT x."id", x.k FROM ({distinct}) AS x WHERE x.k <> 'C') AS y WHERE y.k = 'C'"""),
+                ("dg1", $"""SELECT y.k FROM (SELECT x.k, x.n FROM ({grouped}) AS x WHERE x.k IN ('A', 'B')) AS y WHERE y.k = 'C'"""),
+                ("ps2", $"""SELECT y."id" FROM (SELECT x."id", x.k, x.b FROM ({keyed}) AS x WHERE CAST(x.b AS INTEGER) = 1) AS y WHERE y.k = 'C'"""),
+            })
+            {
+                var plan = PlanToCosmos(sql, container, out _);
+                PlanText(plan).Should().Contain(KeepsNothing, name + ": Calcite merges the stack beneath the grouping and simplifies it to FALSE: " + PlanText(plan));
+                PlanText(plan).Should().NotContain("CosmosToClrCursorConverter", name + ": and nothing is sent: " + PlanText(plan));
+            }
+
+            var alone = PlanToCosmos($"""SELECT x."id" FROM ({distinct}) AS x WHERE x.k = 'C'""", container, out _);
+            PlanText(alone).Should().NotContain(KeepsNothing, "Calcite evaluates the cast beneath the grouping on every document: " + PlanText(alone));
+            PlanText(alone).Should().Contain("ClrCursorFilter(condition=[=(CAST(", "and the cast is Calcite's: " + PlanText(alone));
+        }
+
+        /// <summary>
+        /// A stack of filters over a correlate (a lateral, an array traversal, a scalar sub-query), the lowest casting the
+        /// text <c>body</c> to <c>INTEGER</c>: Calcite pushes each conjunct that reads one side alone into that side
+        /// (<c>FILTER_CORRELATE</c>), where it is evaluated on every document before anything above, so a conjunction above
+        /// that its simplifier reads as <c>FALSE</c> does not stop the cast, and Calcite fails on a string that is no number.
+        /// The reduce reads the run as Calcite splits it, so none is reduced, declared or not, and the cast stays in Calcite.
+        /// The same lateral with a comparison that cannot fail in place of the cast is still the empty relation.
+        /// </summary>
+        [Fact]
+        public void ARunOverACorrelateIsReadAsCalciteSplitsIt()
+        {
+            static string Lateral(string beneath) =>
+                $"""SELECT z."id" FROM (SELECT y."id", y.k2 FROM (SELECT x."id", x.k2 FROM (SELECT c."id", l.k2 FROM items AS c CROSS JOIN LATERAL (SELECT {Read("kind")} AS k2 FROM (VALUES (1)) AS v(x0)) AS l WHERE {beneath}) AS x WHERE x.k2 IN ('A', 'B')) AS y WHERE y.k2 = 'C') AS z""";
+
+            var shapes = new[]
+            {
+                ("latrun", Lateral($"{AsInteger("body")} = 1")),
+                ("unrun", $"""SELECT z."id" FROM (SELECT y."id", y.t FROM (SELECT x."id", x.t FROM (SELECT c."id", u.t AS t FROM items AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE {AsInteger("body")} = 1) AS x WHERE x.t IN ('a', 'b')) AS y WHERE y.t = 'c') AS z"""),
+                ("sqrun3", $"""SELECT x."id" FROM (SELECT w."id", w.k2 FROM (SELECT c."id", c."DOC", (SELECT {Read("kind")} FROM (VALUES (1)) AS v(x0)) AS k2 FROM items AS c) AS w WHERE CAST(JSON_VALUE(w."DOC", '$.body') AS INTEGER) = 1 AND w.k2 = 'A') AS x WHERE x.k2 = 'B'"""),
+            };
+
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Listed)), ("undeclared", TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))) })
+                foreach (var (name, sql) in shapes)
+                {
+                    var plan = PlanToCosmos(sql, container, out _, subqueries: true);
+                    PlanText(plan).Should().NotContain(KeepsNothing, $"{name} {declared}: Calcite casts beneath the correlate before anything above: " + PlanText(plan));
+                    PlanText(plan).Should().Contain("CAST(JSON_VALUE(", $"{name} {declared}: and the cast is Calcite's: " + PlanText(plan));
+                }
+
+            var safe = PlanToCosmos(Lateral($"{Read("body")} = 'q'"), Declaring(Listed), out _, subqueries: true);
+            PlanText(safe).Should().Contain(KeepsNothing, "nothing beneath can fail, and Calcite's simplifier reads what it pushes into the lateral as FALSE: " + PlanText(safe));
         }
 
         /// <summary>

@@ -226,17 +226,22 @@ In a host that merges no filters while it plans, as the one Chapter 21 describes
 over another, in a subquery, is answered empty only where nothing in the two can fail as Calcite
 evaluates them. Calcite merges the two into one condition, the inner one first, and simplifies it
 before it evaluates a row. Where that condition is `FALSE` on its own, as `kind IN ('A', 'B')` under
-`kind = 'C'` is, Calcite evaluates nothing in it and answers no rows, and so does the adapter, whatever
-a cast beneath could do. Where it is not, as `kind = 'C'` over `CAST(… AS INTEGER) = 1` is not, Calcite
-casts every document, and the adapter keeps both filters in Calcite. The inner filter is answered on
-its own conditions, though: one the schema rules out is answered empty, and a cast written above it
-then reads no row where Calcite, evaluating the merged condition, fails on it; and a filter beneath
-that the schema makes true is dropped as a conjunct is (Chapter 23). A connection with Calcite's
-default rules merges the two into one `WHERE` before the adapter sees them, and the case at the end of
-this section describes it. In a host that merges no filters, a filter over a window function's result
-is never answered empty, the window being computed over every document first; a connection may move a
-filter on the window's partition key beneath it, or drop a window nothing reads, and the filter then
-meets the documents as a `WHERE` the same case describes.
+`kind = 'C'` is, Calcite evaluates nothing in it and answers no rows, and so does the adapter,
+whatever a cast beneath could do. Where it is not, as `kind = 'C'` over `CAST(… AS INTEGER) = 1` is
+not, Calcite casts every document, and the adapter keeps both filters in Calcite. A filter on the keys
+of a `DISTINCT` or a `GROUP BY` is read the same way, since Calcite moves it beneath the grouping and
+merges it with the filter there. Over a lateral, an `UNNEST` or a scalar subquery, Calcite first
+pushes what reads one side alone into that side, and evaluates it there before anything above: a cast
+pushed there is evaluated on every document whatever the filters above say, and the adapter keeps it
+in Calcite. The inner filter is answered on its own conditions, though: one the schema rules out is
+answered empty, and a cast written above it then reads no row where Calcite, evaluating the merged
+condition, fails on it; and a filter beneath that the schema makes true is dropped as a conjunct is
+(Chapter 23). A connection with Calcite's default rules merges the two into one `WHERE` before the
+adapter sees them, and the case at the end of this section describes it. In a host that merges no
+filters, a filter over a window function's result is never answered empty, the window being computed
+over every document first; a connection may move a filter on the window's partition key beneath it, or
+drop a window nothing reads, and the filter then meets the documents as a `WHERE` the same case
+describes.
 
 **A query that can fail is not answered empty in Calcite's place, but for three recorded cases.**
 The empty result stands in for Calcite's answer, so the adapter gives a filter it only where Calcite
