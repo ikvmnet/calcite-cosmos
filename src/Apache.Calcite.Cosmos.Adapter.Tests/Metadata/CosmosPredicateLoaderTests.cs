@@ -634,7 +634,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         {
             var sql = """SELECT c."id" FROM typed AS c WHERE c."$.category" = CAST(1.0000000000000002E0 AS VARIANT) AND JSON_VALUE(c."DOC", '$.category') = '1.0000000000000002'""";
             org.apache.calcite.plan.RelOptUtil.toString(Facts.Rendering.RenderingInputs.Differential("loader", [sql], Facts.Rendering.RenderingInputs.Containers).Single().Plan())
-                .Should().NotContain("tuples=[[]]").And.Contain("CosmosFilter");
+                .Should().NotContain("CosmosNoRows").And.Contain("CosmosFilter");
         }
 
         [Fact]

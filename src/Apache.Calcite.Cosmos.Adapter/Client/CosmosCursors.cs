@@ -80,6 +80,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Opens no rows, sending nothing: what a filter the facts graph proves keeps no document and fails on none
+        /// answers with (<see cref="Rel.CosmosNoRows"/>).
+        /// </summary>
+        /// <typeparam name="TRow">The plan's row type.</typeparam>
+        /// <returns>A cursor whose first read answers that there is no row.</returns>
+        public static IClrCursor<TRow> None<TRow>() => new NoneCursor<TRow>();
+
+        /// <summary>
         /// Applies a write to every row of an opened input, blocking for it, and opens the count.
         /// </summary>
         /// <remarks>
@@ -355,6 +363,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             public override ValueTask DisposeAsync()
             {
                 return source.DisposeAsync();
+            }
+
+        }
+
+        /// <summary>
+        /// No row, which is what a reduced filter answers with.
+        /// </summary>
+        sealed class NoneCursor<T> : ClrCursor<T>
+        {
+
+            /// <inheritdoc />
+            public override T Current => throw new InvalidOperationException("There is no row.");
+
+            /// <inheritdoc />
+            public override bool Read() => false;
+
+            /// <inheritdoc />
+            public override ValueTask<bool> ReadAsync(CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                return new ValueTask<bool>(false);
+            }
+
+            /// <inheritdoc />
+            public override void Dispose()
+            {
+
             }
 
         }

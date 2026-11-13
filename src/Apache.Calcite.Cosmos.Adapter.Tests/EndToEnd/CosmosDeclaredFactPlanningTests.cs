@@ -133,12 +133,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// What a plan for a filter no document satisfies, and none fails, is: the empty relation, sent nowhere. The rewrite
-        /// answers <c>FALSE</c> where no document the declaration admits makes the WHERE true and none makes anything in it
-        /// raise, and <c>CosmosFilterReduceRule</c> puts an empty <c>Values</c> beside the filter, which the CLR convention
+        /// answers <c>FALSE</c> where no document the declaration admits makes the WHERE true and none makes anything in its
+        /// gate raise, and <c>CosmosFilterReduceRule</c> puts the adapter's <c>CosmosNoRows</c> beside the filter, which
         /// answers with no request; a converted <c>CosmosFilter</c> carrying the constant was a round trip for no rows
-        /// (<c>TODO.md</c>, <em>A contradiction should send nothing</em>).
+        /// (<c>TODO.md</c>, <em>A contradiction should send nothing</em>). Not an empty <c>Values</c>, which a host's
+        /// prune-empty rules read as empty beside a side Calcite fails on.
         /// </summary>
-        const string KeepsNothing = "Values(tuples=[[]])";
+        const string KeepsNothing = "CosmosNoRows";
 
         [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
@@ -1386,8 +1387,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The container declares a domain and the query asks for a value outside it. A document
         /// satisfying the predicate would have to hold a value the declaration says it does not, so
         /// there is none — and the equivalent predicate is the constant. It used to be pushed as one,
-        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The split rule now puts the
-        /// empty relation beside the filter, which the CLR convention answers itself.
+        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The reduce now puts the
+        /// empty relation beside the filter, which answers with no request.
         /// </para>
         /// <para>
         /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a

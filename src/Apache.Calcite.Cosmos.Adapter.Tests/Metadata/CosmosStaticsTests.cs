@@ -139,6 +139,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.Convert.CosmosToClrCursorConverter", ["OpenAsyncMethod", "OpenMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosConstraintCompiler", ["Cache"], PlanScoped, "keyed weakly on the type factory, then on the table, so it keeps neither whatever factory a caller passes"),
             ("Adapter.Rel.CosmosLookupJoin", ["JoinAsyncMethod", "JoinMethod"], Infra, Reflection),
+            ("Adapter.Rel.CosmosNoRows", ["NoneMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 
             ("Adapter.Sql.CosmosAxiomRows", ["Declared", "Owed", "Targets"], StaticFact, "the registry's rows owed a target, the functions declared beside the measured, and the targets"),

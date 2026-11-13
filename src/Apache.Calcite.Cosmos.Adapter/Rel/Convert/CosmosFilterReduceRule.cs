@@ -5,14 +5,13 @@ using Apache.Calcite.Cosmos.Adapter.Sql;
 using org.apache.calcite.plan;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
-using org.apache.calcite.rel.logical;
 using org.apache.calcite.rex;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 {
 
     /// <summary>
-    /// Replaces a filter that keeps no document and fails on none with the empty relation, and one that keeps every
+    /// Replaces a filter that keeps no document and fails on none with a relation holding no rows, and one that keeps every
     /// document with its input: what the oracle says of the filter's conjuncts and the container's declaration together.
     /// </summary>
     /// <remarks>
@@ -26,6 +25,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <c>Values</c>, matches the logical filter, and the constant exists only after the rewrite. A
     /// condition Calcite itself reads as never true is reduced too: <c>(x IS NULL) IS NULL</c> tests for null what its
     /// type says never is, and is the constant whatever the declaration.
+    /// </para>
+    /// <para>
+    /// <b>The answer is <see cref="CosmosNoRows"/>, not an empty <c>Values</c>.</b> Both send nothing; but a host's
+    /// prune-empty rules read an empty <c>Values</c> as empty, and answered a join, set operation, semi-join or lateral
+    /// beside it without reading the other side, which Calcite reads, and fails on where something in it fails.
     /// </para>
     /// <para>
     /// <b>Only a logical filter, over this convention's own container.</b> A converted filter's condition has been
@@ -92,10 +96,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             switch (Rewritten(filter))
             {
-                // No document satisfies the filter and none fails it, so the relation is the empty one, and no request
-                // at all is what answers it: a host with a rule for an empty Values plans none.
+                // No document satisfies the filter and none fails it, so the relation holds no rows, and no request at all
+                // is what answers it.
                 case RexNode rewritten when KeepsNothing(rewritten):
-                    call.transformTo(LogicalValues.createEmpty(filter.getCluster(), filter.getRowType()));
+                    call.transformTo(CosmosNoRows.Create(filter.getCluster(), filter.getRowType(), call.getMetadataQuery().getRowCount(filter)?.doubleValue() ?? 1d));
                     break;
 
                 // Every conjunct is one the rest of the filter and the declaration make true of every document: the
