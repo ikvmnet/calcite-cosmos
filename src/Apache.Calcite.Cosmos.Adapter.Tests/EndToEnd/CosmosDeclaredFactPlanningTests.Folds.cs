@@ -67,10 +67,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// text answers it only where no predicate of the projected expression raises, and here the text <c>body</c> cast
         /// to <c>INTEGER</c> raises on any string that is no number: each keeps the cast in process, where Calcite fails as
         /// it does. Where nothing raises, the plan still holds the condition and the request sends it as the parameter
-        /// <c>FALSE</c>. An arm the text writes <c>FALSE</c> keeps its value there, so beside a cast of <c>n</c>'s text the
-        /// service is never sent, Calcite computes the column. A conjunct of the condition the declaration makes true is
-        /// another matter: the text deletes it as redundant, cast and all (<c>TODO.md</c>, <em>A deletion stops evaluating a
-        /// conjunct that may raise</em>); beside a never-read arm no text is written, and the column fails as Calcite's does.
+        /// <c>FALSE</c>, an arm whose <c>ELSE</c> is <c>FALSE</c> wherever the declaration admits a document among them: its
+        /// cast of <c>n</c>'s text is never evaluated, and <c>FALSE</c> holds as nothing but itself. A conjunct of the
+        /// condition the declaration makes true is another matter: the text deletes it as redundant, cast and all
+        /// (<c>TODO.md</c>, <em>A deletion stops evaluating a conjunct that may raise</em>); beside a never-read arm no text
+        /// is written, and the column fails as Calcite's does.
         /// </summary>
         [Fact]
         public void AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises()
@@ -97,8 +98,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             answered.Sql.Should().Be("""SELECT VALUE { "id": c.id, "v": (@p0 ? @p1 : @p2) } FROM items c""", PlanText(folded));
             answered.Parameters[0].Value.Should().Be(false, "nothing in it raises, so the text answers the condition");
 
-            Projected($"CASE WHEN {Read("kind")} = 'A' AND {NeverReadArm} THEN 1 ELSE 0 END").Should().Contain("ClrCursorProject").And.NotContain("v=[0]",
-                "n's text parses, so the text writes the arm FALSE, but keeps the arm's cast, which the service is never sent");
+            var arm = Planned($"CASE WHEN {Read("kind")} = 'A' AND {NeverReadArm} THEN 1 ELSE 0 END");
+            PlanText(arm).Should().Contain("CAST(JSON_VALUE($0, '$.n')):INTEGER", "the plan holds the arm as written: " + PlanText(arm));
+            var never = Query(FindCosmos(arm), container);
+            never.Sql.Should().Be("""SELECT VALUE { "id": c.id, "v": (@p0 ? @p1 : @p2) } FROM items c""", PlanText(arm));
+            never.Parameters[0].Value.Should().Be(false, "the arm is its ELSE's FALSE wherever kind is not C, its cast never evaluated, so nothing raises");
 
             Projected($"CASE WHEN NOT ({AsInteger("body")} = 1 AND {Read("kind")} = 'C') AND {NeverReadArm} THEN 1 ELSE 0 END")
                 .Should().Contain("CAST($1):INTEGER, 1)").And.NotContain("v=[0]", "the arm's cast keeps the column in Calcite, the NOT and its cast with it");

@@ -163,13 +163,15 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <param name="statement">The statement.</param>
         /// <param name="renders">What each round admits.</param>
         /// <param name="gate">What its gated nodes' assumptions wait on, or <c>null</c> for its WHERE: for a projected
-        /// <c>CASE</c> condition, every predicate of its expression.</param>
+        /// <c>CASE</c> condition, every predicate of its expression; for a reduce, the WHERE and the filters beneath it.</param>
+        /// <param name="reaching">What the reduce assumes beside the WHERE, where nothing in the gate raises: what every row
+        /// the filter reads satisfies; or <c>null</c>.</param>
         /// <returns>The statement's scope.</returns>
-        public CosmosStatementScope Admit(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer> renders, SqlPredicate? gate = null) =>
-            Admitting(statement, renders ?? throw new ArgumentNullException(nameof(renders)), gate);
+        public CosmosStatementScope Admit(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer> renders, SqlPredicate? gate = null, SqlPredicate? reaching = null) =>
+            Admitting(statement, renders ?? throw new ArgumentNullException(nameof(renders)), gate, reaching);
 
-        CosmosStatementScope Admitting(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, SqlPredicate? gate = null) =>
-            new(Terms(statement ?? throw new ArgumentNullException(nameof(statement))), statement, renders, _theory.MentionedPaths, RenderedFrom, gate);
+        CosmosStatementScope Admitting(PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, SqlPredicate? gate = null, SqlPredicate? reaching = null) =>
+            new(Terms(statement ?? throw new ArgumentNullException(nameof(statement))), statement, renders, _theory.MentionedPaths, RenderedFrom, gate, reaching);
 
         /// <summary>
         /// Returns the tree of contexts for a statement, remembered by its digest in the current generation.

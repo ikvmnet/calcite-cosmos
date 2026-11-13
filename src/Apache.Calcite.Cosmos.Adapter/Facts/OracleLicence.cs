@@ -40,14 +40,15 @@ namespace Apache.Calcite.Cosmos.Facts
         public static OracleLicence Kept { get; } = new(OracleQuestion.Kept, -1, null);
 
         /// <summary>
-        /// Whether the filter keeps nothing and fails on nothing: the WHERE as one conjunction, assumed only where it
-        /// raises on no document the declaration admits.
+        /// Whether the filter keeps nothing and fails on nothing: the WHERE as one conjunction, beside the filters beneath
+        /// it that Calcite merges with it, assumed only where the WHERE and the filters beneath it, as Calcite evaluates
+        /// them, raise on no document the declaration admits.
         /// </summary>
         /// <remarks>
         /// The empty relation stands in for Calcite's answer, so it is given only where Calcite answers no rows and fails
         /// on none. <see cref="Kept"/> cannot say so: a row Calcite raises on is kept at no truth value, so assuming every
         /// conjunct shows only that no row is TRUE. The node asserts nothing from C#; a rule assumes the WHERE where the
-        /// stage before anything is assumed found it raises nowhere (<c>PredicateRules.Reduction</c>).
+        /// stage before anything is assumed found its gate raises nowhere (<c>PredicateRules.Reduction</c>).
         /// </remarks>
         public static OracleLicence Reduce { get; } = new(OracleQuestion.Reduce, -1, null);
 
@@ -65,14 +66,15 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether an arm of a <c>CASE</c> inside a conjunct is never read, so that it may be written <c>FALSE</c>: what
-        /// <see cref="Arm"/> assumes of the statement as written, each assumed only where the WHERE as written raises on
-        /// no document the declaration admits, or for a projected <c>CASE</c> condition no predicate of its expression.
+        /// <see cref="Arm"/> assumes of the statement as written, each assumed only where the WHERE as written and the
+        /// filters beneath it, as Calcite evaluates them, raise on no document the declaration admits, or for a projected
+        /// <c>CASE</c> condition no predicate of its expression.
         /// </summary>
         /// <remarks>
         /// The <c>FALSE</c> removes evaluation: of the arm's condition and value, and where it decides the conjunct, of
         /// the whole filter, and a conjunct deleted beside it is no longer evaluated either. That removes no failure only
-        /// where nothing in the WHERE as written raises, which the node's gate decides, so the rewrite reads one
-        /// contradiction. <see cref="Arm"/>'s own node stays what a rewrite inside the arm leans on.
+        /// where nothing in the WHERE as written, or in the filters beneath it, raises, which the node's gate decides, so
+        /// the rewrite reads one contradiction. <see cref="Arm"/>'s own node stays what a rewrite inside the arm leans on.
         /// </remarks>
         public static OracleLicence NeverRead(int conjunct, IReadOnlyList<SqlPredicate> conditions) =>
             new(OracleQuestion.NeverRead, conjunct, null, conditions ?? throw new ArgumentNullException(nameof(conditions)));

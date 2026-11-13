@@ -29,8 +29,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <see cref="FactsFor"/>, <see cref="Translate"/>)</term><description>the stratum before the one that admitted it, or
     /// for one no stratum admitted, the last: what its siblings applied beside it establish, never what it does</description></item>
     /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>the
-    /// WHERE as one conjunction, assumed only where it raises on no document the declaration admits: so that the filter
-    /// keeps nothing and fails on nothing</description></item>
+    /// WHERE as one conjunction, beside the filters beneath it that Calcite merges with it, assumed only where the WHERE
+    /// and the filters beneath it, as Calcite evaluates them, raise on no document the declaration admits: so that the
+    /// filter keeps nothing and fails on nothing</description></item>
     /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
     /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
     /// too</description></item>
@@ -40,8 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, and the conditions the arm is read under</description></item>
     /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
     /// the arm's question assumes of the statement as written, a sibling the deletions drop among them, each assumed only
-    /// where the WHERE as written raises on no document the declaration admits, or for a projected <c>CASE</c> condition
-    /// no predicate of the projected expression</description></item>
+    /// where the WHERE as written and the filters beneath it raise on no document the declaration admits, or for a
+    /// projected <c>CASE</c> condition no predicate of the projected expression</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
     /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
@@ -86,6 +87,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
         readonly RexNode? _gate;
+        readonly RexNode? _reaching;
         readonly object _lock = new();
         bool[]? _owned;
 
@@ -97,7 +99,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         JsonFactSet?[]? _siblings;
         (CosmosStatementScope Scope, int[] Index)? _remaining;
 
-        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias, RexNode? gate)
+        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias, RexNode? gate, RexNode? reaching)
         {
             Condition = condition;
             _fields = fields;
@@ -106,6 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _rexBuilder = rexBuilder;
             _rootAlias = rootAlias;
             _gate = gate;
+            _reaching = reaching;
             _loading = new CosmosPredicateLoader.Loading(fields, readings, rootAlias);
 
             Conjuncts = ConjunctsOf(condition);
@@ -154,8 +157,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="gate">What a <c>FALSE</c> written in the condition may stop Calcite evaluating, or <c>null</c> for
         /// the condition itself: for a projected <c>CASE</c> condition, every predicate of its expression. The reduce and
         /// a never-read arm assume only where nothing in it raises.</param>
+        /// <param name="reaching">What every row the filter reads satisfies, which the reduce assumes beside the WHERE: the
+        /// filters beneath it it merges with, as Calcite's calc pass simplifies them; or <c>null</c>.</param>
         /// <returns>The statement.</returns>
-        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias, RexNode? gate = null)
+        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias, RexNode? gate = null, RexNode? reaching = null)
         {
             if (condition is null)
                 throw new ArgumentNullException(nameof(condition));
@@ -173,10 +178,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // is no statement for a rule's translator to render.
                 foreach (var statement in read)
                     if (ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
-                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings) && Equals(statement._gate, gate))
+                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings) && Equals(statement._gate, gate) && Equals(statement._reaching, reaching))
                         return statement;
 
-                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias, gate);
+                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias, gate, reaching);
                 read.Add(made);
                 return made;
             }
@@ -214,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, Render, _gate is null ? null : _loading.Read(_gate));
+                    return _scope ??= Oracle.Admit(Statement, Render, _gate is null ? null : _loading.Read(_gate), _reaching is null ? null : _loading.Read(_reaching));
             }
         }
 
@@ -485,12 +490,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ? Scope.Facts(licence)
                 : throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
-        // ── The reduce: the WHERE, where it raises nowhere; strengthening: every conjunct ────────────────────────────
+        // ── The reduce: the WHERE, where it and the filters beneath raise nowhere; strengthening: every conjunct ──────
 
         /// <summary>
         /// Gets whether the filter keeps nothing and fails on nothing: no document the declaration admits makes the WHERE
-        /// TRUE, and none makes anything in it raise (<see cref="OracleLicence.Reduce"/>), so the empty relation is
-        /// Calcite's answer.
+        /// TRUE, and none makes anything in it, or in the filters beneath it as Calcite evaluates them, raise
+        /// (<see cref="OracleLicence.Reduce"/>), so the empty relation is Calcite's answer.
         /// </summary>
         public bool IsContradictory
         {
@@ -676,8 +681,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Determines whether an arm of a <c>CASE</c> is read under conditions its siblings contradict, so that it is never
-        /// read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE as written raises, so that a
-        /// <c>FALSE</c> written for it stops no failure (<see cref="OracleLicence.NeverRead"/>).
+        /// read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE as written, or in the filters beneath
+        /// it, raises, so that a <c>FALSE</c> written for it stops no failure (<see cref="OracleLicence.NeverRead"/>).
         /// </summary>
         /// <remarks>
         /// Of the statement as written, not the one the deletions leave. A deleted conjunct is no longer evaluated, and

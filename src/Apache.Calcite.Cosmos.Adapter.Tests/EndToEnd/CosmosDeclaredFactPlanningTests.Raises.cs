@@ -96,6 +96,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A stack of filters whose conjunction Calcite's own simplifier reads as <c>FALSE</c>: Calcite merges a filter
+        /// with the one beneath it, the one beneath first, and simplifies the conjunction before evaluating any of it, so
+        /// the cast of the text <c>body</c> beneath is never evaluated and Calcite answers no rows. The reduce reads the
+        /// filters beneath as Calcite evaluates them, so each is the empty relation with no request, and a <c>COUNT</c>
+        /// over it is the host's aggregate over none. Beside them a filter over the cast that Calcite still evaluates is
+        /// not reduced, and fails as Calcite fails.
+        /// </summary>
+        [Fact]
+        public void AStackCalciteSimplifiesToFalseIsTheEmptyRelation()
+        {
+            var container = Declaring(Listed);
+            static string Kind(string alias) => $"""JSON_VALUE({alias}."DOC", '$.kind')""";
+            string Stack(string selected, string middle, string top) =>
+                $"""SELECT {selected} FROM (SELECT x."id", x."DOC" FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {AsInteger("body")} = 1) AS x WHERE {Kind("x")} {middle}) AS y WHERE {Kind("y")} {top}""";
+
+            foreach (var (name, sql) in new[]
+            {
+                ("dm7", Stack("y.\"id\"", "IN ('A', 'B')", "= 'C'")),
+                ("dm7i", Stack("COUNT(*) AS n", "IN ('A', 'B')", "= 'C'")),
+                ("dm7m", Stack("y.\"id\"", "IS NOT NULL", "IS NULL")),
+                ("dm7p", Stack("y.\"id\"", "<> 'C'", "= 'C'")),
+            })
+            {
+                var plan = PlanToCosmos(sql, container, out _);
+                PlanText(plan).Should().Contain(KeepsNothing, name + ": Calcite simplifies the stack to FALSE before evaluating the cast: " + PlanText(plan));
+                PlanText(plan).Should().NotContain("CosmosToClrCursorConverter", name + ": and nothing is sent: " + PlanText(plan));
+            }
+
+            var counted = PlanToCosmos(Stack("COUNT(*) AS n", "IN ('A', 'B')", "= 'C'"), container, out _);
+            PlanText(counted).Should().Contain("ClrCursorAggregate(group=[{}], n=[COUNT()])", "the host counts none: " + PlanText(counted));
+
+            var ff = PlanToCosmos($"""SELECT x."id" FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {AsInteger("body")} = 1) AS x WHERE {Kind("x")} = 'C'""", container, out _);
+            PlanText(ff).Should().NotContain(KeepsNothing, "Calcite evaluates the cast beneath on every document: " + PlanText(ff));
+            PlanText(ff).Should().Contain("ClrCursorFilter(condition=[=(CAST(JSON_VALUE($0, '$.body')):INTEGER, 1)])", PlanText(ff));
+            Query(FindCosmos(ff), container).Sql.Should().Be("SELECT VALUE c FROM items c", PlanText(ff));
+        }
+
+        /// <summary>
         /// A window is computed over every row beneath it before a filter above reads one, and no statement holds one, so a
         /// filter above a window is no clause of the statement beneath it and is never reduced, however the declaration
         /// contradicts it: with the rule every host adds, the window is computed in process over every document, its cast of

@@ -344,6 +344,17 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(Graph.Contradiction.Of());
             });
 
+            // A truth value is what it says: FALSE assumed, as a reduce assumes the filters beneath it where Calcite's
+            // simplifier reads them as FALSE, is no row; and UNKNOWN is neither true nor false.
+            Establish.DefineRule("a truth value holds as nothing but itself", r =>
+            {
+                var (e, s) = r.Vars<Pred, string>("e", "s");
+                var t = r.Var<bool>("t");
+                r.When(Holds.Of(e, t), e.Is(Ir.Truth.Of(s)));
+                r.Where(s, t, (name, truth) => name != (truth ? "true" : "false"));
+                r.Then(Graph.Contradiction.Of());
+            });
+
             // What an atom taking a truth value says of the path it reads: what PredicateAtom.Kept says every such row
             // holds there, and no more, each reading read by its rows and a cast of a raw value by its column's answer
             // (rawunion). A comparison's own rendering preimage is the most it states, so it never states what would make

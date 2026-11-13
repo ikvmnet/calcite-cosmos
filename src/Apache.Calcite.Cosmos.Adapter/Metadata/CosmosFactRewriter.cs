@@ -102,10 +102,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>
         /// Returns the predicate rewritten as <see cref="Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>
         /// does, each <c>FALSE</c> written only where nothing in <paramref name="gate"/> raises, or the predicate itself
-        /// where it is <c>null</c>: a projected condition's every predicate of its expression, and a filter's reduce, its
-        /// condition and every filter's beneath it (<see cref="Rel.Convert.CosmosFilterReduceRule"/>).
+        /// where it is <c>null</c>: a projected condition's every predicate of its expression, and a filter's reduce, the
+        /// WHERE and the filters beneath it as Calcite's calc pass merges them (<see cref="Rel.Convert.CosmosFilterReduceRule"/>).
+        /// The reduce assumes <paramref name="reaching"/> beside the WHERE where nothing in the gate raises: what every row
+        /// the filter reads satisfies.
         /// </summary>
-        internal static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate)
+        internal static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate, RexNode? reaching = null)
         {
             if (condition is null || fields is null || rexBuilder is null)
                 return condition!;
@@ -115,7 +117,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (container is null)
                 return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
 
-            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias, gate);
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias, gate, reaching);
             return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
         }
 

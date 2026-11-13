@@ -361,14 +361,16 @@ questions, each an over-approximation: what a row on which the atom takes a trut
 (`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
 on is no truth value: it is no row a predicate keeps, and it supports no verdict.
 
-**The rules**, 54 of them and a split.
+**The rules**, 55 of them and a split.
 - **Analysis** (9): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
   parameter, a membership, a null test and a definedness test are each an atom of what they read.
-- **What a predicate taking a truth value establishes** (15):
+- **What a predicate taking a truth value establishes** (16):
   - a conjunction that holds holds on both sides, and a disjunction that fails fails on both;
   - a negation takes the other truth value of its operand;
   - the arm a case chose takes the junction's truth value;
   - a predicate is not both true and false of a row;
+  - a truth value holds as nothing but itself: `FALSE` holding true, as a reduce assumes the filters beneath it where
+    Calcite's simplifier reads them as `FALSE`, is no row, and `UNKNOWN` holds neither way;
   - an atom says what `Kept` says of its path: that it is there, its types, its values, its values among the types
     it may hold, its strings' characters, its bounds, and which of its points it does not hold. The rendering
     preimage is here: `= '30'` keeps the string and the number;
