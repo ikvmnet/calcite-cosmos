@@ -253,12 +253,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// <para>
         /// <b>A <c>FALSE</c> is gated on every predicate of the expression.</b> Each condition is its
-        /// own statement, but a <c>FALSE</c> written in one lets the simplifier drop more than it:
-        /// <c>X AND FALSE</c> is <c>FALSE</c> however <c>X</c> reads, an arm left with its sibling's
-        /// value merges into it and takes its condition along, and a <c>CASE</c> so merged may merge into
-        /// the one around it. So the reduce and a never-read arm inside any condition assume only where
-        /// nothing in any predicate of the expression raises: its conditions, and the expression
-        /// itself where it is one (<see cref="PredicatesOf"/>).
+        /// own statement, and the reduce and a never-read arm inside it assume only where nothing in
+        /// any predicate of the expression raises: each boolean node whose parent is not one
+        /// (<see cref="PredicatesOf"/>).
+        /// </para>
+        /// <para>
+        /// <b>What it returns is rendered, never planned</b> (<c>Rel.Convert.CosmosProjectRule.Rendered</c>).
+        /// A <c>FALSE</c> held in the plan let Calcite's simplifier carry it where no gate reaches: an
+        /// arm merged into its sibling's, a <c>CASE</c> folded to a null making a comparison with a cast
+        /// above it never true, the filter over that the empty relation. In the text it is what the
+        /// service computes for the expression, and nothing else.
         /// </para>
         /// </remarks>
         /// <param name="expression">The projected expression, over <paramref name="fields"/>.</param>

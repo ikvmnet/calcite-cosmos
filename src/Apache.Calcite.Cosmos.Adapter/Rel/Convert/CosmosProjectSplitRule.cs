@@ -185,7 +185,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <see cref="CosmosProjectRule"/> and <see cref="CosmosProject.Implement"/> use — so an
         /// expression this calls pushable is one that rule would accept, and the inner projection it
         /// builds converts rather than failing at implementation. A sub-expression is held to exactly
-        /// the same test, which is what makes a fragment a column the same machinery renders and reads.
+        /// the same test, which is what makes a fragment a column the same machinery renders and reads:
+        /// rendered as that column is, its <c>CASE</c> conditions lowered beside its own predicates.
+        /// Both halves hold what the query wrote, and only the text sent holds the lowering.
         /// </remarks>
         /// <param name="project">The projection.</param>
         /// <param name="split">On success, what goes below and what stays above.</param>
@@ -205,19 +207,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
 
-            // The expressions the whole-projection rule would push, so that the two agree on what renders.
-            var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
+            // The expressions as written, which both halves hold, each asked as the whole-projection rule asks it: as
+            // the service is sent it, so that the two agree on what renders (CosmosProjectRule.Rendered).
+            var projects = split.Projects = project.getProjects();
+            var rexBuilder = project.getCluster().getRexBuilder();
 
             // And the facts it renders under: what the filters beneath establish of the rows this
             // projection reads, which are the rows the inner one built over the same input reads.
             var facts = CosmosProjectRule.Facts(project, container);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, _convention.Container);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), facts, null, _convention.Container);
+
+            bool Renders(RexNode node) => translator.TryTranslateProjection(CosmosProjectRule.Rendered(_convention.Container, node, fields, rexBuilder), out _, out _);
 
             for (var i = 0; i < projects.size(); i++)
             {
                 var expression = (RexNode)projects.get(i);
 
-                if (translator.TryTranslateProjection(expression, out _, out _))
+                if (Renders(expression))
                 {
                     split.Pushable.Add(i);
 
@@ -229,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 }
 
                 split.Residual.Add(i);
-                Collect(translator, expression, split);
+                Collect(Renders, expression, split);
             }
 
             if (split.Residual.Count == 0)
@@ -302,7 +308,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// rather than exhaustive over the shapes that happen to exist.
         /// </para>
         /// </remarks>
-        internal static void Collect(CosmosRexTranslator translator, RexNode node, ProjectionSplit split)
+        internal static void Collect(System.Func<RexNode, bool> renders, RexNode node, ProjectionSplit split)
         {
             if (node is RexInputRef inputRef)
             {
@@ -315,7 +321,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (node is RexLiteral)
                 return;
 
-            if (translator.TryTranslateProjection(node, out _, out _))
+            if (renders(node))
             {
                 if (split.Index.TryAdd(node, split.Fragments.Count))
                     split.Fragments.Add(node);
@@ -329,7 +335,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var operands = call.getOperands();
 
                 for (var i = 0; i < operands.size(); i++)
-                    Collect(translator, (RexNode)operands.get(i), split);
+                    Collect(renders, (RexNode)operands.get(i), split);
 
                 return;
             }
@@ -345,7 +351,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         internal sealed class ProjectionSplit
         {
 
-            /// <summary>The projection's expressions, with their <c>CASE</c> conditions lowered.</summary>
+            /// <summary>The projection's expressions as written, which each half holds; each renders as <see cref="CosmosProjectRule.Rendered"/> does.</summary>
             public java.util.List Projects { get; set; } = java.util.Collections.emptyList();
 
             /// <summary>The projection ordinals that render whole.</summary>

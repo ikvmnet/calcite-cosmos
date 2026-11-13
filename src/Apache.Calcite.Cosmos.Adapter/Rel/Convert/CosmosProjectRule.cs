@@ -21,25 +21,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     {
 
         /// <summary>
-        /// Returns the expressions this rule would push: the projection's own, with the condition of
-        /// every <c>CASE</c> lowered as a filter's condition is.
+        /// Returns a projected expression as the service is sent it: with the condition of every <c>CASE</c> in it lowered as
+        /// a filter's condition is.
         /// </summary>
         /// <remarks>
-        /// The legality test and the conversion both see the lowered form, as
-        /// <see cref="CosmosFilterRule"/>'s do, and so does <see cref="CosmosProjectSplitRule"/>. See
-        /// <see cref="CosmosFactRewriter.RewriteConditions"/>.
+        /// <para>
+        /// The legality test, the splits and <see cref="CosmosProject.Implement"/> all render this form, as
+        /// <see cref="CosmosFilterRule"/>'s do. See <see cref="CosmosFactRewriter.RewriteConditions"/>.
+        /// </para>
+        /// <para>
+        /// <b>Rendered, never planned.</b> The node holds the expression as written. A condition the rewrite writes
+        /// <c>FALSE</c> is the condition's value on every document the declaration admits, not Calcite's, which still
+        /// evaluates the condition; held in the plan, Calcite's simplifier carried it out of the expression, a <c>CASE</c>
+        /// folded to a null making a comparison beside a cast in a sibling column, or in a filter above, never true, and
+        /// the plan the empty relation where Calcite fails on the cast. In the text alone it changes what the service
+        /// computes for the expression, and nothing else.
+        /// </para>
         /// </remarks>
-        internal static java.util.List Pushed(CosmosConvention convention, Project project, IReadOnlyList<CosmosPath?> fields)
-        {
-            var rexBuilder = project.getCluster().getRexBuilder();
-            var projects = project.getProjects();
-            var pushed = new java.util.ArrayList(projects.size());
-
-            for (var i = 0; i < projects.size(); i++)
-                pushed.add(CosmosFactRewriter.RewriteConditions((RexNode)projects.get(i), fields, convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder));
-
-            return pushed;
-        }
+        internal static RexNode Rendered(CosmosContainerMetadata? container, RexNode expression, IReadOnlyList<CosmosPath?> fields, RexBuilder rexBuilder) =>
+            CosmosFactRewriter.RewriteConditions(expression, fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder);
 
         /// <summary>
         /// Determines whether every projected expression can be rendered as Cosmos SQL.
@@ -72,7 +72,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if ((written & CosmosClauses.Projection) != 0)
                 return false;
 
-            var projects = Pushed(convention, project, fields);
+            var projects = project.getProjects();
+            var rexBuilder = project.getCluster().getRexBuilder();
 
             // The same facts CosmosProject.Implement will translate against, for the same reason the
             // bindings are the ones it will use: a rule admitting a projection the node then refuses
@@ -80,14 +81,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // filters beneath establish of every row it reads (L1), decided once for this projection
             // and handed to the node convert builds.
             var facts = Facts(project, container);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, convention.Container);
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), facts, null, convention.Container);
 
             // TryTranslateProjection rather than TryTranslate, so that the rule admits exactly the
             // expressions CosmosProject.Implement can render — including the cast to text it sends the
             // value underneath of. Asking the plain translator here would decline a projection the node
             // can push.
             for (var i = 0; i < projects.size(); i++)
-                if (translator.TryTranslateProjection((RexNode)projects.get(i), out _, out _) == false)
+                if (translator.TryTranslateProjection(Rendered(convention.Container, (RexNode)projects.get(i), fields, rexBuilder), out _, out _) == false)
                     return false;
 
             // Window functions have no Cosmos equivalent.
@@ -137,18 +138,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var project = (Project)rel;
 
-            if (@out is not CosmosConvention convention || CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out _, out _, out _, out var container) == false)
+            if (@out is not CosmosConvention || CosmosImplementor.TryBindOutput(project.getInput(), out _, out _, out _, out _, out var container) == false)
                 return null;
 
             if (CosmosImplementor.NamesAnEscape(project.getRowType(), container))
                 return null;
 
-            // Built under the facts the legality test decided under, which the node renders with.
+            // Built under the facts the legality test decided under, which the node renders with, and holding the
+            // expressions as written, which it renders as Rendered does.
             return new CosmosProject(
                 project.getCluster(),
                 project.getTraitSet().replace(@out),
                 convert(project.getInput(), project.getInput().getTraitSet().replace(@out)),
-                Pushed(convention, project, fields),
+                project.getProjects(),
                 project.getRowType(),
                 Facts(project, container));
         }
