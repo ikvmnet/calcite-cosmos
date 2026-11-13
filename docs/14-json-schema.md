@@ -216,7 +216,8 @@ through a cast to `DOUBLE` the first range above is, and through a cast to `INTE
 every row. That covers the conditions beside it too, since a condition answered so lets Calcite stop
 evaluating more than itself — another condition whose arm then gives the same value, the condition
 around a `CASE` nested in one, a test joined to it by `AND` — so beside a cast to `INTEGER` of a string
-property every condition is evaluated as written.
+property every condition is evaluated as written, except where the cast sits in a conjunct the schema
+makes true, which is dropped as one in a `WHERE` is (Chapter 23).
 
 **A query that can fail is not answered empty in Calcite's place.** The empty result stands in for
 Calcite's answer, so the adapter gives it only where Calcite would answer no rows and fail on none.
