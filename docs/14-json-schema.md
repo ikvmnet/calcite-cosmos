@@ -170,9 +170,9 @@ that is no number, and the rest of the filter answers where Calcite fails (Chapt
 
 A value the schema rules out keeps no row, and the request that would ask for one is not sent. What
 the schema rules out or makes redundant never reaches a condition Calcite evaluates: a statement it
-rules out is planned as one it does not, but for a `MIN`, a `MAX` or an `ORDER BY` above it and a
-part of its `WHERE` sent only beside what another part says (below), and once the plan is made, each
-statement it would send is asked whether its `WHERE` keeps any document the schema admits. Where it
+rules out is planned as one it does not, but for what the adapter pushes only on what it knows of the
+rows the `WHERE` keeps (below), and once the plan is made, each statement it would send is asked
+whether its `WHERE` keeps any document the schema admits. Where it
 keeps none, and nothing in it can fail on a document the schema admits, the statement is not sent,
 and whatever Calcite computes above it reads no rows, as it would read the service's empty answer.
 
@@ -199,14 +199,19 @@ request skips what the service could have reported for it too: a lost key, a del
 throttling.
 
 What the schema says of the values a query reads still shapes the plan, as the rest of this chapter
-describes. And a `MIN`, a `MAX` or an `ORDER BY` above a `WHERE` the schema rules out is computed in
-Calcite, over the empty answer, where without a schema it is pushed: the same answer by another plan
-(Chapter 23). So is a part of such a `WHERE` that the adapter sends only on what another part says:
-`UPPER(JSON_VALUE(c."DOC", '$.body')) = 'ABC'` beside `JSON_VALUE(c."DOC", '$.body') = 'abc'`, which
-says `body` is a string, is sent beside a `kind` the schema admits, and kept in Calcite beside one it
-rules out, over a statement that sends nothing.
+describes. The adapter pushes some of a query only on what it knows of the rows a `WHERE` keeps, which
+it reads from the `WHERE` and the schema together, and of a `WHERE` the schema rules out that reading
+holds nothing. So above such a `WHERE`, a clause pushed only on that knowledge is computed in Calcite,
+over the empty answer, where without a schema, or beside a `WHERE` the schema admits, it is pushed: for
+example `UPPER(JSON_VALUE(c."DOC", '$.body'))` in the select list beside
+`JSON_VALUE(c."DOC", '$.body') = 'abc'`, which says what `body` holds, a `GROUP BY` of `kind` with its
+`COUNT(*)`, a `DISTINCT` of `kind`, a `MIN`, a `MAX` or an `ORDER BY`. A part of such a `WHERE` that
+the adapter sends only on what another part says stays in Calcite the same way:
+`UPPER(JSON_VALUE(c."DOC", '$.body')) = 'ABC'` beside `JSON_VALUE(c."DOC", '$.body') = 'abc'` is sent
+beside a `kind` the schema admits, and kept in Calcite beside one it rules out, over a statement that
+sends nothing. The answers are the same; the plan is another (Chapter 23).
 
-A range does the same against a bound or an enum of integers, read through a cast to `DOUBLE`:
+A comparison read through a cast to `DOUBLE` is ruled out against a bound or an enum the same way:
 
 ```sql
 -- "n": { "type": "integer", "maximum": 100 }
@@ -216,13 +221,25 @@ SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOU
 SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) = 30
 ```
 
-Both keep nothing, and the cast fails on no number. A bound binds only numbers, as JSON Schema's
-`minimum` and `maximum` do, and the cast converts a stored string too — `> 500` keeps a document
-storing `"600"`. So with the bound alone a range on `n` is not ruled out: written
-`CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500`, it is sent, one request that reads what the service
-finds. Written through `CAST(… AS DOUBLE)`, as above, it fails to plan where the host runs Calcite's
-default rules, as the README's connection does, wherever the schema lets `n` hold a number or a
-string: with the bound alone, with a type naming both, or with no schema (Chapter 23).
+Both keep nothing, and the cast fails on no number. The adapter reads the cast loosely: converting a
+number moves it by less than one, so it takes such a comparison to keep every number within a whole
+unit of what it keeps, and rules it out only where its literal lies a whole unit or more past the bound
+and past every listed value. Over the integer at most 100, `> 101` sends nothing, while `> 100` is
+sent, one request that finds nothing; over the enum, so is `= 3.5`.
+
+A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast converts a stored
+string too — `> 500` keeps a document storing `"600"`. So with the bound alone a range on `n` is not
+ruled out: written `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500`, it is sent, one request that
+reads what the service finds. Written through `CAST(… AS DOUBLE)` it may fail to plan where the host
+runs Calcite's default rules, as the README's connection does. Where a path may hold a number beside a
+value the service cannot convert as Calcite does, the adapter sends a weaker form of the comparison
+that holds its number, and keeps the cast in Calcite; Calcite's simplifier (`ReduceExpressionsRule`),
+which those rules run over the two together, meets that number, a `DECIMAL`, where it expects the
+comparison's `DOUBLE`, and fails. So the comparison fails to plan, for example, with the bound alone,
+with no schema, with `"type": ["string", "integer"]` or `["number", "boolean"]`, or with an `anyOf` of
+a string and an integer. It plans where no weaker form holds a number: over `"type": "number"` or
+`"integer"`, where none is written, over `"type": "string"`, where the form sent is the path's
+presence, and over `"enum": [5, "600"]`, which is sent whole (Chapter 23).
 
 A test of a truth value Calcite reads as never true is asked the same way, and needs nothing declared
 but what the service guarantees: `(c."id" = 'b') IS NULL` sends nothing, since every document holds an

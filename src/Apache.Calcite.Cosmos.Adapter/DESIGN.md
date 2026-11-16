@@ -1232,11 +1232,17 @@ An equality with a number pins the key only where the declaration leaves the key
 `Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no domain of one,
 and only a declaration that leaves one value in it is — an integer, whose window holds one whole number, or an `enum`
 or a `const` with one member there, a fraction among them, sent as a `double`. Through `RETURNING DOUBLE` that value's
-double is the literal's. The cast of the text to `DOUBLE` is read by cells that hold a listed fraction with the
-numbers beside it, so `= 5` and `= 6` beside a listed `5.5` keep that cell and pin `5.5`, one request that finds
-nothing where `RETURNING DOUBLE = 5` sends none; and a key the declaration fixes to one value, a required `const` or a
-one-member `enum`, is pinned only where its equality is not dropped as implied, since `CosmosFilter.Implement` routes
-on the condition sent, which then holds none
+double is the literal's. A comparison through the cast of the text to `DOUBLE` keeps every number within a whole
+unit of what it compares, below 2^52 (`NumberCast.KeptOrder`'s window, the same on `main`), which holds whichever way
+a conversion rounds, not the double's rounding, so a listed value within a unit of the literal is in an equality's
+window, and pinned where it is the only one there: `= 5` and `= 6` beside a listed `5.5` pin `5.5`, and `= 5.5`
+beside a listed `5` pins `5`, one request that finds nothing where `RETURNING DOUBLE = 5` beside `5.5` sends none;
+the same window leaves a range through the cast sent where its literal lies less than a unit past the declared bound,
+`> 100` over integers at most 100. And a key the declaration fixes to one value, a required `const` or a one-member
+`enum`, is pinned only where its equality is not dropped as implied, since `CosmosFilter.Implement` routes on the
+condition sent, which then holds none; a deletion is a verdict on the coarse reading, which puts a raise beside every
+number a typed reading or an integer cast compares and reads a number's text as any spelling of its double, so
+through `RETURNING`, an integer cast or a number's text the equality stays and pins
 (`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`, the
 same on `main`). Routing by the window's double, which every number in it shares, is a follow-up that needs a
 measurement of how the service hashes a number, and the other two are precision to come back (`TODO.md`). A cast of
@@ -1262,8 +1268,10 @@ how, is the plan Calcite picks by cost, and a reading of it that each round foun
 
 What a clause above reads of the rows is another matter. The rules for the clauses above a filter, the aggregate's,
 the sort's, the projection's and the lookup join's, read what the rows hold from the filter's node assuming every
-conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so a `MIN`, a `MAX`
-or an `ORDER BY` above it is computed in Calcite, over the empty answer, where without a declaration it is pushed; and
+conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so whatever those
+rules push only on what the rows hold is computed in Calcite above it, over the empty answer, where without a
+declaration, or beside a `WHERE` the declaration admits, it is pushed: for example a select list's `UPPER(body)`
+beside `body = 'abc'`, a `GROUP BY kind` with its `COUNT(*)`, a `DISTINCT kind`, a `MIN`, a `MAX` or an `ORDER BY`; and
 the split counts a weakening applied in a scope that contradicts, which drops it from the half pushed (`IsApplied`,
 the same on `main`). Admission stops alike: its rounds end at a stratum that keeps nothing (*Admission asked once a
 round*), so a conjunct rendered only from what a sibling establishes, beside one the declaration rules out, stays in a
@@ -1273,7 +1281,8 @@ declared, the `WHERE` is sent whole: `UPPER(body) = 'ABC'`, rendered from the st
 (`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`, and
 `AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` in both hosts). Reading them, and running the
 rounds after such a stratum, under a licence that does not assume a `WHERE` the declaration rules out would make them
-the same; it is the owner's (`TODO.md`, *A clause above a WHERE the declaration rules out reads nothing of its rows*).
+the same, which is left for a change of its own (`TODO.md`, *A clause above a WHERE the declaration rules out reads
+nothing of its rows*).
 
 **The split fires only where the filter it splits off reaches the service.** A logical filter, over an input some
 equivalent form of which is part of a statement already, or one a rule converts over an input that can be: this
