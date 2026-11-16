@@ -1628,18 +1628,24 @@ in one filter still meet on the accessor typed `ANY`, the numeric window's bound
 the text comparison's guard a string, so `CAST(JSON_VALUE(DOC, '$.label') AS INTEGER) > 10 AND
 JSON_VALUE(DOC, '$.label') > 'bikes'` fails to plan through a connection with a `ClassCastException`,
 on `main` too, and so does the same bound beside `= '30'`. Measured through the host's prepare, offline
-and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for it
-wants a connection, as `CosmosConnectionFunctionTests` opens one.
+and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for the
+two weakenings wants a connection, as `CosmosConnectionFunctionTests` and `CosmosConnectionPlanningTests`
+open one.
 
 One comparison alone does the same. `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500` over a path the
-declaration gives no number type, with no declaration or with `"maximum": 100` alone, is split: its weaker
-form, the numeric window's bound a `DECIMAL`, is merged back with the residual's `DOUBLE` literal, and
-`ReduceExpressionsRule`'s simplifier fails with `BigDecimal` against `Double` (`Double` against `BigDecimal`
-for `< 500`). So do `= 30` and `> 5`, and Chapter 7.3's key pin written as a cast with no declaration,
+declaration lets hold a number or a string, with no declaration, with `"maximum": 100` alone or with
+`"type": ["string", "integer"]`, is split: its weaker form, the numeric window's bound a `DECIMAL`, is
+merged back with the residual's `DOUBLE` literal, and `ReduceExpressionsRule`'s simplifier fails with
+`BigDecimal` against `Double` (`Double` against `BigDecimal` for `< 500`). So do `= 30` and `> 5`, and
+Chapter 7.3's key pin written as a cast with no declaration,
 `CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) = 5.5`; `main` fails alike. In the host Chapter 21
-describes each is sent with its weaker form, `CAST(… AS INTEGER) > 500` plans in both, and over a path
-declared `"integer"` or a numeric `enum` the comparison plans, Chapter 14.2's ranges sending nothing.
-Chapter 14.2 gives the `INTEGER` range as the one sent, and Chapter 23 records the failure.
+describes each is sent with its weaker form, and `CAST(… AS INTEGER) > 500` plans in both hosts. Through
+the connection the comparison plans over a path declared a string, where no weaker form carries a bound,
+sending the path's presence and casting in Calcite, and over one declared `"integer"` or `"number"`, or a
+numeric `enum`, Chapter 14.2's ranges sending nothing. Chapter 14.2 gives the `INTEGER` range as the one
+sent, and Chapter 23 records the failure;
+`CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger`
+pins each through the connection the README opens.
 
 The fix is the same for both, the bound reading the value in its own type — but the bound's literal is
 the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
@@ -2930,8 +2936,12 @@ across documents* and *A join of a container to itself* is the record.
   `CosmosPlannerTests.PlanToAsync`'s host brings), the deletion shapes dm1 to dm4, dm6, dm8 and dm9, and a semi-join
   over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
   the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
-  takes this route. Each answers no rows with no request where Calcite fails on `"abc"`, and undeclared answers no
-  rows after one request, the service finding nothing, measured on both emulators under both targets' plans. A
+  takes this route. So does a filter over a lateral or an `UNNEST` that reads only the left side's columns, which
+  Calcite's correlate rule moves into the left side: `(CAST(body AS INTEGER) = 1 AND k = 'C') OR (CAST(body AS
+  INTEGER) = 2 AND k = 'D')` over an `UNNEST` of `tags` whose left side keeps `k IN ('A', 'B')` (u3) sends the weaker
+  form beside what the left side keeps and computes the casts above it, beneath the correlate. Each answers no rows
+  with no request where Calcite fails on `"abc"`, and undeclared answers no rows after one request, the service
+  finding nothing, measured on both emulators under both targets' plans. A
   `COUNT` over this route answers `0` where Calcite fails, the host's aggregate over no rows (ffcnt, and dm10
   through a deletion). A converted filter holds the condition as planned, never the `FALSE` the text sends, so `FILTER_MERGE` makes no
   empty `Values` of it (*A side emptied over a filter beneath answers a join beside it*, done). A planning test under
@@ -3156,24 +3166,38 @@ across documents* and *A join of a container to itself* is the record.
   tables), so `SELECT MIN(kind) … WHERE kind = 'C'`, `MAX(c."id")` and an `ORDER BY` over it, each pushed without a
   declaration, are computed in Calcite over a statement that sends nothing
   (`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`). The split's `IsApplied` counts
-  a weakening applied in a contradicted scope, which drops it from the half pushed, the same on `main`. The planner's row
-  estimate and cost read the same node: `CosmosRelMetadataQuery.getRowCount` and `CosmosFilter`'s estimate and cost ask
-  `CosmosPartitionKeyExtractor.Pinned` under `Kept`, which pins nothing where that node is contradictory, so a filter
-  pinning `id` and the partition key beside a conjunct the declaration rules out is costed at Calcite's default
-  selectivity with no partition's discount, where undeclared it is costed as one row in one partition; no plan was
-  found that this moves. The answers are the same; `EXPLAIN` shows a plan the declaration may change. The fix is those
-  rules, the row estimate and the cost reading the rows under a licence that does not assume a `WHERE` the declaration
-  rules out, a licence in the facts graph; the owner's, and its own change.
+  a weakening applied in a contradicted scope, which drops it from the half pushed, the same on `main`. The planner's
+  row estimate and cost read the same node: `CosmosRelMetadataQuery.getRowCount` and `CosmosFilter`'s estimate and cost
+  ask `CosmosPartitionKeyExtractor.Pinned` under `Kept`, which pins nothing where that node is contradictory, so a
+  filter pinning `id` and the partition key beside a conjunct the declaration rules out is costed at Calcite's default
+  selectivity with no partition's discount, where undeclared it is costed as one row in one partition; no plan was found
+  that this moves. Admission stops at such a `WHERE` too: `CosmosStatementScope`'s rounds end at a stratum that keeps
+  nothing, so a conjunct the rendering admits only from what a sibling establishes stays in Calcite beside a sibling the
+  declaration rules out. `kind = 'C' AND UPPER(body) = 'ABC' AND body = 'abc'`, with `kind` declared `A` or `B` and
+  `body` not declared, keeps the `UPPER` in a Calcite filter over a statement that sends nothing, where with
+  `kind = 'A'`, or with nothing declared, the `WHERE` is sent whole, in the host Chapter 21 describes and through the
+  connection the README opens (`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut`, in
+  `CosmosDeclaredFactPlanningTests` and `CosmosConnectionPlanningTests`). Planned in both, `body = 'abc'` with the
+  `UPPER` or a `CHAR_LENGTH` beside it does the same where an `enum` of `body` rules `'abc'` out, and is sent whole
+  where it lists the literal. The answers are the same; `EXPLAIN` shows a plan the declaration may change. The fix is
+  those rules, the row estimate, the cost, and the admission rounds after a stratum that keeps nothing, reading the rows
+  under a licence that does not assume a `WHERE` the declaration rules out, a licence in the facts graph; the owner's,
+  and its own change.
 - ~~**A filter on a lateral's column moved into its left side empties it**~~ — *done, 2026-11-16, with the split
   above a correlate (below).* Was *an empty answer where Calcite fails; older, `main` the same.* In the host Chapter 21
-  describes, `(CAST(y.rb AS INTEGER) = 1 AND y.k = 'C') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'D')` over a lateral
-  whose left side keeps `k IN ('A', 'B')` (pc1, pc2, pc4, pc5) was split above the correlate, which counted as reaching
-  the service, and its weaker form `k IN ('C', 'D')` moved into the left side beside what that side keeps, whose
-  request then kept nothing, so the lateral's cast read no row where Calcite in process evaluates it on every document
-  and fails: declared with no request, undeclared after one that found nothing. The split no longer fires there, and
-  each fails as Calcite does, declared and not, measured on the emulator under both targets' plans
-  (`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown`). gb6, recorded beside them from a run in process, fails
-  as Calcite does against a service, before and since.
+  describes, a run over a lateral or a scalar sub-query naming kinds its left side does not keep, `(CAST(y.rb AS
+  INTEGER) = 1 AND y.k = 'C') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'D')` over a lateral whose left side keeps `k IN
+  ('A', 'B')` (pc1, and pc4 with the run above another filter), or the run on `'B'` and `'C'` over a left side keeping
+  `k = 'A'` (pc2 over a lateral, pc5 over a scalar sub-query), was split above the correlate, which counted as reaching
+  the service, and its weaker form, `k IN ('C', 'D')` or `k IN ('B', 'C')`, moved into the left side beside what that
+  side keeps, whose request then kept nothing, so the cast the correlate computes read no row where Calcite in process
+  evaluates it on every document and fails: declared with no request, undeclared after one that found nothing. The
+  split no longer fires there, and each fails as Calcite does, declared and not, measured on the emulator under both
+  targets' plans (`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown`, and
+  `ARunOverACorrelateSendsNoFormOfItsCondition` for the statements sent). gb6, recorded beside them from a run in
+  process, fails as Calcite does against a service, before and since. A run that reads only the left side's columns is
+  not this entry's: Calcite's correlate rule moves it into the left side, where the split takes it (u3, under *A
+  residual beside a contradicted split loses its raise*).
 - ~~**A split above a filter Calcite keeps pushes the service's form into Calcite**~~ — *done, 2026-11-16: the split
   fires only on a logical filter over an input that can be a Cosmos statement (`CosmosFilterSplitRule.Reaches`): this
   container's scan, a projection over one, a filter `CosmosFilterRule` converts over one, or a traversal
@@ -3208,7 +3232,18 @@ across documents* and *A join of a container to itself* is the record.
   double is whole among them, since a whole-partition delete applies no predicate. A promoted key's `VARIANT` column
   compares a number only in its own box (`Calcite.VariantEqualsOnlyItsOwnBox`), so a `Kept` that read that cell's boxes
   would keep the point and the pin there too. `docs/07`, `08` and `13` say a number pins only where the declaration
-  leaves the key one value until then.
+  leaves the key one value until then. Two routings beside it are precision, each the same on `main`
+  (`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`).
+  The cast of the text to `DOUBLE` is read by cells that hold a listed fraction with the numbers beside it, so over a
+  key the declaration lists as `[5.5, 7.25]`, `CAST(… AS DOUBLE) = 5` and `= 6` keep the cell of `5.5`, pin it and send
+  `WHERE (c.ref = @p0)`, which finds nothing, where `RETURNING DOUBLE = 5` sends nothing; so does a path that is not the
+  key, `n` listed so, for `= 5`. Cutting the cast's cells at the declaration's members would leave such a `WHERE` unsent
+  as `RETURNING DOUBLE`'s is. And a key the declaration fixes to one value, a required `const` or a one-member `enum`,
+  loses its pin where its equality is dropped as implied: `CAST(… AS DOUBLE) = 5.5` over a required `const` of `5.5`,
+  and a string key's `= 'bikes'` over a required `const` of `"bikes"`, are sent with no `WHERE` to every partition,
+  since `CosmosFilter.Implement` routes on the condition sent, which then holds no equality, where `RETURNING DOUBLE =
+  5.5`, not dropped, pins `5.5`. Routing on the planning form, whose equality stands, would keep the pin. Chapter 23
+  records both.
 - **A bare raw value reads the union's raise** — *small, precision.* Naming its column where the loader builds it
   (`Metadata/CosmosPredicateLoader.cs`) would read one column's rows.
 - ~~**A `CHAR` column's parameter keys read the union**~~ — *done, 2026-11-12.* A row says a `CHAR` column answers a

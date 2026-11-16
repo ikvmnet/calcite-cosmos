@@ -1228,19 +1228,26 @@ a `VARIANT` field is compared with a literal since the switch (h15), never throu
 query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
 `'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
 whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
-An equality with a number pins the key only where the declaration leaves the key one value whose double is the
-literal's: `Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no
-domain of one, and only a declaration that leaves one value in it is — an integer, whose window holds one whole number,
-or an `enum` or a `const` with one member there, a fraction among them, sent as a `double`. Routing by the window's
-double, which every number in it shares, is a follow-up that needs a measurement of how the service hashes a number
-(`TODO.md`). A cast of the key to text over the `VARIANT` column pins the stored string, which is all such a cast
-keeps, a number and a boolean casting to null there.
+An equality with a number pins the key only where the declaration leaves the key one value the comparison may keep:
+`Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no domain of one,
+and only a declaration that leaves one value in it is — an integer, whose window holds one whole number, or an `enum`
+or a `const` with one member there, a fraction among them, sent as a `double`. Through `RETURNING DOUBLE` that value's
+double is the literal's. The cast of the text to `DOUBLE` is read by cells that hold a listed fraction with the
+numbers beside it, so `= 5` and `= 6` beside a listed `5.5` keep that cell and pin `5.5`, one request that finds
+nothing where `RETURNING DOUBLE = 5` sends none; and a key the declaration fixes to one value, a required `const` or a
+one-member `enum`, is pinned only where its equality is not dropped as implied, since `CosmosFilter.Implement` routes
+on the condition sent, which then holds none
+(`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`, the
+same on `main`). Routing by the window's double, which every number in it shares, is a follow-up that needs a
+measurement of how the service hashes a number, and the other two are precision to come back (`TODO.md`). A cast of
+the key to text over the `VARIANT` column pins the stored string, which is all such a cast keeps, a number and a
+boolean casting to null there.
 
-**A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a condition Calcite evaluates, though a clause above one that keeps nothing may be planned otherwise (below).**
-Nothing the declaration alone decides is in a node Calcite reads. A `CosmosFilter` holds the planning form of its
-condition (`CosmosFactRewriter.Planned`): the lowerings and the safe `CASE` flattening, each true on the rows the
-condition is. The rendering form adds the conjuncts the rest imply deleted, the arms never read written `FALSE`, and
-the whole `FALSE` where the WHERE keeps nothing and raises nowhere, and goes only into the text sent
+**A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a condition Calcite evaluates, though a clause above one that keeps nothing, and a part of its `WHERE` admitted only beside another, may be planned otherwise (below).**
+Nothing the declaration alone decides of a condition is in a node Calcite reads. A `CosmosFilter` holds the planning
+form of its condition (`CosmosFactRewriter.Planned`): the lowerings and the safe `CASE` flattening, each true on the
+rows the condition is. The rendering form adds the conjuncts the rest imply deleted, the arms never read written
+`FALSE`, and the whole `FALSE` where the WHERE keeps nothing and raises nowhere, and goes only into the text sent
 (`CosmosFilter.Sent`, admitted beside the node's by `CosmosFilterRule`, and the node's own where it does not render as
 the rule admitted it). A `TRUE` writes no `WHERE`. The split rule builds the half it pushes and the residual Calcite
 evaluates from the planning form, and `CosmosRowFacts` reads it.
@@ -1255,12 +1262,18 @@ how, is the plan Calcite picks by cost, and a reading of it that each round foun
 
 What a clause above reads of the rows is another matter. The rules for the clauses above a filter, the aggregate's,
 the sort's, the projection's and the lookup join's, read what the rows hold from the filter's node assuming every
-conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so a `MIN`, a
-`MAX` or an `ORDER BY` above it is computed in Calcite, over the empty answer, where without a declaration it is pushed; and the split counts a weakening applied in a scope that contradicts, which drops it from the
-half pushed (`IsApplied`, the same on `main`). The answers are the same and the plans are not
-(`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`). Reading them under a licence
-that does not assume a `WHERE` the declaration rules out would make them the same; it is the owner's (`TODO.md`, *A
-clause above a WHERE the declaration rules out reads nothing of its rows*).
+conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so a `MIN`, a `MAX`
+or an `ORDER BY` above it is computed in Calcite, over the empty answer, where without a declaration it is pushed; and
+the split counts a weakening applied in a scope that contradicts, which drops it from the half pushed (`IsApplied`,
+the same on `main`). Admission stops alike: its rounds end at a stratum that keeps nothing (*Admission asked once a
+round*), so a conjunct rendered only from what a sibling establishes, beside one the declaration rules out, stays in a
+Calcite filter over a statement that sends nothing, where beside a sibling the declaration admits, or with nothing
+declared, the `WHERE` is sent whole: `UPPER(body) = 'ABC'`, rendered from the stratum assuming `body = 'abc'`, beside
+`kind = 'C'` under `kind` declared `A` or `B`. The answers are the same and the plans are not
+(`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`, and
+`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` in both hosts). Reading them, and running the
+rounds after such a stratum, under a licence that does not assume a `WHERE` the declaration rules out would make them
+the same; it is the owner's (`TODO.md`, *A clause above a WHERE the declaration rules out reads nothing of its rows*).
 
 **The split fires only where the filter it splits off reaches the service.** A logical filter, over an input some
 equivalent form of which is part of a statement already, or one a rule converts over an input that can be: this
@@ -1269,15 +1282,19 @@ container's scan, a projection, a filter `CosmosFilterRule` converts whole, or a
 declines leaves every filter above it in Calcite, and a filter Calcite implements copies as one: split in either, the
 half pushed was a filter Calcite evaluates, and a weakening in it the service's form written as a Rex, a Cosmos type
 test with no in-process body. A text equality over a subquery's cast of the text to `INTEGER`, in a host that does not
-merge the two filters, failed so with "cannot translate call IS_NUMBER" where Calcite answers: over a property declared
-a number since the split read the planning form, and over one nothing declares on `main` too
+merge the two filters, failed so with "cannot translate call IS_NUMBER" where Calcite answers: over a property
+declared a number since the split read the planning form, and over one nothing declares on `main` too
 (`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). So did one over a lateral, an `UNNEST` or a
 scalar sub-query beside or over such a cast while any member that was no filter counted as reaching: the correlate is
 no part of a statement, and Calcite's correlate rule moved the half pushed into its left side, beside the cast
-(`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). A run over a lateral whose left side keeps `kind IN ('A', 'B')`
-sent the left side the weaker form `kind IN ('C', 'D')` the same way, whose request then kept nothing, and answered no
-rows where Calcite fails on the lateral's cast (pc1, pc2, pc4, pc5); it now fails as Calcite does. Which rule converts
-a member is the question that rule asks of it, legality.
+(`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). A run over a lateral or a scalar sub-query, naming kinds its
+left side does not keep, sent the left side the run's weaker form the same way, `kind IN ('C', 'D')` beside pc1's own
+`kind IN ('A', 'B')` and `kind IN ('B', 'C')` beside pc2's and pc5's `kind = 'A'`, whose request then kept nothing,
+and answered no rows where Calcite fails on the cast the correlate computes (pc1, pc2, pc4, pc5); it now fails as
+Calcite does, declared and not (`ARunOverACorrelateSendsNoFormOfItsCondition`). A run that reads only the left side's
+columns is not this: Calcite's correlate rule moves it into the left side, where the filter reaches the service and
+the split takes it, keeping its cast over the part sent (u3; `TODO.md`, *A residual beside a contradicted split loses
+its raise*). Which rule converts a member is the question that rule asks of it, legality.
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -1324,12 +1341,17 @@ keeps (ga25, declared and not, a choice by cost). Each is `TODO.md`'s. An anti-j
 outer side answers no rows as Calcite does, both reading the sorted outer side first: no divergence.
 
 `CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown` pins the shapes the reading of Calcite's plan answered with
-no rows and no request where Calcite fails, declared and not; `AStackWhoseLowerFiltersContradictPlans` t15, its plain
-twin and the older kind = 'C', id <> 'zz', kind = 'D', each a stack whose request keeps nothing;
-`AScalarAggregateOverAContradictedWhereIsSent`, `AScalarSumIsSentBesideItsCount`,
-`ATypeTautologyOverACastThatMayFailIsSent`, `AnImpossiblePartKeptInCalciteSendsOneRequest` and
-`AClauseAboveAWhereTheDeclarationRulesOutIsCalcites` the rest; `CosmosCursorsTests`, `CosmosOrderedCursorTests` and
-`CosmosLookupTests` the reader's side.
+no rows and no request where Calcite fails, declared and not, in the host Chapter 21 describes, and
+`CosmosConnectionPlanningTests.EachShapeIsPlainPushdown` the same shapes through the connection the README opens;
+`ARunOverACorrelateSendsNoFormOfItsCondition` pc1, pc2, pc4 and pc5's statements;
+`AStackWhoseLowerFiltersContradictPlans` t15, its plain twin and the older kind = 'C', id <> 'zz', kind = 'D', each a
+stack whose request keeps nothing; `AScalarAggregateOverAContradictedWhereIsSent`, `AScalarSumIsSentBesideItsCount`,
+`ATypeTautologyOverACastThatMayFailIsSent`, `AnImpossiblePartKeptInCalciteSendsOneRequest`,
+`AClauseAboveAWhereTheDeclarationRulesOutIsCalcites` and
+`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` (in both hosts) the rest;
+`CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger` the range
+Chapter 14.2 gives through that connection; `CosmosCursorsTests`, `CosmosOrderedCursorTests` and `CosmosLookupTests`
+the reader's side.
 
 **A statement the reduce once masked plans.** A scalar sub-query in a select list nothing above reads: Calcite's field
 trimmer drops its column and keeps the correlation variable its projection declares (`RelFieldTrimmer`), so in a host
