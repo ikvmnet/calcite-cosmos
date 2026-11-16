@@ -228,6 +228,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "x4" => $"{Flag} AND ({Flag} IS NOT NULL OR {cast} = 1)",
                 "x14" => $"{Json("c", "body")} LIKE 'a%' AND (({Json("c", "body")} LIKE 'a%') IS NOT NULL OR {cast} = 1)",
                 "x17" => $"{Flag} AND ({cast} = 1 OR {Flag} IS NOT NULL) IS NOT TRUE",
+                "x9" => $"{Flag} AND NOT ({Flag} IS NOT FALSE OR {cast} = 1)",
                 _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
 
@@ -241,7 +242,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Read through them, the cast went unevaluated, a residual a lowered sibling makes false was a converted filter's
         /// <c>FALSE</c>, and x3 sent nothing, where Calcite fails on a <c>body</c> that is no number, declared or not, and on
         /// <c>main</c> as Calcite does. lw2's half sent keeps nothing, declared, as recorded (<em>A residual beside a
-        /// contradicted split loses its raise</em>), and the cast is still Calcite's.
+        /// contradicted split loses its raise</em>), and the cast is still Calcite's. x9, which Calcite's simplification of
+        /// the whole reads as false, is not split, and Calcite evaluates it whole, answering as it does in process, where the
+        /// residual alone raised; no converted filter holds the <c>FALSE</c>.
         /// </summary>
         [Theory]
         [InlineData("lw1")]
@@ -255,6 +258,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("x4")]
         [InlineData("x14")]
         [InlineData("x17")]
+        [InlineData("x9")]
         public void APartCalciteEvaluatesBesideThePartSentIsEvaluated(string name)
         {
             foreach (var (declared, container) in new[] { ("declared", Declaring(Lowered)), ("undeclared", Declaring("""{ "type": "object" }""")) })
