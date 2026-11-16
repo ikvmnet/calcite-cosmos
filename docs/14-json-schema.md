@@ -271,6 +271,11 @@ the request. These answer no rows where Calcite in process fails (Chapter 23):
 
 - a part of a `WHERE` kept in process beside a part sent that keeps nothing, the case at the end of
   this section; a `COUNT` over it answers 0;
+- through a connection that runs Calcite's default rules, as the README's does, a part kept in process
+  that those rules read beside what the part sent holds: `JSON_VALUE(c."DOC", '$.flag' RETURNING
+  BOOLEAN) AND ((JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN) IS NOT NULL OR
+  CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1) IS NOT TRUE)` makes no request; without the
+  `IS NOT TRUE`, it answers the rows the part sent keeps (Chapter 23);
 - a semi-join over a subquery that keeps nothing, which the adapter may answer by fetching the outer
   documents by the subquery's keys, of which there are none, so the condition beside the `IN` is never
   evaluated (Chapter 12.1); and a filter above such a join, which reads only the documents fetched;
@@ -287,8 +292,8 @@ without (Chapter 23):
   where the adapter's lookup join reads the subquery first (Chapter 12.1); and an `EXISTS` whose
   subquery keeps nothing, beside a condition that can fail, which the plan evaluates first;
 - a part kept in process beside a part sent, which Calcite would have simplified together with a filter
-  above them: within one filter the part kept is simplified beside the part sent, as Calcite simplifies
-  the whole, but under `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's
+  above them: within one filter the part kept is what Calcite's simplification of the whole condition
+  evaluates beside the part sent, but under `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's
   `CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') IN ('A', 'B')`
   sends the `IN`, and the cast, evaluated in process
   beside `kind = 'C'` alone, fails on a `body` that is no number, where Calcite reads the three together

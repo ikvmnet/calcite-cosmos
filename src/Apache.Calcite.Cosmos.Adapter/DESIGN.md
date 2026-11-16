@@ -1302,24 +1302,41 @@ columns is not this: Calcite's correlate rule moves it into the left side, where
 the split takes it, keeping its cast over the part sent (u3; `TODO.md`, *A residual beside a contradicted split loses
 its raise*). Which rule converts a member is the question that rule asks of it, legality.
 
-**The part a split keeps in Calcite is simplified beside the part it sends.** Calcite evaluates a condition simplified
-whole, so a conjunct its siblings make true, or a sibling makes the arm holding it false, is never evaluated:
-`kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)` is `kind = 'A'`. Before "decide at the request" the facts
-graph deleted such a conjunct from the node; since, the node holds the planning form, and the split left it to a
-residual Calcite evaluated over the rows the half sent returns, which raised on a `body` that is no number where
-Calcite answers, declared or not. `CosmosFilterSplitRule.Residual` simplifies the residual with the admitted conjuncts
-sent as predicates (`RelOptPredicateList`, unknown read as false), and reads it as true where the whole condition
-simplifies to what those conjuncts do, which catches a disjunction the predicate list does not read; true, the filter is
-the admitted conjuncts alone. Where they say nothing of it, it stays as written, since Calcite's normal form of it is
-read anew by the next split and pushes again what is already sent. The weakenings are no predicates: each is the
-service's form written as a Rex, which Calcite's reading need not match. It reads the declaration only through the
-lowerings the planning form already holds (`TODO.md`, *A lowering removes a raise Calcite would make*) and chooses no
-row, Calcite's own simplification of the condition it was given: a writer
-(`CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite`, and its twin through the README's connection,
-which simplifies the whole `WHERE` before anything is pushed). A `CASE` holding a cast that may raise stays, as
-Calcite's simplifier keeps it, and its `ELSE` is read only where its condition is not true. Across two filters it does
-not reach: a subquery's split under a filter above is merged by Calcite's calc pass with that filter, without the half
-sent (below).
+**The part a split keeps in Calcite is what Calcite evaluates of the whole condition.** Calcite evaluates a condition
+simplified whole (unknown read as false, as a filter reads it), so a conjunct its siblings make true, or a sibling
+makes the arm holding it false, is never evaluated: `kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)` is
+`kind = 'A'`. Before "decide at the request" the facts graph deleted such a conjunct from the node; since, the node
+holds the planning form, and the split left it to a residual Calcite evaluated over the rows the half sent returns,
+which raised on a `body` that is no number where Calcite answers, declared or not. `CosmosFilterSplitRule.Residual`
+simplifies the condition as the query wrote it with Calcite's own simplifier, whole and each half alone: where the
+whole is the residual's own terms beside terms of the conjuncts sent, a conjunct sent that the residual implies dropped
+among them, the residual stays as planned; where it reads a term of the residual away or into another, what is left
+above is the whole's terms but those of the conjuncts sent, which are true on every row the request returns, and
+nothing where none is left, the filter then being the admitted conjuncts alone. A conjunct sent is one each conjunct
+of whose planning form is admitted (`CosmosFactRewriter.PlannedConjuncts`). It reads nothing of the declaration and
+chooses no row: a writer. Three readings it replaced each decided a part Calcite evaluates. Read through the planning
+form, a lowering made a residual true or false, and so did a flattened `CASE`: `CAST(w AS INTEGER) = 5 AND (w = '005' OR
+CAST(body AS INTEGER) = 1)` over a `w` declared three digits answered where Calcite fails. Read beside the conjuncts
+sent as a predicate list, a bare boolean sent made its own null test true, and `flag AND ((flag IS NOT NULL OR
+CAST(body AS INTEGER) = 1) IS NOT TRUE)` answered no rows where Calcite fails, declared or not, declared with no
+request. And taken all or nothing, an absorbed residual conjunct stayed beside one that is not, and raised where Calcite
+answers (`CosmosDeclaredFactPlanningTests.APartCalciteEvaluatesBesideThePartSentIsEvaluated`,
+`ASiblingSentLeavesNothingInCalcite`, and its twin through the README's connection, which simplifies the whole `WHERE`
+before anything is pushed). Elsewhere the residual stays as planned since Calcite's normal form of it is read anew by
+the next split and pushes again what is already sent, and a literal it folds moves a plan for nothing; its lowerings
+are the planning form's (`TODO.md`, *A lowering removes a raise Calcite would make*). Over a projection the condition
+is read through the expressions the projection's columns stand for, as Calcite in process merges the two before it
+simplifies, and what is left is written back over the columns, the residual staying as planned where a term reads
+what no column stands for. Read over the columns, Calcite's simplifier takes a bare boolean column, or a column's null
+test, as a predicate of the rest, which over the expressions it does not: `x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS
+INTEGER) = 1)` read as `FALSE` where Calcite evaluates the cast; and kept as planned over the columns, `x.k = 'A' AND
+((x.k = 'A') IS NOT NULL OR CAST(x.b AS INTEGER) = 1)` raised where Calcite answers
+(`OverAProjectionTheConditionIsReadThroughIt`). A `CASE` holding a cast that may raise stays, as Calcite's simplifier
+keeps it, and its `ELSE` is read only where its condition is not true. Across two filters it does not reach: a subquery's split
+under a filter above is merged by Calcite's calc pass with that filter, without the half sent (below). Through a
+connection that runs Calcite's default rules, `FILTER_REDUCE_EXPRESSIONS` reduces the filter above the half sent with
+that half's condition as a predicate pulled up from it, as the predicate list did, older and the same on `main`
+(`TODO.md`, *Through a connection, a filter above the half sent is reduced with what that half holds*).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -1363,7 +1380,7 @@ outer side first and never evaluates the subquery (sj2, j3, j6, through the conn
 uncorrelated `EXISTS` whose subquery keeps nothing is a join that reads the side beside it first (ex4); and the part
 a subquery's split keeps in process is merged with a filter above it without the part sent, where Calcite simplifies
 the three together to `FALSE` (dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes; within one filter the
-part kept is simplified beside the part sent, above); and a filter on a grouping's key stays above a
+part kept is what Calcite evaluates of the whole condition, above); and a filter on a grouping's key stays above a
 grouping that computes a cast for every group, where Calcite moves it beneath and computes the cast for the groups it
 keeps (ga25, declared and not, a choice by cost). Each is `TODO.md`'s. An anti-join over such an
 outer side answers no rows as Calcite does, both reading the sorted outer side first: no divergence.
