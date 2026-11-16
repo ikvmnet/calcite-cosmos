@@ -222,14 +222,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A clause above a statement reads what the rows it keeps hold from the filter's node assuming every conjunct, which
-        /// a <c>WHERE</c> the declaration rules out leaves holding nothing: so a <c>MIN</c> of <c>kind</c>, a <c>MAX</c> of
-        /// <c>id</c> and an <c>ORDER BY</c> of either over <c>kind = 'C'</c>, each pushed without a schema, are Calcite's
-        /// with one, over a statement that sends nothing. The answer is the same, a <c>NULL</c> or no rows; the plan is one a
-        /// schema changes (<c>TODO.md</c>, <em>A clause above a WHERE the declaration rules out reads nothing of its
-        /// rows</em>). Over <c>kind = 'A'</c> each is pushed with a schema too.
+        /// A clause above a statement reads what the rows it keeps hold from the filter's node assuming every conjunct,
+        /// which a <c>WHERE</c> the declaration rules out leaves holding nothing, so what is pushed only on that is
+        /// Calcite's over <c>kind = 'C'</c>, over a statement that sends nothing, and pushed without a schema: for example
+        /// a select list's <c>UPPER</c> of <c>body</c> beside <c>body = 'abc'</c>, a <c>GROUP BY</c> of <c>kind</c> with
+        /// its <c>COUNT(*)</c>, a <c>DISTINCT</c> of <c>kind</c>, a <c>MIN</c> of <c>kind</c>, a <c>MAX</c> of <c>id</c>
+        /// and an <c>ORDER BY</c> of either. The answer is the same, a <c>NULL</c> or no rows; the plan is one a schema
+        /// changes (<c>TODO.md</c>, <em>A clause above a WHERE the declaration rules out reads nothing of its rows</em>).
+        /// Over <c>kind = 'A'</c> each is pushed with a schema too.
         /// </summary>
         [Theory]
+        [InlineData("SELECT UPPER(JSON_VALUE(c.\"DOC\", '$.body')) AS u FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}' AND JSON_VALUE(c.\"DOC\", '$.body') = 'abc'", "CosmosProject(u=[UPPER(")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.kind') AS k, COUNT(*) AS n FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}' GROUP BY JSON_VALUE(c.\"DOC\", '$.kind')", "CosmosAggregate")]
+        [InlineData("SELECT DISTINCT JSON_VALUE(c.\"DOC\", '$.kind') AS k FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}'", "CosmosAggregate")]
         [InlineData("SELECT MIN(JSON_VALUE(c.\"DOC\", '$.kind')) AS q FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}'", "CosmosAggregate")]
         [InlineData("SELECT MAX(c.\"id\") AS q FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}'", "CosmosAggregate")]
         [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.kind') AS k FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}' ORDER BY JSON_VALUE(c.\"DOC\", '$.kind')", "CosmosSort")]

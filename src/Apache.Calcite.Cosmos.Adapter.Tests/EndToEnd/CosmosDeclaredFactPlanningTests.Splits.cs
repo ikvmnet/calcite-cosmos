@@ -346,14 +346,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Two routings recorded as precision (<c>TODO.md</c>, <em>A number pins no partition unless the declaration leaves
-        /// the key one value</em>). The cast of the text to <c>DOUBLE</c> is read by cells that hold a listed fraction beside
-        /// the numbers near it, so <c>= 5</c> and <c>= 6</c> beside a listed 5.5 keep that cell and pin 5.5, sending a request
-        /// that finds nothing, where <c>RETURNING DOUBLE = 5</c> sends nothing. And where the declaration fixes the key to one
-        /// value, a required <c>const</c> or one-member <c>enum</c>, its equality is dropped from the text as implied and the
-        /// statement, with no <c>WHERE</c>, pins nothing and reads every partition: through the cast, and for a string key
-        /// compared as itself; <c>RETURNING DOUBLE = 5.5</c>, not dropped, pins 5.5, and so does the string not required.
-        /// Each routes as on <c>main</c>.
+        /// Two routings recorded as precision (<c>TODO.md</c>, <em>A number pins no partition unless the declaration
+        /// leaves the key one value</em>). A comparison through the cast of the text to <c>DOUBLE</c> keeps every number
+        /// within a whole unit of its literal (<c>NumberCast</c>'s window), so <c>= 5</c> and <c>= 6</c> beside a listed
+        /// 5.5, and <c>= 5.5</c> beside a listed 5, keep that value and pin it, sending a request that finds nothing,
+        /// where <c>RETURNING DOUBLE = 5</c> beside 5.5 sends nothing. And where the declaration fixes the key to one
+        /// value, a required <c>const</c> or one-member <c>enum</c>, an equality the coarse reading proves is dropped from
+        /// the text as implied and the statement, with no <c>WHERE</c>, pins nothing and reads every partition: through
+        /// the cast, and for a string key compared as itself. One it does not prove stays and pins:
+        /// <c>RETURNING DOUBLE = 5.5</c>, and over a key fixed to 5, <c>RETURNING INTEGER = 5</c>, the integer cast's
+        /// and the text's; so does the string not required. Each routes as on <c>main</c>.
         /// </summary>
         [Fact]
         public void ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo()
@@ -373,6 +375,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 near.Sql.Should().EndWith("WHERE (c.ref = @p0)");
 
                 Planned(string.Format(Returning, number), listed).SendsNothing.Should().BeTrue($"RETURNING DOUBLE = {number} keeps nothing");
+            }
+
+            var integers = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "enum": [5, 7] } } }""");
+            var beside = Planned(string.Format(Cast, "5.5"), integers);
+            beside.PartitionKeyValues.Should().Equal(new object?[] { 5L }, "the cast's window holds 5 beside 5.5");
+            beside.Sql.Should().EndWith("WHERE (c.ref = @p0)");
+
+            var five = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "const": 5 } } }""");
+            foreach (var kept in new[] { """JSON_VALUE(c."DOC", '$.ref' RETURNING INTEGER) = 5""", """CAST(JSON_VALUE(c."DOC", '$.ref') AS INTEGER) = 5""", """JSON_VALUE(c."DOC", '$.ref') = '5'""" })
+            {
+                var query = Planned($"""SELECT c."id" FROM items AS c WHERE {kept}""", five);
+                query.PartitionKeyValues.Should().Equal(new object?[] { 5L }, $"{kept} is not proved over a key fixed to 5, so it stays and pins");
+                query.Sql.Should().Contain("WHERE", kept);
             }
 
             foreach (var fixedTo in new[] { """{ "const": 5.5 }""", """{ "enum": [5.5] }""" })

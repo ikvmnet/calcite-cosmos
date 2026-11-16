@@ -177,12 +177,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A range over a path the schema lets hold a number or a string, a bound alone, a type naming both or nothing
         /// declared, is not ruled out: a string there is one the cast reads (<c>docs/14</c>, 14.2). Through
-        /// <c>CAST(… AS INTEGER)</c> it plans and is sent. Through <c>CAST(… AS DOUBLE)</c> this connection fails to plan it,
-        /// as recorded (<c>docs/23</c>; <c>TODO.md</c>, <em>Two weakenings over one path still share one raw value</em>): the
-        /// weaker form's bound, a <c>DECIMAL</c>, meets the comparison's <c>DOUBLE</c> in Calcite's simplifier. Over a path
-        /// declared a string no weaker form carries a bound, and the range plans, sending the path's presence, the cast
-        /// Calcite's; over one declared <c>"integer"</c> or <c>"number"</c> with the bound it plans and sends nothing. When
-        /// the bound is read in its comparison's type this changes.
+        /// <c>CAST(… AS INTEGER)</c> it plans and is sent. Through <c>CAST(… AS DOUBLE)</c> this connection fails to plan
+        /// it, as recorded (<c>docs/23</c>; <c>TODO.md</c>, <em>Two weakenings over one path still share one raw
+        /// value</em>): where the path may hold a number beside what the service cannot convert as Calcite does, the
+        /// weaker form sent holds the bound, a <c>DECIMAL</c>, which meets the comparison's <c>DOUBLE</c> in Calcite's
+        /// simplifier, as over a number or a boolean, or an <c>anyOf</c> of a string and an integer. Where no weaker form
+        /// holds a number it plans: over a path declared a string, sending the path's presence, the cast Calcite's; over
+        /// one declared <c>"integer"</c> or <c>"number"</c> with the bound, sending nothing; and over an <c>enum</c> of a
+        /// number and a string, sent whole. When the bound is read in its comparison's type this changes.
         /// </summary>
         [Fact]
         public void ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger()
@@ -204,6 +206,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             FluentActions.Invoking(() => Explain(ThroughDouble, declared: true, Both)).Should().Throw<Exception>()
                 .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "a type naming a number and a string leaves the bound's weaker form beside the DOUBLE");
+
+            foreach (var other in new[] { """{ "type": ["number", "boolean"] }""", """{ "anyOf": [{ "type": "string" }, { "type": "integer", "maximum": 100 }] }""" })
+                FluentActions.Invoking(() => Explain(ThroughDouble, declared: true, $$"""{ "type": "object", "properties": { "n": {{other}} } }""")).Should().Throw<Exception>()
+                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"{other} leaves the bound's weaker form beside the DOUBLE");
+
+            var listed = Explain(ThroughDouble, declared: true, """{ "type": "object", "properties": { "n": { "enum": [5, "600"] } } }""");
+            listed.Should().Contain("CosmosToClrCursorConverter", listed).And.NotContain("sends=[nothing]", "the listed \"600\" casts past 500: " + listed);
+            listed[..listed.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().NotContain("CAST(", "listed, the comparison is sent whole: " + listed);
 
             var text = Explain(ThroughDouble, declared: true, String);
             text.Should().Contain("CosmosToClrCursorConverter", text).And.NotContain("sends=[nothing]", "a string the cast reads may keep a document: " + text);
