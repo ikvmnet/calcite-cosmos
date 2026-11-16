@@ -192,14 +192,86 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "s9" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND ({kind} <> 'B' OR {cast} = 1)""",
                 "s10" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND ({kind} = 'A' OR JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 1)""",
                 "s11" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND CASE WHEN CAST({Json("c", "body")} AS BOOLEAN) AND {kind} = 'C' THEN FALSE ELSE TRUE END""",
+                "s12" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} IN ('A', 'B') AND ({kind} IN ('A', 'B') OR {cast} = 1) AND {JsonInteger("c", "m")} > 0""",
+                "s13" => $"""SELECT COUNT(*) AS q FROM {t} AS c WHERE {kind} IN ('A', 'B') AND ({kind} IN ('A', 'B') OR {cast} = 1) AND {JsonInteger("c", "m")} > 0""",
                 _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
         }
 
         /// <summary>
+        /// <c>kind</c> is <c>A</c> or <c>B</c> and <c>body</c> a string, both required; <c>w</c> three digits, <c>code</c> a
+        /// whole number unpadded, <c>flag</c> a boolean and <c>n</c> <c>"1"</c> or <c>"2"</c>.
+        /// </summary>
+        internal const string Lowered = """{ "type": "object", "required": ["kind", "body"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "w": { "type": "string", "pattern": "^[0-9]{3}$" }, "code": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" }, "flag": { "type": "boolean" }, "n": { "enum": ["1", "2"] } } }""";
+
+        /// <summary>
+        /// A <c>WHERE</c> whose cast of <c>body</c> Calcite evaluates, beside a conjunct sent that its lowering, its flattened
+        /// <c>CASE</c> or a predicate list holding it would read as deciding the part that holds the cast.
+        /// </summary>
+        internal static string EvaluatedBesideASent(string name, string t)
+        {
+            var cast = JsonInteger("c", "body");
+            var w = Json("c", "w");
+            var kind = Json("c", "kind");
+            var n = Json("c", "n");
+            const string Flag = """JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN)""";
+            var where = name switch
+            {
+                "lw1" => $"{JsonInteger("c", "w")} = 5 AND ({w} = '005' OR {cast} = 1)",
+                "lw2" => $"{JsonInteger("c", "w")} = 5 AND NOT ({w} = '005' OR {cast} = 1)",
+                "lw4" => $"{w} = '005' AND ({JsonInteger("c", "w")} = 5 OR {cast} = 1)",
+                "lw7" => $"{JsonInteger("c", "w")} = 5 AND NOT ({cast} = 1 AND {w} = '007')",
+                "l1" => $"{JsonInteger("c", "code")} = 5 AND ({cast} = 1 OR {Json("c", "code")} = '5')",
+                "cf3" => $"CASE WHEN {kind} = 'A' THEN {kind} <> 'B' ELSE FALSE END AND ({kind} <> 'B' OR {cast} = 1)",
+                "c1" => $"CASE WHEN {kind} = 'A' THEN {n} = '1' ELSE FALSE END AND ({n} = '1' OR {cast} = 1)",
+                "x3" => $"{Flag} AND (({Flag} IS NOT NULL OR {cast} = 1) IS NOT TRUE)",
+                "x4" => $"{Flag} AND ({Flag} IS NOT NULL OR {cast} = 1)",
+                "x14" => $"{Json("c", "body")} LIKE 'a%' AND (({Json("c", "body")} LIKE 'a%') IS NOT NULL OR {cast} = 1)",
+                "x17" => $"{Flag} AND ({cast} = 1 OR {Flag} IS NOT NULL) IS NOT TRUE",
+                _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
+            };
+
+            return $"""SELECT c."id" FROM {t} AS c WHERE {where}""";
+        }
+
+        /// <summary>
+        /// A part Calcite evaluates beside the part sent is evaluated: what the split keeps in Calcite is read off Calcite's
+        /// simplification of the condition as written, whole, which reads neither a lowering (<c>w = '005'</c> for
+        /// <c>CAST(w AS INTEGER) = 5</c>) nor a flattened <c>CASE</c>, nor a boolean sent as a predicate of its own null test.
+        /// Read through them, the cast went unevaluated, a residual a lowered sibling makes false was a converted filter's
+        /// <c>FALSE</c>, and x3 sent nothing, where Calcite fails on a <c>body</c> that is no number, declared or not, and on
+        /// <c>main</c> as Calcite does. lw2's half sent keeps nothing, declared, as recorded (<em>A residual beside a
+        /// contradicted split loses its raise</em>), and the cast is still Calcite's.
+        /// </summary>
+        [Theory]
+        [InlineData("lw1")]
+        [InlineData("lw2")]
+        [InlineData("lw4")]
+        [InlineData("lw7")]
+        [InlineData("l1")]
+        [InlineData("cf3")]
+        [InlineData("c1")]
+        [InlineData("x3")]
+        [InlineData("x4")]
+        [InlineData("x14")]
+        [InlineData("x17")]
+        public void APartCalciteEvaluatesBesideThePartSentIsEvaluated(string name)
+        {
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Lowered)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var text = PlanText(PlanToCosmos(EvaluatedBesideASent(name, "items"), container, out _));
+                text.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).Should().Contain(l => l.Contains("'$.body'") && l.Contains("CAST("), $"{name} {declared}: the cast is Calcite's: " + text);
+                text.Should().NotContain("condition=[false]", $"{name} {declared}: " + text);
+                if (name != "lw2")
+                    text.Should().NotContain(KeepsNothing, $"{name} {declared}: " + text);
+            }
+        }
+
+        /// <summary>
         /// A conjunct its siblings make go unread, as Calcite simplifies the whole condition, is not evaluated where one of
-        /// them is sent: the split simplifies what it keeps in Calcite under what it sends, and keeps nothing where that
-        /// leaves it true, so <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is the <c>kind = 'A'</c> sent.
+        /// them is sent: the split keeps in Calcite what that simplification leaves beside the conjuncts it sends, term by
+        /// term, and nothing where it leaves none, so <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is the
+        /// <c>kind = 'A'</c> sent, and s12, beside a cast of <c>m</c> the simplification keeps, keeps that cast alone.
         /// Kept as written, the cast was evaluated over the rows the half sent returns and failed on a <c>body</c> that is
         /// no number, where Calcite answers, declared or not. A <c>CASE</c> whose <c>ELSE</c> holds the cast stays, as
         /// Calcite's simplifier keeps it, and its <c>ELSE</c> is read only where <c>kind</c> is not <c>A</c>. Undeclared,
@@ -221,6 +293,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("s9", "")]
         [InlineData("s10", "")]
         [InlineData("s11", "")]
+        [InlineData("s12", "m")]
+        [InlineData("s13", "m")]
         public void ASiblingSentLeavesNothingInCalcite(string name, string kept)
         {
             foreach (var (declared, container) in new[] { ("declared", Declaring(Implied)), ("undeclared", Declaring("""{ "type": "object" }""")) })
@@ -235,6 +309,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 else
                     foreach (var line in calcite)
                         line.Should().NotContain("'$.body'", $"{name} {declared}: Calcite reads nothing of body: " + text);
+                if (kept == "m")
+                    calcite.Should().Contain(l => l.Contains("'$.m'"), $"{name} {declared}: the cast of m is Calcite's: " + text);
                 text.Should().Contain("CosmosToClrCursorConverter", text).And.NotContain(KeepsNothing, $"{name} {declared}: " + text);
             }
         }

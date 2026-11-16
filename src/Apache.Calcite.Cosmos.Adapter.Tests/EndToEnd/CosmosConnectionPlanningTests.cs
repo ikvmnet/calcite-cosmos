@@ -260,6 +260,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("s9", false)]
         [InlineData("s10", false)]
         [InlineData("s11", false)]
+        [InlineData("s12", false)]
+        [InlineData("s13", false)]
         public void ASiblingSentLeavesNothingInCalcite(string name, bool caseKept)
         {
             foreach (var declared in new[] { true, false })
@@ -270,6 +272,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     plan[..plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().Contain("CASE(", $"{name}: the CASE is Calcite's: " + plan);
                 else
                     plan.Should().NotContain("'$.body'", $"{name}: " + plan);
+            }
+        }
+
+        /// <summary>
+        /// Through this connection the filter above the half a split sends is reduced by Calcite's own rules with what that
+        /// half holds, read as a predicate pulled up from it, which Calcite in process, over no such half, never reads: beside
+        /// a boolean sent, a part kept that tests the boolean's nulls is read as decided. So x3 is an empty <c>Values</c>,
+        /// no rows and no request, and x4 keeps nothing of <c>body</c>, declared or not, where Calcite in process, through
+        /// this connection too, fails on a <c>body</c> that is no number. Recorded, older than "fail like Calcite" and the
+        /// same on <c>main</c> (<c>TODO.md</c>, <em>Through a connection, a filter above the half sent is reduced with what
+        /// that half holds</em>); in the host Chapter 21 describes the cast is Calcite's
+        /// (<see cref="CosmosDeclaredFactPlanningTests.APartCalciteEvaluatesBesideThePartSentIsEvaluated"/>).
+        /// </summary>
+        [Fact]
+        public void AFilterAboveTheHalfSentIsReducedWithWhatItHolds()
+        {
+            foreach (var declared in new[] { true, false })
+            {
+                var x3 = Explain(CosmosDeclaredFactPlanningTests.EvaluatedBesideASent("x3", "items"), declared, CosmosDeclaredFactPlanningTests.Lowered);
+                x3.Should().Contain("Values(tuples=[[]])", $"declared {declared}: " + x3).And.NotContain("CosmosToClrCursorConverter", x3);
+
+                var x4 = Explain(CosmosDeclaredFactPlanningTests.EvaluatedBesideASent("x4", "items"), declared, CosmosDeclaredFactPlanningTests.Lowered);
+                x4.Should().Contain("CosmosToClrCursorConverter", x4).And.NotContain("'$.body'", $"declared {declared}: " + x4);
             }
         }
 
