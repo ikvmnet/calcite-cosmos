@@ -75,7 +75,9 @@ concrete type is learned per row. In practice:
   one value there, a fraction among them, is pinned through `RETURNING DOUBLE` or a cast to `DOUBLE`:
   `= 5.5` where the schema lists `[5.5, 7.25]`. Without such a declaration Calcite compares the
   number by its double, so `= 5` also keeps a stored number written with more digits than a double
-  holds, and the adapter does not yet route on that.
+  holds, and the adapter does not yet route on that; and through a cast to `DOUBLE`, over a key the
+  schema gives no number type, such a comparison fails to plan where the host runs Calcite's default
+  rules, as the README's connection does (Chapter 23).
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the

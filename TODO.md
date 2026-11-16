@@ -1629,9 +1629,21 @@ the text comparison's guard a string, so `CAST(JSON_VALUE(DOC, '$.label') AS INT
 JSON_VALUE(DOC, '$.label') > 'bikes'` fails to plan through a connection with a `ClassCastException`,
 on `main` too, and so does the same bound beside `= '30'`. Measured through the host's prepare, offline
 and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for it
-wants a connection, as `CosmosConnectionFunctionTests` opens one. The fix is the same one, the bound
-reading the value in its own type — but the bound's literal is the type `f9c159e` chose so that the
-service reads it as itself, so it wants that measurement redone rather than a re-typing done blind.
+wants a connection, as `CosmosConnectionFunctionTests` opens one.
+
+One comparison alone does the same. `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500` over a path the
+declaration gives no number type, with no declaration or with `"maximum": 100` alone, is split: its weaker
+form, the numeric window's bound a `DECIMAL`, is merged back with the residual's `DOUBLE` literal, and
+`ReduceExpressionsRule`'s simplifier fails with `BigDecimal` against `Double` (`Double` against `BigDecimal`
+for `< 500`). So do `= 30` and `> 5`, and Chapter 7.3's key pin written as a cast with no declaration,
+`CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) = 5.5`; `main` fails alike. In the host Chapter 21
+describes each is sent with its weaker form, `CAST(… AS INTEGER) > 500` plans in both, and over a path
+declared `"integer"` or a numeric `enum` the comparison plans, Chapter 14.2's ranges sending nothing.
+Chapter 14.2 gives the `INTEGER` range as the one sent, and Chapter 23 records the failure.
+
+The fix is the same for both, the bound reading the value in its own type — but the bound's literal is
+the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
+rather than a re-typing done blind.
 
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
@@ -1815,8 +1827,9 @@ shape `PreservesOrder` was in before #106, and not recorded here either until no
 `Entails` — a separate table because exclusion is not entailment's negation, most pairs being neither,
 and `JsonFactSet.IsContradictory` asks it of every path. Where the container's declaration and the
 query's own conjuncts cannot both hold, `CosmosFactRewriter` answers the constant. Declare
-`status` as `enum: ["active","archived"]`, ask for `'deleted'`, and the plan carries
-`CosmosFilter(condition=[false])` rather than a comparison. A guarded declaration reaches the same
+`status` as `enum: ["active","archived"]`, ask for `'deleted'`, and the plan carried
+`CosmosFilter(condition=[false])` rather than a comparison, until the request was decided at the request
+(below). A guarded declaration reaches the same
 answer by the argument it always uses: over a document the guard does not cover the conjunct that
 proved it has already excluded the row. Since 2026-11-10 only where nothing in the `WHERE` can fail on a
 document the declaration admits, a request left unsent standing in for the service's answer (`DESIGN.md`, *The
@@ -2918,9 +2931,9 @@ across documents* and *A join of a container to itself* is the record.
   over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
   the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
   takes this route. Each answers no rows with no request where Calcite fails on `"abc"`, and undeclared answers no
-  rows after one request, the service finding nothing (round 7's probes, both emulators, both targets). A `COUNT` over
-  this route answers `0` where Calcite fails, the host's aggregate over no rows (ffcnt, and dm10 through a deletion).
-  A converted filter holds the condition as planned, never the `FALSE` the text sends, so `FILTER_MERGE` makes no
+  rows after one request, the service finding nothing, measured on both emulators under both targets' plans. A
+  `COUNT` over this route answers `0` where Calcite fails, the host's aggregate over no rows (ffcnt, and dm10
+  through a deletion). A converted filter holds the condition as planned, never the `FALSE` the text sends, so `FILTER_MERGE` makes no
   empty `Values` of it (*A side emptied over a filter beneath answers a join beside it*, done). A planning test under
   the host's rewrites, as `PlanToAsync`'s, would pin the route once the owner decides the split.
 - **A part the split keeps in process is simplified without the part it sends** — *medium, a failure where Calcite
@@ -2935,12 +2948,22 @@ across documents* and *A join of a container to itself* is the record.
   `GROUP BY` between) sends `kind IN ('A', 'B')`, deleted as guaranteed where `kind` is declared so, and the cast, evaluated in
   process beside `kind = 'C'` alone, fails on `"abc"`, where Calcite reads the three together as `FALSE` and answers no
   rows. Undeclared it fails alike, on `main` too; declared, `main` answered no rows, and since the request is decided
-  at the request it is plain pushdown's (round 10's checks, both targets;
-  `CosmosDeclaredFactPlanningTests.APartKeptInProcessIsSimplifiedWithoutThePartSent`). The connection the README opens
+  at the request it is plain pushdown's, measured on both emulators under both targets' plans
+  (`CosmosDeclaredFactPlanningTests.APartKeptInProcessIsSimplifiedWithoutThePartSent`). The connection the README opens
   merges the filters first and answers. The fix is the split handing the residual the pushed conjuncts as predicates it
   simplifies under (`RelOptPredicateList`), as the whole `WHERE` is simplified in Calcite, or keeping in the residual
   the pushed conjuncts beside it; either moves every split's plan, and is its own change. Chapter 14.2 and Chapter 23
   record it.
+- **A filter on a grouping's key stays above a grouping that computes a cast** — *medium, a failure where Calcite
+  answers no rows; plain pushdown's, with a declaration or without one, and with one new: `main` answered no rows.*
+  `SELECT x.k, x.m FROM (SELECT kind AS k, MAX(CAST(body AS INTEGER)) AS m FROM … AS c WHERE n = '1' GROUP BY kind) AS
+  x WHERE x.k = 'B'` (ga25), over a document of kind `A` with `n` 1 and a `body` that is no number: the plan keeps
+  `x.k = 'B'` above a `ClrCursorAggregate`, which computes the `MAX` for the group of `A` and fails, where Calcite in
+  process moves the filter beneath the grouping, computes the cast for `B` alone and answers no rows. The declared and
+  undeclared plans are the same; undeclared `main` fails alike. Which side of the grouping the filter takes is chosen
+  by cost, so the split's fix above would not close it. The fix is the plan keeping such a filter beneath a grouping
+  that computes something that may raise, the facts graph asked `never raises` of what the grouping computes over the
+  groups the filter drops; its own change. Chapter 14.2 and Chapter 23 record it.
 - **A raw ordering against a parameter is sent where Calcite fails** — *medium, a wrong answer.* The rendering graph
   owns no conjunct that holds a parameter (`RenderingFamily.Owns`, until 3B), so the translator plans `c."$.ref" < ?`.
   Its order check reads an unprinted `ANY` or `VARIANT` side as the stored value, exact (`CosmosServiceOrder`), and a
@@ -3032,14 +3055,14 @@ across documents* and *A join of a container to itself* is the record.
   into the outer side not sent, and fail on `"abc"` as the undeclared twin does
   (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedOuterSideFailsAsItsUndeclaredTwinDoes`). Calcite's own plan
   through that connection, with no rule of the adapter's, is a hash semi-join that reads the empty outer side first
-  and never opens the subquery (CALCITE-2909), and answers no rows, as `main` did over the reduce's empty outer side
-  (round 10's check, `d9.txt`). The lookup join is chosen by cost. So does an uncorrelated `EXISTS` whose subquery
-  keeps nothing, beside an outer condition that can fail (`… WHERE CAST(body AS INTEGER) = 1 AND EXISTS (SELECT 1 FROM
-  … WHERE kind = 'C')`, ex4): the host's nested loop reads the outer side first and fails on `"abc"`, declared and not,
-  where Calcite's own plan answers no rows, and where `main`'s empty relation had the host prune the join (fix 10's
-  connection probe, `cx-r7.txt`). The fix wants the lookup join offered for a semi-join only where nothing in the build
-  side it reads first may raise, asked of the facts graph, or the probe side read first where it sends nothing, and a
-  join beside a side that keeps nothing reading that side first; the owner's. An anti-join over such an outer side (j4, j5, j8) answers no rows as
+  and never opens the subquery (CALCITE-2909), and answers no rows, as `main` did over the reduce's empty outer side,
+  each run in process through that connection. The lookup join is chosen by cost. So does an uncorrelated `EXISTS`
+  whose subquery keeps nothing, beside an outer condition that can fail (`… WHERE CAST(body AS INTEGER) = 1 AND
+  EXISTS (SELECT 1 FROM … WHERE kind = 'C')`, ex4): the host's nested loop reads the outer side first and fails on `"abc"`, declared and not,
+  where Calcite's own plan answers no rows, and where `main`'s empty relation had the host prune the join, measured
+  through that connection in process. The fix wants the lookup join offered for a semi-join only where nothing in
+  the build side it reads first may raise, asked of the facts graph, or the probe side read first where it sends
+  nothing, and a join beside a side that keeps nothing reading that side first; the owner's. An anti-join over such an outer side (j4, j5, j8) answers no rows as
   Calcite does through that connection, both a left merge join reading the sorted outer side first, and in the host
   Chapter 21 describes j4 and j8 fail with a declaration and without: recorded before as a divergence, it is none.
 - ~~**A side emptied over a filter beneath answers a join beside it**~~ — *done, 2026-11-15: a converted filter holds
@@ -3131,29 +3154,37 @@ across documents* and *A join of a container to itself* is the record.
   The aggregate, sort, projection and lookup join rules read what the rows hold from the filter's node assuming every
   conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing (the contradiction's
   tables), so `SELECT MIN(kind) … WHERE kind = 'C'`, `MAX(c."id")` and an `ORDER BY` over it, each pushed without a
-  declaration, are computed in Calcite over a statement that sends nothing (round 10's ag4 and ag17;
-  `CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`). The split's `IsApplied` counts
-  a weakening applied in a contradicted scope, which drops it from the half pushed, the same on `main`. The answers are
-  the same; `EXPLAIN` shows a plan the declaration changed. The fix is those rules reading the rows under a licence that
-  does not assume a `WHERE` the declaration rules out, a licence in the facts graph; the owner's, and its own change.
-- **A filter on a lateral's column moved into its left side empties it** — *small, an empty answer where Calcite
-  fails; older, `main` the same.* In the host Chapter 21 describes, a filter over a lateral or a scalar sub-query that
-  rules out, on a column read from the container's side, every value that side keeps: a disjunction whose every branch
-  does (pc1, pc2, pc4, pc5: `(CAST(y.rb AS INTEGER) = 1 AND y.k = 'C') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'D')`
-  over `k IN ('A', 'B')`), from which Calcite's `FILTER_CORRELATE` derives `k IN ('C', 'D')`, or two filters on the
-  lateral's copy of `kind` (gb6). Calcite moves the condition into the correlate's left side beside what that side
-  keeps, whose request then keeps nothing, and the lateral's cast reads no row, where Calcite in process evaluates it on
-  every document and fails. pc1, pc2, pc4 and pc5 declared make no request, gb6 one, and undeclared each makes one
-  that finds nothing; `main` the same (`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown`). The fix is the
-  move asking `never raises` of what the lateral computes over the rows the left side would no longer read; its own
-  change.
+  declaration, are computed in Calcite over a statement that sends nothing
+  (`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`). The split's `IsApplied` counts
+  a weakening applied in a contradicted scope, which drops it from the half pushed, the same on `main`. The planner's row
+  estimate and cost read the same node: `CosmosRelMetadataQuery.getRowCount` and `CosmosFilter`'s estimate and cost ask
+  `CosmosPartitionKeyExtractor.Pinned` under `Kept`, which pins nothing where that node is contradictory, so a filter
+  pinning `id` and the partition key beside a conjunct the declaration rules out is costed at Calcite's default
+  selectivity with no partition's discount, where undeclared it is costed as one row in one partition; no plan was
+  found that this moves. The answers are the same; `EXPLAIN` shows a plan the declaration may change. The fix is those
+  rules, the row estimate and the cost reading the rows under a licence that does not assume a `WHERE` the declaration
+  rules out, a licence in the facts graph; the owner's, and its own change.
+- ~~**A filter on a lateral's column moved into its left side empties it**~~ — *done, 2026-11-16, with the split
+  above a correlate (below).* Was *an empty answer where Calcite fails; older, `main` the same.* In the host Chapter 21
+  describes, `(CAST(y.rb AS INTEGER) = 1 AND y.k = 'C') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'D')` over a lateral
+  whose left side keeps `k IN ('A', 'B')` (pc1, pc2, pc4, pc5) was split above the correlate, which counted as reaching
+  the service, and its weaker form `k IN ('C', 'D')` moved into the left side beside what that side keeps, whose
+  request then kept nothing, so the lateral's cast read no row where Calcite in process evaluates it on every document
+  and fails: declared with no request, undeclared after one that found nothing. The split no longer fires there, and
+  each fails as Calcite does, declared and not, measured on the emulator under both targets' plans
+  (`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown`). gb6, recorded beside them from a run in process, fails
+  as Calcite does against a service, before and since.
 - ~~**A split above a filter Calcite keeps pushes the service's form into Calcite**~~ — *done, 2026-11-16: the split
-  fires only on a logical filter over an input that can be a Cosmos statement (`CosmosFilterSplitRule.Reaches`).* Was
-  *a failure where Calcite answers; with a path nothing declares, older, `main` the same.* In a host that does not merge
-  filters, a text equality over a subquery's cast of the text to `INTEGER` (`… FROM (SELECT … WHERE CAST(body AS INTEGER)
-  = 1) AS x WHERE JSON_VALUE(x."DOC", '$.n') = '1'`, ff3 and its kin) was split above the cast, its weaker form in a
-  filter Calcite evaluates, and failed with "cannot translate call IS_NUMBER"
-  (`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`).
+  fires only on a logical filter over an input that can be a Cosmos statement (`CosmosFilterSplitRule.Reaches`): this
+  container's scan, a projection over one, a filter `CosmosFilterRule` converts over one, or a traversal
+  `CosmosUnnestRule` converts over one.* Was *a failure where Calcite answers; with a path nothing declares, older,
+  `main` the same.* In a host that does not merge filters, a text equality over a subquery's cast of the text to
+  `INTEGER` (`… FROM (SELECT … WHERE CAST(body AS INTEGER) = 1) AS x WHERE JSON_VALUE(x."DOC", '$.n') = '1'`, ff3 and
+  its kin) was split above the cast, its weaker form in a filter Calcite evaluates, and failed with "cannot translate
+  call IS_NUMBER" (`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). So did one over a lateral,
+  an `UNNEST`, a `LEFT JOIN LATERAL` or a scalar sub-query beside or over such a cast, while any member of the input
+  that was no filter counted as reaching: the correlate moved the half pushed into its left side, beside the cast
+  (`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`).
 - **An `ANY` column ordered against a parameter raises over every value** — *small, precision.* Its parameter key joins
   the column's answers beside every class. Narrowing the classes by the parameter's own type (`Parameter.Of(n, t)`,
   carried into the vocabulary's parameter atom) would keep the reductions where the parameter is typed.

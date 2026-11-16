@@ -62,8 +62,9 @@ fails*, below). Over a property declared `"integer"`, `RETURNING DOUBLE`, and `R
 integers within an `INTEGER`'s range, are sent even where the property is required (Chapter 23). Over
 a declared number, a cast to `DOUBLE` does not keep the request. Where the part the schema rules out
 stays in process, one request goes out, reading the documents Calcite reads. A pushed `COUNT` or
-`SUM` with no `GROUP BY` is sent, with `WHERE false`, since it answers one row over no document; the
-sum goes beside a count and reads `NULL` where the count is 0, as in Calcite. Where a part
+`SUM` with no `GROUP BY` is sent, its `WHERE` written `false` where one filter alone keeps nothing,
+since it answers one row over no document; the sum goes beside a count and reads `NULL` where the count
+is 0, as in Calcite. Where a part
 that can fail stays in process beside a part sent that keeps nothing, there is no request and no
 failure: the part kept reads only the rows the part sent returns, and there are none (Chapter 14.2's
 last case). Chapters 14.2 and 7.

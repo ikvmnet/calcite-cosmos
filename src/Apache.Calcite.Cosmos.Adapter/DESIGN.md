@@ -1236,7 +1236,7 @@ double, which every number in it shares, is a follow-up that needs a measurement
 (`TODO.md`). A cast of the key to text over the `VARIANT` column pins the stored string, which is all such a cast
 keeps, a number and a boolean casting to null there.
 
-**A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a node Calcite evaluates.**
+**A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a condition Calcite evaluates, though a clause above one that keeps nothing may be planned otherwise (below).**
 Nothing the declaration alone decides is in a node Calcite reads. A `CosmosFilter` holds the planning form of its
 condition (`CosmosFactRewriter.Planned`): the lowerings and the safe `CASE` flattening, each true on the rows the
 condition is. The rendering form adds the conjuncts the rest imply deleted, the arms never read written `FALSE`, and
@@ -1263,15 +1263,21 @@ that does not assume a `WHERE` the declaration rules out would make them the sam
 clause above a WHERE the declaration rules out reads nothing of its rows*).
 
 **The split fires only where the filter it splits off reaches the service.** A logical filter, over an input some
-equivalent form of which is no filter, or a filter `CosmosFilterRule` converts whole over such an input
+equivalent form of which is part of a statement already, or one a rule converts over an input that can be: this
+container's scan, a projection, a filter `CosmosFilterRule` converts whole, or a traversal `CosmosUnnestRule` converts
 (`CosmosFilterSplitRule.Reaches`). The filter rule converts a filter only over an input that converts, so a filter it
 declines leaves every filter above it in Calcite, and a filter Calcite implements copies as one: split in either, the
 half pushed was a filter Calcite evaluates, and a weakening in it the service's form written as a Rex, a Cosmos type
 test with no in-process body. A text equality over a subquery's cast of the text to `INTEGER`, in a host that does not
 merge the two filters, failed so with "cannot translate call IS_NUMBER" where Calcite answers: over a property declared
 a number since the split read the planning form, and over one nothing declares on `main` too
-(`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). Whether the filter rule converts is the
-question it asks of every filter, legality.
+(`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). So did one over a lateral, an `UNNEST` or a
+scalar sub-query beside or over such a cast while any member that was no filter counted as reaching: the correlate is
+no part of a statement, and Calcite's correlate rule moved the half pushed into its left side, beside the cast
+(`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). A run over a lateral whose left side keeps `kind IN ('A', 'B')`
+sent the left side the weaker form `kind IN ('C', 'D')` the same way, whose request then kept nothing, and answered no
+rows where Calcite fails on the lateral's cast (pc1, pc2, pc4, pc5); it now fails as Calcite does. Which rule converts
+a member is the question that rule asks of it, legality.
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -1284,8 +1290,10 @@ is one the service answers with no document. Where the service would answer no d
 opens no request, the ordered program's statements with it, and `CosmosLookup` answers a probe's every key absent
 while it reads the build side to its end. Calcite's operators above run as over the service's real, empty answer, so
 the answer is the one sending the request gives, whatever plan Calcite picked. An aggregate with no grouping
-(`FlatProjection` without a `GROUP BY`) is sent all the same, its `WHERE` the constant, since it answers one row over no
-document. Its `SUM` is pushed only as Calcite's reduction of it, a `$SUM0` beside a `COUNT(*)` with the `CASE` above in
+(`FlatProjection` without a `GROUP BY`) is sent all the same, since it answers one row over no document, its `WHERE`
+holding the constant where one filter alone keeps nothing and as the filters rendered it where only their conditions
+together do: each filter's text is rendered alone, and only `SendsNothing` joins them. Its `SUM` is pushed only as
+Calcite's reduction of it, a `$SUM0` beside a `COUNT(*)` with the `CASE` above in
 Calcite (`CosmosAggregate.CanImplement`): the service sums no document to 0, measured on both emulators, where SQL's
 `SUM` is `NULL`, so `SUM(c."_ts")` over a `WHERE` that matched nothing answered 0, declared or not, and an `AVG`
 reduced to it divided by zero (`CosmosDifferentialTests.ASumOverNoDocumentIsNull`); before the request was decided, the
@@ -1300,9 +1308,8 @@ form the service refuses. The empty relation hid the same.
 still does, with a declaration or without one; the declaration saves the request. Those cases are recorded, each the
 same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; a
 semi-join answered by a lookup join; a condition above a lookup join; a select list's cast computed above a sort and the
-filters over it (sf3w); a filter on a `DISTINCT`'s keys moved beneath it over a cast the `DISTINCT` computes (dk1); and a
-filter on a lateral's column that Calcite moves, or derives a condition from and moves, into the lateral's left side,
-which then keeps nothing (pc1, pc2, pc4, pc5, gb6). A deletion drops a conjunct from the request though it can fail
+filters over it (sf3w); and a filter on a `DISTINCT`'s keys moved beneath it over a cast the `DISTINCT` computes
+(dk1). A deletion drops a conjunct from the request though it can fail
 (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
 
 And the other way: where Calcite in process answers no rows and the query pushed down fails, it fails with a
@@ -1311,7 +1318,9 @@ side that keeps nothing is a lookup join that reads its subquery first, where Ca
 outer side first and never evaluates the subquery (sj2, j3, j6, through the connection the README opens), and an
 uncorrelated `EXISTS` whose subquery keeps nothing is a join that reads the side beside it first (ex4); and a part
 kept in process beside a part sent is simplified without it, where Calcite simplifies the two together to `FALSE`
-(dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes). Both are `TODO.md`'s. An anti-join over such an
+(dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes); and a filter on a grouping's key stays above a
+grouping that computes a cast for every group, where Calcite moves it beneath and computes the cast for the groups it
+keeps (ga25, declared and not, a choice by cost). Each is `TODO.md`'s. An anti-join over such an
 outer side answers no rows as Calcite does, both reading the sorted outer side first: no divergence.
 
 `CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown` pins the shapes the reading of Calcite's plan answered with
@@ -2712,11 +2721,14 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
-**Only a value typed `ANY`.** The cast over `JSON_VALUE` drops in a comparison, where the literal
-excludes every case that could differ; a projection has no literal, and measured, `JSON_VALUE` answers
-null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered column
-over it would carry text for a document the in-process plan carries nothing for, so it stays in
-process — the filters around it push regardless.
+**Only a value typed `ANY` or `VARIANT`** (`CosmosRexShapes.IsDocumentValueType`). The cast over `JSON_VALUE` drops
+in a comparison, where the literal excludes every case that could differ; a projection has no literal, and measured,
+`JSON_VALUE` answers null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered
+column over it would carry text for a document the in-process plan carries nothing for, so it stays in process — the
+filters around it push regardless. The `VARIANT` key column is admitted and is wrong: Calcite casts a number or a
+boolean there to null, where the pushed column carries its rendering, `30` or `true`, older than "fail like Calcite"
+and the same on `main` (`TODO.md`, *The facts graph reads a text cast of a raw value as its rendering*, whose column
+writer is the fix; Chapter 23 records it). Admitting the cast over an `ANY` value alone is the bridge.
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw
