@@ -174,6 +174,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        /// <summary>
+        /// A range over a path the schema gives no number type, a bound alone or nothing declared, is not ruled out: a string
+        /// there is one the cast reads (<c>docs/14</c>, 14.2). Through <c>CAST(… AS INTEGER)</c> it plans and is sent. Through
+        /// <c>CAST(… AS DOUBLE)</c> this connection fails to plan it, as recorded (<c>docs/23</c>; <c>TODO.md</c>, <em>Two
+        /// weakenings over one path still share one raw value</em>): the weaker form's bound, a <c>DECIMAL</c>, meets the
+        /// comparison's <c>DOUBLE</c> in Calcite's simplifier. Over a path declared <c>"integer"</c> the same range plans and
+        /// sends nothing. When the bound is read in its comparison's type this changes.
+        /// </summary>
+        [Fact]
+        public void ARangeOverAPathWithNoNumberTypeIsSentThroughACastToInteger()
+        {
+            const string Bound = """{ "type": "object", "properties": { "n": { "maximum": 100 } } }""";
+            const string Integer = """{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""";
+            const string ThroughInteger = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500""";
+            const string ThroughDouble = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500""";
+
+            foreach (var declared in new[] { true, false })
+            {
+                var plan = Explain(ThroughInteger, declared, Bound);
+                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("sends=[nothing]", "a string there is not ruled out: " + plan);
+
+                FluentActions.Invoking(() => Explain(ThroughDouble, declared, Bound)).Should().Throw<Exception>()
+                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "recorded: the simplifier meets the bound's DECIMAL with the DOUBLE");
+            }
+
+            Explain(ThroughDouble, declared: true, Integer).Should().Contain("CosmosToClrCursorConverter(sends=[nothing])", "an integer no greater than 100 keeps nothing");
+        }
+
     }
 
 }
