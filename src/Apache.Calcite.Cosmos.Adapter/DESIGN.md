@@ -1245,10 +1245,18 @@ the whole `FALSE` where the WHERE keeps nothing and raises nowhere, and goes onl
 the rule admitted it). A `TRUE` writes no `WHERE`. The split rule builds the half it pushes and the residual Calcite
 evaluates from the planning form, and `CosmosRowFacts` reads it.
 
+Why: Calcite reads a node's condition. `FILTER_MERGE` matches a filter of any convention, and merged the `FALSE` a
+`CosmosFilter` held with the filter beneath into an empty `Values`; the prune-empty rules read an empty `Values`, and a
+filter whose condition is `FALSE` has a maximum row count of 0; a filter above reads the condition as a pulled-up
+predicate. Each carried what the declaration said of the documents into what Calcite evaluated, and answered a join, a
+set operation or a stack of filters with no rows where Calcite fails. The reduce that answered a filter with an empty
+relation (`CosmosFilterReduceRule`, `CosmosNoRows`) went with it: which filters Calcite evaluates beneath a filter, and
+how, is the plan Calcite picks by cost, and a reading of it that each round found wrong does not settle.
+
 What a clause above reads of the rows is another matter. The rules for the clauses above a filter, the aggregate's,
 the sort's, the projection's and the lookup join's, read what the rows hold from the filter's node assuming every
-conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so a `MIN`, a `MAX` or an `ORDER BY` above it is computed in Calcite, over the empty answer, where without a
-declaration it is pushed; and the split counts a weakening applied in a scope that contradicts, which drops it from the
+conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so a `MIN`, a
+`MAX` or an `ORDER BY` above it is computed in Calcite, over the empty answer, where without a declaration it is pushed; and the split counts a weakening applied in a scope that contradicts, which drops it from the
 half pushed (`IsApplied`, the same on `main`). The answers are the same and the plans are not
 (`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`). Reading them under a licence
 that does not assume a `WHERE` the declaration rules out would make them the same; it is the owner's (`TODO.md`, *A
@@ -1264,14 +1272,6 @@ merge the two filters, failed so with "cannot translate call IS_NUMBER" where Ca
 a number since the split read the planning form, and over one nothing declares on `main` too
 (`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). Whether the filter rule converts is the
 question it asks of every filter, legality.
-
-Why: Calcite reads a node's condition. `FILTER_MERGE` matches a filter of any convention, and merged the `FALSE` a
-`CosmosFilter` held with the filter beneath into an empty `Values`; the prune-empty rules read an empty `Values`, and a
-filter whose condition is `FALSE` has a maximum row count of 0; a filter above reads the condition as a pulled-up
-predicate. Each carried what the declaration said of the documents into what Calcite evaluated, and answered a join, a
-set operation or a stack of filters with no rows where Calcite fails. The reduce that answered a filter with an empty
-relation (`CosmosFilterReduceRule`, `CosmosNoRows`) went with it: which filters Calcite evaluates beneath a filter, and
-how, is the plan Calcite picks by cost, and a reading of it that each round found wrong does not settle.
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
