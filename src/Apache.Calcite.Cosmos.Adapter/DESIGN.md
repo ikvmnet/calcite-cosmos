@@ -1312,8 +1312,9 @@ sent as predicates (`RelOptPredicateList`, unknown read as false), and reads it 
 simplifies to what those conjuncts do, which catches a disjunction the predicate list does not read; true, the filter is
 the admitted conjuncts alone. Where they say nothing of it, it stays as written, since Calcite's normal form of it is
 read anew by the next split and pushes again what is already sent. The weakenings are no predicates: each is the
-service's form written as a Rex, which Calcite's reading need not match. It reads nothing of the declaration and
-chooses no row, Calcite's own simplification of the condition it was given: a writer
+service's form written as a Rex, which Calcite's reading need not match. It reads the declaration only through the
+lowerings the planning form already holds (`TODO.md`, *A lowering removes a raise Calcite would make*) and chooses no
+row, Calcite's own simplification of the condition it was given: a writer
 (`CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite`, and its twin through the README's connection,
 which simplifies the whole `WHERE` before anything is pushed). A `CASE` holding a cast that may raise stays, as
 Calcite's simplifier keeps it, and its `ELSE` is read only where its condition is not true. Across two filters it does

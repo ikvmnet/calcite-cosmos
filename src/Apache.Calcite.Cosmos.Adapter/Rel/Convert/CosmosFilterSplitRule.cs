@@ -198,7 +198,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>kind = 'A'</c>. Split, the residual was simplified without the half sent, and the cast raised on a <c>body</c>
         /// that is no number where Calcite answers. So the residual is simplified with the conjuncts sent as predicates
         /// (<c>RelOptPredicateList</c>), unknown read as false, as a filter reads it, which is Calcite's own simplification
-        /// of the condition it was given and reads nothing of the declaration.
+        /// of the condition it was given, reading the declaration only through the lowerings the planning form holds.
         /// </para>
         /// <para>
         /// The admitted conjuncts alone, not the weakenings: a weakening is the service's form written as a Rex, which

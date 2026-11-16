@@ -3054,7 +3054,10 @@ across documents* and *A join of a container to itself* is the record.
   INTEGER) = 5` in a subquery under `JSON_VALUE(x."DOC", '$.k') <> 'Z' AND NOT (JSON_VALUE(x."DOC", '$.code') = '5')`
   and a third filter is lowered to `code = '5'`, which `FILTER_MERGE` puts beside the `NOT`, and Calcite's simplifier
   makes its own empty `Values`: no rows and no request, where Calcite fails on the stored `"99999999999"`; the host
-  Chapter 21 describes answers alike with `sends=[nothing]` (measured on both emulators under both targets). Asking
+  Chapter 21 describes answers alike with `sends=[nothing]` (measured on both emulators under both targets). The split
+  reads the admitted conjuncts it sends, lowered, as the predicates it simplifies its residual under
+  (`CosmosFilterSplitRule.Residual`), so a lowered conjunct may make a residual true, or false, where the conjunct as
+  written would not. Asking
   `never raises` of the comparison before lowering it covers both; bounding the form's length to the cast's range
   covers the second.
 - **A flattened `CASE` decides its arm's raise in C#** — *small, an answer where Calcite fails; left for a change of
