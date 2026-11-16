@@ -142,6 +142,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A run over a lateral or a scalar sub-query whose condition names kinds the left side does not keep: the split no
+        /// longer fires above the correlate, so the statement holds no form of that condition, declared or not. While it
+        /// did, the left side was sent the run's weaker form, <c>kind IN ('C', 'D')</c> for pc1 beside its own
+        /// <c>kind IN ('A', 'B')</c>, a request that kept nothing, undeclared after one request and declared with none.
+        /// </summary>
+        [Theory]
+        [InlineData("pc1", "C", "D")]
+        [InlineData("pc2", "B", "C")]
+        [InlineData("pc4", "C", "D")]
+        [InlineData("pc5", "B", "C")]
+        public void ARunOverACorrelateSendsNoFormOfItsCondition(string name, string first, string second)
+        {
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Tagged)), ("undeclared", TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/ref" }))) })
+            {
+                var plan = PlanToCosmos(Shape(name, "items"), container, out _, windows: true, subqueries: true);
+                var statement = PlanText(FindCosmos(plan));
+                statement.Should().NotContain($"'{first}'", $"{name} {declared}: the run is Calcite's, above the correlate: " + PlanText(plan))
+                    .And.NotContain($"'{second}'", $"{name} {declared}: the run is Calcite's, above the correlate: " + PlanText(plan));
+            }
+        }
+
+        /// <summary>
         /// An aggregate with no grouping answers one row over no document, the count's 0, so its statement is sent even
         /// where its <c>WHERE</c> keeps nothing: the text sent is the constant, which the service answers with that row.
         /// </summary>
@@ -223,6 +245,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var admitted = PlanText(PlanToCosmos(string.Format(sql, "A"), Declaring(Tagged), out _));
             admitted.Should().Contain(clause, "a WHERE the declaration admits: " + admitted);
+        }
+
+        /// <summary>
+        /// Only <c>kind</c> is declared, <c>A</c> or <c>B</c>: <c>body</c> may hold anything.
+        /// </summary>
+        internal const string KindOnly = """{ "type": "object", "properties": { "kind": { "enum": ["A", "B"] } } }""";
+
+        /// <summary>
+        /// A conjunct sent only beside what a sibling establishes: <c>UPPER(body) = 'ABC'</c> is admitted from the stratum
+        /// that assumes <c>body = 'abc'</c>, and admission ends at a stratum that keeps nothing. Beside a <c>kind</c> the
+        /// declaration rules out, the <c>UPPER</c> stays in Calcite over a statement that sends nothing; beside one it
+        /// admits, and with nothing declared, the <c>WHERE</c> is sent whole. The answer is the same, no rows; the plan is
+        /// one the declaration changes (<c>TODO.md</c>, <em>A clause above a WHERE the declaration rules out reads nothing
+        /// of its rows</em>).
+        /// </summary>
+        [Fact]
+        public void AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut()
+        {
+            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.kind') = '{0}' AND UPPER(JSON_VALUE(c."DOC", '$.body')) = 'ABC' AND JSON_VALUE(c."DOC", '$.body') = 'abc'""";
+
+            var ruledOut = PlanToCosmos(string.Format(Sql, "C"), Declaring(KindOnly), out _);
+            PlanText(ruledOut).Should().Contain("ClrCursorFilter(condition=[=(UPPER(", "the UPPER is Calcite's: " + PlanText(ruledOut))
+                .And.Contain(KeepsNothing, PlanText(ruledOut));
+            PlanText(FindCosmos(ruledOut)).Should().NotContain("UPPER(", PlanText(ruledOut));
+
+            foreach (var (label, kind, container) in new[] { ("undeclared", "C", Declaring("""{ "type": "object" }""")), ("admitted", "A", Declaring(KindOnly)), ("admitted, undeclared", "A", Declaring("""{ "type": "object" }""")) })
+            {
+                var plan = PlanToCosmos(string.Format(Sql, kind), container, out _);
+                PlanText(plan).Should().NotContain("ClrCursorFilter", $"{label}: pushed whole: " + PlanText(plan))
+                    .And.NotContain(KeepsNothing, $"{label}: " + PlanText(plan));
+                PlanText(FindCosmos(plan)).Should().Contain("UPPER(", $"{label}: " + PlanText(plan));
+            }
         }
 
         /// <summary>

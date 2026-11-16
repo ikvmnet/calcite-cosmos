@@ -175,18 +175,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A range over a path the schema gives no number type, a bound alone or nothing declared, is not ruled out: a string
-        /// there is one the cast reads (<c>docs/14</c>, 14.2). Through <c>CAST(… AS INTEGER)</c> it plans and is sent. Through
-        /// <c>CAST(… AS DOUBLE)</c> this connection fails to plan it, as recorded (<c>docs/23</c>; <c>TODO.md</c>, <em>Two
-        /// weakenings over one path still share one raw value</em>): the weaker form's bound, a <c>DECIMAL</c>, meets the
-        /// comparison's <c>DOUBLE</c> in Calcite's simplifier. Over a path declared <c>"integer"</c> the same range plans and
-        /// sends nothing. When the bound is read in its comparison's type this changes.
+        /// A range over a path the schema lets hold a number or a string, a bound alone, a type naming both or nothing
+        /// declared, is not ruled out: a string there is one the cast reads (<c>docs/14</c>, 14.2). Through
+        /// <c>CAST(… AS INTEGER)</c> it plans and is sent. Through <c>CAST(… AS DOUBLE)</c> this connection fails to plan it,
+        /// as recorded (<c>docs/23</c>; <c>TODO.md</c>, <em>Two weakenings over one path still share one raw value</em>): the
+        /// weaker form's bound, a <c>DECIMAL</c>, meets the comparison's <c>DOUBLE</c> in Calcite's simplifier. Over a path
+        /// declared a string no weaker form carries a bound, and the range plans, sending the path's presence, the cast
+        /// Calcite's; over one declared <c>"integer"</c> or <c>"number"</c> with the bound it plans and sends nothing. When
+        /// the bound is read in its comparison's type this changes.
         /// </summary>
         [Fact]
-        public void ARangeOverAPathWithNoNumberTypeIsSentThroughACastToInteger()
+        public void ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger()
         {
             const string Bound = """{ "type": "object", "properties": { "n": { "maximum": 100 } } }""";
-            const string Integer = """{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""";
+            const string Both = """{ "type": "object", "properties": { "n": { "type": ["string", "integer"], "maximum": 100 } } }""";
+            const string String = """{ "type": "object", "properties": { "n": { "type": "string" } } }""";
             const string ThroughInteger = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500""";
             const string ThroughDouble = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500""";
 
@@ -199,7 +202,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "recorded: the simplifier meets the bound's DECIMAL with the DOUBLE");
             }
 
-            Explain(ThroughDouble, declared: true, Integer).Should().Contain("CosmosToClrCursorConverter(sends=[nothing])", "an integer no greater than 100 keeps nothing");
+            FluentActions.Invoking(() => Explain(ThroughDouble, declared: true, Both)).Should().Throw<Exception>()
+                .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "a type naming a number and a string leaves the bound's weaker form beside the DOUBLE");
+
+            var text = Explain(ThroughDouble, declared: true, String);
+            text.Should().Contain("CosmosToClrCursorConverter", text).And.NotContain("sends=[nothing]", "a string the cast reads may keep a document: " + text);
+            text[..text.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().Contain("CAST(", "the cast is Calcite's, over the path's presence: " + text);
+
+            foreach (var type in new[] { "integer", "number" })
+                Explain(ThroughDouble, declared: true, $$"""{ "type": "object", "properties": { "n": { "type": "{{type}}", "maximum": 100 } } }""")
+                    .Should().Contain("CosmosToClrCursorConverter(sends=[nothing])", $"a {type} no greater than 100 keeps nothing");
+        }
+
+        /// <summary>
+        /// <see cref="CosmosDeclaredFactPlanningTests.AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut"/>
+        /// through this connection: <c>UPPER(body) = 'ABC'</c>, sent only beside <c>body = 'abc'</c>, stays in Calcite over a
+        /// statement that sends nothing where the declaration rules out its <c>kind</c>, and is sent whole beside a
+        /// <c>kind</c> it admits and with nothing declared.
+        /// </summary>
+        [Fact]
+        public void AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut()
+        {
+            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.kind') = '{0}' AND UPPER(JSON_VALUE(c."DOC", '$.body')) = 'ABC' AND JSON_VALUE(c."DOC", '$.body') = 'abc'""";
+            const string Converter = "CosmosToClrCursorConverter";
+
+            var ruledOut = Explain(string.Format(Sql, "C"), declared: true, CosmosDeclaredFactPlanningTests.KindOnly);
+            ruledOut.Should().Contain(Converter + "(sends=[nothing])", ruledOut);
+            ruledOut[..ruledOut.IndexOf(Converter, StringComparison.Ordinal)].Should().Contain("UPPER(", "the UPPER is Calcite's: " + ruledOut);
+            ruledOut[ruledOut.IndexOf(Converter, StringComparison.Ordinal)..].Should().NotContain("UPPER(", ruledOut);
+
+            foreach (var (label, kind, declared) in new[] { ("undeclared", "C", false), ("admitted", "A", true), ("admitted, undeclared", "A", false) })
+            {
+                var plan = Explain(string.Format(Sql, kind), declared, CosmosDeclaredFactPlanningTests.KindOnly);
+                plan.Should().StartWith(Converter, $"{label}: pushed whole: " + plan).And.NotContain("sends=[nothing]", $"{label}: " + plan);
+                plan.Should().Contain("UPPER(", $"{label}: " + plan);
+            }
         }
 
     }

@@ -1,5 +1,7 @@
 using System.Linq;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
+
 using FluentAssertions;
 using Xunit;
 
@@ -298,14 +300,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A number pins the key only where the declaration leaves it one value whose double is the literal's
-        /// (<c>docs/07</c>, 7.3). A key declared an integer, required or not, is pinned through <c>RETURNING INTEGER</c>, or
+        /// A number pins the key only where the declaration leaves it one value the comparison may keep (<c>docs/07</c>,
+        /// 7.3). A key declared an integer, required or not, is pinned through <c>RETURNING INTEGER</c>, or
         /// <c>RETURNING BIGINT</c> past an <c>INTEGER</c>'s range; <c>RETURNING BIGINT</c> over a stored 5 and
         /// <c>RETURNING DOUBLE</c> pin it too, answering where Calcite fails (<c>docs/23</c>). A key an <c>enum</c> or a
-        /// <c>const</c> narrows to fractions is pinned through <c>RETURNING DOUBLE</c> or a cast of the text to
-        /// <c>DOUBLE</c>, sent as a double, and Calcite answers there. Undeclared, Calcite compares the number by its
-        /// double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal to no stored integer, a
-        /// <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or not.
+        /// <c>const</c> narrows to fractions, not required, is pinned through <c>RETURNING DOUBLE</c> or a cast of the text to
+        /// <c>DOUBLE</c> equal to the fraction, sent as a double, and Calcite answers there; what the cast pins beside a
+        /// number it rules out, and where the key is required, is
+        /// <see cref="ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo"/>'s. Undeclared,
+        /// Calcite compares the number by its double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal
+        /// to no stored integer, a <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or
+        /// not.
         /// </summary>
         [Fact]
         public void ANumberPinsTheKeyOnlyWhereTheDeclarationLeavesItOneValue()
@@ -338,6 +343,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     query.Sql.Should().EndWith("WHERE (c.ref = @p0)", PlanText(plan));
                 }
             }
+        }
+
+        /// <summary>
+        /// Two routings recorded as precision (<c>TODO.md</c>, <em>A number pins no partition unless the declaration leaves
+        /// the key one value</em>). The cast of the text to <c>DOUBLE</c> is read by cells that hold a listed fraction beside
+        /// the numbers near it, so <c>= 5</c> and <c>= 6</c> beside a listed 5.5 keep that cell and pin 5.5, sending a request
+        /// that finds nothing, where <c>RETURNING DOUBLE = 5</c> sends nothing. And where the declaration fixes the key to one
+        /// value, a required <c>const</c> or one-member <c>enum</c>, its equality is dropped from the text as implied and the
+        /// statement, with no <c>WHERE</c>, pins nothing and reads every partition: through the cast, and for a string key
+        /// compared as itself; <c>RETURNING DOUBLE = 5.5</c>, not dropped, pins 5.5, and so does the string not required.
+        /// Each routes as on <c>main</c>.
+        /// </summary>
+        [Fact]
+        public void ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo()
+        {
+            const string Cast = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.ref') AS DOUBLE) = {0}""";
+            const string Returning = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING DOUBLE) = {0}""";
+            const string Text = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref') = 'bikes'""";
+
+            CosmosQuery Planned(string sql, CosmosContainerMetadata container) => Query(FindCosmos(PlanToCosmos(sql, container, out _)), container);
+
+            var listed = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "enum": [5.5, 7.25] } } }""");
+            foreach (var number in new[] { "5", "6" })
+            {
+                var near = Planned(string.Format(Cast, number), listed);
+                near.PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"the cast's cell holds 5.5 beside {number}");
+                near.SendsNothing.Should().BeFalse($"= {number}");
+                near.Sql.Should().EndWith("WHERE (c.ref = @p0)");
+
+                Planned(string.Format(Returning, number), listed).SendsNothing.Should().BeTrue($"RETURNING DOUBLE = {number} keeps nothing");
+            }
+
+            foreach (var fixedTo in new[] { """{ "const": 5.5 }""", """{ "enum": [5.5] }""" })
+            {
+                var container = Declaring($$"""{ "type": "object", "required": ["ref"], "properties": { "ref": {{fixedTo}} } }""");
+                var implied = Planned(string.Format(Cast, "5.5"), container);
+                implied.PartitionKeyValues.Should().BeNull($"the equality is implied by {fixedTo}, and dropped");
+                implied.Sql.Should().NotContain("WHERE", fixedTo);
+
+                Planned(string.Format(Returning, "5.5"), container).PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"RETURNING DOUBLE over {fixedTo}");
+            }
+
+            var required = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "const": "bikes" } } }""");
+            Planned(Text, required).PartitionKeyValues.Should().BeNull("the equality is implied, and dropped");
+            Planned(Text, required).Sql.Should().NotContain("WHERE");
+
+            var optional = Declaring("""{ "type": "object", "properties": { "ref": { "const": "bikes" } } }""");
+            Planned(Text, optional).PartitionKeyValues.Should().Equal("bikes");
         }
 
     }
