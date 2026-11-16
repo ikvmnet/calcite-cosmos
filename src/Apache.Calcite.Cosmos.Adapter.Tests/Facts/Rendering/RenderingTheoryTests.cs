@@ -386,7 +386,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(204, "the raw columns' nine rules moved into the readings vocabulary, and its two that give a comparison with a parameter its column's answer");
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(204, "the raw columns' nine rules moved into the readings vocabulary, its two that give a comparison with a parameter its column's answer, and the two that give a raw column's reading its rows, which the rendering graph runs as the facts graph does");
         }
 
         /// <summary>

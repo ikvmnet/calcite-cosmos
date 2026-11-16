@@ -49,13 +49,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// An integer parse over integers its type holds is the empty relation where it keeps none of them: the service
+        /// An integer parse over integers its type holds is pushed and sends nothing where it keeps none of them: the service
         /// returns each as its digits however it was written, <c>30.0</c> as <c>30</c>, which <c>RETURNING INTEGER</c> and
         /// the integer cast of the text both read (<c>Service.IntegralNumbersReadBackAsHeld</c>). Where the declaration
         /// admits an integer an <c>INTEGER</c> does not hold, the cast fails on it, and the filter is sent.
         /// </summary>
         [Fact]
-        public void AnIntegerParseOverIntegersItsTypeHoldsIsReduced()
+        public void AnIntegerParseOverIntegersItsTypeHoldsSendsNothing()
         {
             foreach (var sql in new[]
             {
@@ -77,8 +77,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A number written with a point past 2^53 is held by the emulator as its double, and returned as that double's
         /// digits, <c>9007199254740993.0</c> as <c>9007199254740992</c>, where Azure returns <c>9007199254740993</c>
         /// (<c>Service.IntegralNumbersReadBackAsHeld</c>): compared with 9007199254740992, by <c>RETURNING DECIMAL</c>, by
-        /// <c>RETURNING BIGINT</c> or through the cast of the text to <c>BIGINT</c>, it may be equal, and the filter is never
-        /// the empty relation.
+        /// <c>RETURNING BIGINT</c> or through the cast of the text to <c>BIGINT</c>, it may be equal, and the statement is
+        /// always sent.
         /// </summary>
         [Fact]
         public void ANumberTheEmulatorHoldsAsItsDoubleIsNeverEmpty()

@@ -180,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         public override RelWriter explainTerms(RelWriter pw)
         {
             return base.explainTerms(pw)
-                .itemIf("probes", "nothing", pw.getDetailLevel() == org.apache.calcite.sql.SqlExplainLevel.EXPPLAN_ATTRIBUTES && Convert.CosmosConverters.SendsNothing(getRight(), getCluster().getRexBuilder()));
+                .itemIf("probes", "nothing", Convert.CosmosConverters.ExplainsRequests(pw) && Convert.CosmosConverters.SendsNothing(getRight(), getCluster().getRexBuilder()));
         }
 
         /// <inheritdoc />

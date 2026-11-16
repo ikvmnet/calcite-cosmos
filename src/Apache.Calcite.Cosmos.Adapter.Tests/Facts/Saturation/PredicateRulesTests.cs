@@ -166,6 +166,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Reduced(kindA, opaque).Should().Be((false, false), "no rule says an opaque term never raises");
         }
 
+        /// <summary>
+        /// A <c>CASE</c> that takes another truth value than its THEN has its condition not TRUE, which a two-valued condition
+        /// makes FALSE. <c>(kind = 'b') IS NULL</c>, written as Calcite reads a truth test, a <c>CASE</c> on the comparison
+        /// and on its negation, is so contradictory in a gated node where <c>kind</c> is always there and never <c>b</c>, the
+        /// text comparison never UNKNOWN; and not where <c>kind</c> may be absent, the accessor reading null and the
+        /// comparison UNKNOWN, which makes the test TRUE.
+        /// </summary>
+        [Fact]
+        public void ATruthTestIsReadByItsConditionOnlyWhereThatIsTwoValued()
+        {
+            var comparison = Eq(Text(Kind), "b");
+            var isNull = new SqlPredicate.Case(comparison, new SqlPredicate.Constant(false),
+                new SqlPredicate.Case(Not(comparison), new SqlPredicate.Constant(false), new SqlPredicate.Constant(true)));
+
+            Reduced(Theory(Outright(Kind, Present), Outright(Kind, Enum("a"))), isNull).Contradictory
+                .Should().BeTrue("the comparison is never UNKNOWN where kind is always there");
+            Reduced(Theory(Outright(Kind, Enum("a"))), isNull)
+                .Should().Be((false, true), "an absent kind reads null, the comparison is UNKNOWN there and the test TRUE, and nothing raises");
+        }
+
         // What a predicate that holds establishes.
 
         [Fact]

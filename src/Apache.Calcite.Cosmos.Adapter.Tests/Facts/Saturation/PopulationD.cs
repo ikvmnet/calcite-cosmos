@@ -220,7 +220,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             check.Scope($"the arm never read in conjunct {arm} under {condition}", scope, neverRead, underArm, siblings);
 
-            // What the empty relation and an arm's FALSE stand in for: Calcite keeps no row there and fails on none, so
+            // What a request left out and an arm's FALSE stand in for: Calcite keeps no row there and fails on none, so
             // on every document drawn nothing in the WHERE raises or fails to compile, the WHERE is not TRUE, and the arm's
             // condition is not TRUE where what its question assumes is.
             void FailsOnNone(string name)

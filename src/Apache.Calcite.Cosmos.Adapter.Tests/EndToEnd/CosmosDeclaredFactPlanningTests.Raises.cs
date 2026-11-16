@@ -48,7 +48,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A presence test over the text cast to <c>VARCHAR</c> raises on every document (<c>Calcite.TypeTestsAreTheirBodies</c>),
         /// so its negation over a required string, which keeps only the documents without the path, keeps none and answers
         /// none: Calcite fails. It stays in Calcite, the path required or not. The same test of the text itself raises
-        /// nowhere, and over a required string is the empty relation.
+        /// nowhere, and over a required string is pushed and sends nothing.
         /// </summary>
         [Fact]
         public void APresenceTestOverATextCastToVarcharFailsAsCalciteDoes()
@@ -76,9 +76,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A filter written over a filter whose cast of the text <c>body</c> to <c>INTEGER</c> may raise: Calcite evaluates
         /// the one beneath on every document and fails on a string that is no number, whatever the one above keeps. The one
-        /// above is contradicted, but its reduce is asked of every filter beneath it too, so neither is reduced, a
-        /// <c>COUNT</c> over them neither, and the cast stays in Calcite. Where the one beneath raises nowhere the one above
-        /// is still the empty relation.
+        /// above is contradicted, but the cast stays in Calcite beneath it, so the request reads every document, a
+        /// <c>COUNT</c> over them too, and Calcite fails as it does. Where the one beneath raises nowhere both are one
+        /// <c>WHERE</c>, which is pushed and sends nothing.
         /// </summary>
         [Fact]
         public void AFilterOverAFilterThatMayRaiseIsNotReduced()

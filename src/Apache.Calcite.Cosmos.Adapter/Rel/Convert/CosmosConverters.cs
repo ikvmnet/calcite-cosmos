@@ -132,6 +132,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
+        /// Determines whether an explained plan says which statements send nothing: at every level a person reads, and never
+        /// in the digest the planner tells two expressions apart by, which would make a node that sends nothing another
+        /// relation.
+        /// </summary>
+        /// <param name="pw">The writer.</param>
+        /// <returns><c>true</c> where the plan is explained to be read.</returns>
+        public static bool ExplainsRequests(RelWriter pw) =>
+            pw.getDetailLevel() != org.apache.calcite.sql.SqlExplainLevel.DIGEST_ATTRIBUTES && pw.getDetailLevel() != org.apache.calcite.sql.SqlExplainLevel.NO_ATTRIBUTES;
+
+        /// <summary>
         /// Renders the statement a lookup join runs against the container, restricted to the keys a
         /// batch will carry.
         /// </summary>

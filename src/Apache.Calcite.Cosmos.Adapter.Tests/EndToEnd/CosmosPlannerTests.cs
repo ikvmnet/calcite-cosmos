@@ -3631,8 +3631,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
         /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
-        /// required, the conjunction keeps no row, but the test raises on every document, so the filter is not reduced to
-        /// the empty relation and fails as Calcite's does
+        /// required, the conjunction keeps no row, but the test raises on every document, so the request is not left out
+        /// and the statement fails as Calcite's does
         /// (<c>CosmosDeclaredFactPlanningTests.APresenceTestOverATextCastToVarcharFailsAsCalciteDoes</c>).
         /// </para>
         /// </remarks>

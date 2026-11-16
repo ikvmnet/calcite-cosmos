@@ -127,9 +127,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// no number. The plan holds the <c>CASE</c> as written, so the simplifier finds no <c>NULL</c> to carry into the
         /// comparison and no empty relation is planned: the request is sent and the cast kept in process, the text answering
         /// both conditions as parameters <c>FALSE</c>; so with <c>ELSE NULL</c>, and a <c>COUNT</c> over it. Where the cast and
-        /// a one-armed <c>CASE</c> meet in one strict comparison the plan is still the empty relation with no request: the
-        /// filter lifts the comparison under the <c>CASE</c>'s guard and the split reduces that guard, as it does where the
-        /// <c>WHERE</c> is written so (<c>TODO.md</c>, <em>A strict comparison's other operands move under a CASE's
+        /// a one-armed <c>CASE</c> meet in one strict comparison the request is still left out: the filter lifts the
+        /// comparison under the <c>CASE</c>'s guard and the split pushes that guard, which sends nothing, as it does where
+        /// the <c>WHERE</c> is written so (<c>TODO.md</c>, <em>A strict comparison's other operands move under a CASE's
         /// guard</em>); the cast stays in the plan, over no rows.
         /// </summary>
         [Fact]
@@ -165,7 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             })
             {
                 var plan = PlanToCosmos(sql, container, out _);
-                PlanText(plan).Should().Contain(KeepsNothing, "the lift's guard is reduced: " + PlanText(plan));
+                PlanText(plan).Should().Contain(KeepsNothing, "the lift's guard sends nothing: " + PlanText(plan));
                 PlanText(plan).Should().Contain("ClrCursorFilter(condition=[CASE(=(JSON_VALUE($0, '$.kind'), 'C')").And.Contain("CAST(JSON_VALUE($0, '$.body')):INTEGER",
                     "what is lifted holds the cast, over no rows: " + PlanText(plan));
             }

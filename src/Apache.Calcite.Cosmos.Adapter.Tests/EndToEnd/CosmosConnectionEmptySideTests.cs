@@ -42,7 +42,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// One semi-join is an exception. One over a subquery whose request is left unsent is planned as a join the adapter
     /// drives by the subquery's keys, with the cast above it, as one whose subquery merely matches nothing is: the lookup
     /// join's, not the declaration's. One whose outer side sends nothing is planned as its undeclared twin, the
-    /// subquery read first, and fails as Calcite does.
+    /// subquery read first, and fails as the twin does; Calcite's own plan through this connection, a hash semi-join
+    /// reading the empty outer side first, answers no rows (<c>docs/23</c>).
     /// </para>
     /// </remarks>
     public class CosmosConnectionEmptySideTests : IClassFixture<CosmosConnectionEmptySideTests.Fixture>
@@ -313,26 +314,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A semi-join or correlated <c>EXISTS</c> whose outer side the declaration empties is planned as its undeclared
         /// twin is: a join the adapter drives by the subquery's keys, the subquery read first, its probes into the outer
-        /// side not sent. The subquery casts <c>body</c>, in its condition or its select list, and fails as Calcite fails.
-        /// Where the reduce put an empty relation in the outer side's place, the host's semi-join read that first and,
-        /// finding no rows, never opened the subquery, and answered no rows.
+        /// side not sent. The subquery casts <c>body</c>, in its condition or its select list, and fails as the twin fails.
+        /// Calcite's own plan through this connection, with no rule of the adapter's, is a hash semi-join that reads the
+        /// empty outer side first, never opens the subquery and answers no rows, as the host's semi-join did over the empty
+        /// relation the reduce put in the outer side's place: pushdown reads the subquery first, with a schema or without
+        /// (<c>docs/23</c>).
         /// </summary>
         [Theory]
         [InlineData("sj2")]
         [InlineData("j3")]
         [InlineData("j6")]
-        public async Task ASemiJoinOverAnEmptiedOuterSideFailsAsCalciteDoes(string name)
+        public async Task ASemiJoinOverAnEmptiedOuterSideFailsAsItsUndeclaredTwinDoes(string name)
         {
             RequireService();
 
             await using var connection = await OpenAsync();
 
             var plain = await Run(connection, Statement(name, "\"PLAIN\".\"sides\""));
-            plain.Raised.Should().NotBeNull("the control reads the subquery and casts \"abc\" as Calcite does\n" + plain.Plan);
+            plain.Raised.Should().NotBeNull("the control reads the subquery first and casts \"abc\"\n" + plain.Plan);
 
             var declared = await Run(connection, Statement(name, "\"COSMOS\".\"sides\""));
             declared.Plan.Should().ContainAny(new[] { "sends=[nothing]", "probes=[nothing]" }, "the declaration empties the outer side");
-            declared.Raised.Should().NotBeNull("the subquery is read, and fails as Calcite fails\n" + declared.Plan + "\nundeclared:\n" + plain.Plan);
+            declared.Raised.Should().NotBeNull("the subquery is read first, and fails as the twin fails\n" + declared.Plan + "\nundeclared:\n" + plain.Plan);
             Innermost(declared.Raised!).Should().Be(Innermost(plain.Raised!));
         }
 

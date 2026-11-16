@@ -128,6 +128,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// Wherever an atom says Calcite answers no UNKNOWN on a document holding a value of a class
+        /// (<see cref="PredicateAtom.UnknownOver"/> false), which the facts graph's <c>two valued</c> rests on, and raises
+        /// nowhere there, the evaluator answers no UNKNOWN on any value of the class, through any reader the reading stands
+        /// for, in any world. Where the atom may raise, a node that reads <c>two valued</c> assumes nothing, since its gate
+        /// asks that the WHERE raise nowhere, and the evaluator may answer UNKNOWN there: a raw ordering across types it
+        /// answers by a coin.
+        /// </summary>
+        [Fact]
+        public void EveryUnknownTheEvaluatorFindsIsOneTheAtomMayAnswer()
+        {
+            var missed = new List<string>();
+            var (atoms, unknown, two, asked) = (0, 0, 0, 0);
+            foreach (var atom in Atoms())
+            {
+                atoms++;
+                var predicate = Predicate(atom);
+                foreach (var (name, values) in Classes)
+                {
+                    if (atom.UnknownOver(values, FactsReadings.Columns, FactsReadings.Rows) || atom.RaisesOver(values, FactsReadings.Columns, FactsReadings.Rows))
+                    {
+                        unknown++;
+                        continue;
+                    }
+
+                    two++;
+                    foreach (var value in Pool.Where(v => PopulationD.Admits(values, v)))
+                        foreach (var returned in Documents.Returned(value))
+                        foreach (var (typed, raw) in Modes(atom))
+                            foreach (var seed in Worlds)
+                            {
+                                asked++;
+                                var world = new World(seed);
+                                if (IrEval.Truth(predicate, Document(returned), world, typed, raw) == Truths.Unknown)
+                                    missed.Add($"{atom} is UNKNOWN on {PathCellTests.Show(value)}, returned as {PathCellTests.Show(returned)}, read {typed} {raw} in world {seed}, and says it is two-valued over {name}");
+
+                                if (world.Tossed == 0)
+                                    break;
+                            }
+                }
+            }
+
+            TestContext.Current.TestOutputHelper?.WriteLine($"{atoms:N0} atoms; {unknown:N0} classes may be UNKNOWN or raise, {two:N0} are two-valued, over which {asked:N0} answers were asked");
+            missed.Distinct().Should().BeEmpty("a CASE is read by its condition only where that condition is two-valued");
+        }
+
+        /// <summary>
         /// The first value of a class, reader and world on which the evaluator raises, as each target returns the value
         /// (<see cref="Documents.Returned"/>), which is what Calcite reads; <c>null</c> for none. An answer that read no
         /// parameter and tossed no coin is the same in every world, and is asked in the first alone.
