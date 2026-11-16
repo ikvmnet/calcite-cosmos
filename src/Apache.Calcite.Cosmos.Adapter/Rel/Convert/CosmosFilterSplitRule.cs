@@ -177,13 +177,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
-            // conjuncts admitted are the filter, the weakenings of what is left out with it. Over a projection the condition
-            // reads its columns, which Calcite in process reads as the expressions they stand for, and its simplifier reads
-            // a column otherwise than an expression: a column's truth or null test is a predicate of the rest, an
-            // expression's is not (x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS INTEGER) = 1) is false over the columns, and
-            // Calcite evaluates the cast). So there the residual stays as planned, and the filter's equivalent beneath the
-            // projection, which FILTER_PROJECT_TRANSPOSE gives it, is read.
-            var left = OverProjection(filter.getInput()) ? Compose(rexBuilder, residual) : Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual));
+            // conjuncts admitted are the filter, the weakenings of what is left out with it.
+            var left = Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual), ProjectOf(filter.getInput()));
             if (left.isAlwaysTrue())
             {
                 call.transformTo(filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, admitted)));
@@ -222,15 +217,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// residual implies dropped among them, the residual stays as planned, as before: Calcite's normal form of it,
         /// which a later split reads anew, would push again what the half sent already holds.
         /// </para>
+        /// <para>
+        /// <b>Over a projection, through it.</b> Calcite in process merges the filter with the projection beneath and
+        /// simplifies the condition over the expressions the columns stand for, and its simplifier reads a column otherwise
+        /// than an expression: a bare boolean column, or a column's null test, is a predicate of the rest, an expression's
+        /// is not. Read over the columns, <c>x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS INTEGER) = 1)</c> was false where
+        /// Calcite evaluates the cast. So the condition is read through the projection, and what is left is written back
+        /// over its columns, each expression a column stands for as that column; where a term reads what no column stands
+        /// for, the residual stays as planned.
+        /// </para>
         /// </remarks>
-        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual)
+        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual, Project? project)
         {
+            // Beneath a second projection the condition would be read through both, as Calcite merges them.
+            if (project is not null && OverProjection(project.getInput()))
+                return residual;
+
             var own = Metadata.CosmosFilterStatement.ConjunctsOf(condition);
             var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
+            RexNode Read(IEnumerable<RexNode> conjuncts)
+            {
+                var composed = Compose(rexBuilder, conjuncts.ToList());
+                return plain.simplifyUnknownAsFalse(project is null ? composed : RelOptUtil.pushPastProject(composed, project));
+            }
 
-            var whole = Terms(plain.simplifyUnknownAsFalse(condition));
-            var decided = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i]).ToList())));
-            var rest = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList())));
+            var whole = Terms(Read(own));
+            var decided = Terms(Read(own.Where((_, i) => sent[i])));
+            var rest = Terms(Read(own.Where((_, i) => sent[i] == false)));
 
             // Calcite evaluates the residual alone wherever the whole is its terms beside terms of the conjuncts sent, which
             // are true on every row the request returns: none of its terms read away, none read into another.
@@ -239,7 +252,70 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (whole.All(apart.Contains) && rest.All(kept.Contains))
                 return residual;
 
-            return Compose(rexBuilder, whole.Where(term => decided.Contains(term) == false).ToList());
+            var left = whole.Where(term => decided.Contains(term) == false).ToList();
+            if (project is null)
+                return Compose(rexBuilder, left);
+
+            var columns = new Columns(project, rexBuilder);
+            var written = left.Select(term => (RexNode)term.accept(columns)).ToList();
+            return columns.Unread ? residual : Compose(rexBuilder, written);
+        }
+
+        /// <summary>
+        /// Returns a projection some equivalent form of a subtree is, a logical one first, or <c>null</c>.
+        /// </summary>
+        static Project? ProjectOf(RelNode? node)
+        {
+            Project? found = null;
+            foreach (var member in Rel.CosmosPlanMembers.Of(node))
+                if (member is Project project && (found is null || project.getConvention() == Convention.NONE))
+                    found = project;
+
+            return found;
+        }
+
+        /// <summary>
+        /// Writes an expression read through a projection back over its columns: each expression a column stands for as
+        /// that column, and <see cref="Unread"/> where an input of the projection is left that no column stands for.
+        /// </summary>
+        sealed class Columns : RexShuttle
+        {
+
+            readonly Project _project;
+            readonly RexBuilder _rexBuilder;
+
+            public Columns(Project project, RexBuilder rexBuilder)
+            {
+                _project = project;
+                _rexBuilder = rexBuilder;
+            }
+
+            /// <summary>Gets whether an input of the projection was left that no column stands for.</summary>
+            public bool Unread { get; private set; }
+
+            public override RexNode visitCall(RexCall call) => Column(call) ?? base.visitCall(call);
+
+            public override RexNode visitFieldAccess(RexFieldAccess fieldAccess) => Column(fieldAccess) ?? base.visitFieldAccess(fieldAccess);
+
+            public override RexNode visitInputRef(RexInputRef inputRef)
+            {
+                if (Column(inputRef) is RexNode column)
+                    return column;
+
+                Unread = true;
+                return inputRef;
+            }
+
+            RexNode? Column(RexNode node)
+            {
+                var projects = _project.getProjects();
+                for (var i = 0; i < projects.size(); i++)
+                    if (node.Equals(projects.get(i)))
+                        return _rexBuilder.makeInputRef(_project, i);
+
+                return null;
+            }
+
         }
 
         /// <summary>
