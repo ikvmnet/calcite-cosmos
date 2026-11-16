@@ -309,8 +309,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// number it rules out, and where the key is required, is
         /// <see cref="ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo"/>'s. Undeclared,
         /// Calcite compares the number by its double, and none routes; <c>CAST(5 AS VARIANT)</c>, which Calcite holds equal
-        /// to no stored integer, a <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), routes nowhere, declared or
-        /// not.
+        /// to no stored integer, a <c>BIGINT</c> (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), pins nothing of its own, and
+        /// here nothing, declared or not.
         /// </summary>
         [Fact]
         public void ANumberPinsTheKeyOnlyWhereTheDeclarationLeavesItOneValue()
@@ -348,14 +348,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Two routings recorded as precision (<c>TODO.md</c>, <em>A number pins no partition unless the declaration
         /// leaves the key one value</em>). A comparison through the cast of the text to <c>DOUBLE</c> keeps every number
-        /// within a whole unit of its literal (<c>NumberCast</c>'s window), so <c>= 5</c> and <c>= 6</c> beside a listed
-        /// 5.5, and <c>= 5.5</c> beside a listed 5, keep that value and pin it, sending a request that finds nothing,
-        /// where <c>RETURNING DOUBLE = 5</c> beside 5.5 sends nothing. And where the declaration fixes the key to one
-        /// value, a required <c>const</c> or one-member <c>enum</c>, an equality the coarse reading proves is dropped from
-        /// the text as implied and the statement, with no <c>WHERE</c>, pins nothing and reads every partition: through
-        /// the cast, and for a string key compared as itself. One it does not prove stays and pins:
-        /// <c>RETURNING DOUBLE = 5.5</c>, and over a key fixed to 5, <c>RETURNING INTEGER = 5</c>, the integer cast's
-        /// and the text's; so does the string not required. Each routes as on <c>main</c>.
+        /// less than a whole unit from its literal below 2^52 (<c>NumberCast</c>'s window), so <c>= 5</c> and <c>= 6</c> beside
+        /// a listed 5.5, and <c>= 5.5</c> beside a listed 5, keep that value and pin it, sending a request that finds
+        /// nothing, where <c>RETURNING DOUBLE = 5</c> beside 5.5 sends nothing. And where the declaration fixes the key to
+        /// one value, a required <c>const</c> or one-member <c>enum</c>, the statement pins it only where the equality is
+        /// sent. One the coarse reading proves is dropped from the text as implied, and the statement, with no
+        /// <c>WHERE</c>, pins nothing and reads every partition: through the cast, through <c>RETURNING DECIMAL</c>, a parse
+        /// that raises over no number, and for a string key compared as itself. One it does not prove stays: sent, as
+        /// <c>RETURNING DOUBLE = 5.5</c>, and over a key fixed to 5, <c>RETURNING INTEGER</c>, <c>BIGINT</c> and
+        /// <c>DOUBLE</c>, the integer cast and the text, it pins; and so does the string not required. One kept in Calcite,
+        /// a fraction's text or a boxed 5, leaves the statement sent pinning nothing. Each routes as on <c>main</c>.
         /// </summary>
         [Fact]
         public void ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo()
@@ -383,11 +385,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             beside.Sql.Should().EndWith("WHERE (c.ref = @p0)");
 
             var five = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "const": 5 } } }""");
-            foreach (var kept in new[] { """JSON_VALUE(c."DOC", '$.ref' RETURNING INTEGER) = 5""", """CAST(JSON_VALUE(c."DOC", '$.ref') AS INTEGER) = 5""", """JSON_VALUE(c."DOC", '$.ref') = '5'""" })
+            foreach (var kept in new[]
+            {
+                """JSON_VALUE(c."DOC", '$.ref' RETURNING INTEGER) = 5""", """JSON_VALUE(c."DOC", '$.ref' RETURNING BIGINT) = 5""",
+                """JSON_VALUE(c."DOC", '$.ref' RETURNING DOUBLE) = 5""", """CAST(JSON_VALUE(c."DOC", '$.ref') AS INTEGER) = 5""",
+                """JSON_VALUE(c."DOC", '$.ref') = '5'""",
+            })
             {
                 var query = Planned($"""SELECT c."id" FROM items AS c WHERE {kept}""", five);
                 query.PartitionKeyValues.Should().Equal(new object?[] { 5L }, $"{kept} is not proved over a key fixed to 5, so it stays and pins");
                 query.Sql.Should().Contain("WHERE", kept);
+            }
+
+            var decimalParse = Planned("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING DECIMAL) = 5""", five);
+            decimalParse.PartitionKeyValues.Should().BeNull("RETURNING DECIMAL raises over no number, so the equality is proved over a key fixed to 5, and dropped");
+            decimalParse.Sql.Should().NotContain("WHERE");
+
+            foreach (var (fixedTo, inCalcite, literal) in new[]
+            {
+                ("""{ "const": 0.1 }""", """JSON_VALUE(c."DOC", '$.ref') = '0.1'""", "'0.1'"),
+                ("""{ "const": 5 }""", """c."$.ref" = CAST(5 AS VARIANT)""", "VARIANT"),
+            })
+            {
+                var container = Declaring($$"""{ "type": "object", "required": ["ref"], "properties": { "ref": {{fixedTo}} } }""");
+                var plan = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {inCalcite}""", container, out _);
+                var text = PlanText(plan);
+                text[..text.IndexOf("CosmosToClrCursorConverter", System.StringComparison.Ordinal)].Should().Contain(literal, $"{inCalcite} is Calcite's: " + text);
+                var query = Query(FindCosmos(plan), container);
+                query.PartitionKeyValues.Should().BeNull($"{inCalcite} kept in Calcite over {fixedTo} leaves the request pinning nothing");
+                query.Sql.Should().NotContain("WHERE", text);
             }
 
             foreach (var fixedTo in new[] { """{ "const": 5.5 }""", """{ "enum": [5.5] }""" })

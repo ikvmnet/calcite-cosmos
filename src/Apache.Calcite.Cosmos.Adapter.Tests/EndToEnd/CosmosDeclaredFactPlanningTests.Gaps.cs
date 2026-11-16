@@ -175,6 +175,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A comparison through the cast to <c>DOUBLE</c> is read more loosely than a double rounds (<c>docs/14</c>, 14.2;
+        /// <c>TODO.md</c>, <em>A number pins no partition unless the declaration leaves the key one value</em>): where its
+        /// literal is below 2^52 as keeping every number less than a whole unit from what it keeps, and from there any
+        /// number. So one the declaration rules out is still sent where a value it allows lies less than a unit from what it
+        /// keeps, or its literal is 2^52 or more, the values allowed, not the bound's number, being what the window is met
+        /// with: an integer under an <c>exclusiveMaximum</c> of 100 is at most 99. A literal whose double no decimal holds is
+        /// read as nothing (<em>A cast to <c>DOUBLE</c> compared with a literal whose double no decimal holds is read as
+        /// nothing</em>), so the comparison stays in Calcite beside the path's presence, where one a decimal holds sends
+        /// nothing.
+        /// </summary>
+        [Fact]
+        public void ACastToDoubleIsReadAsKeepingEveryNumberLessThanAUnitFromWhatItKeeps()
+        {
+            const string Converter = "CosmosToClrCursorConverter";
+
+            var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
+            var exclusive = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "exclusiveMaximum": 100 } } }""");
+            var listed = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
+
+            foreach (var (container, label, condition) in new[] { (integer, "at most 100", "> 101"), (integer, "at most 100", "> 200.25"), (exclusive, "below 100", "> 100") })
+            {
+                var plan = PlanText(PlanToCosmos(Where($"{D} {condition}"), container, out _));
+                plan.Should().Contain(KeepsNothing, $"no integer {label} lies less than a unit from what {condition} keeps: " + plan);
+            }
+
+            foreach (var (container, label, condition, sent) in new[]
+            {
+                (integer, "at most 100", "> 100", "WHERE (c.n > @p0)"),
+                (integer, "at most 100", "> 100000000000000000", "WHERE (c.n > @p0)"),
+                (exclusive, "below 100", "> 99.5", "WHERE (c.n > @p0)"),
+                (listed, "listed [1, 2, 3]", "= 3.5", "WHERE (c.n = @p0)"),
+            })
+            {
+                var plan = PlanToCosmos(Where($"{D} {condition}"), container, out _);
+                PlanText(plan).Should().NotContain(KeepsNothing, $"a value {label} lies in the window of {condition}: " + PlanText(plan));
+                Query(FindCosmos(plan), container).Sql.Should().EndWith(sent, PlanText(plan));
+            }
+
+            var unread = PlanToCosmos(Where($"{D} > 200.1"), integer, out _);
+            var text = PlanText(unread);
+            text.Should().NotContain(KeepsNothing, "200.1's double is no decimal's, so the comparison is not read: " + text);
+            text[..text.IndexOf(Converter, System.StringComparison.Ordinal)].Should().Contain("CAST(", "the comparison is Calcite's: " + text);
+            Query(FindCosmos(unread), integer).Sql.Should().EndWith("WHERE IS_DEFINED(c.n)", text);
+        }
+
+        /// <summary>
         /// A range through an integer parse that the declared bounds satisfy is still sent, where the same range through the
         /// cast to <c>DOUBLE</c> is dropped. The parse's cells read the service's spelling and raise on no integer the bounds
         /// admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the coarse reading, and
