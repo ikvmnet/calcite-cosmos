@@ -1232,29 +1232,19 @@ An equality with a number pins the key only where the declaration leaves the key
 `Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no domain of one,
 and only a declaration that leaves one value in it is — an integer, whose window holds one whole number, or an `enum`
 or a `const` with one member there, a fraction among them, sent as a `double`. Through `RETURNING DOUBLE` that value's
-double is the literal's. A comparison through the cast of the text to `DOUBLE` keeps every number less than a whole
-unit from what it compares where its literal is below 2^52, and any number from there (`NumberCast.KeptOrder`'s
-window, the same on `main`), which holds whichever way a conversion rounds, not the double's rounding, so a listed
-value less than a unit from the literal is in an equality's window, and pinned where it is the only one there: `= 5`
-and `= 6` beside a listed `5.5` pin `5.5`, and `= 5.5` beside a listed `5` pins `5`, one request that finds nothing
-where `RETURNING DOUBLE = 5` beside `5.5` sends none; the same window leaves a comparison through the cast sent where
-a value the declaration allows lies less than a unit from what it keeps, or its literal is 2^52 or more: `> 100` and
-`> 100000000000000000` over integers at most 100, where `> 100` under an `exclusiveMaximum` of 100, whose integers
-are at most 99, sends nothing
-(`CosmosDeclaredFactPlanningTests.ACastToDoubleIsReadAsKeepingEveryNumberLessThanAUnitFromWhatItKeeps`). A literal
-whose double no decimal holds, `> 200.1`, is no literal at all (*What it reads now*, below), so the comparison is
-opaque and stays in Calcite beside the path's presence, one request. And a key the declaration fixes to one value, a
-required `const` or a one-member `enum`, is pinned only where its equality is sent, since `CosmosFilter.Implement`
-routes on the condition sent: one dropped as implied, or kept in Calcite, leaves none. A deletion is a verdict on the
-coarse reading, which puts a raise beside every number `RETURNING INTEGER`, `BIGINT` or `DOUBLE` or an integer cast
-compares and reads a number's text as any spelling of its double, so through those, an integer cast or a number's
-text the equality stays and pins; `RETURNING DECIMAL`, a decimal parse whose coarse reading raises over no number, is
-dropped as the cast to `DOUBLE` is
-(`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`, the
-same on `main`). Routing by the window's double, which every number in it shares, is a follow-up that needs a
-measurement of how the service hashes a number, and the other two are precision to come back (`TODO.md`). A cast of
-the key to text over the `VARIANT` column pins the stored string, which is all such a cast keeps, a number and a
-boolean casting to null there.
+double is the literal's. Routing by the window's double, which every number in it shares, is a follow-up that needs
+a measurement of how the service hashes a number (`TODO.md`). A cast of the key to text over the `VARIANT` column pins
+the stored string, which is all such a cast keeps, a number and a boolean casting to null there.
+
+Three older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
+comparison through the cast of the text to `DOUBLE` is read through `NumberCast`'s `Window`, looser than a double's
+rounding, so one the declaration rules out may still send a request that finds nothing, and on the key may route to a
+listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). Where such a comparison is
+split, the weaker form's number can meet the comparison's `DOUBLE` in Calcite's simplifier, which a connection with
+Calcite's default rules runs, and the statement fails to plan (*Two weakenings over one path still share one raw
+value*). And a key the declaration fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
+condition, so a comparison of the key the declaration shows true may be dropped from the text and the request read
+every partition (*A number pins no partition unless the declaration leaves the key one value*).
 
 **A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a condition Calcite evaluates, though a clause above one that keeps nothing, and a part of its `WHERE` admitted only beside another, may be planned otherwise (below).**
 Nothing the declaration alone decides of a condition is in a node Calcite reads. A `CosmosFilter` holds the planning
@@ -1312,6 +1302,24 @@ columns is not this: Calcite's correlate rule moves it into the left side, where
 the split takes it, keeping its cast over the part sent (u3; `TODO.md`, *A residual beside a contradicted split loses
 its raise*). Which rule converts a member is the question that rule asks of it, legality.
 
+**The part a split keeps in Calcite is simplified beside the part it sends.** Calcite evaluates a condition simplified
+whole, so a conjunct its siblings make true, or a sibling makes the arm holding it false, is never evaluated:
+`kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)` is `kind = 'A'`. Before "decide at the request" the facts
+graph deleted such a conjunct from the node; since, the node holds the planning form, and the split left it to a
+residual Calcite evaluated over the rows the half sent returns, which raised on a `body` that is no number where
+Calcite answers, declared or not. `CosmosFilterSplitRule.Residual` simplifies the residual with the admitted conjuncts
+sent as predicates (`RelOptPredicateList`, unknown read as false), and reads it as true where the whole condition
+simplifies to what those conjuncts do, which catches a disjunction the predicate list does not read; true, the filter is
+the admitted conjuncts alone. Where they say nothing of it, it stays as written, since Calcite's normal form of it is
+read anew by the next split and pushes again what is already sent. The weakenings are no predicates: each is the
+service's form written as a Rex, which Calcite's reading need not match. It reads nothing of the declaration and
+chooses no row, Calcite's own simplification of the condition it was given: a writer
+(`CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite`, and its twin through the README's connection,
+which simplifies the whole `WHERE` before anything is pushed). A `CASE` holding a cast that may raise stays, as
+Calcite's simplifier keeps it, and its `ELSE` is read only where its condition is not true. Across two filters it does
+not reach: a subquery's split under a filter above is merged by Calcite's calc pass with that filter, without the half
+sent (below).
+
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
 statement's `WHERE` keeps no document the declaration admits and raises on none: one filter's statement under
@@ -1342,16 +1350,19 @@ still does, with a declaration or without one; the declaration saves the request
 same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; a
 semi-join answered by a lookup join; a condition above a lookup join; a select list's cast computed above a sort and the
 filters over it (sf3w); and a filter on a `DISTINCT`'s keys moved beneath it over a cast the `DISTINCT` computes
-(dk1). A deletion drops a conjunct from the request though it can fail
-(`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
+(dk1). A conjunct the declaration makes true, deleted from the text though it can fail, is still evaluated in a
+`WHERE`, whose node keeps it, and so fails as Calcite does; in a projected `CASE` condition it is not, nor beside a
+whole-partition delete, which reads it as saying nothing else (`TODO.md`, *A deletion stops evaluating a conjunct that
+may raise*, *A whole-partition delete reads a conjunct that may fail as nothing else*).
 
 And the other way: where Calcite in process answers no rows and the query pushed down fails, it fails with a
 declaration or without one, where `main`'s reduce answered no rows. A semi-join or a correlated `EXISTS` over an outer
 side that keeps nothing is a lookup join that reads its subquery first, where Calcite's own semi-join reads the empty
 outer side first and never evaluates the subquery (sj2, j3, j6, through the connection the README opens), and an
-uncorrelated `EXISTS` whose subquery keeps nothing is a join that reads the side beside it first (ex4); and a part
-kept in process beside a part sent is simplified without it, where Calcite simplifies the two together to `FALSE`
-(dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes); and a filter on a grouping's key stays above a
+uncorrelated `EXISTS` whose subquery keeps nothing is a join that reads the side beside it first (ex4); and the part
+a subquery's split keeps in process is merged with a filter above it without the part sent, where Calcite simplifies
+the three together to `FALSE` (dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes; within one filter the
+part kept is simplified beside the part sent, above); and a filter on a grouping's key stays above a
 grouping that computes a cast for every group, where Calcite moves it beneath and computes the cast for the groups it
 keeps (ga25, declared and not, a choice by cost). Each is `TODO.md`'s. An anti-join over such an
 outer side answers no rows as Calcite does, both reading the sorted outer side first: no divergence.
@@ -1364,7 +1375,8 @@ no rows and no request where Calcite fails, declared and not, in the host Chapte
 stack whose request keeps nothing; `AScalarAggregateOverAContradictedWhereIsSent`, `AScalarSumIsSentBesideItsCount`,
 `ATypeTautologyOverACastThatMayFailIsSent`, `AnImpossiblePartKeptInCalciteSendsOneRequest`,
 `AClauseAboveAWhereTheDeclarationRulesOutIsCalcites` and
-`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` (in both hosts) the rest;
+`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` and `ASiblingSentLeavesNothingInCalcite` (in both
+hosts) the rest;
 `CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger` the range
 Chapter 14.2 gives through that connection; `CosmosCursorsTests`, `CosmosOrderedCursorTests` and `CosmosLookupTests`
 the reader's side.
@@ -1375,8 +1387,10 @@ that trims before it removes sub-queries, as the connection the README opens doe
 Calcite's merge refusing it too, and the statement did not plan (gb4), the empty relation above it only hiding that.
 `CosmosUncorrelatedProjectMergeRule` merges such a projection into the one beneath it, declaring none, a new relation
 the planner tells apart from the old (a projection's digest leaves its variables out), and `CosmosProjectRule` pushes a
-projection declaring a variable no expression reads. Three filters stacked over a projection (ff3mid) plan through that
-connection, declared and not (`CosmosConnectionPlanningTests`).
+projection declaring a variable no expression reads. ff3mid, three filters stacked over a projection, is measured to
+plan through that connection, declared and not (`CosmosConnectionPlanningTests`); another stack of three over a
+container that declares nothing has not finished planning there, on `main` either (`TODO.md`, *A stack of filters
+plans slowly through the connection, or not at all*).
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and

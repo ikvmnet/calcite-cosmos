@@ -73,26 +73,13 @@ concrete type is learned per row. In practice:
   `RETURNING DOUBLE` over any whole number within 64 bits, so through either of those the partition is
   pinned only by answering where Calcite fails (Chapter 23). A key whose `enum` or `const` leaves one
   value whose double is the number's, a fraction among them, is pinned through `RETURNING DOUBLE`:
-  `= 5.5` where the schema lists `[5.5, 7.25]`. A cast to `DOUBLE` pins it too, but the adapter reads
-  the cast loosely, as keeping every number less than a whole unit from the literal (Chapter 14.2), so
-  a number less than a unit from a listed value may route to that value's partition, where the request
-  then finds nothing: `= 5` and `= 6` route to the partition of `5.5` where the schema lists
-  `[5.5, 7.25]`, and `= 5.5` to that of `5` where it lists `[5, 7]`. Where the schema fixes a required
-  key to one value, with a `const` or a one-member `enum`, a comparison it implies may be dropped from
-  the request, which then holds no comparison of the key and reads every partition. The adapter drops
-  one only where it shows it true of every document the schema admits, and whether it shows that turns
-  on how it reads the comparison. For example, over a key fixed to `5`, `RETURNING INTEGER = 5`, `RETURNING BIGINT = 5`,
-  `RETURNING DOUBLE = 5`, `CAST(… AS INTEGER) = 5` and `= '5'` are kept and pin the partition, while
-  `RETURNING DECIMAL = 5` and a cast to `DOUBLE` equal to `5` are dropped; so are `= 'bikes'` over a key
-  fixed to `"bikes"` and `c."$.category" = CAST(TRUE AS VARIANT)` over one fixed to `true`. And `= '0.1'`
-  over a key fixed to `0.1`, and `c."$.category" = CAST(5 AS VARIANT)` over one fixed to `5`, are kept
-  but in Calcite, over a request that pins nothing and reads every partition. Over a key that is not
-  required a document may lack it, so no comparison of it is implied, and none is dropped (Chapter 23).
-  Without such a declaration Calcite compares the number by its double, so `= 5` also keeps a stored
-  number written with more digits than a double holds, and the adapter does not yet route on that; and
-  with no schema, `CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) = 5` fails to plan through the
-  README's connection, which runs Calcite's default rules, while an `IN` or a `BETWEEN` through the cast
-  plans (Chapter 14.2 says why).
+  `= 5.5` where the schema lists `[5.5, 7.25]`. A comparison through a cast to `DOUBLE` may be routed
+  to a partition where the request then finds nothing, and may fail to plan through a connection that
+  runs Calcite's default rules, as the README's does (Chapter 23). Where the schema fixes the key to one
+  value, a comparison the schema shows true may be dropped from the request, which may then read every
+  partition (Chapter 23). Without such a declaration Calcite compares the number by its double, so
+  `= 5` also keeps a stored number written with more digits than a double holds, and the adapter does
+  not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
