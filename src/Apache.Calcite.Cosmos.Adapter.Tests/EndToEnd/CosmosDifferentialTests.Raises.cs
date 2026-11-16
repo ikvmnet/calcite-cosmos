@@ -125,6 +125,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             wrong.Should().BeEmpty();
         }
 
+        /// <summary>
+        /// A <c>SUM</c> with no grouping over no document is <c>NULL</c>, and the service's 0: pushed as Calcite's reduction
+        /// of it, a <c>$SUM0</c> beside a <c>COUNT(*)</c> and the <c>CASE</c> above, it answers <c>NULL</c> as Calcite does,
+        /// over a <c>WHERE</c> the declaration rules out, which is sent, and over one that matches nothing, and an
+        /// <c>AVG</c> reduced to it, a sum plus one, a <c>COALESCE</c> and a <c>HAVING</c> over it read that <c>NULL</c>.
+        /// Over documents, and per group, it answers the sum.
+        /// </summary>
+        [Fact]
+        public async Task ASumOverNoDocumentIsNull()
+        {
+            if (_client is null)
+                Assert.Skip("Differential testing needs a service. " + (_initializationFailure ?? "No account is reachable at " + Endpoint));
+
+            var containers = await RaisesContainers.Value;
+            const string Kind = "JSON_VALUE(c.\"DOC\", '$.kind')";
+
+            var wrong = new List<string>();
+            foreach (var where in new[] { $"{Kind} = 'C'", "c.\"id\" = 'zz'", $"{Kind} = 'A'" })
+            {
+                foreach (var sql in new[]
+                {
+                    $"SELECT SUM(c.\"_ts\") AS s FROM raises_listed AS c WHERE {where}",
+                    $"SELECT COUNT(*) AS n, SUM(c.\"_ts\") AS s FROM raises_listed AS c WHERE {where}",
+                    $"SELECT AVG(c.\"_ts\") AS a FROM raises_listed AS c WHERE {where}",
+                    $"SELECT SUM(c.\"_ts\") + 1 AS s FROM raises_listed AS c WHERE {where}",
+                    $"SELECT COALESCE(SUM(c.\"_ts\"), -1) AS s FROM raises_listed AS c WHERE {where}",
+                    $"SELECT SUM(c.\"_ts\") AS s FROM raises_listed AS c WHERE {where} HAVING SUM(c.\"_ts\") IS NULL",
+                    $"SELECT {Kind} AS k, SUM(c.\"_ts\") AS s FROM raises_listed AS c WHERE {where} GROUP BY {Kind}",
+                })
+                {
+                    var oracle = await Attempt(sql, pushdown: false, containers: containers);
+                    if (oracle.Raised is Exception e)
+                    {
+                        wrong.Add($"{sql}\n  Calcite failed, so this compares nothing: {e.Message.Split('\n')[0]}");
+                        continue;
+                    }
+
+                    var sent = new List<string>();
+                    if (Refines(sql, false, oracle, await Attempt(sql, pushdown: true, sent, containers: containers)) is string failure)
+                        wrong.Add($"{failure}\n  sent: {string.Join(" || ", sent)}");
+                }
+            }
+
+            wrong.Should().BeEmpty();
+        }
+
     }
 
 }

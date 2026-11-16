@@ -162,6 +162,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>SUM</c> with no grouping is <c>NULL</c> over no document and the service's 0, so it is pushed only as
+        /// Calcite's reduction of it: a <c>$SUM0</c> beside a <c>COUNT(*)</c>, both sent, and the <c>CASE</c> above in
+        /// Calcite, reading <c>NULL</c> where the count is 0; an <c>AVG</c> reduced to a sum and a count takes the same
+        /// sum. Over a <c>WHERE</c> the declaration rules out the statement is sent, its <c>WHERE</c> the constant, and over
+        /// one it does not, the same. Per group the sum is the service's (<c>CosmosDifferentialTests.ASumOverNoDocumentIsNull</c>
+        /// answers each against Calcite).
+        /// </summary>
+        [Theory]
+        [InlineData("""SUM(c."_ts")""")]
+        [InlineData("""AVG(c."_ts")""")]
+        [InlineData("""SUM(c."_ts") + 1""")]
+        public void AScalarSumIsSentBesideItsCount(string aggregate)
+        {
+            var container = Declaring(Statuses);
+            foreach (var (where, constant) in new[] { ($"{Read("status")} = 'deleted'", true), ("""c."id" = 'zz'""", false) })
+            {
+                var plan = PlanToCosmos($"""SELECT {aggregate} AS s FROM items AS c WHERE {where}""", container, out _);
+                var text = PlanText(plan);
+
+                text.Should().MatchRegex(@"CosmosAggregate\(group=\[\{\}\][^\n]*\$SUM0\(", "the sum is pushed as its reduction's: " + text);
+                text.Should().MatchRegex(@"CosmosAggregate\(group=\[\{\}\][^\n]*COUNT\(\)", "beside a count: " + text);
+                text.Should().MatchRegex(@"ClrCursor[^\n]*CASE\(=\(", "the CASE on the count is Calcite's: " + text);
+                text.Should().NotContain(KeepsNothing, text);
+
+                var query = Query(FindCosmos(plan), container);
+                query.SendsNothing.Should().BeFalse();
+                query.Sql.Should().Contain("SUM(c._ts)").And.Contain("COUNT(1)");
+                if (constant)
+                    query.Sql.Should().EndWith("WHERE false", "the WHERE it sends is the constant");
+            }
+
+            var grouped = PlanText(PlanToCosmos($"""SELECT {Read("status")} AS k, SUM(c."_ts") AS s FROM items AS c WHERE c."id" > 'a' GROUP BY {Read("status")}""", container, out _));
+            grouped.Should().Contain("CosmosAggregate(group=[{0}], s=[SUM($1)])", "a group is never empty, so its sum is the service's: " + grouped);
+            grouped.Should().NotContain("CASE(", grouped);
+        }
+
+        /// <summary>
+        /// A clause above a statement reads what the rows it keeps hold from the filter's node assuming every conjunct, which
+        /// a <c>WHERE</c> the declaration rules out leaves holding nothing: so a <c>MIN</c> of <c>kind</c>, a <c>MAX</c> of
+        /// <c>id</c> and an <c>ORDER BY</c> of either over <c>kind = 'C'</c>, each pushed without a schema, are Calcite's
+        /// with one, over a statement that sends nothing. The answer is the same, a <c>NULL</c> or no rows; the plan is one a
+        /// schema changes (<c>TODO.md</c>, <em>A clause above a WHERE the declaration rules out reads nothing of its
+        /// rows</em>). Over <c>kind = 'A'</c> each is pushed with a schema too.
+        /// </summary>
+        [Theory]
+        [InlineData("SELECT MIN(JSON_VALUE(c.\"DOC\", '$.kind')) AS q FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}'", "CosmosAggregate")]
+        [InlineData("SELECT MAX(c.\"id\") AS q FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}'", "CosmosAggregate")]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.kind') AS k FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}' ORDER BY JSON_VALUE(c.\"DOC\", '$.kind')", "CosmosSort")]
+        [InlineData("SELECT c.\"id\" FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.kind') = '{0}' ORDER BY c.\"id\"", "CosmosSort")]
+        public void AClauseAboveAWhereTheDeclarationRulesOutIsCalcites(string sql, string clause)
+        {
+            var declared = PlanText(PlanToCosmos(string.Format(sql, "C"), Declaring(Tagged), out _));
+            declared.Should().NotContain(clause, "the node holds nothing the clause is asked of: " + declared);
+            declared.Should().Contain(KeepsNothing, declared);
+
+            var undeclared = PlanText(PlanToCosmos(string.Format(sql, "C"), Declaring("""{ "type": "object" }"""), out _));
+            undeclared.Should().Contain(clause, "without a schema the WHERE says kind is a string: " + undeclared);
+
+            var admitted = PlanText(PlanToCosmos(string.Format(sql, "A"), Declaring(Tagged), out _));
+            admitted.Should().Contain(clause, "a WHERE the declaration admits: " + admitted);
+        }
+
+        /// <summary>
         /// A null test of what Calcite types never null, over a cast that can fail, is no row Calcite's type check alone
         /// makes empty: the cast of the text <c>id</c> to <c>INTEGER</c> fails on an <c>id</c> that is no number, and an
         /// integer divided by zero fails on every document. Each stays in Calcite, the request reads every document, and
