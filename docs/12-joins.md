@@ -86,6 +86,10 @@ the keys fetch, where Calcite evaluates it on every document. Where it can fail,
 it answers no rows, and with no request where the schema rules out the small side (Chapter 14.2).
 That is not decided yet (Chapter 23).
 
+Where the schema rules out what the container side's own `WHERE` keeps, the join still reads the
+small side, every row of it, as Calcite does, and fetches no batch: `EXPLAIN` marks the join
+`probes=[nothing]`, and an outer join keeps every row of the small side unmatched.
+
 ### Which side is fetched by key
 
 The side whose keys are collected is read normally; the container on the other side is fetched by
