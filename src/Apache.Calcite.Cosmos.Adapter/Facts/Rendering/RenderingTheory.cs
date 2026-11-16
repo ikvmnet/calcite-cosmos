@@ -2563,30 +2563,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         }
 
         // What each reading reads each class as, from its rows (G7, DESIGN.md "Calcite's readings as rows"): the readings
-        // vocabulary's rules, which the facts graph runs too, the raw columns' answers and their union among them; and a raw
-        // column's reading's rows through its column and through every column, S's alone, which read the raw columns' rows.
+        // vocabulary's rules, which the facts graph runs too, the raw columns' answers and their union and a raw column's
+        // reading's rows through its column and through every column among them; and, S's alone, a column no row measured
+        // null over an absent path where the union's reading is, and its order what the union's holds.
         void DefineReadings(Ruleset reads)
         {
             Calcite.Define(reads);
-
-            reads.DefineRule("a raw column's reading reads each class as its column's rows say, and the reading through every column as each", r =>
-            {
-                var (rd, c, a) = r.Vars<string, string, string>("rd", "c", "a");
-                var k = r.Var<CosmosValueClass>("k");
-                r.When(a.Is(RawReads.Of(rd, c, k)));
-                r.Then(ReaderRows.Of().Is(Compute.Of(rd, c, k, a, ReadingTable.Raw)));
-            });
-
-            // A column no row measured reads as the union until a row measures it (PredicateAtom.UnionColumns): each class
-            // as every measured column reads it, null over an absent path where the union's reading is, and its order what
-            // the union's holds.
-            reads.DefineRule("a raw column no row measured reads each class as the union of those that were", r =>
-            {
-                var (rd, c, a, u) = r.Vars<string, string, string, string>("rd", "c", "a", "u");
-                var k = r.Var<CosmosValueClass>("k");
-                r.When(a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u));
-                r.Then(ReaderRows.Of().Is(Compute.Of(rd, u, k, a, ReadingTable.Raw)));
-            });
 
             reads.DefineRule("a raw column no row measured is null over an absent path where the union's reading is", r =>
             {

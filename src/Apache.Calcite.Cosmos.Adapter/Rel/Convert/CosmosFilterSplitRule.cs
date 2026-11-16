@@ -105,18 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         internal static CosmosTable? FindTable(RelNode? node)
         {
-            return FindTable(node, CosmosPlanMembers.NewSeen(), throughGroupings: false);
-        }
-
-        /// <inheritdoc cref="FindTable(RelNode?)" />
-        /// <param name="node">The subtree.</param>
-        /// <param name="throughGroupings">
-        /// Whether a grouping reads the container its input reads, as it does for the reduce, whose run passes a grouping's
-        /// keys (<see cref="CosmosFilterReduceRule"/>); a split or a lowering above one is no clause of the statement beneath.
-        /// </param>
-        internal static CosmosTable? FindTable(RelNode? node, bool throughGroupings)
-        {
-            return FindTable(node, CosmosPlanMembers.NewSeen(), throughGroupings);
+            return FindTable(node, CosmosPlanMembers.NewSeen());
         }
 
         /// <inheritdoc cref="FindTable(RelNode?)" />
@@ -127,8 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </remarks>
         /// <param name="node">The subtree.</param>
         /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
-        /// <param name="throughGroupings">Whether a grouping reads the container its input reads.</param>
-        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen, bool throughGroupings)
+        static CosmosTable? FindTable(RelNode? node, System.Collections.Generic.HashSet<RelNode> seen)
         {
             foreach (var member in CosmosPlanMembers.Of(node))
             {
@@ -138,10 +126,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var found = member switch
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) as CosmosTable,
-                    Filter filter => FindTable(filter.getInput(), seen, throughGroupings),
-                    Project project => FindTable(project.getInput(), seen, throughGroupings),
-                    Correlate correlate => FindTable(correlate.getLeft(), seen, throughGroupings),
-                    Aggregate aggregate when throughGroupings => FindTable(aggregate.getInput(), seen, throughGroupings),
+                    Filter filter => FindTable(filter.getInput(), seen),
+                    Project project => FindTable(project.getInput(), seen),
+                    Correlate correlate => FindTable(correlate.getLeft(), seen),
                     _ => null,
                 };
 
@@ -214,8 +201,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
             // and the conjunct that proves the condition is a sibling of the one being lowered. Split
             // first and each conjunct would be weighed on its own, with nothing left to prove the
-            // guard from.
-            var condition = Metadata.CosmosFactRewriter.Rewrite(
+            // guard from. The planning form: the residual is Calcite's to evaluate, and the half pushed
+            // a node Calcite reads, so neither holds a deletion, an arm never read or a FALSE.
+            var condition = Metadata.CosmosFactRewriter.Planned(
                 filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
 
             // Admitted stratum by stratum: a conjunct pushes where it renders from what the conjuncts
@@ -323,7 +311,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var asked = new HashSet<RexNode> { weakening };
             for (var pending = new List<RexNode> { weakening }; pending.Count > 0;)
             {
-                var condition = Metadata.CosmosFactRewriter.Rewrite(
+                var condition = Metadata.CosmosFactRewriter.Planned(
                     Compose(rexBuilder, [.. held, .. kept, .. pending]), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
                 var statement = Metadata.CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder);
 

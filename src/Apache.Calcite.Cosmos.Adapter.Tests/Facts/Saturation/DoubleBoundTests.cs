@@ -61,7 +61,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public void TheCastIsCaughtAtARoundingBoundary()
         {
             const decimal stored = 9007199254740994.4m, literal = 9007199254740994m;
-            ((double)stored).Should().NotBe(DoubleBound.Of(stored));
+
+            // The runtime's conversion, which a compiler may fold a constant's otherwise: SDK 11's folds it correctly rounded.
+            var held = stored;
+            ((double)held).Should().NotBe(DoubleBound.Of(stored));
 
             var atom = PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.Equal, Of(literal));
             var predicate = new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Typed(JsonDocumentPath.Root.Property("a"), "DOUBLE"), new SqlValue.Literal(Of(literal)));
@@ -70,7 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
             truths.Should().Equal(Truths.True, Truths.True);
             atom.OnCell(new PathCell.Point(Of(stored)), Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows).Should().Be(Truths.True | Truths.Raises);
-            ((double)stored == (double)literal ? Truths.True : Truths.False).Should().Be(Truths.False, "the plant answers what the evaluator refutes");
+            ((double)held == (double)literal ? Truths.True : Truths.False).Should().Be(Truths.False, "the plant answers what the evaluator refutes");
         }
 
     }

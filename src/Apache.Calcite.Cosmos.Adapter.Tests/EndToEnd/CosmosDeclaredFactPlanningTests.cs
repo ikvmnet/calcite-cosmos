@@ -144,14 +144,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
         /// <summary>
-        /// What a plan for a filter no document satisfies, and none fails, is: the empty relation, sent nowhere. The rewrite
-        /// answers <c>FALSE</c> where no document the declaration admits makes the WHERE true and none makes anything in its
-        /// gate raise, and <c>CosmosFilterReduceRule</c> puts the adapter's <c>CosmosNoRows</c> beside the filter, which
-        /// answers with no request; a converted <c>CosmosFilter</c> carrying the constant was a round trip for no rows
-        /// (<c>TODO.md</c>, <em>A contradiction should send nothing</em>). Not an empty <c>Values</c>, which a host's
-        /// prune-empty rules read as empty beside a side Calcite fails on.
+        /// What an explained plan says of a statement that is pushed as any other and not sent: its <c>WHERE</c> keeps no
+        /// document the declaration admits and fails on none, which the facts graph decides once, when the plan is
+        /// implemented (<see cref="CosmosQuery.SendsNothing"/>), so the service would answer no document. The plan is
+        /// plain pushdown's; only the request is left out.
         /// </summary>
-        const string KeepsNothing = "CosmosNoRows";
+        const string KeepsNothing = "sends=[nothing]";
 
         [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
@@ -1398,9 +1396,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// The container declares a domain and the query asks for a value outside it. A document
         /// satisfying the predicate would have to hold a value the declaration says it does not, so
-        /// there is none — and the equivalent predicate is the constant. It used to be pushed as one,
-        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The reduce now puts the
-        /// empty relation beside the filter, which answers with no request.
+        /// there is none — and the text sent is the constant. It used to be pushed as one, <c>WHERE @p0</c>
+        /// bound to <c>false</c>: a round trip for no rows. The statement is now pushed as any other and not
+        /// sent, nothing in its <c>WHERE</c> raising (<see cref="CosmosQuery.SendsNothing"/>).
         /// </para>
         /// <para>
         /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a
@@ -1423,7 +1421,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 PlanText(best).Should().Contain(KeepsNothing,
                     "no document satisfies it, for " + schema + ": " + PlanText(best));
 
-                FindCosmos(best).Should().BeNull("so nothing is sent at all, for " + schema);
+                var query = Query(FindCosmos(best), container);
+                query.SendsNothing.Should().BeTrue("so nothing is sent at all, for " + schema);
+                query.Sql.Should().EndWith("WHERE false", "and the text it stands for is the constant, for " + schema);
             }
         }
 

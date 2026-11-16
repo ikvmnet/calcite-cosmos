@@ -113,6 +113,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
+        /// Determines whether the statement a subtree of Cosmos nodes stands for is answered without being sent, for an
+        /// explained plan: <c>false</c> where it does not render.
+        /// </summary>
+        /// <param name="input">The subtree.</param>
+        /// <param name="rexBuilder">Used when translating expressions.</param>
+        /// <returns><c>true</c> where the statement sends nothing.</returns>
+        public static bool SendsNothing(RelNode input, RexBuilder rexBuilder)
+        {
+            try
+            {
+                return GenerateQuery(input, rexBuilder).Query.SendsNothing;
+            }
+            catch (Exception e) when (e is CosmosTranslationException or InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Renders the statement a lookup join runs against the container, restricted to the keys a
         /// batch will carry.
         /// </summary>

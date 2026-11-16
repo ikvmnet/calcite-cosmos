@@ -631,10 +631,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Determines whether a rule is one the oracle must not have.
         /// </summary>
         /// <remarks>
-        /// Everything that moves work to the service, and everything that answers a filter by the
-        /// adapter's own reasoning: <see cref="CosmosFilterReduceRule"/> moves nothing, but the empty
-        /// relation or the bare input it puts in a filter's place is the predicate oracle's verdict, and
-        /// an oracle that applied it would agree with a wrong one. Not the way out, which is what makes
+        /// Everything that moves work to the service. The adapter's own reasoning reaches no plan: a
+        /// statement it proves keeps nothing is pushed as any other and left unsent
+        /// (<see cref="CosmosQuery.SendsNothing"/>), which a converted scan, the oracle's one statement, never
+        /// is. Not the way out, which is what makes
         /// a pushed subtree readable at all and which the oracle needs for the scan; and not Calcite's
         /// own rewrites, which the convention registers because a bare Volcano planner has no logical
         /// rule set -- they preserve meaning, and one of them is what makes a grouping-set AVG planable
@@ -643,7 +643,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static bool IsPushdown(org.apache.calcite.plan.RelOptRule rule)
         {
             return rule is CosmosAggregateRule or CosmosAggregateSplitRule
-                or CosmosFilterRule or CosmosFilterSplitRule or CosmosFilterReduceRule
+                or CosmosFilterRule or CosmosFilterSplitRule
                 or CosmosProjectRule or CosmosRankRule or CosmosSortRule
                 or CosmosUnnestRule or CosmosLookupJoinRule;
         }

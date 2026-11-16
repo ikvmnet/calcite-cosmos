@@ -30,10 +30,10 @@ namespace Apache.Calcite.Cosmos.Facts
     /// the rows the rest of the filter keeps, which a rewrite inside it may lean on</description></item>
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
-    /// <item><term><see cref="OracleQuestion.Reduce"/></term><description>the WHERE as one conjunction, beside the filters
-    /// beneath it that Calcite merges with it, assumed by a rule only where its gate raises on no document the declaration
-    /// admits: whether the filter keeps nothing and fails on nothing. The gate is the WHERE and the filters beneath it as
-    /// Calcite evaluates them, or for a projected <c>CASE</c> condition every predicate of its expression</description></item>
+    /// <item><term><see cref="OracleQuestion.Reduce"/></term><description>the WHERE as one conjunction, assumed by a rule
+    /// only where its gate raises on no document the declaration admits: whether the statement keeps nothing and fails on
+    /// nothing, so that its request need not be sent. The gate is the WHERE, or for a projected <c>CASE</c> condition every
+    /// predicate of its expression</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under, each the facts graph reads exactly (h15)</description></item>
     /// <item><term><see cref="OracleQuestion.NeverRead"/></term><description>what <see cref="OracleQuestion.Arm"/> assumes,
@@ -76,7 +76,6 @@ namespace Apache.Calcite.Cosmos.Facts
         readonly IReadOnlyCollection<JsonDocumentPath> _declared;
         readonly object _lock = new();
         readonly SqlPredicate? _gate;
-        readonly SqlPredicate? _reaching;
         Admission? _admission;
         SqlPredicate? _where;
 
@@ -84,16 +83,13 @@ namespace Apache.Calcite.Cosmos.Facts
         Admission? _admitting;
 
         /// <param name="gate">What a gated node's assumptions wait on (<see cref="Gate"/>): <c>null</c> for the WHERE.</param>
-        /// <param name="reaching">What the reduce assumes beside the WHERE where the gate raises nowhere: what every row the
-        /// filter reads satisfies, the filters beneath it it merges with; <c>null</c> for nothing more.</param>
-        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null, SqlPredicate? gate = null, SqlPredicate? reaching = null)
+        internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null, SqlPredicate? gate = null)
         {
             _terms = terms;
             _renders = renders;
             _renderedFrom = renderedFrom;
             _declared = declared ?? Array.Empty<JsonDocumentPath>();
             _gate = gate;
-            _reaching = reaching;
             Statement = statement;
         }
 
@@ -549,10 +545,10 @@ namespace Apache.Calcite.Cosmos.Facts
                 case OracleQuestion.Kept:
                     return _terms.Child(_terms.Root, conjuncts);
 
-                // The WHERE gated, and what every row the filter reads satisfies beside it: assumed only where nothing the
-                // gate holds raises, so that a contradiction says Calcite answers no rows and fails on none.
+                // The WHERE gated: assumed only where nothing the gate holds raises, so that a contradiction says the
+                // statement keeps no document and fails on none.
                 case OracleQuestion.Reduce:
-                    return conjuncts.Count == 0 ? _terms.Root : _terms.Gated(_terms.Root, "reduce", _reaching is null ? new[] { Where } : new[] { Where, _reaching }, Gate);
+                    return conjuncts.Count == 0 ? _terms.Root : _terms.Gated(_terms.Root, "reduce", new[] { Where }, Gate);
 
                 case OracleQuestion.PointRead:
                     return _terms.Child(_terms.Root, conjuncts.Where(c => IsPin(c, licence.Pins!)));
@@ -589,9 +585,7 @@ namespace Apache.Calcite.Cosmos.Facts
         SqlPredicate Where => _where ??= SqlPredicate.AllOf(Statement.Conjuncts);
 
         /// <summary>
-        /// What a gated node's assumptions wait on: the WHERE; for a reduce over filters beneath it, the WHERE and those
-        /// filters as Calcite evaluates them, which the empty relation stops Calcite evaluating too
-        /// (<c>Rel.Convert.CosmosFilterReduceRule</c>); or for a projected <c>CASE</c> condition the predicates of its
+        /// What a gated node's assumptions wait on: the WHERE; or for a projected <c>CASE</c> condition the predicates of its
         /// expression (<c>CosmosFactRewriter.RewriteConditions</c>).
         /// </summary>
         SqlPredicate Gate => _gate ?? Where;

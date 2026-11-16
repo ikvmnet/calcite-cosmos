@@ -239,8 +239,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // left open belong to the execution, and every batch of it carries the same ones. Left
             // open, a slot reached the service as the slot itself, which a comparison is never true
             // against (#219) — and the shared cache, which names a statement by its values, would
-            // have answered one execution with what another fetched.
-            query = CosmosQueries.Bind(query, root);
+            // have answered one execution with what another fetched. A probe sent nothing binds
+            // nothing (CosmosQuery.SendsNothing).
+            if (query.SendsNothing == false)
+                query = CosmosQueries.Bind(query, root);
 
             return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
         }
@@ -514,7 +516,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     spelled.Add(value);
                 }
 
-                if (keys.Count == 0)
+                // A probe whose WHERE keeps no document the declaration admits and fails on none answers every key as
+                // absent, as the service would, without asking; the build side is still read, every batch of it.
+                if (_query.SendsNothing)
+                    foreach (var key in keys)
+                        _lookup[key!] = new List<TProbe>();
+
+                if (keys.Count == 0 || _query.SendsNothing)
                     return true;
 
                 var fetched = new Dictionary<object, List<TProbe>>();

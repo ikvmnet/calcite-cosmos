@@ -439,6 +439,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         }
 
         /// <summary>
+        /// Determines whether Calcite may answer UNKNOWN on some document holding a value the path's knowledge admits: read as
+        /// <see cref="RaisesOver"/> reads a raise, every state through its cell, an answer that decides nothing among them.
+        /// A comparison with a parameter may, the parameter bound to a null.
+        /// </summary>
+        /// <param name="possible">What the path may hold.</param>
+        /// <param name="columns">The raw columns' union, the readings vocabulary's <c>rawunion</c>.</param>
+        /// <param name="readings">Every reading's rows, the readings vocabulary's table.</param>
+        public bool UnknownOver(PathValues possible, RawTruths columns, ReadingTable readings)
+        {
+            if (Parameter)
+                return true;
+
+            foreach (var state in State.Enumerate(possible))
+                if ((OnCell(PathCell.Of(state), columns, readings) & Truths.Unknown) != 0)
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>
         /// The truth values a comparison with a parameter may take on a cell, beside a raise wherever Calcite may raise
         /// whatever the parameter is bound to (<c>Calcite.AParameterComparesAsItsComparand</c>): the reading evaluated as the
         /// readings rules say over the cell's class, as <see cref="OnCell"/> evaluates it, its own answer beside its null

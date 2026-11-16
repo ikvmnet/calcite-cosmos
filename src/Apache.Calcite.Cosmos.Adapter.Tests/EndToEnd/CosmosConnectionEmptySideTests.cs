@@ -27,11 +27,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Each statement filters one side by a <c>kind</c> the declaration rules out, which the reduce answers with no rows,
-    /// and casts the text <c>body</c> to <c>INTEGER</c> on the other, which fails on <c>"abc"</c>. Calcite reads the
-    /// other side and fails. When the reduce answered with an empty <c>Values</c>, the host's prune-empty rules read it
-    /// as empty and answered the whole statement with no rows and no request; the reduce now answers with
-    /// <c>CosmosNoRows</c>, which no rule reads as empty, and the other side is read as Calcite reads it.
+    /// Each statement filters one side by a <c>kind</c> the declaration rules out, whose request is not sent, and casts
+    /// the text <c>body</c> to <c>INTEGER</c> on the other, which fails on <c>"abc"</c>. Calcite reads the other side and
+    /// fails. When the reduce answered with an empty <c>Values</c>, the host's prune-empty rules read it as empty and
+    /// answered the whole statement with no rows and no request. Nothing in the plan stands for an empty answer now: the
+    /// side is pushed as any other and left unsent (<see cref="CosmosQuery.SendsNothing"/>), and the other side is read as
+    /// Calcite reads it.
     /// </para>
     /// <para>
     /// The control is the same statement over the same container declared nothing, in a second schema of the same model:
@@ -39,9 +40,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// </para>
     /// <para>
     /// Two semi-joins are exceptions. One over a reduced subquery is planned as a join the adapter drives by the
-    /// subquery's keys, with the cast above it, whether the subquery is reduced or merely matches nothing: the lookup
-    /// join's, not the reduce's. One whose outer side is reduced is the host's semi-join over <c>CosmosNoRows</c>, which
-    /// reads its outer side first and never opens the subquery Calcite fails on: recorded, not yet decided.
+    /// subquery's keys, with the cast above it, whether the subquery's request is left unsent or merely matches nothing:
+    /// the lookup join's, not the declaration's. One whose outer side sends nothing is the host's semi-join, which reads
+    /// its outer side first and never opens the subquery Calcite fails on: recorded, not yet decided.
     /// </para>
     /// </remarks>
     public class CosmosConnectionEmptySideTests : IClassFixture<CosmosConnectionEmptySideTests.Fixture>
@@ -254,8 +255,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The side the declaration empties is still answered with no request, and the other side, which Calcite reads and
-        /// fails on, is read and fails as Calcite fails, as its undeclared twin does.
+        /// The side the declaration empties is pushed and sends nothing, and the other side, which Calcite reads and fails
+        /// on, is read and fails as Calcite fails, as its undeclared twin does.
         /// </summary>
         [Theory]
         [InlineData("ix3")]
@@ -273,14 +274,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plain.Raised.Should().NotBeNull("the control: knowing nothing of the documents, the host casts \"abc\" as Calcite does\n" + plain.Plan);
 
             var declared = await Run(connection, Statement(name, "\"COSMOS\".\"sides\""));
-            declared.Plan.Should().Contain("CosmosNoRows", "the declaration empties the side filtered by kind");
+            declared.Plan.Should().Contain("sends=[nothing]", "the declaration empties the side filtered by kind");
             declared.Raised.Should().NotBeNull("the other side is read, and fails as Calcite fails\n" + declared.Plan + "\nundeclared:\n" + plain.Plan);
             Innermost(declared.Raised!).Should().Be(Innermost(plain.Raised!));
         }
 
         /// <summary>
-        /// A semi-join whose subquery the declaration empties is no longer pruned, but the reduce does not decide what
-        /// it answers: the declaration also keeps the cast of <c>body</c> from the service, so reading every document
+        /// A semi-join whose subquery the declaration empties is no longer pruned, but its unsent request does not decide
+        /// what it answers: the declaration also keeps the cast of <c>body</c> from the service, so reading every document
         /// to cast it costs more than fetching the subquery's keys, and the plan chosen is a join the adapter drives by
         /// those keys (<c>CosmosLookupJoin</c>), with the cast above it as the query wrote it, evaluated on the
         /// documents the keys fetch. The same statement whose subquery matches nothing with nothing reduced, a key no
@@ -298,18 +299,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plain.Raised.Should().NotBeNull("the control pushes the cast beneath its join\n" + plain.Plan);
 
             var reduced = await Run(connection, Statement("sj1", "\"COSMOS\".\"sides\""));
-            reduced.Plan.Should().Contain("CosmosNoRows").And.Contain("CosmosLookupJoin", reduced.Plan);
+            reduced.Plan.Should().Contain("sends=[nothing]").And.Contain("CosmosLookupJoin", reduced.Plan);
 
             var none = await Run(connection, Statement("sj1none", "\"COSMOS\".\"sides\""));
-            none.Plan.Should().NotContain("CosmosNoRows").And.Contain("CosmosLookupJoin", none.Plan);
+            none.Plan.Should().NotContain("sends=[nothing]").And.Contain("CosmosLookupJoin", none.Plan);
 
-            (reduced.Raised is null).Should().Be(none.Raised is null, "the join, not the reduce, decides where the cast is evaluated\n" + reduced.Plan + "\n" + none.Plan);
+            (reduced.Raised is null).Should().Be(none.Raised is null, "the join, not the declaration, decides where the cast is evaluated\n" + reduced.Plan + "\n" + none.Plan);
         }
 
         /// <summary>
         /// Recorded, not decided: a semi-join whose outer side the declaration empties answers no rows where Calcite fails
-        /// on the subquery. The plan is the host's semi-join over <c>CosmosNoRows</c> and the subquery that casts
-        /// <c>body</c>, and the host's semi-join reads its outer side first and, finding no rows, never opens the subquery.
+        /// on the subquery. The plan is the host's semi-join over an outer side that sends nothing and the subquery that
+        /// casts <c>body</c>, and the host's semi-join reads its outer side first and, finding no rows, never opens the
+        /// subquery.
         /// The undeclared twin is a join the adapter drives by the subquery's keys, the subquery read first, and fails as
         /// Calcite does (<c>TODO.md</c>, <em>A semi-join over an emptied outer side reads no subquery</em>).
         /// </summary>
@@ -324,7 +326,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plain.Raised.Should().NotBeNull("the control reads the subquery and casts \"abc\" as Calcite does\n" + plain.Plan);
 
             var declared = await Run(connection, Statement("sj2", "\"COSMOS\".\"sides\""));
-            declared.Plan.Should().Contain("CosmosNoRows", "the declaration empties the outer side");
+            declared.Plan.Should().Contain("sends=[nothing]", "the declaration empties the outer side");
             declared.Raised.Should().BeNull("recorded: beside an empty outer side the host's semi-join opens no subquery\n" + declared.Plan);
         }
 

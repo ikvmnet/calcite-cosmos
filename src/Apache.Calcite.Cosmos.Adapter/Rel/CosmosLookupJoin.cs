@@ -174,6 +174,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
         /// <inheritdoc />
         /// <remarks>
+        /// A probe answered without being sent (<see cref="CosmosQuery.SendsNothing"/>) says so in an explained plan,
+        /// <c>probes=[nothing]</c>, as the converter says it of its statement, and never in the digest.
+        /// </remarks>
+        public override RelWriter explainTerms(RelWriter pw)
+        {
+            return base.explainTerms(pw)
+                .itemIf("probes", "nothing", pw.getDetailLevel() == org.apache.calcite.sql.SqlExplainLevel.EXPPLAN_ATTRIBUTES && Convert.CosmosConverters.SendsNothing(getRight(), getCluster().getRexBuilder()));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
         /// <para>
         /// Charged for what it actually does: read the build side, and make one request per batch of it.
         /// The alternative the planner is comparing against reads the whole container once, so the

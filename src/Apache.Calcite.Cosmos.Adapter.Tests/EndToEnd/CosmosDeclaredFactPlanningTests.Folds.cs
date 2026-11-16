@@ -30,32 +30,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static readonly string NeverReadArm = $"CASE WHEN {Read("kind")} = 'C' THEN {AsInteger("n")} = 1 ELSE FALSE END";
 
         /// <summary>
-        /// A conjunct the declaration makes true wherever it does not raise is deleted as redundant, and the arm beside it
-        /// is never read; but the deleted conjunct raises on every admitted document (<c>RETURNING DOUBLE</c> over an
-        /// integer, the text <c>body</c> cast to <c>INTEGER</c>), so Calcite fails. The arm is asked of the <c>WHERE</c> as
-        /// written, so it is not written <c>FALSE</c>, and the filter, a <c>COUNT</c> over it too, is sent and answers
-        /// nothing after a request, where it was the empty relation with none. Where nothing in the <c>WHERE</c> raises the
-        /// arm still folds.
+        /// A conjunct the declaration makes true wherever it does not raise, beside an arm never read; but the conjunct
+        /// raises on every admitted document, so Calcite fails. Where it renders (<c>RETURNING DOUBLE</c> over an integer)
+        /// the arm is asked of the <c>WHERE</c> as written, so it is not written <c>FALSE</c>: the filter, a <c>COUNT</c>
+        /// over it too, is sent, the arm as written, and answers nothing after a request. The <c>CASE</c> taking no truth
+        /// value its <c>ELSE</c> does has its condition true, which the declaration rules out, so the conjunct is no longer
+        /// deleted beside it either. Where it does not render (the text <c>body</c> cast to <c>INTEGER</c>) it stays in
+        /// Calcite above the arm, which is sent alone and keeps nothing, so nothing is sent and the cast reads no row: the
+        /// split, recorded (<c>docs/14</c>, 14.2). Where nothing in the <c>WHERE</c> raises, the statement sends nothing.
         /// </summary>
         [Fact]
         public void AnArmBesideADeletedConjunctThatMayRaiseIsNotWrittenFalse()
         {
+            var split = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE NOT ({AsInteger("body")} = 1 AND {Read("kind")} = 'C') AND {NeverReadArm}""", Declaring(Listed), out _);
+            PlanText(split).Should().Contain("ClrCursorFilter(condition=[NOT(AND(=(CAST(JSON_VALUE($0, '$.body')):INTEGER, 1)", "the cast stays in Calcite: " + PlanText(split));
+            PlanText(split).Should().Contain(KeepsNothing, "the arm sent alone keeps nothing and raises nowhere: " + PlanText(split));
+
             foreach (var (schema, deleted) in new[]
             {
                 (Ranged, $"{Returning("n", "DOUBLE")} = 1.5"),
-                (Listed, $"{AsInteger("body")} = 1"),
             })
             {
                 var container = Declaring(schema);
                 var where = $"NOT ({deleted} AND {Read("kind")} = 'C') AND {NeverReadArm}";
 
+                const string Arm = @"\(\(c\.kind = @p\d\) AND \(c\.n = @p\d\)\)\)$";
+
                 var rows = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {where}""", container, out _);
-                PlanText(rows).Should().NotContain(KeepsNothing, "the deleted conjunct raises on every document: " + PlanText(rows));
-                Query(FindCosmos(rows), container).Sql.Should().EndWith("WHERE ((c.kind = @p0) AND (c.n = @p1))", PlanText(rows));
+                PlanText(rows).Should().NotContain(KeepsNothing, "the conjunct raises on every document: " + PlanText(rows));
+                Query(FindCosmos(rows), container).Sql.Should().MatchRegex(Arm, "the arm is sent as written: " + PlanText(rows));
 
                 var counted = PlanToCosmos($"SELECT COUNT(*) AS n FROM items AS c WHERE {where}", container, out _);
                 PlanText(counted).Should().NotContain(KeepsNothing, PlanText(counted));
-                Query(FindCosmos(counted), container).Sql.Should().Be("""SELECT COUNT(1) AS "n" FROM items c WHERE ((c.kind = @p0) AND (c.n = @p1))""", PlanText(counted));
+                Query(FindCosmos(counted), container).Sql.Should().StartWith("""SELECT COUNT(1) AS "n" FROM items c WHERE """).And.MatchRegex(Arm, PlanText(counted));
             }
 
             var safe = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE NOT ({Read("body")} = 'q' AND {Read("kind")} = 'C') AND {NeverReadArm}""", Declaring(Listed), out _);

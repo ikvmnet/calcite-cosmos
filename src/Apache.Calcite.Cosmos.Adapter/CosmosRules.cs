@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
@@ -98,6 +98,11 @@ namespace Apache.Calcite.Cosmos.Adapter
             // no HAVING.
             yield return org.apache.calcite.rel.rules.CoreRules.FILTER_AGGREGATE_TRANSPOSE;
 
+            // A projection Calcite's field trimmer left declaring a correlation variable no expression reads, over the
+            // projection it trimmed: the two merged, declaring none, which no other rule merges or converts. A scalar
+            // sub-query in a select list that nothing reads leaves one where a host trims before it removes sub-queries.
+            yield return CosmosUncorrelatedProjectMergeRule.Instance;
+
             // And the transpose that decides whether a filtered query projects anything at all.
             //
             // A Cosmos scan presents five columns and a query reading paths out of the document reads
@@ -118,10 +123,6 @@ namespace Apache.Calcite.Cosmos.Adapter
             yield return org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE;
 
             yield return CosmosFilterRule.Create(convention);
-
-            // A filter no document satisfies and none fails is the empty relation, and one every document satisfies
-            // is its input: what the rewrite reaches, made a plan that sends nothing, or no WHERE.
-            yield return CosmosFilterReduceRule.Create(convention);
 
             // Partial pushdown: where only some of a predicate renders, the service still evaluates
             // that part rather than the plan declining the whole thing and scanning the container.

@@ -684,6 +684,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         public CosmosContainerMetadata Container => _container;
 
         /// <summary>
+        /// Gets the builder expressions are translated with.
+        /// </summary>
+        internal RexBuilder RexBuilder => _rexBuilder;
+
+        /// <summary>
         /// Gets the statement under construction.
         /// </summary>
         public CosmosQueryBuilder Query => _query;
@@ -994,7 +999,45 @@ namespace Apache.Calcite.Cosmos.Adapter
         {
             var program = OrderProgram();
             return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program,
-                _parameters.Stored.Count > 0 ? new List<string>(_parameters.Stored) : null);
+                _parameters.Stored.Count > 0 ? new List<string>(_parameters.Stored) : null, SendsNothing());
+        }
+
+        readonly List<(RexNode Condition, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings)> _filtered = new();
+
+        /// <summary>
+        /// Records a condition a filter conjoins into the statement's <c>WHERE</c>, as it is sent, read through the binding
+        /// current where it is written.
+        /// </summary>
+        /// <param name="condition">The condition the filter sends.</param>
+        internal void Filtered(RexNode condition) =>
+            _filtered.Add((condition ?? throw new ArgumentNullException(nameof(condition)), _fields, _readings));
+
+        /// <summary>
+        /// Determines whether the statement need not be sent: its <c>WHERE</c> keeps no document the declaration admits and
+        /// fails on none, so the service would answer it with no document, and over no document it answers no row.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Asked once, of the WHERE as sent.</b> Each filter's condition as it is written into the statement, the
+        /// conjuncts of several joined as one statement, each over its own binding
+        /// (<see cref="CosmosRowFacts.KeepsNothing"/>). The facts graph answers it under
+        /// <see cref="OracleLicence.Reduce"/>: no document the declaration admits makes the WHERE true, and none makes
+        /// anything in it raise. Calcite's own reading of a condition as never true is not asked: on a cell where Calcite
+        /// raises the service may answer anything, so only a WHERE that also raises nowhere is one the service answers with
+        /// no document. A parameter is read as any value of its type, so the answer holds of every binding.
+        /// </para>
+        /// <para>
+        /// <b>Not of a scalar aggregate.</b> One with no grouping answers one row over no document, the count's 0, so it is
+        /// sent; what the service answers it with is not measured per aggregate (<c>TODO.md</c>).
+        /// </para>
+        /// </remarks>
+        bool SendsNothing()
+        {
+            if (_filtered.Count == 0 || _query.FlatProjection && _query.HasGroupBy == false)
+                return false;
+
+            var statements = _filtered.ConvertAll(f => Metadata.CosmosFilterStatement.Of(f.Condition, f.Fields, f.Readings, _container, _rexBuilder, RootAlias));
+            return statements.Count == 1 ? statements[0].IsContradictory : CosmosRowFacts.KeepsNothing(statements, _container);
         }
 
         readonly List<(string Expression, CosmosOrderedKey Key)> _anchoredKeys = new();

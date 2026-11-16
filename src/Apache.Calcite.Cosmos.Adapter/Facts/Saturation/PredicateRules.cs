@@ -112,6 +112,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             // The reduce's question: asserted by the gated nodes alone, settled before anything is assumed, never lifted.
             Gated = graph.DefineRelation<Pred, Pred>("gated", local);
             NeverRaises = graph.DefineRelation<Pred>("never raises", local);
+
+            // Which predicates are never UNKNOWN, settled beside the raises: what a CASE's condition is where it is not TRUE.
+            TwoValued = graph.DefineRelation<Pred>("two valued", local);
             _writer = new PredicateWriter(Ir, path => JsonFactEncoding.Path(path).ToTerm(json));
 
             Establish = graph.DefineRuleset("establish");
@@ -219,6 +222,13 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// before anything is assumed, read by the gate alone and by no verdict. Never lifted.
         /// </summary>
         public Relation<Pred> NeverRaises { get; }
+
+        /// <summary>
+        /// Calcite answers TRUE or FALSE, never UNKNOWN, on every document the context admits that it does not raise on:
+        /// judged beside <see cref="NeverRaises"/>, before anything is assumed, and read by the rule that makes a
+        /// <c>CASE</c>'s condition FALSE where it is not TRUE. Never lifted.
+        /// </summary>
+        public Relation<Pred> TwoValued { get; }
 
         /// <summary>The predicate is TRUE of every row the context admits.</summary>
         public Relation<Pred> AlwaysTrue { get; }
@@ -344,8 +354,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(Graph.Contradiction.Of());
             });
 
-            // A truth value is what it says: FALSE assumed, as a reduce assumes the filters beneath it where Calcite's
-            // simplifier reads them as FALSE, is no row; and UNKNOWN is neither true nor false.
+            // A truth value is what it says: FALSE assumed is no row; and UNKNOWN is neither true nor false.
             Establish.DefineRule("a truth value holds as nothing but itself", r =>
             {
                 var (e, s) = r.Vars<Pred, string>("e", "s");
@@ -353,6 +362,48 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.When(Holds.Of(e, t), e.Is(Ir.Truth.Of(s)));
                 r.Where(s, t, (name, truth) => name != (truth ? "true" : "false"));
                 r.Then(Graph.Contradiction.Of());
+            });
+            Establish.DefineRule("TRUE and FALSE hold as themselves", r =>
+            {
+                var (e, s) = r.Vars<Pred, string>("e", "s");
+                r.When(e.Is(Ir.Truth.Of(s)));
+                r.Where(s, name => name is "true" or "false");
+                r.Then(Holds.Of(e, Compute.Of(s, name => name == "true")));
+            });
+
+            // A CASE takes its THEN's truth value where its condition is TRUE, and its ELSE's where it is FALSE or UNKNOWN
+            // (Calcite.TruthTestsAreCases reads a truth test so). So where it takes a value its THEN does not, its
+            // condition is not TRUE, which a two-valued condition (TwoValued, the unassumed stage's) makes FALSE; and where
+            // its ELSE does not, its condition is TRUE.
+            Establish.DefineRule("a CASE whose condition holds true takes its THEN's truth value", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                var x = r.Var<bool>("x");
+                r.When(Holds.Of(e, x), e.Is(Ir.Case.Of(c, t, f)), Holds.Of(c, true));
+                r.Then(Holds.Of(t, x));
+            });
+            Establish.DefineRule("a CASE whose condition holds false takes its ELSE's truth value", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                var x = r.Var<bool>("x");
+                r.When(Holds.Of(e, x), e.Is(Ir.Case.Of(c, t, f)), Holds.Of(c, false));
+                r.Then(Holds.Of(f, x));
+            });
+            Establish.DefineRule("a CASE taking another truth value than its THEN has a two-valued condition false", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                var (x, y) = r.Vars<bool, bool>("x", "y");
+                r.When(Holds.Of(e, x), e.Is(Ir.Case.Of(c, t, f)), Holds.Of(t, y), TwoValued.Of(c));
+                r.Where(x, y, (taken, then) => taken != then);
+                r.Then(Holds.Of(c, false));
+            });
+            Establish.DefineRule("a CASE taking another truth value than its ELSE has its condition true", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                var (x, y) = r.Vars<bool, bool>("x", "y");
+                r.When(Holds.Of(e, x), e.Is(Ir.Case.Of(c, t, f)), Holds.Of(f, y));
+                r.Where(x, y, (taken, otherwise) => taken != otherwise);
+                r.Then(Holds.Of(c, true));
             });
 
             // What an atom taking a truth value says of the path it reads: what PredicateAtom.Kept says every such row
@@ -887,6 +938,51 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
                 r.When(e.Is(Ir.Case.Of(c, t, f)), NeverRaises.Of(c), NeverRaises.Of(t), NeverRaises.Of(f));
                 r.Then(NeverRaises.Of(e));
+            });
+
+            // Which predicates are never UNKNOWN (TwoValued), bottom-up as the raises: an atom by its cells over every state
+            // its path may hold (PredicateAtom.UnknownOver), TRUE and FALSE, and each connective of two-valued operands,
+            // since Kleene's connectives answer UNKNOWN only of an UNKNOWN (Calcite.ConnectivesAreKleene); a CASE takes its
+            // THEN's or its ELSE's value, so it is two-valued where both are.
+            RaiseRules.DefineRule("an atom UNKNOWN of nothing its path may hold is two-valued", r =>
+            {
+                var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
+                var w = r.Var<ReadingTable>("w");
+                var u = r.Var<RawTruths>("u");
+                r.When(Atom.Of(e, p, a), x.Is(Possible.Of(p)), w.Is(json.Readings.ReaderRows.Of()), u.Is(json.Readings.RawUnion.Of()));
+                r.Where(a, x, u, w, (atom, values, columns, table) => atom.UnknownOver(values, columns, table) == false);
+                r.Then(TwoValued.Of(e));
+            });
+            RaiseRules.DefineRule("TRUE and FALSE are two-valued", r =>
+            {
+                var (e, s) = r.Vars<Pred, string>("e", "s");
+                r.When(e.Is(Ir.Truth.Of(s)));
+                r.Where(s, name => name is "true" or "false");
+                r.Then(TwoValued.Of(e));
+            });
+            RaiseRules.DefineRule("a negation of a two-valued predicate is two-valued", r =>
+            {
+                var (e, a) = r.Vars<Pred, Pred>("e", "a");
+                r.When(e.Is(Not.Of(a)), TwoValued.Of(a));
+                r.Then(TwoValued.Of(e));
+            });
+            RaiseRules.DefineRule("a conjunction of two-valued predicates is two-valued", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(And.Of(a, b)), TwoValued.Of(a), TwoValued.Of(b));
+                r.Then(TwoValued.Of(e));
+            });
+            RaiseRules.DefineRule("a disjunction of two-valued predicates is two-valued", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(Or.Of(a, b)), TwoValued.Of(a), TwoValued.Of(b));
+                r.Then(TwoValued.Of(e));
+            });
+            RaiseRules.DefineRule("a CASE whose arms are two-valued is two-valued", r =>
+            {
+                var (e, c, t, f) = r.Vars<Pred, Pred, Pred, Pred>("e", "c", "t", "f");
+                r.When(e.Is(Ir.Case.Of(c, t, f)), TwoValued.Of(t), TwoValued.Of(f));
+                r.Then(TwoValued.Of(e));
             });
         }
 

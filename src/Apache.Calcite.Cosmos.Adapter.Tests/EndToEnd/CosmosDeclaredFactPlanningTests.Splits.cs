@@ -86,16 +86,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>LIKE</c> over <c>id</c>, which the adapter cannot show never fails, is sent with the contradicted
-        /// <c>status</c> as one request that finds nothing.
+        /// A <c>LIKE</c> over <c>id</c> is pushed with the contradicted <c>status</c> as one <c>WHERE</c>, and the
+        /// statement sends nothing: the facts graph reads the raw <c>id</c> as its column's rows say, a string the service
+        /// keeps there LIKE never fails on, so nothing in the <c>WHERE</c> raises. It was sent, one request finding nothing,
+        /// while the raw column's rows were the rendering graph's alone.
         /// </summary>
         [Fact]
-        public void ALikeOverTheIdBesideAContradictionIsSentWhole()
+        public void ALikeOverTheIdBesideAContradictionSendsNothing()
         {
             var container = Declaring(Statuses);
             var plan = PlanToCosmos("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'deleted' AND c."id" LIKE 'a%'""", container, out _);
-            PlanText(plan).Should().NotContain(KeepsNothing, PlanText(plan));
-            Query(FindCosmos(plan), container).Sql.Should().Contain("c.status", "the whole WHERE is sent");
+            PlanText(plan).Should().Contain("LIKE($1, 'a%')", "the whole WHERE is pushed: " + PlanText(plan));
+            PlanText(plan).Should().Contain(KeepsNothing, PlanText(plan));
+            Query(FindCosmos(plan), container).SendsNothing.Should().BeTrue();
         }
 
         /// <summary>

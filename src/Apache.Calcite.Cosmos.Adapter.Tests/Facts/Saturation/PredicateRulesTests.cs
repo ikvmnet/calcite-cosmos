@@ -63,11 +63,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Box, rules.Ir.Query, rules.Ir.Apart, rules.Ir.Null, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(81,
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(86,
                 "the vocabulary's thirteen of G8, which both graphs read since h15, h15b's ten of the element and the readings written apart among them, "
                 + "each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not, "
                 + "the gate that assumes what a gated node gates where the WHERE raises on no row, a truth value held as nothing but itself, "
-                + "and the domain an atom's preimage keeps among the types its path may hold, and among its strings their characters");
+                + "and the domain an atom's preimage keeps among the types its path may hold, and among its strings their characters; "
+                + "TRUE and FALSE held as themselves, and a CASE taking its THEN's or its ELSE's truth value where its condition decides, "
+                + "and its condition decided where an arm takes the other truth value");
             rules.Establish.Rules.Count(rule => rule.Name == "an assumption the WHERE gates holds where the WHERE raises on no row").Should().Be(1);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
             rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
@@ -79,11 +81,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 "a conjunction raises nowhere both its sides raise nowhere",
                 "a disjunction raises nowhere both its sides raise nowhere",
                 "a CASE raises nowhere its condition and both its arms raise nowhere",
-            }, "an atom, a truth value and each connective; an opaque term or any other constructor may raise");
+                "an atom UNKNOWN of nothing its path may hold is two-valued",
+                "TRUE and FALSE are two-valued",
+                "a negation of a two-valued predicate is two-valued",
+                "a conjunction of two-valued predicates is two-valued",
+                "a disjunction of two-valued predicates is two-valued",
+                "a CASE whose arms are two-valued is two-valued",
+            }, "an atom, a truth value and each connective, which raise nowhere or are never UNKNOWN; an opaque term or any other constructor may raise, and may be UNKNOWN");
 
             // What a gated node assumes, and what it judged before assuming anything, are that node's alone, as what a
             // case chose is: none is lifted.
-            new Eggnog.TableHandle[] { rules.Gated, rules.NeverRaises, rules.Holds }.Should().OnlyContain(table => table.Lift == false);
+            new Eggnog.TableHandle[] { rules.Gated, rules.NeverRaises, rules.TwoValued, rules.Holds }.Should().OnlyContain(table => table.Lift == false);
         }
 
         // The reduce's rules, in a node gated by hand as the reduce's is: what the WHERE assumes holds only where the

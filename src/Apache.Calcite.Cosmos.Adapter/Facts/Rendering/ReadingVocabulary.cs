@@ -494,6 +494,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.When(t.Is(RawColumn.Of(k, c)), ParameterAs.Of(u, c));
                 r.Then(RawUnion.Of().Is(Compute.Of(k, u, t, RawTruths.OfParameter)));
             });
+
+            // A raw column's reading as the other readings are read, from its rows: each class as its column reads it, and
+            // the reading through every column as each. So the facts graph reads a raw value's comparison, test and LIKE
+            // over the cells as the rendering graph does, a raise where its column's row says one, and where none, none.
+            reads.DefineRule("a raw column's reading reads each class as its column's rows say, and the reading through every column as each", r =>
+            {
+                var (rd, c, a) = r.Vars<string, string, string>("rd", "c", "a");
+                var k = r.Var<CosmosValueClass>("k");
+                r.When(a.Is(RawReads.Of(rd, c, k)));
+                r.Then(ReaderRows.Of().Is(Compute.Of(rd, c, k, a, ReadingTable.Raw)));
+            });
+
+            // A column no row measured reads as the union until a row measures it (PredicateAtom.UnionColumns): each class
+            // as every measured column reads it.
+            reads.DefineRule("a raw column no row measured reads each class as the union of those that were", r =>
+            {
+                var (rd, c, a, u) = r.Vars<string, string, string, string>("rd", "c", "a", "u");
+                var k = r.Var<CosmosValueClass>("k");
+                r.When(a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u));
+                r.Then(ReaderRows.Of().Is(Compute.Of(rd, u, k, a, ReadingTable.Raw)));
+            });
         }
 
     }

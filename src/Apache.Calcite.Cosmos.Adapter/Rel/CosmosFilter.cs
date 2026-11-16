@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -325,10 +325,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (implementor.Query.HasRowLimit)
                 throw new CosmosTranslationException("A filter cannot be applied above a pushed-down row limit.");
 
+            var whole = string.IsNullOrEmpty(implementor.Query.Where);
+
+            // The text sent is the rendering form of the condition the node holds, which adds what the declaration alone
+            // decides (CosmosFactRewriter); routing and a point read read it, being the request's. What is sent is
+            // remembered, to ask once whether the statement keeps nothing (CosmosImplementor.Build).
+            var sent = Sent(implementor);
+            implementor.Filtered(sent);
+
+            // Every conjunct deleted: a WHERE that restricts nothing, written as none.
+            if (sent is RexLiteral literal && literal.isAlwaysTrue())
+                return;
+
             // Recovered before translation, from the same bindings, so that a query naming its
             // partition key can be executed against one partition instead of fanned out.
             if (implementor.PartitionKeyValues is null &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPrefix(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out var partitionKey, out var complete))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPrefix(sent, implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out var partitionKey, out var complete))
             {
                 implementor.PartitionKeyValues = partitionKey;
                 implementor.PartitionKeyIsComplete = complete;
@@ -345,21 +357,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             // measured on the emulator). The other order, a filter conjoining onto the one that
             // offered, is withdrawn at Build, which compares the WHERE the statement ends with to
             // the one the read was offered for.
-            var whole = string.IsNullOrEmpty(implementor.Query.Where);
             string? pointReadId = null;
             IReadOnlyList<string>? pointReadIds = null;
 
             if (whole &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var id))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointRead(sent, implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var id))
                 pointReadId = id;
 
             // Or a set of ids — the same shape for several documents, which ReadManyItemsAsync
             // answers charged as point reads. Asked second: a single id is the single read's.
             else if (whole &&
-                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(getCondition(), implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var ids))
+                Metadata.CosmosPartitionKeyExtractor.TryExtractPointReadSet(sent, implementor.Fields, implementor.Readings, implementor.Container, implementor.RootAlias, out _, out var ids))
                 pointReadIds = ids;
 
-            var condition = implementor.TranslateCondition(getCondition());
+            var condition = implementor.TranslateCondition(sent);
 
             // Stacked filters are normally merged by the planner, but not always — a filter that
             // reached the service from a view and one written above it are two — so conjoin rather
@@ -374,6 +385,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 implementor.PointReadSetCandidate = pointReadIds;
                 implementor.PointReadPredicate = implementor.Query.Where;
             }
+        }
+
+        /// <summary>
+        /// Returns the condition the statement is sent with: the rendering form of the one the node holds
+        /// (<see cref="CosmosFactRewriter.Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>),
+        /// where that form renders as the filter rule admitted the node's, and the node's own where it does not.
+        /// </summary>
+        /// <remarks>
+        /// The node holds the planning form (<see cref="Convert.CosmosFilterRule"/>), which Calcite reads; a conjunct the
+        /// rest imply, an arm never read and a WHERE that keeps nothing are decided again here, where the text is made, and
+        /// go nowhere else. A deletion can take a sibling another conjunct rendered beside, so the form is checked as the
+        /// rule checked the node's: each conjunct rendering from what its siblings establish, and onto a WHERE, failing on
+        /// no document that WHERE excludes.
+        /// </remarks>
+        /// <param name="implementor">The implementor, its binding the filter's input's and its WHERE what the filters beneath wrote.</param>
+        internal RexNode Sent(CosmosImplementor implementor)
+        {
+            var whole = string.IsNullOrEmpty(implementor.Query.Where);
+            var condition = getCondition();
+            var rendered = CosmosFactRewriter.Rewrite(condition, implementor.Fields, implementor.Container, implementor.RootAlias, implementor.RexBuilder, implementor.Readings);
+            if (ReferenceEquals(rendered, condition) || rendered is RexLiteral literal && literal.isAlwaysTrue())
+                return rendered;
+
+            var statement = CosmosFilterStatement.Of(rendered, implementor.Fields, implementor.Readings, implementor.Container, implementor.RexBuilder, implementor.RootAlias);
+            return statement.Renders && (whole || statement.FailureFree) ? rendered : condition;
         }
 
     }

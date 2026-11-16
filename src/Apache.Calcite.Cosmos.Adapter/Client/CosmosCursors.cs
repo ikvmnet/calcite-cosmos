@@ -67,6 +67,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (rowBuilder is null)
                 throw new ArgumentNullException(nameof(rowBuilder));
 
+            // A statement whose WHERE keeps no document the declaration admits and fails on none is answered as the
+            // service would answer it, with no row, and not sent: decided when the plan was implemented, for every value a
+            // parameter may take, so before anything is bound. What sending it could have raised at the service is not
+            // raised (docs/14.2).
+            if (query.SendsNothing)
+                return None<TRow>();
+
             // The statement is the same object every execution; what differs is the values a prepared
             // one left open, which is the only thing read off the context here.
             query = CosmosQueries.Bind(query, root);
@@ -80,8 +87,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Opens no rows, sending nothing: what a filter the facts graph proves keeps no document and fails on none
-        /// answers with (<see cref="Rel.CosmosNoRows"/>).
+        /// Opens no rows, sending nothing: what a statement the facts graph proves keeps no document and fails on none
+        /// answers with (<see cref="CosmosQuery.SendsNothing"/>).
         /// </summary>
         /// <typeparam name="TRow">The plan's row type.</typeparam>
         /// <returns>A cursor whose first read answers that there is no row.</returns>

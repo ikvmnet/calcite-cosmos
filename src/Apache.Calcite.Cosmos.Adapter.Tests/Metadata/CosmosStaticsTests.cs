@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosConstraintSet", ["Empty"], StaticFact, "the empty set"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["DefaultIncludedPatterns", "DefaultStatisticsTimeToLive", "ServiceExcludedPatterns"], StaticFact, "the service's indexing defaults, and a default lifetime"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["ServiceFacts"], StaticFact, "the service's guarantees, unbound: rules and their encoding, which compile nothing until a schema binds a copy"),
-            ("Adapter.Metadata.CosmosFactRewriter", ["Rewrites"], PlanScoped, "keyed weakly on a statement, which Read keeps only while its container lives"),
+            ("Adapter.Metadata.CosmosFactRewriter", ["Plans", "Rewrites"], PlanScoped, "keyed weakly on a statement, which Read keeps only while its container lives"),
             ("Adapter.Metadata.CosmosFilterStatement", ["Read"], PlanScoped, "keyed weakly on the condition, then on the container, so it keeps neither whatever condition a caller passes"),
             ("Adapter.Metadata.CosmosNumericForms", ["Digits", "IntegerUnpadded", "Unpadded"], StaticFact, "numeric spellings"),
             ("Adapter.Metadata.CosmosPartitionKeyExtractor", ["IdPolicy"], StaticFact, "the id's path"),
@@ -136,10 +136,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.Convert.CosmosConverters", ["GetExecutorMethod", "GetJsonPropertyMethod", "GetJsonTextPropertyMethod", "GetLookupCacheMethod", "GetPartitionCounterMethod", "GetPathMethod", "GetPropertyMethod", "GetTextPropertyMethod", "GetWriterMethod"], Infra, Reflection),
             ("Adapter.Rel.Convert.CosmosSelfJoinRule", ["Instances"], Infra, "the rule's instances, whose fields are their configuration"),
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
+            ("Adapter.Rel.Convert.CosmosUncorrelatedProjectMergeRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosToClrCursorConverter", ["OpenAsyncMethod", "OpenMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosConstraintCompiler", ["Cache"], PlanScoped, "keyed weakly on the type factory, then on the table, so it keeps neither whatever factory a caller passes"),
             ("Adapter.Rel.CosmosLookupJoin", ["JoinAsyncMethod", "JoinMethod"], Infra, Reflection),
-            ("Adapter.Rel.CosmosNoRows", ["NoneMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosTableModify", ["NullableMethod", "WriteAsyncMethod", "WriteMethod"], Infra, Reflection),
 
             ("Adapter.Sql.CosmosAxiomRows", ["Declared", "Owed", "Targets"], StaticFact, "the registry's rows owed a target, the functions declared beside the measured, and the targets"),
@@ -245,6 +245,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly (string Key, string Test)[] Released =
         [
             ("Adapter.Metadata.CosmosFactRewriter.Rewrites", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
+            ("Adapter.Metadata.CosmosFactRewriter.Plans", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
             ("Adapter.Metadata.CosmosFilterStatement.Read", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
             ("Adapter.Metadata.CosmosRowFacts.Decided", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.Convert.CosmosConverters.Announced", nameof(NoStaticReachesWhatASchemaLearned)),
@@ -408,6 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var reference = LongLived.makeInputRef(LongLived.getTypeFactory().createSqlType(SqlTypeName.VARCHAR), 0);
 
             CosmosFactRewriter.Rewrite(condition, fields, container, "c", LongLived);
+            CosmosFactRewriter.Planned(condition, fields, container, "c", LongLived);
             CosmosPartitionKeyExtractor.TryExtract(condition, fields, null, container, "c", out _);
             CosmosFilterStatement.Declares(LongLived.makeCall(SqlStdOperatorTable.IS_NOT_NULL, reference), fields, null, container, LongLived);
             reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");

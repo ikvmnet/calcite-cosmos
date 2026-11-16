@@ -26,15 +26,15 @@ namespace Apache.Calcite.Cosmos.Facts
         /// What holds of every row the filter keeps, which a strengthening may read — a statement that applies it routed
         /// to the partitions that can hold such a row, and counted as one document where it pins one: every conjunct,
         /// admitted or not. A row Calcite raises on is kept at no truth value, so its contradiction says only that no row
-        /// is TRUE, and the filter is made <c>FALSE</c> under <see cref="Reduce"/>.
+        /// is TRUE, and a request is left unsent under <see cref="Reduce"/>.
         /// </summary>
         Kept,
 
         /// <summary>
-        /// Whether the filter keeps nothing and fails on nothing, so that it may be made <c>FALSE</c>: the WHERE as one
-        /// conjunction, beside the filters beneath it that Calcite merges with it, assumed by a rule only where the gate
-        /// raises on no document the declaration admits. The gate is the WHERE and the filters beneath it as Calcite
-        /// evaluates them, or for a projected <c>CASE</c> condition every predicate of the projected expression.
+        /// Whether a statement's WHERE keeps nothing and fails on nothing, so that its request need not be sent and the text
+        /// may be made <c>FALSE</c>: the WHERE as one conjunction, assumed by a rule only where the gate raises on no
+        /// document the declaration admits. The gate is the WHERE, or for a projected <c>CASE</c> condition every predicate
+        /// of the projected expression.
         /// </summary>
         Reduce,
 
@@ -47,9 +47,8 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// Whether an arm of a <c>CASE</c> in a conjunct is never read, so that it may be written <c>FALSE</c>: what
         /// <see cref="Arm"/> assumes of the statement as written, a conjunct the deletions drop among it, each assumed by
-        /// the same rule only where the gate raises on no document the declaration admits: the WHERE as written and the
-        /// filters beneath it as Calcite evaluates them, or for a projected <c>CASE</c> condition every predicate of the
-        /// projected expression.
+        /// the same rule only where the gate raises on no document the declaration admits: the WHERE as written, or for a
+        /// projected <c>CASE</c> condition every predicate of the projected expression.
         /// </summary>
         NeverRead,
 

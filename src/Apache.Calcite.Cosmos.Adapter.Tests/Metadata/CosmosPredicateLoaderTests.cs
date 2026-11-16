@@ -627,14 +627,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// Read as 1, the literal below made the facts graph prune to nothing a statement Calcite keeps a stored
-        /// 1.0000000000000002 for: the raw value equal to 1 and its text to <c>'1.0000000000000002'</c>.
+        /// 1.0000000000000002 for: the raw value equal to 1 and its text to <c>'1.0000000000000002'</c>. It is sent.
         /// </summary>
         [Fact]
         public void AnApproximateLiteralPrunesNoPlanItsDoubleKeeps()
         {
             var sql = """SELECT c."id" FROM typed AS c WHERE c."$.category" = CAST(1.0000000000000002E0 AS VARIANT) AND JSON_VALUE(c."DOC", '$.category') = '1.0000000000000002'""";
             org.apache.calcite.plan.RelOptUtil.toString(Facts.Rendering.RenderingInputs.Differential("loader", [sql], Facts.Rendering.RenderingInputs.Containers).Single().Plan())
-                .Should().NotContain("CosmosNoRows").And.Contain("CosmosFilter");
+                .Should().NotContain("sends=[nothing]").And.Contain("CosmosFilter");
         }
 
         [Fact]

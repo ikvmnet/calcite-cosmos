@@ -29,8 +29,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// and a sort, each of which keeps the rows it is given or fewer, and the documents behind them. A join, an aggregate,
     /// a traversal or anything else is a relation of other rows, and the walk stops there. Every member of a set yields the
     /// same rows, so a filter found in one holds of whichever the planner chooses, whether or not it is the one that reached
-    /// the service. A filter is read as the filter rule pushes it, its condition rewritten (<see cref="CosmosFactRewriter"/>),
-    /// which is remembered against the condition, so the statement read here is the one the filter rule already admitted.
+    /// the service. A filter is read as the filter rule pushes it, its condition in the planning form
+    /// (<see cref="CosmosFactRewriter.Planned"/>), which is remembered against the condition, so the statement read here
+    /// is the one the filter rule already admitted.
     /// </para>
     /// <para>
     /// <b>Asked once, by the rule, and carried.</b> Which filters a walk finds depends on which members it reads, and a
@@ -139,7 +140,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                         var rexBuilder = filter.getCluster().getRexBuilder();
                         var condition = filter is CosmosFilter
                             ? filter.getCondition()
-                            : CosmosFactRewriter.Rewrite(filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
+                            : CosmosFactRewriter.Planned(filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
 
                         filters.Add(CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder));
                         node = filter.getInput();
@@ -159,10 +160,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// The conjuncts each filter admitted, as one statement, each filter's opaque terms numbered apart.
+        /// Determines whether several filters written into one statement keep no document together and fail on none: their
+        /// every conjunct as one statement, asked under <see cref="OracleLicence.Reduce"/>.
         /// </summary>
-        static PredicateStatement Together(IReadOnlyList<CosmosFilterStatement> filters) =>
-            new(filters.SelectMany((filter, k) => filter.Admitted.Select(conjunct => Apart(conjunct, (long)k << 32))).ToArray());
+        /// <param name="filters">Each filter's condition as it is sent, read through its own binding.</param>
+        /// <param name="container">The container the statement reads.</param>
+        /// <returns><c>true</c> where the statement need not be sent.</returns>
+        public static bool KeepsNothing(IReadOnlyList<CosmosFilterStatement> filters, CosmosContainerMetadata container) =>
+            CosmosOracle.For(container.Facts).Admit(Together(filters, every: true)).IsContradictory(OracleLicence.Reduce);
+
+        /// <summary>
+        /// The conjuncts each filter admitted, or with <paramref name="every"/> every conjunct, as one statement, each filter's
+        /// opaque terms numbered apart.
+        /// </summary>
+        static PredicateStatement Together(IReadOnlyList<CosmosFilterStatement> filters, bool every = false) =>
+            new(filters.SelectMany((filter, k) => (every ? filter.Statement.Conjuncts : filter.Admitted).Select(conjunct => Apart(conjunct, (long)k << 32))).ToArray());
 
         /// <summary>
         /// A predicate with every opaque term in it numbered from an offset.

@@ -26,8 +26,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The legality test, the splits and <see cref="CosmosProject.Implement"/> all render this form, as
-        /// <see cref="CosmosFilterRule"/>'s do. See <see cref="CosmosFactRewriter.RewriteConditions"/>.
+        /// The legality test, the splits and <see cref="CosmosProject.Implement"/> all render this form, as a filter's
+        /// text is its condition's rendering form (<see cref="CosmosFilter.Sent"/>). See
+        /// <see cref="CosmosFactRewriter.RewriteConditions"/>.
         /// </para>
         /// <para>
         /// <b>Rendered, never planned.</b> The node holds the expression as written. A condition the rewrite writes
@@ -129,8 +130,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         public override bool matches(RelOptRuleCall call)
         {
             // A correlated projection references a variable bound outside this statement, which
-            // Cosmos cannot express here.
-            return ((Project)call.rel(0)).getVariablesSet().isEmpty();
+            // Cosmos cannot express here. One that declares a variable no expression reads binds
+            // nothing: a scalar sub-query in a select list that nothing above reads leaves one, its
+            // column trimmed before any rule removes the sub-query, and no other rule converts it.
+            var projects = ((Project)call.rel(0)).getProjects();
+            for (var i = 0; i < projects.size(); i++)
+                if (RexUtil.containsCorrelation((RexNode)projects.get(i)))
+                    return false;
+
+            return true;
         }
 
         /// <inheritdoc />

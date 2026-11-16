@@ -307,9 +307,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// The undecided convention: each answer that decides nothing is exactly <see cref="Truths.Any"/>, so it counts as a
-        /// raise: a <c>LIKE</c> whose rows read no string as itself, every <c>LIKE</c> over a raw reader; an unknown state or
+        /// raise: an unknown state or
         /// cell; a test no case covers; the text compared with a literal that is no string; and a numeric cast compared with
-        /// one that is no number. The answers narrower than that drop no raise: the enumeration yields no unknown state for
+        /// one that is no number. A <c>LIKE</c> over a raw reading, or its cast to text, was one while the raw columns' rows
+        /// were the rendering graph's alone; it reads a string as itself now, as its column's rows say. The answers narrower than that drop no raise: the enumeration yields no unknown state for
         /// any class, and a pattern the units' rows leave unread is asked of the rows themselves. Any other undecided answer
         /// narrower than <see cref="Truths.Any"/> that drops a raise the evaluator finds fails
         /// <see cref="EveryRaiseTheEvaluatorFindsIsOneTheAtomMayMake"/>.
@@ -319,8 +320,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var thirty = new PathCell.Point(Of("30"));
             var undecided = new List<(PredicateAtom Atom, PathCell Cell)>();
+            // A raw column's reading, and a cast of it to text, through a column or none, read a string as itself, as the
+            // column's rows say, which the facts graph reads too.
             foreach (var reader in PredicateAtom.Columns.SelectMany(c => new[] { PredicateAtom.RawIn(c), PredicateAtom.InColumn(CastOfRaw, c) }).Append(CastOfRaw))
-                undecided.Add((PredicateAtom.Affix(reader, PredicateAtom.LikeTest, "3%"), thirty));
+                PredicateAtom.Affix(reader, PredicateAtom.LikeTest, "3%").OnCell(thirty, FactsReadings.Columns, FactsReadings.Rows)
+                    .Should().Be(Truths.True, $"{reader} reads a string as itself");
 
             undecided.Add((PredicateAtom.Compare(Text, PredicateAtom.Equal, Of("x")), new PathCell.Unknown()));
             undecided.Add((PredicateAtom.In(Text, ValueSet<string>.Empty), thirty));
