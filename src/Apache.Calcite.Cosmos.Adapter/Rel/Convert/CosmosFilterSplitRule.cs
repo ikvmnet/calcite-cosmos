@@ -38,12 +38,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// polarity needs no analysis: each one is positive by construction.
     /// </para>
     /// <para>
-    /// The split terminates. It fires only when both parts are non-empty, and neither of the two filters
-    /// it produces has that property — the inner is wholly renderable, the outer wholly not.
+    /// The split terminates. It fires only when both parts are non-empty. The inner is wholly renderable; the
+    /// outer, renderable or not, is split again only to push what it admits and the weakenings not yet applied
+    /// beneath it, which leave it, so each outer holds less to push than the filter it was split from.
     /// </para>
     /// <para>
-    /// <b>The outer is simplified under the inner</b>, as Calcite simplifies the whole condition, and is
-    /// left out where that makes it true (<see cref="Residual"/>).
+    /// <b>The outer is what Calcite evaluates over the rows the inner returns</b>: where Calcite's
+    /// simplification of the whole condition, as written, reads one half beside the other, its terms but those
+    /// of the conjuncts sent, and nothing where none is left (<see cref="Residual"/>).
     /// </para>
     /// <para>
     /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
@@ -168,15 +170,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var filter = (Filter)call.rel(0);
 
-            var (pushable, residual) = Split(filter, _convention.Container, admit: true, out var admitted);
+            var (pushable, residual) = Split(filter, _convention.Container, admit: true, out var admitted, out var sent);
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 
-            // The residual is read beside the conjuncts sent, as Calcite reads the whole condition; true there, nothing is
-            // left above, and the conjuncts admitted are the filter, the weakenings of what is left out with it.
-            var left = Residual(rexBuilder, admitted, Compose(rexBuilder, residual));
+            // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
+            // conjuncts admitted are the filter, the weakenings of what is left out with it.
+            var left = Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual));
             if (left.isAlwaysTrue())
             {
                 call.transformTo(filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, admitted)));
@@ -188,45 +190,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns the residual as Calcite simplifies it under the conjuncts sent beside it, true where the whole condition
-        /// simplifies to what they do, or as written where they say nothing of it.
+        /// Returns what Calcite evaluates of a filter's condition over the rows the half sent returns: Calcite's
+        /// simplification of the condition as written, less the terms of the conjuncts sent, true where nothing is left;
+        /// or the residual as planned where that simplification reads neither half beside the other.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Calcite evaluates a condition simplified whole, so a conjunct its siblings make true, or a sibling makes the
-        /// arm holding it false, is never evaluated: <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is
-        /// <c>kind = 'A'</c>. Split, the residual was simplified without the half sent, and the cast raised on a <c>body</c>
-        /// that is no number where Calcite answers. So the residual is simplified with the conjuncts sent as predicates
-        /// (<c>RelOptPredicateList</c>), unknown read as false, as a filter reads it, which is Calcite's own simplification
-        /// of the condition it was given, reading the declaration only through the lowerings the planning form holds.
+        /// Calcite evaluates the condition it was given simplified whole (unknown read as false, as a filter reads it), so a
+        /// conjunct its siblings make true, or a sibling makes the arm holding it false, is never evaluated:
+        /// <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is <c>kind = 'A'</c>. Split, the residual was
+        /// simplified without the half sent, and the cast raised on a <c>body</c> that is no number where Calcite answers.
+        /// So where the whole condition simplifies otherwise than its two halves each alone, what is left above is the
+        /// whole's terms but those of the conjuncts sent, which are true on every row returned: per term, so a second
+        /// residual conjunct keeps no absorbed one beside it.
         /// </para>
         /// <para>
-        /// The admitted conjuncts alone, not the weakenings: a weakening is the service's form written as a Rex, which
-        /// Calcite's reading of it need not match.
+        /// <b>As written, and the whole alone.</b> The condition as the query wrote it, not the planning form, whose
+        /// lowerings and flattened <c>CASE</c>s Calcite never reads: read through them, <c>CAST(w AS INTEGER) = 5</c> made
+        /// <c>w = '005' OR CAST(body AS INTEGER) = 1</c> true and the cast went unevaluated where Calcite fails. And no
+        /// predicate list beside it, which reads a bare boolean's own null test as true where Calcite's simplification of
+        /// the whole does not. A conjunct sent is one the half sent decides whole: each conjunct of its planning form
+        /// admitted.
+        /// </para>
+        /// <para>
+        /// Where the two halves simplify apart, the residual stays as planned, as before: Calcite's normal form of it,
+        /// which a later split reads anew, would push again what the half sent already holds.
         /// </para>
         /// </remarks>
-        static RexNode Residual(RexBuilder rexBuilder, List<RexNode> admitted, RexNode residual)
+        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual)
         {
-            var predicates = new java.util.ArrayList();
-            foreach (var conjunct in admitted)
-                predicates.add(conjunct);
-
-            var under = new RexSimplify(rexBuilder, RelOptPredicateList.of(rexBuilder, predicates), RexUtil.EXECUTOR).simplifyUnknownAsFalse(residual);
-            if (under.isAlwaysTrue() || admitted.Count == 0)
-                return under.isAlwaysTrue() ? under : residual;
-
-            // A predicate list reads equalities and ranges, and no disjunction: kind IN ('A', 'B') leaves
-            // kind IN ('A', 'B') OR CAST(body AS INTEGER) = 1 as it is. The whole condition simplified to what the half
-            // sent simplifies to is the half sent.
+            var own = Metadata.CosmosFilterStatement.ConjunctsOf(condition);
             var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
-            var whole = new java.util.ArrayList(predicates);
-            whole.add(residual);
-            if (plain.simplifyUnknownAsFalse(RexUtil.composeConjunction(rexBuilder, whole)).Equals(plain.simplifyUnknownAsFalse(RexUtil.composeConjunction(rexBuilder, predicates))))
-                return rexBuilder.makeLiteral(true);
 
-            // Where the half sent says nothing of it, as written: Calcite's normal form of it, which a later split reads
-            // anew, would push again what the half sent already holds.
-            return under.Equals(plain.simplifyUnknownAsFalse(residual)) ? residual : under;
+            var whole = Terms(plain.simplifyUnknownAsFalse(condition));
+            var decided = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i]).ToList())));
+            var rest = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList())));
+
+            if (new HashSet<RexNode>(whole).SetEquals(decided.Concat(rest)))
+                return residual;
+
+            return Compose(rexBuilder, whole.Where(term => decided.Contains(term) == false).ToList());
+        }
+
+        /// <summary>
+        /// Returns the terms of a simplified condition, a literal <c>TRUE</c> among none.
+        /// </summary>
+        static List<RexNode> Terms(RexNode simplified)
+        {
+            return Metadata.CosmosFilterStatement.ConjunctsOf(simplified).Where(term => term.isAlwaysTrue() == false).ToList();
         }
 
         /// <summary>
@@ -244,7 +255,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// or whole, as <see cref="matches"/> asks it.</param>
         internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit = true)
         {
-            return Split(filter, container, admit, out _);
+            return Split(filter, container, admit, out _, out _);
         }
 
         /// <inheritdoc cref="Split(Filter, Metadata.CosmosContainerMetadata, bool)" />
@@ -252,9 +263,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="container">The container it reads.</param>
         /// <param name="admit">Whether a weakening is pushed only as far as the filter beneath admits it.</param>
         /// <param name="admitted">The conjuncts of the half pushed that are the condition's own, its weakenings left out.</param>
-        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit, out List<RexNode> admitted)
+        /// <param name="sent">For each conjunct of the filter's condition as written, whether the half pushed decides it whole:
+        /// each conjunct of its planning form admitted. Read only where <paramref name="admit"/>.</param>
+        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit, out List<RexNode> admitted, out List<bool> sent)
         {
             admitted = new List<RexNode>();
+            sent = new List<bool>();
 
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
@@ -349,6 +363,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     if (statement.PrintWeakening(i, parameters) is { } text)
                         Metadata.CosmosRenderingCapture.Observer?.Weakened(statement, i, text, parameters);
                 }
+            }
+
+            // Which conjuncts as written the half pushed decides whole, read off the planning form conjunct by conjunct.
+            if (admit)
+            {
+                var planned = Metadata.CosmosFactRewriter.PlannedConjuncts(filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
+                var decided = new HashSet<RexNode>(admitted);
+                foreach (var form in planned)
+                    sent.Add(Metadata.CosmosFilterStatement.ConjunctsOf(form).All(c => c.isAlwaysTrue() || decided.Contains(c)));
             }
 
             return (pushable, residual);

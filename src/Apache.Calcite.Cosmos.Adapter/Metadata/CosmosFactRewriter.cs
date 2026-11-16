@@ -96,6 +96,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <summary>Each statement's planning form, as <see cref="Rewrites"/>.</summary>
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode> Plans = new();
 
+        /// <summary>Each statement's planning form conjunct by conjunct, which <see cref="Plans"/> composes.</summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode?[]> PlannedForms = new();
+
         /// <summary>
         /// Returns the planning form of a predicate: every comparison the declared facts license lowered and every safe
         /// <c>CASE</c> taken apart, and nothing the declaration alone decides, no conjunct deleted, no arm or WHERE made
@@ -110,6 +113,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns>The planning form, or <paramref name="condition"/> where nothing applied.</returns>
         public static RexNode Planned(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null) =>
             Rewrite(condition, fields, container, rootAlias, rexBuilder, readings, gate: null, rendered: false);
+
+        /// <summary>
+        /// Returns the planning form of each conjunct of a predicate, in the order
+        /// <see cref="CosmosFilterStatement.ConjunctsOf"/> reads them: what <see cref="Planned"/> composes.
+        /// </summary>
+        /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="rexBuilder">Builds the replacement nodes.</param>
+        /// <param name="readings">How each field is read back, where the caller knows.</param>
+        internal static IReadOnlyList<RexNode> PlannedConjuncts(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null)
+        {
+            // The planning form deletes nothing, so every conjunct has a form.
+            if (container is null)
+                return ContainsCase(condition) ? Forms(condition, null, fields, rootAlias, rexBuilder, rendered: false).Select(f => f!).ToList() : CosmosFilterStatement.ConjunctsOf(condition);
+
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
+            return PlannedForms.GetValue(statement, s => Forms(condition, s, fields, rootAlias, rexBuilder, rendered: false)).Select(f => f!).ToList();
+        }
 
 
         /// <summary>
@@ -144,7 +167,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder, rendered) : condition;
 
             var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias, gate);
-            return (rendered ? Rewrites : Plans).GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder, rendered));
+            if (rendered)
+                return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder, rendered: true));
+
+            return Plans.GetValue(statement, s => Composed(condition, s.Conjuncts, PlannedForms.GetValue(s, t => Forms(condition, t, fields, rootAlias, rexBuilder, rendered: false)), rexBuilder));
         }
 
         /// <summary>
@@ -160,6 +186,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (rendered && statement is { IsContradictory: true })
                 return rexBuilder.makeLiteral(false);
 
+            return Composed(condition, statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition), Forms(condition, statement, fields, rootAlias, rexBuilder, rendered), rexBuilder);
+        }
+
+        /// <summary>
+        /// Returns each conjunct of a condition rewritten under the licence its rewrite has, or as it is where nothing
+        /// applied, and <c>null</c> where the rendering form deletes it.
+        /// </summary>
+        static RexNode?[] Forms(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder, bool rendered)
+        {
             var conjuncts = statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition);
 
             // A conjunct the rest of the filter implies decides nothing, so the text sent is the one
@@ -168,9 +203,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             var redundant = rendered ? statement?.Redundant ?? Array.Empty<int>() : Array.Empty<int>();
             var paths = new CosmosRexPaths(fields, spelled: false);
 
-            var operands = new java.util.ArrayList();
-            var changed = redundant.Count > 0;
-
+            var forms = new RexNode?[conjuncts.Count];
             for (var i = 0; i < conjuncts.Count; i++)
             {
                 if (redundant.Contains(i))
@@ -181,10 +214,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // disjunction translation would have rendered anyway -- and the expansion is kept only
                 // if something was actually lowered, so a conjunct this has no opinion about reaches
                 // the planner in the shape it arrived.
-                var rewritten = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), paths, rexBuilder, fields, rootAlias, rendered));
+                forms[i] = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), paths, rexBuilder, fields, rootAlias, rendered)) ?? conjuncts[i];
+            }
 
-                operands.add(rewritten ?? conjuncts[i]);
-                changed |= rewritten is not null;
+            return forms;
+        }
+
+        /// <summary>
+        /// Returns the conjunction of a condition's rewritten conjuncts, or the condition itself where each is as it was.
+        /// </summary>
+        static RexNode Composed(RexNode condition, IReadOnlyList<RexNode> conjuncts, RexNode?[] forms, RexBuilder rexBuilder)
+        {
+            var operands = new java.util.ArrayList();
+            var changed = false;
+
+            for (var i = 0; i < forms.Length; i++)
+            {
+                if (forms[i] is not RexNode form)
+                {
+                    changed = true;
+                    continue;
+                }
+
+                operands.add(form);
+                changed |= ReferenceEquals(form, conjuncts[i]) == false;
             }
 
             return changed ? RexUtil.composeConjunction(rexBuilder, operands) : condition;
