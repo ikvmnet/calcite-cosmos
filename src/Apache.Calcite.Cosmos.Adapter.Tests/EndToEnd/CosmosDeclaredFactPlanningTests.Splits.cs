@@ -171,6 +171,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        /// <summary><c>kind</c> is <c>A</c> or <c>B</c> and <c>body</c> a string, both required; <c>n</c> is <c>"1"</c> or <c>"2"</c>.</summary>
+        internal const string Implied = """{ "type": "object", "required": ["kind", "body"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "n": { "enum": ["1", "2"] } } }""";
+
+        /// <summary>A <c>WHERE</c> whose cast of <c>body</c> sits where a sibling the service is sent makes it go unread.</summary>
+        internal static string ImpliedBySibling(string name, string t)
+        {
+            var kind = Json("c", "kind");
+            var cast = JsonInteger("c", "body");
+            return name switch
+            {
+                "s1" => $"""SELECT c."id" FROM {t} AS c WHERE NOT ({cast} = 1 AND {kind} = 'C') AND {kind} = 'A'""",
+                "s2" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND ({kind} = 'A' OR {cast} = 1)""",
+                "s3" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND NOT ({kind} = 'B' AND {cast} = 1)""",
+                "s4" => $"""SELECT c."id" FROM {t} AS c WHERE {Json("c", "n")} = '1' AND ({Json("c", "n")} = '1' OR {cast} = 1)""",
+                "s5" => $"""SELECT COUNT(*) AS q FROM {t} AS c WHERE {kind} = 'A' AND ({kind} = 'A' OR {cast} = 1)""",
+                "s6" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND CASE WHEN {kind} = 'A' THEN TRUE ELSE {cast} = 1 END""",
+                "s7" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} IN ('A', 'B') AND ({kind} IN ('A', 'B') OR {cast} = 1)""",
+                "s8" => $"""SELECT c."id" FROM {t} AS c WHERE c."id" = '1' AND (c."id" = '1' OR {cast} = 1)""",
+                "s9" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND ({kind} <> 'B' OR {cast} = 1)""",
+                "s10" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND ({kind} = 'A' OR JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 1)""",
+                "s11" => $"""SELECT c."id" FROM {t} AS c WHERE {kind} = 'A' AND CASE WHEN CAST({Json("c", "body")} AS BOOLEAN) AND {kind} = 'C' THEN FALSE ELSE TRUE END""",
+                _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
+            };
+        }
+
+        /// <summary>
+        /// A conjunct its siblings make go unread, as Calcite simplifies the whole condition, is not evaluated where one of
+        /// them is sent: the split simplifies what it keeps in Calcite under what it sends, and keeps nothing where that
+        /// leaves it true, so <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is the <c>kind = 'A'</c> sent.
+        /// Kept as written, the cast was evaluated over the rows the half sent returns and failed on a <c>body</c> that is
+        /// no number, where Calcite answers, declared or not. A <c>CASE</c> whose <c>ELSE</c> holds the cast stays, as
+        /// Calcite's simplifier keeps it, and its <c>ELSE</c> is read only where <c>kind</c> is not <c>A</c>. Undeclared,
+        /// s4's sibling <c>n = '1'</c> is sent only as a weaker form, <c>n</c> holding a number for all the service knows,
+        /// so nothing sent says anything of the condition, which stays in Calcite as written, its <c>OR</c> reading the
+        /// cast only where <c>n</c> is not <c>'1'</c>. <c>CosmosConnectionPlanningTests.ASiblingSentLeavesNothingInCalcite</c>
+        /// pins the same shapes through the connection the README opens, which simplifies the whole <c>WHERE</c> before
+        /// anything is pushed.
+        /// </summary>
+        [Theory]
+        [InlineData("s1", "")]
+        [InlineData("s2", "")]
+        [InlineData("s3", "")]
+        [InlineData("s4", "undeclared")]
+        [InlineData("s5", "")]
+        [InlineData("s6", "case")]
+        [InlineData("s7", "")]
+        [InlineData("s8", "")]
+        [InlineData("s9", "")]
+        [InlineData("s10", "")]
+        [InlineData("s11", "")]
+        public void ASiblingSentLeavesNothingInCalcite(string name, string kept)
+        {
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Implied)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var plan = PlanToCosmos(ImpliedBySibling(name, "items"), container, out _);
+                var text = PlanText(plan);
+                var calcite = text.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).ToList();
+                if (kept == "case")
+                    calcite.Should().Contain(l => l.Contains("CASE(=(JSON_VALUE($0, '$.kind'), 'A'), true,"), $"{name} {declared}: the CASE is Calcite's: " + text);
+                else if (kept == declared)
+                    calcite.Should().Contain(l => l.Contains("OR(=(JSON_VALUE($0, '$.n'), '1'), =(CAST(JSON_VALUE($0, '$.body')):INTEGER, 1))"), $"{name} {declared}: as written: " + text);
+                else
+                    foreach (var line in calcite)
+                        line.Should().NotContain("'$.body'", $"{name} {declared}: Calcite reads nothing of body: " + text);
+                text.Should().Contain("CosmosToClrCursorConverter", text).And.NotContain(KeepsNothing, $"{name} {declared}: " + text);
+            }
+        }
+
         /// <summary>
         /// The partition key's <c>VARIANT</c> ordered against a parameter, which Calcite does not compile, is sent on Azure
         /// and answered by the service; on the emulator the ordering stays in Calcite, which fails as it does, and only the

@@ -42,6 +42,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// it produces has that property — the inner is wholly renderable, the outer wholly not.
     /// </para>
     /// <para>
+    /// <b>The outer is simplified under the inner</b>, as Calcite simplifies the whole condition, and is
+    /// left out where that makes it true (<see cref="Residual"/>).
+    /// </para>
+    /// <para>
     /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
     /// one once the declared stored form is taken into account, and the fact that says so is usually
     /// conditional on a sibling conjunct — so the whole condition is rewritten before it is taken apart,
@@ -164,16 +168,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             var filter = (Filter)call.rel(0);
 
-            var (pushable, residual) = Split(filter, _convention.Container);
+            var (pushable, residual) = Split(filter, _convention.Container, admit: true, out var admitted);
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 
-            var inner = filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, pushable));
-            var outer = filter.copy(filter.getTraitSet(), inner, Compose(rexBuilder, residual));
+            // The residual is read beside the conjuncts sent, as Calcite reads the whole condition; true there, nothing is
+            // left above, and the conjuncts admitted are the filter, the weakenings of what is left out with it.
+            var left = Residual(rexBuilder, admitted, Compose(rexBuilder, residual));
+            if (left.isAlwaysTrue())
+            {
+                call.transformTo(filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, admitted)));
+                return;
+            }
 
-            call.transformTo(outer);
+            var inner = filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, pushable));
+            call.transformTo(filter.copy(filter.getTraitSet(), inner, left));
+        }
+
+        /// <summary>
+        /// Returns the residual as Calcite simplifies it under the conjuncts sent beside it, true where the whole condition
+        /// simplifies to what they do, or as written where they say nothing of it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite evaluates a condition simplified whole, so a conjunct its siblings make true, or a sibling makes the
+        /// arm holding it false, is never evaluated: <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is
+        /// <c>kind = 'A'</c>. Split, the residual was simplified without the half sent, and the cast raised on a <c>body</c>
+        /// that is no number where Calcite answers. So the residual is simplified with the conjuncts sent as predicates
+        /// (<c>RelOptPredicateList</c>), unknown read as false, as a filter reads it, which is Calcite's own simplification
+        /// of the condition it was given and reads nothing of the declaration.
+        /// </para>
+        /// <para>
+        /// The admitted conjuncts alone, not the weakenings: a weakening is the service's form written as a Rex, which
+        /// Calcite's reading of it need not match.
+        /// </para>
+        /// </remarks>
+        static RexNode Residual(RexBuilder rexBuilder, List<RexNode> admitted, RexNode residual)
+        {
+            var predicates = new java.util.ArrayList();
+            foreach (var conjunct in admitted)
+                predicates.add(conjunct);
+
+            var under = new RexSimplify(rexBuilder, RelOptPredicateList.of(rexBuilder, predicates), RexUtil.EXECUTOR).simplifyUnknownAsFalse(residual);
+            if (under.isAlwaysTrue() || admitted.Count == 0)
+                return under.isAlwaysTrue() ? under : residual;
+
+            // A predicate list reads equalities and ranges, and no disjunction: kind IN ('A', 'B') leaves
+            // kind IN ('A', 'B') OR CAST(body AS INTEGER) = 1 as it is. The whole condition simplified to what the half
+            // sent simplifies to is the half sent.
+            var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
+            var whole = new java.util.ArrayList(predicates);
+            whole.add(residual);
+            if (plain.simplifyUnknownAsFalse(RexUtil.composeConjunction(rexBuilder, whole)).Equals(plain.simplifyUnknownAsFalse(RexUtil.composeConjunction(rexBuilder, predicates))))
+                return rexBuilder.makeLiteral(true);
+
+            // Where the half sent says nothing of it, as written: Calcite's normal form of it, which a later split reads
+            // anew, would push again what the half sent already holds.
+            return under.Equals(plain.simplifyUnknownAsFalse(residual)) ? residual : under;
         }
 
         /// <summary>
@@ -191,6 +244,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// or whole, as <see cref="matches"/> asks it.</param>
         internal static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit = true)
         {
+            return Split(filter, container, admit, out _);
+        }
+
+        /// <inheritdoc cref="Split(Filter, Metadata.CosmosContainerMetadata, bool)" />
+        /// <param name="filter">The filter.</param>
+        /// <param name="container">The container it reads.</param>
+        /// <param name="admit">Whether a weakening is pushed only as far as the filter beneath admits it.</param>
+        /// <param name="admitted">The conjuncts of the half pushed that are the condition's own, its weakenings left out.</param>
+        static (List<RexNode> Pushable, List<RexNode> Residual) Split(Filter filter, Metadata.CosmosContainerMetadata container, bool admit, out List<RexNode> admitted)
+        {
+            admitted = new List<RexNode>();
+
             if (CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _) == false)
                 return (new List<RexNode>(), new List<RexNode>());
 
@@ -242,6 +307,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (statement.IsAdmitted(i))
                 {
                     pushable.Add(conjunct);
+                    admitted.Add(conjunct);
                     continue;
                 }
 

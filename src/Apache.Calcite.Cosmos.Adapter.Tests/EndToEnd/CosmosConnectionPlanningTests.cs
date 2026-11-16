@@ -252,6 +252,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// <see cref="CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite"/> through this connection, whose
+        /// simplifier reads the whole <c>WHERE</c> before anything is pushed: the cast of <c>body</c> a sibling makes go
+        /// unread is in no node, declared or not, but in the <c>CASE</c> Calcite's simplifier keeps.
+        /// </summary>
+        [Theory]
+        [InlineData("s1", false)]
+        [InlineData("s2", false)]
+        [InlineData("s3", false)]
+        [InlineData("s4", false)]
+        [InlineData("s5", false)]
+        [InlineData("s6", true)]
+        [InlineData("s7", false)]
+        [InlineData("s8", false)]
+        [InlineData("s9", false)]
+        [InlineData("s10", false)]
+        [InlineData("s11", false)]
+        public void ASiblingSentLeavesNothingInCalcite(string name, bool caseKept)
+        {
+            foreach (var declared in new[] { true, false })
+            {
+                var plan = Explain(CosmosDeclaredFactPlanningTests.ImpliedBySibling(name, "items"), declared, CosmosDeclaredFactPlanningTests.Implied);
+                plan.Should().Contain("CosmosToClrCursorConverter", plan);
+                if (caseKept)
+                    plan[..plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().Contain("CASE(", $"{name}: the CASE is Calcite's: " + plan);
+                else
+                    plan.Should().NotContain("'$.body'", $"{name}: " + plan);
+            }
+        }
+
+        /// <summary>
         /// <see cref="CosmosDeclaredFactPlanningTests.AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut"/>
         /// through this connection: <c>UPPER(body) = 'ABC'</c>, sent only beside <c>body = 'abc'</c>, stays in Calcite over a
         /// statement that sends nothing where the declaration rules out its <c>kind</c>, and is sent whole beside a
