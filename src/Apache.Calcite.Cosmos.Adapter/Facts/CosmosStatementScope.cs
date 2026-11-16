@@ -82,6 +82,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>The admission whose rounds are running, under the lock: what <see cref="StratumFor"/> reads meanwhile.</summary>
         Admission? _admitting;
 
+        /// <param name="terms">The statement's terms, whose root holds its contexts.</param>
+        /// <param name="statement">The statement's predicates.</param>
+        /// <param name="renders">What the renderer answers of an admission round, or <c>null</c> where nothing is admitted.</param>
+        /// <param name="declared">The paths the declaration names, or <c>null</c> for none.</param>
+        /// <param name="renderedFrom">The node a round's conjunct is rendered from, or <c>null</c> for the stratum's own.</param>
         /// <param name="gate">What a gated node's assumptions wait on (<see cref="Gate"/>): <c>null</c> for the WHERE.</param>
         internal CosmosStatementScope(StatementTerms terms, PredicateStatement statement, Func<AdmissionRound, AdmissionRound.Answer>? renders, IReadOnlyCollection<JsonDocumentPath>? declared = null, Func<StatementTerms, StatementTerms.Node, SqlPredicate, StatementTerms.Node>? renderedFrom = null, SqlPredicate? gate = null)
         {

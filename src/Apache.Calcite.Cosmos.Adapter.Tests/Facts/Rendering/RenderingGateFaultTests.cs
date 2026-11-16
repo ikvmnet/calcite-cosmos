@@ -492,10 +492,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// The plant, a stratum read as exact whatever it rests on, once sent the bare label and dropped the document, since
         /// the facts graph read the kind's typed equality as the integer 5, which meets the declaration's condition and makes
         /// the label a string. What it keeps of that equality is now every number whose double is 5
-        /// (<see cref="PredicateAtom.Kept"/>), which states no value of the kind, so the condition is not met
+        /// (<see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/>), which states no value of the kind, so the condition is not met
         /// beneath the stratum either way, and a stratum whose facts hold of every row it keeps drops none read exactly: the
         /// plant has nothing to break here, and source A finds no document with a number as its label. So the planted run
-        /// shows the exactness gate redundant beside <see cref="PredicateAtom.Kept"/> for this statement; the gate stays
+        /// shows the exactness gate redundant beside <see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/> for this statement; the gate stays
         /// (<c>TODO.md</c>, a stratum resting on a coarse reading), and this run holds <c>Kept</c> to keeping the row alone.
         /// </remarks>
         [Fact]

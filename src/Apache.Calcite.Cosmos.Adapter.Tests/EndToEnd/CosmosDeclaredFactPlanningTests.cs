@@ -1389,8 +1389,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
 
         /// <summary>
-        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is the empty
-        /// relation, and sends no request.
+        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is pushed, and
+        /// sends nothing.
         /// </summary>
         /// <remarks>
         /// <para>

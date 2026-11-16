@@ -16,11 +16,11 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// A predicate over one path: how a value is read from the path, and what is asked of what is read. The atom is the
     /// meaning of a <see cref="PredicateRules"/> comparison, membership or null test, gathered from its terms into one
     /// value that two questions are asked of: which documents a row with a given truth value can be
-    /// (<see cref="Kept"/>), and which truth values the documents a context admits can give it (<see cref="Over"/>).
+    /// (<see cref="Kept(bool, ReadingTable, RawTruths)"/>), and which truth values the documents a context admits can give it (<see cref="Over"/>).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Both answers over-approximate, and that is what makes them sound.</b> <see cref="Kept"/> may name documents a
+    /// <b>Both answers over-approximate, and that is what makes them sound.</b> <see cref="Kept(bool, ReadingTable, RawTruths)"/> may name documents a
     /// row cannot be — it is what an assumed predicate establishes, so a wider answer is a weaker fact.
     /// <see cref="Over"/> may name truth values no row takes — it is what a verdict is read from, so a wider answer is
     /// a verdict not reached. Where a reading's behaviour has not been measured the answer is the widest, and a

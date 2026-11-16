@@ -27,9 +27,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string PastADouble = """{ "type": "object", "required": ["v"], "properties": { "v": { "enum": [9007199254740993.0] } } }""";
 
         /// <summary>
-        /// <c>RETURNING DOUBLE</c> over a declared <c>6.0000000000000001</c>, or a range of fractions holding one, is never the
-        /// empty relation: the emulator returns the number as <c>6</c>, digits, over which Calcite fails, and Azure was not
-        /// measured returning it, so the comparison may raise wherever it is FALSE.
+        /// <c>RETURNING DOUBLE</c> over a declared <c>6.0000000000000001</c>, or a range of fractions holding one, is never left
+        /// unsent: the emulator returns the number as <c>6</c>, digits, over which Calcite fails, and Azure was not measured
+        /// returning it, so the comparison may raise wherever it is FALSE.
         /// </summary>
         [Fact]
         public void AReturningDoubleOverAFractionReturnedAsDigitsIsNeverEmpty()

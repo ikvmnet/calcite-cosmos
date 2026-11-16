@@ -218,7 +218,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// (<c>Service.IntegralNumbersReadBackAsHeld</c>): the emulator's (<see cref="Served"/>) and Azure's
         /// (<see cref="OnAzure"/>), one where they agree; absence as itself.
         /// </summary>
-        public static IEnumerable<J?> Returned(J? value) => value is null ? [null] : new[] { OnAzure(value), Served(value) }.DistinctBy(Json);
+        public static IEnumerable<J?> Returned(J? value)
+        {
+            if (value is null)
+                return [null];
+
+            return new[] { OnAzure(value), Served(value) }.DistinctBy(Json);
+        }
 
         /// <summary>
         /// A document as Azure returns it (<c>Service.IntegralNumbersReadBackAsHeld</c>): an integer an int64 holds as its

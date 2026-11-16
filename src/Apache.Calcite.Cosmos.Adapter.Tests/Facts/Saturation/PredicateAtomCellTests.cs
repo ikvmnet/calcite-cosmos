@@ -171,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// Every reading the rows call exact (<c>Calcite.TheFactsGraphReadsTheseReadingsExactly</c>, <c>readsexactly</c>),
         /// beside each literal it is exact beside, is read by
         /// the facts graph as its cells answer: the coarse answer on a cell's state holds every truth the cell gives, and
-        /// what a row of each truth can be (<see cref="PredicateAtom.Kept"/>) admits every value Calcite gives that truth on,
+        /// what a row of each truth can be (<see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/>) admits every value Calcite gives that truth on,
         /// through every reader the reading stands for. So a stratum that assumes such an atom leaves out no document Calcite
         /// keeps. Coins are left out, counted; the rows call some reading coarse that this would hold. A presence test is
         /// held over every reading of the grid, its row keyed as a type test's is, whatever reads the path.
@@ -218,7 +218,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// Every reading the loader builds, exact or not, beside the grid's literals, the boundaries and the numbers a double
         /// holds only near, keeps every value Calcite gives a truth value on: what a row taking that truth value can be
-        /// (<see cref="PredicateAtom.Kept"/>), over the facts graph's own rows and <c>rawunion</c>, admits every value the
+        /// (<see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/>), over the facts graph's own rows and <c>rawunion</c>, admits every value the
         /// evaluator gives that truth on, through every reader the reading stands for. A comparison with a parameter is asked
         /// by every operator. So whatever the facts graph assumes of an atom leaves out no document Calcite keeps. Coins are
         /// left out, counted.

@@ -266,13 +266,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Returns a projected expression with the condition of every <c>CASE</c> in it rewritten as
-        /// <see cref="Rewrite"/> rewrites a predicate, or the expression unchanged.
+        /// <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> rewrites a predicate, or the expression unchanged.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>A condition is a predicate wherever it is written.</b> A <c>CASE</c> takes an arm where
         /// its condition is true and passes over it where the condition is false or unknown — the
-        /// distinction a filter draws, and the only one <see cref="Rewrite"/> preserves. So a rewrite
+        /// distinction a filter draws, and the only one <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> preserves. So a rewrite
         /// that keeps the rows a filter keeps keeps the arm a <c>CASE</c> takes.
         /// </para>
         /// <para>
@@ -530,7 +530,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>And it needs no fact.</b> The equivalence holds of any <c>CASE</c> of this shape, so a
         /// container that declares nothing has one taken apart too — the one thing
-        /// <see cref="Rewrite"/> walks a predicate for when nothing is declared. A <c>CASE</c> with
+        /// <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> walks a predicate for when nothing is declared. A <c>CASE</c> with
         /// more than one arm, or an <c>ELSE</c> that may be true, is not this shape and is left as the
         /// ternary it already rendered as.
         /// </para>

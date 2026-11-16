@@ -164,7 +164,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var executor = new StubExecutor("1", "2");
             var query = new CosmosQuery("SELECT VALUE c.n FROM c WHERE (c.n = @p0)", [new CosmosParameter("@p0", new CosmosDynamicValue(0))], SendsNothing: true);
 
-            (await ListCursor.CollectAsync(await CosmosCursors.OpenAsync(executor, null!, query, Number, CancellationToken.None))).Should().BeEmpty();
+            (await ListCursor.CollectAsync(await CosmosCursors.OpenAsync(executor, null!, query, Number, CancellationToken.None), TestContext.Current.CancellationToken)).Should().BeEmpty();
 
             using (var cursor = CosmosCursors.Open(executor, null!, query, Number))
                 cursor.Read().Should().BeFalse();

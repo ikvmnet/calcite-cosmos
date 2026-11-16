@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             // The parameter's type, as the driver binds it: a VARIANT takes no .NET value, an ANY the value as it is, a
             // VARCHAR column the value's text, a number no string.
             var variant = Measure(connection, Raw(SqlTypeName.VARIANT), PredicateAtom.Equal);
-            variant.Refused.Should().Equal(Bound.Where(b => b is not null), "a VARIANT is written from no .NET value");
+            variant.Refused.Should().Equal(Bound.OfType<object>(), "a VARIANT is written from no .NET value");
             variant.Truths.Should().AllSatisfy(t => t.Should().Be(U), "a VARIANT bound to null alone");
             Measure(connection, Raw(SqlTypeName.VARIANT), PredicateAtom.Less).Compiles.Should().BeFalse("a VARIANT has no order at run time");
             Ask(connection, Raw(SqlTypeName.ANY), PredicateAtom.Equal, 30L).Should().Be("FFTFFFFFUU", "an ANY's parameter holds the integer bound, unequal to its digits");

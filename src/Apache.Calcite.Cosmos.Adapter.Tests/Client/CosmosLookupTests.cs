@@ -374,7 +374,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             var left = await ListCursor.CollectAsync(CosmosLookup.Join<string?, string, string>(
                 new ListCursor<string?>(["bikes", null]), executor, null!, Query() with { SendsNothing = true }, "@k", 3,
-                b => b, element => element.GetProperty("category").GetString()!, p => p, (b, p) => b + "/" + p, unmatched: b => (b ?? "null") + "/null"));
+                b => b, element => element.GetProperty("category").GetString()!, p => p, (b, p) => b + "/" + p, unmatched: b => (b ?? "null") + "/null"),
+                TestContext.Current.CancellationToken);
             left.Should().Equal("bikes/null", "null/null");
 
             executor.Executed.Should().BeEmpty("no batch is fetched");
