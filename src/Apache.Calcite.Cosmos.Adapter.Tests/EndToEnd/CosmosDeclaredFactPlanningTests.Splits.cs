@@ -1,3 +1,5 @@
+using System.Linq;
+
 using FluentAssertions;
 using Xunit;
 
@@ -6,8 +8,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
     /// <summary>
     /// What the manual and <c>TODO.md</c> say a filter beside a part the declaration rules out is planned as: sent where the
-    /// service takes it whole, and, where part of it stays in Calcite, the empty relation beneath that part, which reads
-    /// only the rows the part sent returns (<c>docs/14</c>, 14.2; <c>DESIGN.md</c>, <em>Not covered: the split</em>).
+    /// service takes it whole, and, where part of it stays in Calcite, the part sent pushed and sending nothing beneath that
+    /// part, which reads only the rows the part sent returns (<c>docs/14</c>, 14.2; <c>DESIGN.md</c>, <em>Not covered: the
+    /// split</em>); and a filter over one Calcite keeps, which is not split at all.
     /// </summary>
     public partial class CosmosDeclaredFactPlanningTests
     {
@@ -55,6 +58,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var kept = PlanToCosmos(Sql, emulator, out _);
             PlanText(kept).Should().Contain(KeepsNothing, "the part sent keeps nothing: " + PlanText(kept));
             PlanText(kept).Should().Contain("ClrCursorFilter", "and the comparison is Calcite's: " + PlanText(kept));
+        }
+
+        /// <summary>
+        /// A filter over a subquery's filter that stays in Calcite, where no host merges the two, is not split: the filter
+        /// split off would be Calcite's, over a filter Calcite keeps or as the copy of one Calcite implements, and a weaker
+        /// form in it is the service's, a Cosmos type test Calcite has no body for. The text equality on <c>n</c>, declared
+        /// an <c>enum</c> of numbers or an <c>"integer"</c>, failed so with "cannot translate call IS_NUMBER" where Calcite
+        /// answers; so did one on <c>z</c>, which nothing declares, on <c>main</c> too. Each is Calcite's above the cast,
+        /// declared or not, and the statement beneath sends only what the cast's own filter pushes.
+        /// </summary>
+        [Theory]
+        [InlineData("n", "1", false, false)]
+        [InlineData("n", "2", true, false)]
+        [InlineData("z", "1", false, false)]
+        [InlineData("n", "1", false, true)]
+        public void AFilterOverOneCalciteKeepsIsNotSplit(string path, string text, bool integer, bool third)
+        {
+            var schema = integer ? Tagged.Replace("""{ "enum": [1, 2] }""", """{ "type": "integer" }""") : Tagged;
+            var cast = $"""SELECT c."id", c."DOC" FROM items AS c WHERE {JsonInteger("c", "body")} = 1""";
+            var sql = $"""SELECT x."id", x."DOC" FROM ({cast}) AS x WHERE {Json("x", path)} = '{text}'""";
+            if (third)
+                sql = $"""SELECT y."id" FROM ({sql}) AS y WHERE {KindOf("y")} = 'C'""";
+
+            foreach (var (declared, container) in new[] { ("declared", Declaring(schema)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var plan = PlanText(PlanToCosmos(sql, container, out _, windows: true, subqueries: true));
+                foreach (var line in plan.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")))
+                    line.Should().NotContainAny(["IS_NUMBER(", "IS_DEFINED(", "IS_STRING("], $"{path} {declared}: Calcite holds no service form: " + plan);
+                plan.Should().Contain("CAST(JSON_VALUE(", $"{path} {declared}: the cast is Calcite's: " + plan);
+                foreach (var line in plan.Split('\n').Where(l => l.TrimStart().StartsWith("Cosmos")))
+                    line.Should().NotContain($"'$.{path}'", $"{path} {declared}: nothing above the cast is sent: " + plan);
+            }
+        }
+
+        /// <summary>
+        /// A part the split keeps in process is simplified without the part it sends, as recorded (<c>TODO.md</c>, <em>A part
+        /// the split keeps in process is simplified without the part it sends</em>): a subquery's <c>CAST(body AS INTEGER) =
+        /// 1 AND kind IN ('A', 'B')</c> under <c>kind = 'C'</c> sends the <c>IN</c>, and Calcite evaluates the cast beside
+        /// <c>kind = 'C'</c> alone, where Calcite in process reads the three together as false and evaluates none. So the
+        /// statement fails on a <c>body</c> that is no number, declared or not, where Calcite answers no rows; declared, the
+        /// request has no <c>WHERE</c>, the declaration making the <c>IN</c> true. When the split simplifies its residual
+        /// under what it sends this changes.
+        /// </summary>
+        [Fact]
+        public void APartKeptInProcessIsSimplifiedWithoutThePartSent()
+        {
+            var sql = $"""SELECT x."id" FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {JsonInteger("c", "body")} = 1 AND {KindOf("c")} IN ('A', 'B')) AS x WHERE {KindOf("x")} = 'C'""";
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Tagged)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var plan = PlanToCosmos(sql, container, out _, windows: true, subqueries: true);
+                var text = PlanText(plan);
+                var kept = string.Join("\n", text.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")));
+                kept.Should().Contain("CAST(JSON_VALUE(", $"{declared}: the cast is Calcite's: " + text).And.Contain("'C'", text);
+                kept.Should().NotContain("'B'", $"{declared}: beside kind = 'C' alone: " + text);
+                text.Should().NotContain(KeepsNothing, text);
+
+                var query = Query(FindCosmos(plan), container).Sql;
+                if (declared == "declared")
+                    query.Should().NotContain("WHERE", "the declaration makes the IN true: " + text);
+                else
+                    query.Should().Contain("c.kind", "the IN is sent: " + text);
+            }
         }
 
         /// <summary>

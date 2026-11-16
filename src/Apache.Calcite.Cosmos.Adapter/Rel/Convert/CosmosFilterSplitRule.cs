@@ -147,6 +147,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (FindTable(((Filter)call.rel(0)).getInput()) is not CosmosTable table || ReferenceEquals(table.Convention, _convention) == false)
                 return false;
 
+            // Only where the filter split off can reach the service, which is a logical filter's copy over an input that can:
+            // a copy of a filter Calcite implements is Calcite's, as is one over a filter Calcite keeps, and a weakening is
+            // the service's form, with no in-process body for a Cosmos type test.
+            if (((Filter)call.rel(0)).getConvention() != Convention.NONE || Reaches(_convention, ((Filter)call.rel(0)).getInput(), CosmosPlanMembers.NewSeen()) == false)
+                return false;
+
             // Each weakening taken whole: what the filter beneath admits of it is onMatch's to ask, at a statement's cost.
             var (pushable, residual) = Split((Filter)call.rel(0), _convention.Container, admit: false);
 
@@ -385,6 +391,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 Collect(member);
 
             return applied;
+        }
+
+        /// <summary>
+        /// Determines whether a filter over a subtree can be a <see cref="CosmosFilter"/>: some equivalent form of it is no
+        /// filter, or is a filter <see cref="CosmosFilterRule"/> converts whole over a subtree that can.
+        /// </summary>
+        /// <remarks>
+        /// The filter rule converts a filter only over an input that converts, so a filter it declines leaves every filter
+        /// above it in Calcite; and a filter Calcite implements copies as one. Split in either, the pushed half was a filter
+        /// Calcite evaluates, and a weakening in it the service's form written as a Rex:
+        /// <c>WHERE JSON_VALUE(x."DOC", '$.n') = '1'</c> over a subquery's <c>CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER)
+        /// = 1</c> failed with "cannot translate call IS_NUMBER" where Calcite answers, declared or not, where no host merges
+        /// the two filters. Whether the rule converts is legality, the question it asks of every filter.
+        /// </remarks>
+        static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
+        {
+            foreach (var member in Rel.CosmosPlanMembers.Of(node))
+            {
+                if (seen.Add(member) == false)
+                    continue;
+
+                // A form Calcite implements says nothing of what the service can be handed: a set holds one beside its
+                // logical forms once Volcano has converted any of them.
+                if (member.getConvention() is not CosmosConvention && member.getConvention() != Convention.NONE)
+                    continue;
+
+                if (member is not Filter filter || member.getConvention() is CosmosConvention
+                    || CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen))
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

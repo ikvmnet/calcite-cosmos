@@ -57,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// without it a comparison over the column pushed as the raw comparison the accessor's own
         /// spelling is declined for (#83).
         /// </remarks>
-        static bool IsTranslatable(CosmosConvention convention, Filter filter)
+        internal static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
             // Only a filter over this convention's own container, which is the declaration its condition is
             // rewritten and rendered under (CosmosConvention.Owns).
