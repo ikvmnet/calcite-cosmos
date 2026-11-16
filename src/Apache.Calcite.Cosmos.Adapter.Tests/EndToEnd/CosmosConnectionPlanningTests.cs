@@ -176,20 +176,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A range over a path the schema lets hold a number or a string, a bound alone or nothing declared, is not ruled
-        /// out: a string there is one the cast reads (<c>docs/14</c>, 14.2). Through <c>CAST(… AS INTEGER)</c> it plans and
-        /// is sent. A comparison through <c>CAST(… AS DOUBLE)</c> the adapter does not send whole is split, a weaker form
-        /// sent and the cast kept in Calcite; where that form holds the comparison's number, a <c>DECIMAL</c>, this
-        /// connection's simplifier meets it with the comparison's <c>DOUBLE</c> and fails to plan, as recorded
-        /// (<c>docs/23</c>; <c>TODO.md</c>, <em>Two weakenings over one path still share one raw value</em>). Whether it is
-        /// sent whole turns on the comparison and its literal as well as on the declaration, so these are examples both
-        /// ways. <c>&gt; 500</c> fails with the bound alone or nothing declared, over a type naming a number beside a
-        /// string, a boolean or an object, the last where Calcite answers, over an <c>anyOf</c> of a string and an
-        /// integer, and over an <c>enum</c> of <c>[5, "5", "600"]</c>; it plans over a path declared a string, sending the
-        /// path's presence, the cast Calcite's, over one declared <c>"integer"</c> or <c>"number"</c> with the bound,
-        /// sending nothing, over <c>["number", "null"]</c>, and over an <c>enum</c> of <c>[5, "600"]</c>, <c>[5, true]</c>
-        /// or <c>[1, 2, 3, "XL"]</c>, sent whole, where <c>&lt;&gt; 600</c> over the first fails. With nothing declared
-        /// <c>= 5.5</c> fails, and <c>= 4.6</c>, whose literal is not read, an <c>IN</c> and a <c>BETWEEN</c> plan,
-        /// sending the path's presence. When the bound is read in its comparison's type this changes.
+        /// out, and through <c>CAST(… AS INTEGER)</c> plans and is sent. Through <c>CAST(… AS DOUBLE)</c>, which statements
+        /// fail to plan with the simplifier's <c>ClassCastException</c> and which plan, as measured (<c>TODO.md</c>,
+        /// <em>Two weakenings over one path still share one raw value</em>): with a bound alone, nothing declared, the types
+        /// and the <c>enum</c>s listed, and with nothing declared <c>= 5.5</c> and <c>IN (5)</c> fail; <c>= 4.6</c>,
+        /// <c>IN (5, 6)</c>, <c>BETWEEN 4 AND 6</c> and <c>NOT BETWEEN 4 AND 6</c> plan, the cast Calcite's.
         /// </summary>
         [Fact]
         public void ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger()
@@ -232,13 +223,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             FluentActions.Invoking(() => Explain(ThroughDouble.Replace("> 500", "<> 600"), declared: true, Of("""{ "enum": [5, "600"] }"""))).Should().Throw<Exception>()
                 .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "over the same enum <> 600 is split, its weaker form holding 600");
 
-            FluentActions.Invoking(() => Explain(ThroughDouble.Replace("> 500", "= 5.5"), declared: false)).Should().Throw<Exception>()
-                .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "with nothing declared = 5.5 is split, its weaker form holding 5.5");
+            foreach (var failing in new[] { "= 5.5", "IN (5)" })
+                FluentActions.Invoking(() => Explain(ThroughDouble.Replace("> 500", failing), declared: false)).Should().Throw<Exception>()
+                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"with nothing declared {failing} fails to plan");
 
-            foreach (var presence in new[] { "= 4.6", "IN (5, 6)", "BETWEEN 4 AND 6" })
+            foreach (var presence in new[] { "= 4.6", "IN (5, 6)", "BETWEEN 4 AND 6", "NOT BETWEEN 4 AND 6" })
             {
                 var plan = Explain(ThroughDouble.Replace("> 500", presence), declared: false);
-                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.Contain("IS_DEFINED(", $"{presence} sends the path's presence: " + plan);
+                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.Contain("IS_DEFINED(", $"{presence} plans: " + plan);
                 plan[..plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().Contain("CAST(", $"{presence}: the cast is Calcite's: " + plan);
             }
 

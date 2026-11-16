@@ -175,15 +175,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A comparison through the cast to <c>DOUBLE</c> is read more loosely than a double rounds (<c>docs/14</c>, 14.2;
-        /// <c>TODO.md</c>, <em>A number pins no partition unless the declaration leaves the key one value</em>): where its
-        /// literal is below 2^52 as keeping every number less than a whole unit from what it keeps, and from there any
-        /// number. So one the declaration rules out is still sent where a value it allows lies less than a unit from what it
-        /// keeps, or its literal is 2^52 or more, the values allowed, not the bound's number, being what the window is met
-        /// with: an integer under an <c>exclusiveMaximum</c> of 100 is at most 99. A literal whose double no decimal holds is
-        /// read as nothing (<em>A cast to <c>DOUBLE</c> compared with a literal whose double no decimal holds is read as
-        /// nothing</em>), so the comparison stays in Calcite beside the path's presence, where one a decimal holds sends
-        /// nothing.
+        /// Which comparisons through the cast to <c>DOUBLE</c> that the declaration rules out send nothing and which are sent,
+        /// as measured (<c>TODO.md</c>, <em>A cast to <c>DOUBLE</c> is read more loosely than a double rounds</em>, and <em>A
+        /// cast to <c>DOUBLE</c> compared with a literal whose double no decimal holds is read as nothing</em>), over an
+        /// integer at most 100, below 100, at least 0, a list of integers and a list of strings; and that <c>&gt; 200.1</c>
+        /// stays in Calcite beside the path's presence.
         /// </summary>
         [Fact]
         public void ACastToDoubleIsReadAsKeepingEveryNumberLessThanAUnitFromWhatItKeeps()
@@ -193,11 +189,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
             var exclusive = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "exclusiveMaximum": 100 } } }""");
             var listed = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
+            var natural = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "minimum": 0 } } }""");
+            var strings = Declaring("""{ "type": "object", "properties": { "n": { "enum": ["1", "2"] } } }""");
 
-            foreach (var (container, label, condition) in new[] { (integer, "at most 100", "> 101"), (integer, "at most 100", "> 200.25"), (exclusive, "below 100", "> 100") })
+            foreach (var (container, label, condition) in new[]
+            {
+                (integer, "at most 100", "> 101"), (integer, "at most 100", "> 200.25"), (exclusive, "below 100", "> 100"),
+                (natural, "at least 0", "< -101"), (natural, "at least 0", "< -4503599627370495"),
+            })
             {
                 var plan = PlanText(PlanToCosmos(Where($"{D} {condition}"), container, out _));
-                plan.Should().Contain(KeepsNothing, $"no integer {label} lies less than a unit from what {condition} keeps: " + plan);
+                plan.Should().Contain(KeepsNothing, $"{condition} over an integer {label} sends nothing: " + plan);
             }
 
             foreach (var (container, label, condition, sent) in new[]
@@ -206,10 +208,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 (integer, "at most 100", "> 100000000000000000", "WHERE (c.n > @p0)"),
                 (exclusive, "below 100", "> 99.5", "WHERE (c.n > @p0)"),
                 (listed, "listed [1, 2, 3]", "= 3.5", "WHERE (c.n = @p0)"),
+                (natural, "at least 0", "< -100000000000000000", "WHERE (c.n < @p0)"),
+                (strings, "listed [\"1\", \"2\"]", "> 500", "WHERE (c.n > @p0)"),
             })
             {
                 var plan = PlanToCosmos(Where($"{D} {condition}"), container, out _);
-                PlanText(plan).Should().NotContain(KeepsNothing, $"a value {label} lies in the window of {condition}: " + PlanText(plan));
+                PlanText(plan).Should().NotContain(KeepsNothing, $"{condition} over {label} is sent: " + PlanText(plan));
                 Query(FindCosmos(plan), container).Sql.Should().EndWith(sent, PlanText(plan));
             }
 

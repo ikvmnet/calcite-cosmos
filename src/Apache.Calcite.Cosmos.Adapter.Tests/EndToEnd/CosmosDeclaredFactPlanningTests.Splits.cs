@@ -142,13 +142,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A part the split keeps in process is simplified without the part it sends, as recorded (<c>TODO.md</c>, <em>A part
-        /// the split keeps in process is simplified without the part it sends</em>): a subquery's <c>CAST(body AS INTEGER) =
-        /// 1 AND kind IN ('A', 'B')</c> under <c>kind = 'C'</c> sends the <c>IN</c>, and Calcite evaluates the cast beside
-        /// <c>kind = 'C'</c> alone, where Calcite in process reads the three together as false and evaluates none. So the
-        /// statement fails on a <c>body</c> that is no number, declared or not, where Calcite answers no rows; declared, the
-        /// request has no <c>WHERE</c>, the declaration making the <c>IN</c> true. When the split simplifies its residual
-        /// under what it sends this changes.
+        /// The part a subquery's split keeps in process is merged with the filter above it without the part sent, as
+        /// recorded (<c>TODO.md</c>, <em>A part a subquery's split keeps in process is merged with a filter above it without
+        /// the part it sends</em>): a subquery's <c>CAST(body AS INTEGER) = 1 AND kind IN ('A', 'B')</c> under
+        /// <c>kind = 'C'</c> sends the <c>IN</c>, and Calcite evaluates the cast beside <c>kind = 'C'</c> alone, where Calcite
+        /// in process reads the three together as false and evaluates none. So the statement fails on a <c>body</c> that is
+        /// no number, declared or not, where Calcite answers no rows; declared, the request has no <c>WHERE</c>, the
+        /// declaration making the <c>IN</c> true.
         /// </summary>
         [Fact]
         public void APartKeptInProcessIsSimplifiedWithoutThePartSent()
@@ -414,18 +414,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Two routings recorded as precision (<c>TODO.md</c>, <em>A number pins no partition unless the declaration
-        /// leaves the key one value</em>). A comparison through the cast of the text to <c>DOUBLE</c> keeps every number
-        /// less than a whole unit from its literal below 2^52 (<c>NumberCast</c>'s window), so <c>= 5</c> and <c>= 6</c> beside
-        /// a listed 5.5, and <c>= 5.5</c> beside a listed 5, keep that value and pin it, sending a request that finds
-        /// nothing, where <c>RETURNING DOUBLE = 5</c> beside 5.5 sends nothing. And where the declaration fixes the key to
-        /// one value, a required <c>const</c> or one-member <c>enum</c>, the statement pins it only where the equality is
-        /// sent. One the coarse reading proves is dropped from the text as implied, and the statement, with no
-        /// <c>WHERE</c>, pins nothing and reads every partition: through the cast, through <c>RETURNING DECIMAL</c>, a parse
-        /// that raises over no number, and for a string key compared as itself. One it does not prove stays: sent, as
-        /// <c>RETURNING DOUBLE = 5.5</c>, and over a key fixed to 5, <c>RETURNING INTEGER</c>, <c>BIGINT</c> and
-        /// <c>DOUBLE</c>, the integer cast and the text, it pins; and so does the string not required. One kept in Calcite,
-        /// a fraction's text or a boxed 5, leaves the statement sent pinning nothing. Each routes as on <c>main</c>.
+        /// Two routings recorded as measured (<c>TODO.md</c>, <em>A number pins no partition unless the declaration
+        /// leaves the key one value</em>), each as on <c>main</c>: which listed value a comparison of the key through the
+        /// cast of the text to <c>DOUBLE</c> pins, beside what <c>RETURNING DOUBLE</c> sends; and, over a key the
+        /// declaration fixes to one value, which comparisons are sent with no <c>WHERE</c> and pin nothing, which keep their
+        /// <c>WHERE</c> and pin, which stay in Calcite over a request that pins nothing, and that one beside the rest of a
+        /// <c>WHERE</c> leaves the request pinned.
         /// </summary>
         [Fact]
         public void ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo()
@@ -493,6 +487,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 Planned(string.Format(Returning, "5.5"), container).PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"RETURNING DOUBLE over {fixedTo}");
             }
+
+            var besideRest = Planned("""SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.ref') AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'""", five);
+            besideRest.PartitionKeyValues.Should().Equal(new object?[] { 5L }, "beside the rest of a WHERE the request is still pinned");
+            besideRest.Sql.Should().EndWith("WHERE (c.k = @p0)");
 
             var required = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "const": "bikes" } } }""");
             Planned(Text, required).PartitionKeyValues.Should().BeNull("the equality is implied, and dropped");
