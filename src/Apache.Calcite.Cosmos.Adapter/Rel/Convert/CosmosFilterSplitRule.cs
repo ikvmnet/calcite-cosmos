@@ -105,7 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <remarks>
         /// Walked rather than read off a fixed operand position, because the filter may sit above a
         /// projection or a traversal as easily as above the scan — the split is the same argument
-        /// either way, and <see cref="Split"/> already binds through them.
+        /// either way, and <see cref="Split(Filter, Metadata.CosmosContainerMetadata, bool)"/> already binds through them.
         /// </remarks>
         internal static CosmosTable? FindTable(RelNode? node)
         {
