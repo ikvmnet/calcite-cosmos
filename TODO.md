@@ -3071,9 +3071,10 @@ across documents* and *A join of a container to itself* is the record.
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a statement whose WHERE holds one
   is sent. Finer rules where rows exist. A `COALESCE` is a call too: `COALESCE(c."id", 'none') IS NULL` and its kin
   (partitions 1138, 1140, 1210, 1589, 2691, 2693 and 2723 of the plan digests) stay in Calcite unrendered and read the
-  container, where main reduced them by Calcite's reading of the type, as do six `LIKE`s over `id` the rendering graph
-  sends no form of (637, 1471, 1580, 2208, 2673): no statement holds them for the facts graph to ask, so a reading of
-  `COALESCE` there decides nothing until one renders.
+  container, where main reduced them by Calcite's reading of the type, as do, against Azure, five `LIKE`s over `id` the
+  rendering graph sends no form of there (637, 1471, 1580, 2208, 2673), and against the emulator one of them (1580)
+  and four orderings of `id` it keeps in process (1143, 1868, 2274, 2523): no statement holds them for the facts graph
+  to ask, so a reading of `COALESCE` there decides nothing until one renders.
 - **A select list's cast beneath a sort or a limit is computed above them** — *medium, an empty answer where Calcite
   fails; older, main the same.* `SELECT y."id", y.w FROM (SELECT x."id", x.k, x.w FROM (SELECT c."id", kind AS k,
   CAST(body AS INTEGER) AS w FROM … ORDER BY c."id" FETCH FIRST 5 ROWS ONLY) AS x WHERE x.k IN ('A', 'B')) AS y WHERE
