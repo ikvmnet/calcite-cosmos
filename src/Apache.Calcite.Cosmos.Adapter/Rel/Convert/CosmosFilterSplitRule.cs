@@ -177,8 +177,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
-            // conjuncts admitted are the filter, the weakenings of what is left out with it.
-            var left = Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual));
+            // conjuncts admitted are the filter, the weakenings of what is left out with it. Over a projection the condition
+            // reads its columns, which Calcite in process reads as the expressions they stand for, and its simplifier reads
+            // a column otherwise than an expression: a column's truth or null test is a predicate of the rest, an
+            // expression's is not (x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS INTEGER) = 1) is false over the columns, and
+            // Calcite evaluates the cast). So there the residual stays as planned, and the filter's equivalent beneath the
+            // projection, which FILTER_PROJECT_TRANSPOSE gives it, is read.
+            var left = OverProjection(filter.getInput()) ? Compose(rexBuilder, residual) : Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual));
             if (left.isAlwaysTrue())
             {
                 call.transformTo(filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, admitted)));
