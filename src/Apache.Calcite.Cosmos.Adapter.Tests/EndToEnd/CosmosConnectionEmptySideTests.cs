@@ -39,10 +39,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// what the host evaluates knowing nothing of the documents, which fails as Calcite does.
     /// </para>
     /// <para>
-    /// Two semi-joins are exceptions. One over a reduced subquery is planned as a join the adapter drives by the
-    /// subquery's keys, with the cast above it, whether the subquery's request is left unsent or merely matches nothing:
-    /// the lookup join's, not the declaration's. One whose outer side sends nothing is the host's semi-join, which reads
-    /// its outer side first and never opens the subquery Calcite fails on: recorded, not yet decided.
+    /// One semi-join is an exception. One over a subquery whose request is left unsent is planned as a join the adapter
+    /// drives by the subquery's keys, with the cast above it, as one whose subquery merely matches nothing is: the lookup
+    /// join's, not the declaration's. One whose outer side sends nothing is planned as its undeclared twin, the
+    /// subquery read first, and fails as Calcite does.
     /// </para>
     /// </remarks>
     public class CosmosConnectionEmptySideTests : IClassFixture<CosmosConnectionEmptySideTests.Fixture>
@@ -212,6 +212,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "sj1" => $"""SELECT d."id" FROM {t} AS d WHERE {Body} = 1 AND d."id" IN (SELECT c."id" FROM {t} AS c WHERE {Kind})""",
                 "sj1none" => $"""SELECT d."id" FROM {t} AS d WHERE {Body} = 1 AND d."id" IN (SELECT c."id" FROM {t} AS c WHERE c."id" = 'zz')""",
                 "sj2" => $"""SELECT c."id" FROM {t} AS c WHERE {Kind} AND c."id" IN (SELECT d."id" FROM {t} AS d WHERE {Body} = 1)""",
+                "j3" => $"""SELECT c."id" FROM {t} AS c WHERE {Kind} AND EXISTS (SELECT 1 FROM {t} AS d WHERE d."id" = c."id" AND {Body} = 1)""",
+                "j6" => $"""SELECT c."id" FROM {t} AS c WHERE {Kind} AND c."id" IN (SELECT CAST({Body} AS VARCHAR) FROM {t} AS d)""",
                 "lj1" => $"""SELECT a."id", b.w FROM (SELECT c."id" FROM {t} AS c WHERE {Kind}) AS a LEFT JOIN (SELECT d."id", {Body} AS w FROM {t} AS d) AS b ON (a."id" = b."id")""",
                 "jl10" => $"""SELECT COUNT(*) AS n FROM (SELECT c."id" FROM {t} AS c WHERE {Kind}) AS a JOIN (SELECT d."id" FROM {t} AS d WHERE {Body} = 1) AS b ON (a."id" = b."id")""",
                 "lat3" => $"""SELECT c."id", l.w FROM {t} AS c CROSS JOIN LATERAL (SELECT CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) AS w, JSON_VALUE(c."DOC", '$.kind') AS k2 FROM (VALUES (1)) AS v(x)) AS l WHERE l.k2 = 'C'""",
@@ -255,8 +257,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The side the declaration empties is pushed and sends nothing, and the other side, which Calcite reads and fails
-        /// on, is read and fails as Calcite fails, as its undeclared twin does.
+        /// The side the declaration empties is pushed and sends nothing, as a statement or as the probes of a join the
+        /// adapter drives by the other side's keys, and the other side, which Calcite reads and fails on, is read and fails
+        /// as Calcite fails, as its undeclared twin does.
         /// </summary>
         [Theory]
         [InlineData("ix3")]
@@ -274,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             plain.Raised.Should().NotBeNull("the control: knowing nothing of the documents, the host casts \"abc\" as Calcite does\n" + plain.Plan);
 
             var declared = await Run(connection, Statement(name, "\"COSMOS\".\"sides\""));
-            declared.Plan.Should().Contain("sends=[nothing]", "the declaration empties the side filtered by kind");
+            declared.Plan.Should().ContainAny(new[] { "sends=[nothing]", "probes=[nothing]" }, "the declaration empties the side filtered by kind");
             declared.Raised.Should().NotBeNull("the other side is read, and fails as Calcite fails\n" + declared.Plan + "\nundeclared:\n" + plain.Plan);
             Innermost(declared.Raised!).Should().Be(Innermost(plain.Raised!));
         }
@@ -308,26 +311,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Recorded, not decided: a semi-join whose outer side the declaration empties answers no rows where Calcite fails
-        /// on the subquery. The plan is the host's semi-join over an outer side that sends nothing and the subquery that
-        /// casts <c>body</c>, and the host's semi-join reads its outer side first and, finding no rows, never opens the
-        /// subquery.
-        /// The undeclared twin is a join the adapter drives by the subquery's keys, the subquery read first, and fails as
-        /// Calcite does (<c>TODO.md</c>, <em>A semi-join over an emptied outer side reads no subquery</em>).
+        /// A semi-join or correlated <c>EXISTS</c> whose outer side the declaration empties is planned as its undeclared
+        /// twin is: a join the adapter drives by the subquery's keys, the subquery read first, its probes into the outer
+        /// side not sent. The subquery casts <c>body</c>, in its condition or its select list, and fails as Calcite fails.
+        /// Where the reduce put an empty relation in the outer side's place, the host's semi-join read that first and,
+        /// finding no rows, never opened the subquery, and answered no rows.
         /// </summary>
-        [Fact]
-        public async Task ASemiJoinOverAnEmptiedOuterSideReadsNoSubquery()
+        [Theory]
+        [InlineData("sj2")]
+        [InlineData("j3")]
+        [InlineData("j6")]
+        public async Task ASemiJoinOverAnEmptiedOuterSideFailsAsCalciteDoes(string name)
         {
             RequireService();
 
             await using var connection = await OpenAsync();
 
-            var plain = await Run(connection, Statement("sj2", "\"PLAIN\".\"sides\""));
+            var plain = await Run(connection, Statement(name, "\"PLAIN\".\"sides\""));
             plain.Raised.Should().NotBeNull("the control reads the subquery and casts \"abc\" as Calcite does\n" + plain.Plan);
 
-            var declared = await Run(connection, Statement("sj2", "\"COSMOS\".\"sides\""));
-            declared.Plan.Should().Contain("sends=[nothing]", "the declaration empties the outer side");
-            declared.Raised.Should().BeNull("recorded: beside an empty outer side the host's semi-join opens no subquery\n" + declared.Plan);
+            var declared = await Run(connection, Statement(name, "\"COSMOS\".\"sides\""));
+            declared.Plan.Should().ContainAny(new[] { "sends=[nothing]", "probes=[nothing]" }, "the declaration empties the outer side");
+            declared.Raised.Should().NotBeNull("the subquery is read, and fails as Calcite fails\n" + declared.Plan + "\nundeclared:\n" + plain.Plan);
+            Innermost(declared.Raised!).Should().Be(Innermost(plain.Raised!));
         }
 
     }

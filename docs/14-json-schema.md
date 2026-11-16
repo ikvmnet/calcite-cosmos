@@ -241,8 +241,8 @@ the request. These answer no rows where Calcite in process fails (Chapter 23):
 - a semi-join over a subquery that keeps nothing, which the adapter may answer by fetching the outer
   documents by the subquery's keys, of which there are none, so the condition beside the `IN` is never
   evaluated (Chapter 12.1); and a filter above such a join, which reads only the documents fetched;
-- a semi-join or correlated `EXISTS` whose outer documents keep nothing: the host reads the outer side
-  first and, finding none, never evaluates the subquery Calcite fails on;
+- an anti-join, `NOT IN` or `NOT EXISTS`, whose outer documents match nothing: the host reads the outer
+  side first and, finding none, never evaluates the subquery Calcite fails on, with a schema or without;
 - a cast in the select list beneath a sort or a limit, which the plan computes above the filters over
   it, so a filter that keeps nothing leaves it unevaluated;
 - a filter on a `DISTINCT`'s keys over a cast the `DISTINCT` computes, which the plan moves beneath the

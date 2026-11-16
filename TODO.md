@@ -3007,27 +3007,30 @@ across documents* and *A join of a container to itself* is the record.
 - **An empty side's sibling** — *small, precision; a request where there was none.* A side whose request keeps
   nothing is not sent, but nothing in the plan stands for an empty answer, so the host reads the other side of a join,
   set operation or lateral beside it as Calcite does, one request, and fails where Calcite fails; a semi-join does where
-  the subquery is that side, but for a lookup join's (*A filter above a lookup join*), and not where the outer side is
-  (*A semi-join over an emptied outer side reads no subquery*). Where the host prunes empty inputs, as the connection
+  the subquery is that side, but for a lookup join's (*A filter above a lookup join*), and where the outer side is,
+  planned as its undeclared twin, the subquery read first. Where the host prunes empty inputs, as the connection
   the README opens does, an empty `Values` once had that side answered at once with no request, even where nothing in
   it could fail. An adapter rule that prunes such a sibling only where the facts graph says the side keeps nothing and
   nothing in the other can fail, every expression it evaluates asked `never raises` in a gated node, would take the
   request back. Not built.
-- **A semi-join over an emptied outer side reads no subquery** — *medium, an empty answer with no request where
-  Calcite fails; older, main the same.* Through the connection the README opens, `SELECT c."id" FROM … AS c WHERE kind
-  = 'C' AND c."id" IN (SELECT d."id" FROM … AS d WHERE CAST(body AS INTEGER) = 1)`, `kind` never `C` (sj2), plans as
-  the host's hash semi-join over an outer side whose request is not sent and the subquery that casts, and the host's
-  semi-join reads its outer
-  side first and, finding no rows, never opens the subquery, as linq4j's does (CALCITE-2909); Calcite reads it and
-  fails on `"abc"`. Undeclared, the statement is a lookup join with the subquery as its build side, read first, and
-  fails as Calcite does. A correlated `EXISTS` (j3) and an `IN` over a cast in the subquery's select list (j6) answer
-  alike; where the outer side matches nothing and nothing is reduced (j2, j7) both plans fail, so it is the reduced
-  outer side's plan. The anti-joins (j4, j5, j8) answer no rows undeclared too, the host's semi-join and not the
-  reduce. Main answers sj2 the same, through an empty `Values` its prune-empty rules read. The fix is an adapter rule
-  over a semi-join or correlate whose outer side keeps nothing: where the facts graph says the subquery may raise,
-  it evaluates the subquery, and where nothing in it can, answers empty without reading it; it is the other half of
-  *An empty side's sibling*. `CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedOuterSideReadsNoSubquery` records
-  it, docs/14.2 and Chapter 23 say so.
+- ~~**A semi-join over an emptied outer side reads no subquery**~~ — *done, 2026-11-16: an outer side whose request
+  keeps nothing is planned as plain pushdown's and left unsent, so the semi-join is planned as its undeclared twin.*
+  Was *medium, an empty answer with no request where Calcite fails; older, main the same.* Through the connection the
+  README opens, `SELECT c."id" FROM … AS c WHERE kind = 'C' AND c."id" IN (SELECT d."id" FROM … AS d WHERE CAST(body
+  AS INTEGER) = 1)`, `kind` never `C` (sj2), planned as the host's hash semi-join over the reduce's empty outer side,
+  which it read first and, finding no rows, never opened the subquery (CALCITE-2909). It is now a lookup join with the
+  subquery as its build side, read first, its probes into the outer side not sent, and fails as Calcite does on
+  `"abc"`; a correlated `EXISTS` (j3) and an `IN` over a cast in the subquery's select list (j6) alike, and j2 and j7,
+  whose outer side matches nothing, fail declared and not
+  (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedOuterSideFailsAsCalciteDoes`, sj2, j3 and j6).
+- **An anti-join whose outer side matches nothing reads no subquery** — *small, an empty answer where Calcite fails;
+  the host's, with a schema or without one.* Through the connection the README opens, `… WHERE kind = 'C' AND c."id"
+  NOT IN (SELECT d."id" FROM … AS d WHERE CAST(body AS INTEGER) = 1)` (j4), its `NOT EXISTS` (j5) and `c."id" = 'zz'
+  AND c."id" NOT IN (…)` (j8), whose outer side matches no document, plan as the host's left merge join over the outer
+  side sorted, which reads it first and, finding no rows, never reads the subquery; Calcite reads it and fails on
+  `"abc"`. Declared and undeclared answer alike, no rows (probed 2026-11-16 against the emulator), so it is the host's
+  join and not the declaration. Not the adapter's to change but by a rule of its own over an anti-join; recorded, and
+  docs/14.2 and Chapter 23 say so.
 - ~~**A side emptied over a filter beneath answers a join beside it**~~ — *done, 2026-11-15: a converted filter holds
   the condition as planned, its rendering form only in the text sent, so the merge reads no `FALSE`.* Was *medium, an
   empty answer with no request where Calcite fails; older, main the same.* Through the connection the README opens, a join side whose filter is written

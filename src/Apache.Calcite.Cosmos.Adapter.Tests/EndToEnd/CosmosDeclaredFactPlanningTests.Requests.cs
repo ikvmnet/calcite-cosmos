@@ -165,8 +165,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// A null test of what Calcite types never null, over a cast that can fail, is no row Calcite's type check alone
         /// makes empty: the cast of the text <c>id</c> to <c>INTEGER</c> fails on an <c>id</c> that is no number, and an
         /// integer divided by zero fails on every document. Each stays in Calcite, the request reads every document, and
-        /// Calcite fails as it does. The reduce answered a condition Calcite read as never true with no rows and no request
-        /// where nothing gated it; probed at <c>e6a1b85e</c>, neither reached it, each staying in Calcite unrendered.
+        /// Calcite fails as it does (<c>CosmosDifferentialTests.WhatCalciteFailsOnFailsPushedToo</c>). The reduce answered
+        /// a condition Calcite read as never true with no rows and no request where nothing gated it; probed at
+        /// <c>e6a1b85e</c>, neither reached it, each staying in Calcite unrendered.
         /// </summary>
         [Theory]
         [InlineData("""CAST(c."id" AS INTEGER) IS NULL""")]

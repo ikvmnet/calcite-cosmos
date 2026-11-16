@@ -44,10 +44,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// conditions compared with the cast above (the plan holds the <c>CASE</c> as written, and only the text sent
         /// answers them), a filter over the filter that casts, a window ordered or summed by the cast under a contradicted
         /// filter, a projected deletion beside a never-read arm, a stack over a lateral that casts beneath it, and a filter on
-        /// a <c>DISTINCT</c>'s keys over the cast. Each fails pushed too, never answering no rows, and the controls, where
-        /// nothing raises or where Calcite's simplifier reads a stack of filters over the cast as <c>FALSE</c> before
-        /// evaluating any of it, a stack on a grouping's keys among them, answer as Calcite does. A Calcite error refines to anything in
-        /// <see cref="Refines"/>, so this asks the failure itself. Its container is its own, outside the corpus.
+        /// a <c>DISTINCT</c>'s keys over the cast; and a null test Calcite's types say is never true, over a cast of the
+        /// <c>id</c> or a division by zero, which Calcite still evaluates. Each fails pushed too, never answering no rows,
+        /// and the controls, where nothing raises or where Calcite's simplifier reads a stack of filters over the cast as
+        /// <c>FALSE</c> before evaluating any of it, a stack on a grouping's keys among them, answer as Calcite does. A
+        /// Calcite error refines to anything in <see cref="Refines"/>, so this asks the failure itself. Its container is its
+        /// own, outside the corpus.
         /// </summary>
         [Fact]
         public async Task WhatCalciteFailsOnFailsPushedToo()
@@ -78,6 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"SELECT z.\"id\" FROM (SELECT y.\"id\", y.k2 FROM (SELECT x.\"id\", x.k2 FROM ({lateral}) AS x WHERE x.k2 IN ('A', 'B')) AS y WHERE y.k2 = 'C') AS z",
                 $"SELECT COUNT(*) AS n FROM (SELECT x.\"id\", x.k2 FROM ({lateral}) AS x WHERE x.k2 = 'A') AS y WHERE y.k2 = 'B'",
                 $"SELECT x.\"id\" FROM ({distinct}) AS x WHERE x.k = 'C'",
+                "SELECT c.\"id\" FROM raises_listed AS c WHERE CAST(c.\"id\" AS INTEGER) IS NULL",
+                "SELECT c.\"id\" FROM raises_listed AS c WHERE (c.\"_ts\" / 0 > 1) IS NULL",
             };
 
             var answering = new[]

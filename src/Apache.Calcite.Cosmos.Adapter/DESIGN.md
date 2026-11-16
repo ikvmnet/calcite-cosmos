@@ -1274,8 +1274,8 @@ form the service refuses. The empty relation hid the same.
 
 **What the answer is.** Plain pushdown's. Where Calcite in process fails and the query pushed down answers no rows, it
 still does, with a declaration or without one; the declaration saves the request. Those cases are recorded, each the
-same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; a
-semi-join that reads its outer side first; a semi-join answered by a lookup join; a condition above a lookup join; a
+same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; an
+anti-join that reads its outer side first; a semi-join answered by a lookup join; a condition above a lookup join; a
 select list's cast computed above a sort and the filters over it (sf3w); and a filter on a `DISTINCT`'s keys moved
 beneath it over a cast the `DISTINCT` computes (dk1). A deletion drops a conjunct from the request though it can fail
 (`TODO.md`, *A deletion stops evaluating a conjunct that may raise*).
