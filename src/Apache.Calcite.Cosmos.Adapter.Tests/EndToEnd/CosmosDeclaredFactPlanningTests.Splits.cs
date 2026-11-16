@@ -268,6 +268,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Over a projection the split reads the condition through the expressions the columns stand for, as Calcite merges
+        /// the two before it simplifies: over the columns Calcite's simplifier reads a bare boolean column as a predicate
+        /// of the rest, and the expression it stands for it does not. So <c>x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS
+        /// INTEGER) = 1)</c>, which over the columns reads as <c>FALSE</c>, keeps its cast in Calcite, which Calcite in
+        /// process evaluates and fails on, declared or not, and no converted filter holds a <c>FALSE</c>.
+        /// </summary>
+        [Fact]
+        public void OverAProjectionTheConditionIsReadThroughIt()
+        {
+            const string Projection = """SELECT c."id", JSON_VALUE(c."DOC", '$.kind') AS k, JSON_VALUE(c."DOC", '$.body') AS b, JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN) AS f FROM items AS c""";
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Lowered)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var kept = PlanText(PlanToCosmos($"""SELECT x."id" FROM ({Projection}) AS x WHERE x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS INTEGER) = 1)""", container, out _));
+                kept.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).Should().Contain(l => l.Contains(":INTEGER"), $"{declared}: the cast is Calcite's: " + kept);
+                kept.Should().NotContain("condition=[false]", $"{declared}: " + kept);
+            }
+        }
+
+        /// <summary>
         /// A conjunct its siblings make go unread, as Calcite simplifies the whole condition, is not evaluated where one of
         /// them is sent: the split keeps in Calcite what that simplification leaves beside the conjuncts it sends, term by
         /// term, and nothing where it leaves none, so <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is the
