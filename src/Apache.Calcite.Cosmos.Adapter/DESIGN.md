@@ -1312,7 +1312,10 @@ simplifies the condition as the query wrote it with Calcite's own simplifier, wh
 whole is the residual's own terms beside terms of the conjuncts sent, a conjunct sent that the residual implies dropped
 among them, the residual stays as planned; where it reads a term of the residual away or into another, what is left
 above is the whole's terms but those of the conjuncts sent, which are true on every row the request returns, and
-nothing where none is left, the filter then being the admitted conjuncts alone. A conjunct sent is one each conjunct
+nothing where none is left, the filter then being the admitted conjuncts alone; and where it reads the whole as false,
+the filter is not split, and Calcite evaluates it as it stands, as in process, so no node holds a `FALSE` Calcite's rules
+would read beside a join (`flag AND NOT (flag IS NOT FALSE OR CAST(body AS INTEGER) = 1)`, whose residual alone raised
+where Calcite answers no rows, on `main` too). A conjunct sent is one each conjunct
 of whose planning form is admitted (`CosmosFactRewriter.PlannedConjuncts`). It reads nothing of the declaration and
 chooses no row: a writer. Three readings it replaced each decided a part Calcite evaluates. Read through the planning
 form, a lowering made a residual true or false, and so did a flattened `CASE`: `CAST(w AS INTEGER) = 5 AND (w = '005' OR

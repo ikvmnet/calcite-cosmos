@@ -2965,7 +2965,8 @@ across documents* and *A join of a container to itself* is the record.
   answered no rows.* Within one filter this is done (2026-11-16): `CosmosFilterSplitRule.Residual` simplifies the
   condition as written with Calcite's own simplifier, whole and each half alone, and where the whole reads a term of the
   residual away or into another keeps above the whole's terms but those of the conjuncts sent, nothing where none is
-  left, the filter then being those conjuncts alone. So `kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)`,
+  left, the filter then being those conjuncts alone, and leaves a filter whose whole it reads as false unsplit, for
+  Calcite to evaluate as it stands. So `kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)`,
   `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND kind = 'A'`, `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR …)`,
   the same beside a `CAST(m AS INTEGER) > 0` the whole keeps, and `kind = 'A' AND CASE WHEN CAST(body AS BOOLEAN) AND
   kind = 'C' THEN FALSE ELSE TRUE END` send the sibling and keep in Calcite no cast of `body`, declared and not, where
