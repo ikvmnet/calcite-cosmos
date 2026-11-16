@@ -18,7 +18,7 @@ GROUP BY c."$.category"
 | --- | --- |
 | `COUNT(*)` | always |
 | `COUNT(x)` | where `x` cannot be null (Calcite then rewrites it to `COUNT(*)`) |
-| `SUM(x)`, `AVG(x)` | only where `x` cannot be null |
+| `SUM(x)`, `AVG(x)` | only where `x` cannot be null; with no `GROUP BY`, a `SUM` beside a `COUNT(*)` (10.2) |
 | `MIN(x)`, `MAX(x)` | where `x` is never a JSON null and holds one type; for a string whose characters nothing declares, and an integer nothing bounds, ungrouped and checked as the row arrives (10.2) |
 | `COUNT(DISTINCT x)` | the de-duplication pushes as a `GROUP BY x`, where `x` would push as a key; the count finishes in process over one row per value |
 | `SELECT DISTINCT …` | as Cosmos `SELECT DISTINCT` |
@@ -55,6 +55,10 @@ property is nullable as far as the planner knows, so in practice:
   in a way the planner can see. A `WHERE x IS NOT NULL` on a *promoted column* works; on a
   `JSON_VALUE` path the knowledge does not survive the projection, and the aggregate stays in
   process.
+- **A `SUM` with no `GROUP BY` is sent beside a `COUNT(*)`.** Over no document the service's `SUM` is
+  0 and SQL's is `NULL`, so the statement asks for both, and the sum reads `NULL` where the count is 0;
+  an `AVG` over an integer, which is a `SUM` divided by a `COUNT`, takes the same sum. A group is never
+  empty, so a grouped `SUM` is sent alone.
 - **`MIN` and `MAX` are an order, and are asked as one.** The service skips a missing property as SQL
   skips a null, but counts a JSON `null`, compares values by JSON type first, and orders strings by
   code point where SQL orders them by UTF-16 code unit (Chapter 9.3). So `MIN` and `MAX` push where the

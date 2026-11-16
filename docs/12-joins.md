@@ -87,8 +87,10 @@ it answers no rows, and with no request where the schema rules out the small sid
 That is not decided yet (Chapter 23).
 
 Where the schema rules out what the container side's own `WHERE` keeps, the join still reads the
-small side, every row of it, as Calcite does, and fetches no batch: `EXPLAIN` marks the join
-`probes=[nothing]`, and an outer join keeps every row of the small side unmatched.
+small side, every row of it, and fetches no batch: `EXPLAIN` marks the join `probes=[nothing]`, and an
+outer join keeps every row of the small side unmatched. So a condition in the small side that can fail
+fails the statement, with a schema or without, where Calcite's own semi-join reads the empty container
+side first, never evaluates the small side and answers no rows (Chapter 23).
 
 ### Which side is fetched by key
 

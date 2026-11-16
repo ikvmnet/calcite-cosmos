@@ -168,11 +168,12 @@ that is no number, and the rest of the filter answers where Calcite fails (Chapt
 
 ### A predicate no document can satisfy
 
-A value the schema rules out keeps no row, and the request that would ask for one is not sent. The
-query is planned exactly as it would be without a schema; once the plan is made, each statement it
-would send is asked whether its `WHERE` keeps any document the schema admits. Where it keeps none,
-and nothing in it can fail on a document the schema admits, the statement is not sent, and whatever
-Calcite computes above it reads no rows, as it would read the service's empty answer.
+A value the schema rules out keeps no row, and the request that would ask for one is not sent. What
+the schema rules out or makes redundant never reaches what Calcite evaluates: a statement it rules out
+is planned as one it does not, and once the plan is made, each statement it would send is asked
+whether its `WHERE` keeps any document the schema admits. Where it keeps none, and nothing in it
+can fail on a document the schema admits, the statement is not sent, and whatever Calcite computes
+above it reads no rows, as it would read the service's empty answer.
 
 ```sql
 -- "status": { "enum": ["active", "archived"] }
@@ -184,13 +185,20 @@ without a schema   WHERE c.status = @p0, which the service evaluates to find not
 with one           the same plan, and no request: EXPLAIN shows CosmosToClrCursorConverter(sends=[nothing])
 ```
 
-The answer is the one sending the query would give, whatever plan Calcite picked: nothing the schema
-says changes the plan, only whether a request goes out. The same holds for an `anyOf` of enums, whose
-values are the members of them all, for a `const`, for a `WHERE` the service answers whole and one a
-filter adds to, and for a join that reads a side by the other's keys, which then reads no batch. A
-statement that counts or sums with no `GROUP BY` is still sent: over no document the service answers
-it with one row, a count of 0, so its `WHERE` is sent as `false`. Skipping the request skips what the
-service could have reported for it too: a lost key, a deleted container, throttling.
+The answer is the one sending the query would give, whatever plan Calcite picked: what the schema
+rules out changes whether a request goes out, not what Calcite computes. The same holds for an
+`anyOf` of enums, whose values are the members of them all, for a `const`, for a `WHERE` the service
+answers whole and one a filter adds to, and for a join that reads a side by the other's keys, which
+then reads no batch. A pushed statement that counts or sums with no `GROUP BY` is still sent, its
+`WHERE` written `false`: over no document it answers one row, a count of 0. A sum is sent beside a
+count and read as `NULL` where the count is 0, as SQL sums no rows; the service's own sum of no
+document is 0. Skipping the request skips what the service could have reported for it too: a lost
+key, a deleted container, throttling.
+
+What the schema says of the values a query reads still shapes the plan, as the rest of this chapter
+describes. And a `MIN`, a `MAX` or an `ORDER BY` above a `WHERE` the schema rules out is computed in
+Calcite, over the empty answer, where without a schema it is pushed: the same answer by another plan
+(Chapter 23).
 
 A range does the same against a bound or an enum, read through a cast to `DOUBLE`:
 
@@ -219,7 +227,9 @@ where it holds one, one request that finds nothing; so is a `WHERE` beside which
 weaker form of a part the service cannot take exactly, the weaker form being read as one that may
 fail (Chapter 23). Where the part the schema rules out stays in process instead, as a comparison of two
 properties, `UPPER` and a cast to `INTEGER` mostly do, one request goes out, reading the documents
-Calcite reads, and Calcite answers what it computes over them.
+Calcite reads, and Calcite answers what it computes over them. A `LIKE` over `id` the target sends no
+form of, and a `COALESCE` over it, are such parts: the request reads the whole container to find
+nothing (Chapter 23).
 
 A `CASE` condition in a projection follows the same rule, in the request alone: the plan keeps the
 condition as the query wrote it, so nothing the schema says of it reaches a column beside it or a filter
@@ -241,12 +251,27 @@ the request. These answer no rows where Calcite in process fails (Chapter 23):
 - a semi-join over a subquery that keeps nothing, which the adapter may answer by fetching the outer
   documents by the subquery's keys, of which there are none, so the condition beside the `IN` is never
   evaluated (Chapter 12.1); and a filter above such a join, which reads only the documents fetched;
-- an anti-join, `NOT IN` or `NOT EXISTS`, whose outer documents match nothing: the host reads the outer
-  side first and, finding none, never evaluates the subquery Calcite fails on, with a schema or without;
 - a cast in the select list beneath a sort or a limit, which the plan computes above the filters over
   it, so a filter that keeps nothing leaves it unevaluated;
 - a filter on a `DISTINCT`'s keys over a cast the `DISTINCT` computes, which the plan moves beneath the
-  `DISTINCT` into the request.
+  `DISTINCT` into the request;
+- a filter over a lateral or a scalar sub-query that rules out, on a column read from the container's
+  side, every value that side keeps, a disjunction each branch of which does among them: Calcite moves
+  it, or a condition it derives from it, beneath the lateral into the request, which then keeps nothing,
+  so a cast the lateral computes for each document is never evaluated.
+
+And the other way: where Calcite in process answers no rows, these fail pushed down, with a schema or
+without (Chapter 23):
+
+- a semi-join, a correlated `EXISTS` or an `IN` over a subquery that can fail, whose outer side keeps
+  nothing: Calcite's own semi-join reads the empty outer side first and never evaluates the subquery,
+  where the adapter's lookup join reads the subquery first (Chapter 12.1); and an `EXISTS` whose
+  subquery keeps nothing, beside a condition that can fail, which the plan evaluates first;
+- a part kept in process beside a part sent, which Calcite would have simplified together: under
+  `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's `CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) =
+  1 AND JSON_VALUE(c."DOC", '$.kind') IN ('A', 'B')` sends the `IN`, and the cast, evaluated in process
+  beside `kind = 'C'` alone, fails on a `body` that is no number, where Calcite reads the three together
+  as false and evaluates none of them.
 
 Of the ranges above, and of other casts:
 
