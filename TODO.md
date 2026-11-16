@@ -1632,23 +1632,31 @@ and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reprodu
 two weakenings wants a connection, as `CosmosConnectionFunctionTests` and `CosmosConnectionPlanningTests`
 open one.
 
-One comparison alone does the same. Where a path may hold a number beside a value the service cannot
-convert as Calcite does, `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500` is split: its weaker form,
-the numeric window's bound a `DECIMAL`, is merged back with the residual's `DOUBLE` literal, and
+One comparison alone does the same. Where the adapter does not send `CAST(JSON_VALUE(c."DOC", '$.n')
+AS DOUBLE) > 500` whole, it splits it, and where the weaker form it sends holds the comparison's number,
+a `DECIMAL`, that form is merged back with the residual's `DOUBLE` literal, and
 `ReduceExpressionsRule`'s simplifier fails with `BigDecimal` against `Double` (`Double` against
-`BigDecimal` for `< 500`). Measured failing through the connection with no declaration, with
-`"maximum": 100` alone, with `"type": ["string", "integer"]` or `["number", "boolean"]`, and with an
-`anyOf` of a string and an integer at most 100, under both targets; so do `= 30` and `> 5`, and Chapter
-7.3's key pin written as a cast with no declaration, `CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) =
-5.5`; `main` fails alike. In the host Chapter 21 describes each is sent with its weaker form, and
-`CAST(… AS INTEGER) > 500` plans in both hosts. Through the connection the comparison plans where no
-weaker form holds a number: over a path declared a string, sending the path's presence and casting in
-Calcite; over one declared `"integer"` or `"number"`, or listed as numbers, where none is written, sent
-as it is or, a unit past a bound or every listed number, sending nothing; over `"enum": [5, "600"]`,
-sent whole as one filter; and a `BETWEEN`, whose weaker form is the path's presence alone. Chapter 14.2
-gives the `INTEGER` range as the one sent, and Chapter 23 records the failure;
+`BigDecimal` for `< 500`). Whether the comparison is sent whole is the rendering graph's answer over the
+values the declaration lets the path hold, the comparison and its literal among its inputs, so no shape
+of the declaration alone tells it, and one path can give both. Measured through the connection
+under both targets, `main` alike in each: `> 500` fails with no declaration, with `"maximum": 100`
+alone, with `"type": ["string", "integer"]`, `["number", "boolean"]`, `["integer", "object"]` or
+`["integer", "array"]`, with an `anyOf` of a string and an integer at most 100 or of an integer and an
+object, and over `"enum": [5, "5", "600"]`, the object, the array and the `anyOf` of an object among
+them where Calcite answers; so do `= 30` and `> 5` beside `"maximum": 100` alone, `<> 600` and
+`NOT (… = 600)` over `"enum": [5, "600"]`, and, with no declaration, `= 5.5` and Chapter 7.3's key pin
+written as a cast, `CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) = 5`. It plans over a path declared `"number"` or
+`"integer"`, sent whole, or against a bound it excludes sending nothing; over `["number", "null"]`, sent
+whole; over a path declared a string, sending the path's presence and casting in Calcite; over
+`"enum": [5, "600"]`, `[5, "abc"]`, `[5, true]` or `[1, 2, 3, "XL"]`, sent whole as one filter, the last
+three answered by the service where Calcite fails (*The rendering graph lifts an agreement where a raise
+sits beside a truth value*); and, with no declaration, `= 4.6`, whose literal's double no decimal holds,
+so that it is not read, an `IN` and a `BETWEEN`, whose weaker form through the connection is the path's
+presence alone. In the host Chapter 21 describes each that fails here is sent with its weaker form, and
+`CAST(… AS INTEGER) > 500` plans in both hosts. Chapter 14.2 gives the `INTEGER` range as the one sent,
+and Chapter 23 records the failure;
 `CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger`
-pins each through the connection the README opens.
+pins shapes of each kind through the connection the README opens.
 
 The fix is the same for both, the bound reading the value in its own type — but the bound's literal is
 the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
@@ -3011,7 +3019,8 @@ across documents* and *A join of a container to itself* is the record.
   with no request where Calcite fails on `"abc"`, in the host Chapter 21 describes and on main alike, when the deletion
   reached the plan. Since 2026-11-15 a deletion is the text's alone: the plan keeps the conjunct, and the request
   drops it. Asking `never raises` of the conjunct before deleting it covers each.
-- **A lowering removes a raise on documents its siblings do not keep** — *small, an answer where Calcite fails.* A
+- **A lowering removes a raise Calcite would make, on documents its siblings exclude and, onto a declared integer
+  form, on any document** — *small, an answer where Calcite fails.* A
   comparison lowered onto its stored form under `Siblings` no longer evaluates what raised, on documents the siblings
   exclude, where Calcite evaluates every conjunct. A numeric cast lowered onto a declared integer form whose language
   holds values past the cast's type loses its raise on the documents the siblings keep too, or with no sibling: over
@@ -3257,25 +3266,41 @@ across documents* and *A join of a container to itself* is the record.
   would keep the point and the pin there too. `docs/07`, `08` and `13` say a number pins only where the declaration
   leaves the key one value until then. Two routings beside it are precision, each the same on `main`
   (`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`).
-  A comparison through the cast of the text to `DOUBLE` keeps every number within a whole unit of what it compares,
-  below 2^52 (`NumberCast.KeptOrder`'s window, the same on `main`), which holds whichever way a conversion rounds. So
-  over a key the declaration lists as `[5.5, 7.25]`, `CAST(… AS DOUBLE) = 5` and `= 6` keep `5.5`, pin it and send
-  `WHERE (c.ref = @p0)`, which finds nothing, where `RETURNING DOUBLE = 5` sends nothing, and over one listed `[5, 7]`,
-  `= 5.5` pins `5`; and over a path that is not the key the same window sends `= 6` where `n` is listed `[5.5, 30]`, and
-  `> 100` and `> 100.5` over integers at most 100, each a request that finds nothing, where `> 101` sends nothing. The
+  A comparison through the cast of the text to `DOUBLE` keeps every number less than a whole unit from what it
+  compares where its literal is below 2^52, and any number from there (`NumberCast.KeptOrder`'s window, the same on
+  `main`), which holds whichever way a conversion rounds. So over a key the declaration lists as `[5.5, 7.25]`,
+  `CAST(… AS DOUBLE) = 5` and `= 6` keep `5.5`, pin it and send `WHERE (c.ref = @p0)`, which finds nothing, where
+  `RETURNING DOUBLE = 5` sends nothing, and over one listed `[5, 7]`, `= 5.5` pins `5`; and over a path that is not the
+  key the same window sends `= 6` where `n` is listed `[5.5, 30]`, `> 100` and `> 100.5` over integers at most 100, and
+  `> 100000000000000000` there, each a request that finds nothing, where `> 101` sends nothing, and so does `> 100`
+  under an `exclusiveMaximum` of 100. The
   proper fix reads the cast's window under `DOUBLE` below 2^52 by the double's rounding, as `RETURNING DOUBLE`'s
   `KeptEqual` does since "fail like Calcite" (`RoundingTo(DoubleBound.Of(literal))`), an ordering's by its bound's; it
   moves plans, so it is a change of its own after "fail like Calcite". And a key the declaration fixes to one value, a
   required `const` or a one-member `enum`, loses its pin where its equality is dropped as implied:
-  `CAST(… AS DOUBLE) = 5.5` over a required `const` of `5.5`, a string key's `= 'bikes'` over a required `const` of
-  `"bikes"` and `c."$.ref" = CAST(TRUE AS VARIANT)` over one of `true` are sent with no `WHERE` to every partition,
-  since `CosmosFilter.Implement` routes on the condition sent, which then holds no equality. A deletion is a verdict on
-  the coarse reading, which puts a raise beside every number a typed reading or an integer cast compares and reads a
-  number's text as any spelling of its double (*A conjunct through an integer parse its declared bounds satisfy is
-  still sent*), so `RETURNING DOUBLE = 5.5` over `5.5`, and `RETURNING INTEGER = 5`, `CAST(… AS INTEGER) = 5` and
-  `= '5'` over a key fixed to `5`, are not dropped and pin; and over a key that is not required, which a document may
+  `CAST(… AS DOUBLE) = 5.5` over a required `const` of `5.5`, `RETURNING DECIMAL = 5` over one of `5`, a string key's
+  `= 'bikes'` over a required `const` of `"bikes"` and `c."$.ref" = CAST(TRUE AS VARIANT)` over one of `true` are sent
+  with no `WHERE` to every partition, since `CosmosFilter.Implement` routes on the condition sent, which then holds no
+  equality; and where it is kept in Calcite, as a fraction's text `= '0.1'` over a `const` of `0.1` and
+  `c."$.ref" = CAST(5 AS VARIANT)` over one of `5` are, the condition sent holds none either. A deletion is a verdict
+  on the coarse reading, which puts a raise beside every number `RETURNING INTEGER`, `BIGINT` or `DOUBLE` or an
+  integer cast compares and reads a number's text as any spelling of its double (*A conjunct through an integer parse
+  its declared bounds satisfy is still sent*), so `RETURNING DOUBLE = 5.5` over `5.5`, and `RETURNING INTEGER = 5`,
+  `RETURNING BIGINT = 5`, `RETURNING DOUBLE = 5`, `CAST(… AS INTEGER) = 5` and `= '5'` over a key fixed to `5`, are not
+  dropped and pin; `RETURNING DECIMAL`, a decimal parse whose coarse reading raises over no number, answers a stored
+  `5` TRUE alone and is dropped as the cast to `DOUBLE` is. Over a key that is not required, which a document may
   lack, no equality is implied and none is dropped. Routing on the planning form, whose equality stands, would keep
-  the pin. Chapter 23 records both, each measured in both hosts under both targets.
+  the pin where the equality is dropped. Chapter 23 records both, each measured in both hosts under both targets.
+- **A cast to `DOUBLE` compared with a literal whose double no decimal holds is read as nothing** — *small,
+  precision.* Over an integer at most 100, `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 200.1` keeps nothing, yet
+  sends `WHERE IS_DEFINED(c.n)` with the comparison kept in Calcite, one request that finds nothing, in both hosts
+  under both targets, declared or not, where `> 200.25` sends nothing. The loader reads a number literal as the value
+  Calcite evaluates, exactly, and `200.1`'s double has more digits than a decimal holds (`DESIGN.md`, *What it reads
+  now*), so the conjunct is opaque to both graphs: the rendering graph writes only the path's presence, and the request
+  is asked of that `WHERE`. In the host Chapter 21 describes, `main`'s reduce answered the same statement with an
+  empty `Values` and no request; through the README's connection `main` sends the same request. The proper fix goes
+  with the window's above: reading the cast, and such a literal, by the double's rounding. It moves plans, so it is a
+  change of its own after "fail like Calcite".
 - **A bare raw value reads the union's raise** — *small, precision.* Naming its column where the loader builds it
   (`Metadata/CosmosPredicateLoader.cs`) would read one column's rows.
 - ~~**A `CHAR` column's parameter keys read the union**~~ — *done, 2026-11-12.* A row says a `CHAR` column answers a
@@ -3292,8 +3317,12 @@ across documents* and *A join of a container to itself* is the record.
   (`Service.IntegralNumbersReadBackAsHeld`); so is `RETURNING BIGINT = 5` over integers from 0 to 100. The loader writes
   `RETURNING` and a column of the type alike (`typed`), and a `DOUBLE` or `BIGINT` column reads those numbers, so the
   cells are no raise alone and the vacuity rule does not keep the statement in Calcite; telling the two apart in the
-  loader, a row for each, would let the raise stand alone. Whether that tolerance stands beside "fail like Calcite" is
-  left for a change of its own.
+  loader, a row for each, would let the raise stand alone. A cast of the text to `DOUBLE` over an `enum` that lists a
+  number beside a string or a boolean the cast cannot read is lifted the same way, the raise in that value's cell
+  beside the truth values of the others: `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 2` over `[1, 2, 3, "XL"]`,
+  and `> 500` over `[5, "abc"]` or `[5, true]`, are sent whole as `WHERE (c.n > @p0)` and answered by the service,
+  where Calcite fails on the string or the boolean, in both hosts under both targets, `main` the same. Whether that
+  tolerance stands beside "fail like Calcite" is left for a change of its own.
 - **A conjunct through an integer parse its declared bounds satisfy is still sent** — *small, precision.* Over a
   required integer from 0 to 100, or listed `[1, 2, 3]`, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and
   `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)` where the same

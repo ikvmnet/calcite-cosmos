@@ -221,25 +221,35 @@ SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOU
 SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) = 30
 ```
 
-Both keep nothing, and the cast fails on no number. The adapter reads the cast loosely: converting a
-number moves it by less than one, so it takes such a comparison to keep every number within a whole
-unit of what it keeps, and rules it out only where its literal lies a whole unit or more past the bound
-and past every listed value. Over the integer at most 100, `> 101` sends nothing, while `> 100` is
-sent, one request that finds nothing; over the enum, so is `= 3.5`.
+Both keep nothing, and the cast fails on no number, so neither is sent. The adapter reads such a
+comparison more loosely than a `DOUBLE` rounds: as keeping every number less than a whole unit from
+what it keeps where its literal is below 2^52, and any number from there. So one the schema rules out
+may still be sent, one request that finds nothing, where a value the schema allows lies less than a unit
+from what the comparison keeps, or its literal is 2^52 or more. For example, over the integer at most
+100, `> 101` sends nothing, while `> 100` and `> 100000000000000000` are sent; over an integer with
+`"exclusiveMaximum": 100`, `> 100` sends nothing and `> 99.5` is sent; over the enum, `= 3.5` is sent.
+And the adapter reads the literal as the double Calcite compares, only where it can hold that double
+exactly, which it can for `200.25` and not for most decimal fractions, such as `200.1`: with such a
+literal the comparison stays in Calcite and the request sends the path's presence, so over the integer
+at most 100 `> 200.1` is one request that reads every document holding `n`.
 
 A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast converts a stored
 string too — `> 500` keeps a document storing `"600"`. So with the bound alone a range on `n` is not
 ruled out: written `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500`, it is sent, one request that
-reads what the service finds. Written through `CAST(… AS DOUBLE)` it may fail to plan where the host
-runs Calcite's default rules, as the README's connection does. Where a path may hold a number beside a
-value the service cannot convert as Calcite does, the adapter sends a weaker form of the comparison
-that holds its number, and keeps the cast in Calcite; Calcite's simplifier (`ReduceExpressionsRule`),
-which those rules run over the two together, meets that number, a `DECIMAL`, where it expects the
-comparison's `DOUBLE`, and fails. So the comparison fails to plan, for example, with the bound alone,
-with no schema, with `"type": ["string", "integer"]` or `["number", "boolean"]`, or with an `anyOf` of
-a string and an integer. It plans where no weaker form holds a number: over `"type": "number"` or
-`"integer"`, where none is written, over `"type": "string"`, where the form sent is the path's
-presence, and over `"enum": [5, "600"]`, which is sent whole (Chapter 23).
+reads what the service finds. Written through `CAST(… AS DOUBLE)`, it fails to plan through the README's
+connection, which runs Calcite's default rules. Where the adapter does not send a comparison through the
+cast whole, it sends a weaker form and keeps the cast in Calcite; where that weaker form holds the
+comparison's number, Calcite's simplifier (`ReduceExpressionsRule`), which those rules run over the two
+together, meets that number, a `DECIMAL`, where it expects the comparison's `DOUBLE`, and fails. Whether
+a comparison is sent whole turns on the comparison and its literal as well as on the schema, so one path
+can give both. For example, through the README's connection, `> 500` fails to plan with no schema, with
+`"type": ["string", "integer"]`, `["number", "boolean"]` or `["integer", "object"]`, the last though
+Calcite answers it, and over `"enum": [5, "5", "600"]`; it plans over `"type": "number"`, `"integer"`,
+`"string"` or `["number", "null"]`, and over `"enum": [5, "600"]`, sent whole, where `<> 600` fails.
+With no schema, through the same connection, `= 5.5` fails, while `= 4.6`, whose literal is not read,
+`IN (5, 6)` and `BETWEEN 4 AND 6` plan, sending the path's presence. An enum that lists a number beside
+a string the cast cannot read may be sent whole too: over `[5, "abc"]`, `> 500` is, and the service
+answers where Calcite fails on `"abc"` (Chapter 23).
 
 A test of a truth value Calcite reads as never true is asked the same way, and needs nothing declared
 but what the service guarantees: `(c."id" = 'b') IS NULL` sends nothing, since every document holds an

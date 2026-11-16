@@ -59,9 +59,12 @@ the declaration does not name, a comparison of two properties, a function's resu
 the adapter sends beside a part the service cannot take exactly keeps the request where the service
 can take the whole `WHERE`, or fails where every document would (*A query the schema rules out
 fails*, below). Over a property declared `"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over
-integers within an `INTEGER`'s range, are sent even where the property is required (Chapter 23). Over
-a declared number, a cast to `DOUBLE` does not keep the request. Where the part the schema rules out
-stays in process, one request goes out, reading the documents Calcite reads. A pushed `COUNT` or
+integers within an `INTEGER`'s range, are sent even where the property is required (Chapter 23). A
+comparison through a cast to `DOUBLE` may keep the request too: the adapter reads it as keeping every
+number less than a whole unit from what it keeps where its literal is below 2^52, and any number from
+there, and leaves one whose literal's double it cannot hold exactly, as with most decimal fractions, in
+Calcite (Chapter 14.2). Where the part the schema rules out stays in process, one request goes out,
+reading the documents Calcite reads. A pushed `COUNT` or
 `SUM` with no `GROUP BY` is sent, its `WHERE` written `false` where one filter alone keeps nothing,
 since it answers one row over no document; the sum goes beside a count and reads `NULL` where the count
 is 0, as in Calcite. Where a part

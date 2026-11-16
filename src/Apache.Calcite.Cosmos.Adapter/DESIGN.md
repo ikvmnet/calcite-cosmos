@@ -1232,17 +1232,24 @@ An equality with a number pins the key only where the declaration leaves the key
 `Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no domain of one,
 and only a declaration that leaves one value in it is — an integer, whose window holds one whole number, or an `enum`
 or a `const` with one member there, a fraction among them, sent as a `double`. Through `RETURNING DOUBLE` that value's
-double is the literal's. A comparison through the cast of the text to `DOUBLE` keeps every number within a whole
-unit of what it compares, below 2^52 (`NumberCast.KeptOrder`'s window, the same on `main`), which holds whichever way
-a conversion rounds, not the double's rounding, so a listed value within a unit of the literal is in an equality's
-window, and pinned where it is the only one there: `= 5` and `= 6` beside a listed `5.5` pin `5.5`, and `= 5.5`
-beside a listed `5` pins `5`, one request that finds nothing where `RETURNING DOUBLE = 5` beside `5.5` sends none;
-the same window leaves a range through the cast sent where its literal lies less than a unit past the declared bound,
-`> 100` over integers at most 100. And a key the declaration fixes to one value, a required `const` or a one-member
-`enum`, is pinned only where its equality is not dropped as implied, since `CosmosFilter.Implement` routes on the
-condition sent, which then holds none; a deletion is a verdict on the coarse reading, which puts a raise beside every
-number a typed reading or an integer cast compares and reads a number's text as any spelling of its double, so
-through `RETURNING`, an integer cast or a number's text the equality stays and pins
+double is the literal's. A comparison through the cast of the text to `DOUBLE` keeps every number less than a whole
+unit from what it compares where its literal is below 2^52, and any number from there (`NumberCast.KeptOrder`'s
+window, the same on `main`), which holds whichever way a conversion rounds, not the double's rounding, so a listed
+value less than a unit from the literal is in an equality's window, and pinned where it is the only one there: `= 5`
+and `= 6` beside a listed `5.5` pin `5.5`, and `= 5.5` beside a listed `5` pins `5`, one request that finds nothing
+where `RETURNING DOUBLE = 5` beside `5.5` sends none; the same window leaves a comparison through the cast sent where
+a value the declaration allows lies less than a unit from what it keeps, or its literal is 2^52 or more: `> 100` and
+`> 100000000000000000` over integers at most 100, where `> 100` under an `exclusiveMaximum` of 100, whose integers
+are at most 99, sends nothing
+(`CosmosDeclaredFactPlanningTests.ACastToDoubleIsReadAsKeepingEveryNumberLessThanAUnitFromWhatItKeeps`). A literal
+whose double no decimal holds, `> 200.1`, is no literal at all (*What it reads now*, below), so the comparison is
+opaque and stays in Calcite beside the path's presence, one request. And a key the declaration fixes to one value, a
+required `const` or a one-member `enum`, is pinned only where its equality is sent, since `CosmosFilter.Implement`
+routes on the condition sent: one dropped as implied, or kept in Calcite, leaves none. A deletion is a verdict on the
+coarse reading, which puts a raise beside every number `RETURNING INTEGER`, `BIGINT` or `DOUBLE` or an integer cast
+compares and reads a number's text as any spelling of its double, so through those, an integer cast or a number's
+text the equality stays and pins; `RETURNING DECIMAL`, a decimal parse whose coarse reading raises over no number, is
+dropped as the cast to `DOUBLE` is
 (`CosmosDeclaredFactPlanningTests.ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo`, the
 same on `main`). Routing by the window's double, which every number in it shares, is a follow-up that needs a
 measurement of how the service hashes a number, and the other two are precision to come back (`TODO.md`). A cast of
