@@ -148,8 +148,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
 
             // Only where the filter split off can reach the service, which is a logical filter's copy over an input that can:
-            // a copy of a filter Calcite implements is Calcite's, as is one over a filter Calcite keeps, and a weakening is
-            // the service's form, with no in-process body for a Cosmos type test.
+            // a copy of a filter Calcite implements is Calcite's, as is one over a filter Calcite keeps or a correlate no rule
+            // makes part of a statement, and a weakening is the service's form, with no in-process body for a Cosmos type test.
             if (((Filter)call.rel(0)).getConvention() != Convention.NONE || Reaches(_convention, ((Filter)call.rel(0)).getInput(), CosmosPlanMembers.NewSeen()) == false)
                 return false;
 
@@ -394,8 +394,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether a filter over a subtree can be a <see cref="CosmosFilter"/>: some equivalent form of it is no
-        /// filter, or is a filter <see cref="CosmosFilterRule"/> converts whole over a subtree that can.
+        /// Determines whether a filter over a subtree can be a <see cref="CosmosFilter"/>: some equivalent form of it is part
+        /// of a statement already, or one a rule converts over a subtree that can be: this container's scan, a projection,
+        /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
         /// </summary>
         /// <remarks>
         /// The filter rule converts a filter only over an input that converts, so a filter it declines leaves every filter
@@ -403,7 +404,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Calcite evaluates, and a weakening in it the service's form written as a Rex:
         /// <c>WHERE JSON_VALUE(x."DOC", '$.n') = '1'</c> over a subquery's <c>CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER)
         /// = 1</c> failed with "cannot translate call IS_NUMBER" where Calcite answers, declared or not, where no host merges
-        /// the two filters. Whether the rule converts is legality, the question it asks of every filter.
+        /// the two filters. So did one over a lateral, an <c>UNNEST</c> or a scalar sub-query beside such a cast, while any
+        /// member that was no filter counted: the correlate moved the half pushed into its left side, beside the cast. Which
+        /// rule converts a member is legality, the question each asks of it.
         /// </remarks>
         static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
         {
@@ -412,13 +415,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (seen.Add(member) == false)
                     continue;
 
+                if (member.getConvention() is CosmosConvention)
+                    return true;
+
                 // A form Calcite implements says nothing of what the service can be handed: a set holds one beside its
                 // logical forms once Volcano has converted any of them.
-                if (member.getConvention() is not CosmosConvention && member.getConvention() != Convention.NONE)
+                if (member.getConvention() != Convention.NONE)
                     continue;
 
-                if (member is not Filter filter || member.getConvention() is CosmosConvention
-                    || CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen))
+                var reaches = member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen),
+                    Project project => Reaches(convention, project.getInput(), seen),
+                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen),
+                    _ => false,
+                };
+
+                if (reaches)
                     return true;
             }
 

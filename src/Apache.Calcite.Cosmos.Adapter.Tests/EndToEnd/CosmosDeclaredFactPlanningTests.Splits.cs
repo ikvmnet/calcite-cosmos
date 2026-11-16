@@ -92,6 +92,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
         }
 
+        static string LateralKind(string alias) => $"CROSS JOIN LATERAL (SELECT {KindOf(alias)} AS k2 FROM (VALUES (1)) AS v(x0)) AS l";
+
+        static string Unnested(string alias) => $"""UNNEST(JSON_QUERY({alias}."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t)""";
+
+        /// <summary>A filter on <c>n</c> or <c>z</c> over a lateral, an <c>UNNEST</c> or a scalar sub-query beside or over a filter Calcite keeps.</summary>
+        static string OverCorrelate(string name) => name switch
+        {
+            "sp1" => $"""SELECT x."id" FROM (SELECT c."id", c."DOC", l.k2 FROM items AS c {LateralKind("c")} WHERE {JsonInteger("c", "body")} = 1) AS x WHERE {Json("x", "n")} = '1'""",
+            "sp2" => $"""SELECT x."id", x.t FROM (SELECT c."id", c."DOC", u.t FROM items AS c, {Unnested("c")} WHERE {JsonInteger("c", "body")} = 1) AS x WHERE {Json("x", "n")} = '1'""",
+            "sp5" => $"""SELECT x."id" FROM (SELECT c."id", c."DOC", l.k2 FROM items AS c {LateralKind("c")} WHERE {JsonInteger("c", "body")} = 1) AS x WHERE {Json("x", "z")} = '1'""",
+            "sp7" => $"""SELECT x."id" FROM (SELECT c."id", c."DOC", (SELECT {KindOf("c")} FROM (VALUES (1)) AS v(x0)) AS k2 FROM items AS c WHERE {JsonInteger("c", "body")} = 1) AS x WHERE {Json("x", "n")} = '1'""",
+            "sp10" => $"""SELECT x."id" FROM (SELECT d."id", d."DOC", l.k2 FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {JsonInteger("c", "body")} = 1) AS d {LateralKind("d")}) AS x WHERE {Json("x", "n")} = '1'""",
+            "sp11" => $"""SELECT x."id" FROM (SELECT d."id", d."DOC", l.k2 FROM (SELECT c."id", c."DOC" FROM items AS c WHERE UPPER({Json("c", "body")}) = '1') AS d {LateralKind("d")}) AS x WHERE {Json("x", "n")} = '1'""",
+            "sp12" => $"""SELECT x."id" FROM (SELECT d."id", d."DOC", l.k2 FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {JsonInteger("c", "body")} = 1) AS d {LateralKind("d")}) AS x WHERE {Json("x", "z")} = '1'""",
+            "sp13" => $"""SELECT x."id" FROM (SELECT d."id", d."DOC", u.t FROM (SELECT c."id", c."DOC" FROM items AS c WHERE {JsonInteger("c", "body")} = 1) AS d, {Unnested("d")}) AS x WHERE {Json("x", "n")} = '1'""",
+            _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
+        };
+
+        /// <summary>
+        /// A filter over a lateral, an <c>UNNEST</c> or a scalar sub-query whose left side holds a filter Calcite keeps is not
+        /// split: the correlate is no part of a statement, its traversal being the <c>UNNEST</c> rule's only over a left side
+        /// that reaches the service, so the filter split off would be Calcite's, and Calcite's calc pass, after the correlate
+        /// rule moves it into the left side, evaluated a weaker form in it, a Cosmos type test, and failed with "cannot
+        /// translate call IS_NUMBER" where Calcite answers, declared or not on <c>n</c> and on <c>main</c> too on <c>z</c>,
+        /// which nothing declares. Each is Calcite's above the filter it keeps, declared and not.
+        /// </summary>
+        [Theory]
+        [InlineData("sp1", "CAST(JSON_VALUE(")]
+        [InlineData("sp2", "CAST(JSON_VALUE(")]
+        [InlineData("sp5", "CAST(JSON_VALUE(")]
+        [InlineData("sp7", "CAST(JSON_VALUE(")]
+        [InlineData("sp10", "CAST(JSON_VALUE(")]
+        [InlineData("sp11", "UPPER(JSON_VALUE(")]
+        [InlineData("sp12", "CAST(JSON_VALUE(")]
+        [InlineData("sp13", "CAST(JSON_VALUE(")]
+        public void AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit(string name, string kept)
+        {
+            foreach (var (declared, container) in new[] { ("declared", Declaring(Tagged)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+            {
+                var plan = PlanText(PlanToCosmos(OverCorrelate(name), container, out _, windows: true, subqueries: true));
+                var calcite = plan.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).ToList();
+                foreach (var line in calcite)
+                    line.Should().NotContainAny(["IS_NUMBER(", "IS_DEFINED(", "IS_STRING("], $"{name} {declared}: Calcite holds no service form: " + plan);
+                calcite.Should().Contain(l => l.Contains(kept), $"{name} {declared}: the filter beneath is Calcite's: " + plan);
+            }
+        }
+
         /// <summary>
         /// A part the split keeps in process is simplified without the part it sends, as recorded (<c>TODO.md</c>, <em>A part
         /// the split keeps in process is simplified without the part it sends</em>): a subquery's <c>CAST(body AS INTEGER) =

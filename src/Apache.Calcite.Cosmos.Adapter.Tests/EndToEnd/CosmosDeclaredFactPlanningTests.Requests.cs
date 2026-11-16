@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     {
 
         /// <summary><c>kind</c> is <c>A</c> or <c>B</c>, <c>body</c> any string, <c>n</c> 1 or 2, and <c>tags</c> strings.</summary>
-        const string Tagged = """{ "type": "object", "required": ["kind", "body", "n"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "n": { "enum": [1, 2] }, "tags": { "type": "array", "items": { "type": "string" } } } }""";
+        internal const string Tagged = """{ "type": "object", "required": ["kind", "body", "n"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "n": { "enum": [1, 2] }, "tags": { "type": "array", "items": { "type": "string" } } } }""";
 
         static string Json(string alias, string path) => $"""JSON_VALUE({alias}."DOC", '$.{path}')""";
 
@@ -45,7 +45,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// cast of the text <c>body</c> to <c>INTEGER</c> Calcite evaluates somewhere: a run over a correlate, a lateral,
         /// an array traversal or a scalar sub-query, a run through a grouping's keys, and a select list's cast above a sort.
         /// </summary>
-        static string Shape(string name, string t) => name switch
+        internal static string Shape(string name, string t) => name switch
         {
                 "pc1" => $"SELECT z.\"id\" FROM (SELECT y.\"id\", y.k, y.rb FROM (SELECT l.\"id\", l.k, r.rb FROM {LeftKind(t, "p.k IN ('A', 'B')")} AS l {LateralBody("l")}) AS y WHERE (CAST(y.rb AS INTEGER) = 1 AND y.k = 'C') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'D')) AS z WHERE z.k <> 'E'",
                 "pc2" => $"SELECT z.\"id\" FROM (SELECT y.\"id\", y.k, y.rb FROM (SELECT l.\"id\", l.k, r.rb FROM {LeftKind(t, "p.k = 'A'")} AS l {LateralBody("l")}) AS y WHERE (CAST(y.rb AS INTEGER) = 1 AND y.k = 'B') OR (CAST(y.rb AS INTEGER) = 2 AND y.k = 'C')) AS z WHERE z.k <> 'E'",
@@ -83,20 +83,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         };
 
         /// <summary>
-        /// Each shape plans, declared and not, as plain pushdown: nothing in the plan stands for an empty answer, and the
-        /// declared statement sends nothing only where the <c>WHERE</c> it sends keeps no document the declaration admits
-        /// and nothing in it can raise, here a run over a lateral whose filter on the left side Calcite pushes and the
-        /// declaration rules out, the cast Calcite evaluates above it reading no row. The rest send their request, the
-        /// cast evaluated by Calcite where its plan puts it. A container that declares nothing sends every one but the run on a
-        /// <c>DISTINCT</c>'s keys Calcite moves beneath it, whose null tests contradict each other whatever is declared:
-        /// the cast the <c>DISTINCT</c> computes above reads no row, where Calcite keeps the run above it and fails, as on
-        /// <c>main</c> (recorded, <c>docs/23</c>).
+        /// Each shape plans, declared and not, as plain pushdown: nothing in the plan stands for an empty answer, and a
+        /// statement sends nothing only where the <c>WHERE</c> it sends keeps no document the declaration admits and nothing
+        /// in it can raise. Each sends its request, the cast evaluated by Calcite where its plan puts it, but the run on a
+        /// <c>DISTINCT</c>'s keys Calcite moves beneath it, whose null tests contradict each other whatever is declared: the
+        /// cast the <c>DISTINCT</c> computes above reads no row, where Calcite keeps the run above it and fails, as on
+        /// <c>main</c> (recorded, <c>docs/23</c>). A run over a lateral sent the left side a weaker form of its condition on
+        /// the lateral's column, which the declaration ruled out beside the left side's own, while the split counted the
+        /// correlate as reaching the service; it is no part of a statement, and the run stays Calcite's above it, where the
+        /// cast fails as Calcite fails.
         /// </summary>
         [Theory]
-        [InlineData("pc1", true, false)]
-        [InlineData("pc2", true, false)]
-        [InlineData("pc4", true, false)]
-        [InlineData("pc5", true, false)]
+        [InlineData("pc1", false, false)]
+        [InlineData("pc2", false, false)]
+        [InlineData("pc4", false, false)]
+        [InlineData("pc5", false, false)]
         [InlineData("pr1", false, false)]
         [InlineData("pr2", false, false)]
         [InlineData("pr9", false, false)]
