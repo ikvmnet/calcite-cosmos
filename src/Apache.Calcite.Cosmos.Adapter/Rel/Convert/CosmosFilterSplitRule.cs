@@ -46,7 +46,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <b>The outer is what Calcite evaluates over the rows the inner returns</b>: where Calcite's
     /// simplification of the whole condition, as written, reads a term of the residual away or into another,
     /// its terms but those of the conjuncts sent, and nothing where none is left; where it reads the whole as
-    /// false, the filter is not split (<see cref="Residual"/>).
+    /// false, the condition as it stands, which is split no further once the half sent is applied beneath it
+    /// (<see cref="Residual"/>).
     /// </para>
     /// <para>
     /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
@@ -178,8 +179,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
-            // conjuncts admitted are the filter, the weakenings of what is left out with it; none, the filter is not split.
-            if (Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual), ProjectOf(filter.getInput())) is not RexNode left)
+            // conjuncts admitted are the filter, the weakenings of what is left out with it.
+            var left = Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual), ProjectOf(filter.getInput()));
+
+            // The condition kept whole above the half sent is split no further once that half is applied beneath it.
+            if (ReferenceEquals(left, filter.getCondition()) && AlreadyApplied(filter.getInput()) is var applied && pushable.All(applied.Contains))
                 return;
 
             if (left.isAlwaysTrue())
@@ -195,8 +199,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// Returns what Calcite evaluates of a filter's condition over the rows the half sent returns: Calcite's
         /// simplification of the condition as written, less the terms of the conjuncts sent, true where nothing is left, and
-        /// <c>null</c>, no split, where it reads the whole as false; or the residual as planned where that simplification is
-        /// the residual's own beside terms of the conjuncts sent.
+        /// the condition itself, as it stands, where it reads the whole as false; or the residual as planned where that
+        /// simplification is the residual's own beside terms of the conjuncts sent.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -231,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// for, the residual stays as planned.
         /// </para>
         /// </remarks>
-        static RexNode? Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual, Project? project)
+        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual, Project? project)
         {
             // Beneath a second projection the condition would be read through both, as Calcite merges them.
             if (project is not null && OverProjection(project.getInput()))
@@ -256,10 +260,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (whole.All(apart.Contains) && rest.All(kept.Contains))
                 return residual;
 
-            // A whole Calcite reads as false is left to Calcite as it stands, unsplit: written into a node, the FALSE is one
-            // Calcite's rules read, an empty relation beside a join, where Calcite in process holds the condition.
+            // A whole Calcite reads as false is left above the half sent as it stands, for Calcite to read as it does in
+            // process: written into a node, the FALSE is one Calcite's rules read, an empty relation beside a join, where
+            // Calcite in process holds the condition.
             if (whole.Any(term => term.isAlwaysFalse()))
-                return null;
+                return condition;
 
             var left = whole.Where(term => decided.Contains(term) == false).ToList();
             if (project is null)

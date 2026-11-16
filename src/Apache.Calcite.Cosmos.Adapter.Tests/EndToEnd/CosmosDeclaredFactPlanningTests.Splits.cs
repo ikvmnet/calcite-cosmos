@@ -243,8 +243,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>FALSE</c>, and x3 sent nothing, where Calcite fails on a <c>body</c> that is no number, declared or not, and on
         /// <c>main</c> as Calcite does. lw2's half sent keeps nothing, declared, as recorded (<em>A residual beside a
         /// contradicted split loses its raise</em>), and the cast is still Calcite's. x9, which Calcite's simplification of
-        /// the whole reads as false, is not split, and Calcite evaluates it whole, answering as it does in process, where the
-        /// residual alone raised; no converted filter holds the <c>FALSE</c>.
+        /// the whole reads as false, is kept whole above the half sent, and Calcite evaluates it as it stands, answering as
+        /// it does in process, where the residual alone raised; no converted filter holds the <c>FALSE</c>.
         /// </summary>
         [Theory]
         [InlineData("lw1")]
@@ -268,6 +268,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 text.Should().NotContain("condition=[false]", $"{name} {declared}: " + text);
                 if (name != "lw2")
                     text.Should().NotContain(KeepsNothing, $"{name} {declared}: " + text);
+                if (name == "x9")
+                {
+                    text.Should().Contain("CosmosFilter(condition=", $"{declared}: the half sent is pushed: " + text);
+                    text.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).Should().Contain(l => l.Contains("IS NOT FALSE("), $"{declared}: the condition is Calcite's whole: " + text);
+                }
             }
         }
 
