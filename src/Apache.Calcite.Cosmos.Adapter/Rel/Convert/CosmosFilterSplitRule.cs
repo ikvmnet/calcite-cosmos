@@ -44,8 +44,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </para>
     /// <para>
     /// <b>The outer is what Calcite evaluates over the rows the inner returns</b>: where Calcite's
-    /// simplification of the whole condition, as written, reads one half beside the other, its terms but those
-    /// of the conjuncts sent, and nothing where none is left (<see cref="Residual"/>).
+    /// simplification of the whole condition, as written, reads a term of the residual away or into another,
+    /// its terms but those of the conjuncts sent, and nothing where none is left (<see cref="Residual"/>).
     /// </para>
     /// <para>
     /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
@@ -197,7 +197,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// Returns what Calcite evaluates of a filter's condition over the rows the half sent returns: Calcite's
         /// simplification of the condition as written, less the terms of the conjuncts sent, true where nothing is left;
-        /// or the residual as planned where that simplification reads neither half beside the other.
+        /// or the residual as planned where that simplification is the residual's own beside terms of the conjuncts sent.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// conjunct its siblings make true, or a sibling makes the arm holding it false, is never evaluated:
         /// <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is <c>kind = 'A'</c>. Split, the residual was
         /// simplified without the half sent, and the cast raised on a <c>body</c> that is no number where Calcite answers.
-        /// So where the whole condition simplifies otherwise than its two halves each alone, what is left above is the
+        /// So where the whole condition reads a term of the residual away, or into another, what is left above is the
         /// whole's terms but those of the conjuncts sent, which are true on every row returned: per term, so a second
         /// residual conjunct keeps no absorbed one beside it.
         /// </para>
@@ -218,7 +218,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// admitted.
         /// </para>
         /// <para>
-        /// Where the two halves simplify apart, the residual stays as planned, as before: Calcite's normal form of it,
+        /// Where the whole is the residual's own simplification beside terms of the conjuncts sent, a sent conjunct the
+        /// residual implies dropped among them, the residual stays as planned, as before: Calcite's normal form of it,
         /// which a later split reads anew, would push again what the half sent already holds.
         /// </para>
         /// </remarks>
@@ -231,7 +232,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var decided = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i]).ToList())));
             var rest = Terms(plain.simplifyUnknownAsFalse(Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList())));
 
-            if (new HashSet<RexNode>(whole).SetEquals(decided.Concat(rest)))
+            // Calcite evaluates the residual alone wherever the whole is its terms beside terms of the conjuncts sent, which
+            // are true on every row the request returns: none of its terms read away, none read into another.
+            var apart = new HashSet<RexNode>(decided.Concat(rest));
+            var kept = new HashSet<RexNode>(whole);
+            if (whole.All(apart.Contains) && rest.All(kept.Contains))
                 return residual;
 
             return Compose(rexBuilder, whole.Where(term => decided.Contains(term) == false).ToList());
