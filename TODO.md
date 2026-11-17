@@ -2995,7 +2995,10 @@ across documents* and *A join of a container to itself* is the record.
   failed). Calcite in process picks its own rule's plan by cost, and where it picks it fails on what that rule leaves:
   measured offline in the host Chapter 21 describes, `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS
   INTEGER) = 1)` (u18b) answers every row, declared and not, where Calcite with `FILTER_CORRELATE` fails on `"x"` and
-  Calcite without it answers. Failing as Calcite does there would mean reading Calcite's choice of plan.
+  Calcite without it answers. On both emulators under both targets, in that host, round 17's `UNNEST` shapes u2, u3,
+  u9, u13, u16, u17, u19, u21, u24 and u26 and their `COUNT`s, `kind = 'A' AND (kind = 'A' OR CAST(u.t AS INTEGER) = 1)`
+  (u3) among them, answer so, declared and not, where they failed with Calcite before; through the README's connection
+  they are unchanged. Failing as Calcite does there would mean reading Calcite's choice of plan.
 - **Through a connection, a filter above the half sent is reduced with what that half holds** — *small, an answer
   where Calcite fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.* Through a
   connection that runs Calcite's default rules, as the README's does, `FILTER_REDUCE_EXPRESSIONS` reduces the filter a
