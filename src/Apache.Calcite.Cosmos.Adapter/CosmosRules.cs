@@ -202,8 +202,7 @@ namespace Apache.Calcite.Cosmos.Adapter
             // the shape the rule reads is the shape a host produces. Registered here for the reason the
             // rewrites above are: a bare Volcano planner has none of them, and the pushdown must not
             // depend on which rules a caller happened to add. The adapter's own: it moves what Calcite's
-            // moves and leaves above what Calcite's simplification of the whole condition evaluates
-            // beside it, where Calcite's left the rest as written (see the rule).
+            // moves and leaves above its own reading of the rest (see the rule).
             yield return CosmosFilterCorrelateRule.Instance;
 
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,
