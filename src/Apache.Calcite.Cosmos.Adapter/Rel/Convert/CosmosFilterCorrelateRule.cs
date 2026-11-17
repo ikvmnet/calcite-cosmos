@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -7,6 +6,7 @@ using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
 using org.apache.calcite.rel.logical;
 using org.apache.calcite.rex;
+using org.apache.calcite.tools;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 {
@@ -25,8 +25,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <para>
     /// What is left above is <see cref="CosmosFilterSplitRule.Residual"/>'s reading of the condition beside the conjuncts
     /// moved, each true on every row the correlate returns, but for a conjunct whose own reading beside them holds a term of
-    /// one side, which is kept as written so that no later firing moves the term to a side where it is evaluated on
-    /// documents the correlate returns no row for. A condition holding the service's form
+    /// one side, which is kept as written, the rest read beside it too, so that no later firing moves the term to a side
+    /// where it is evaluated on documents the correlate returns no row for. For the same reason the conjuncts are written
+    /// as they stand where the builder's simplification of Calcite's rule's filter would derive such a term, and into a
+    /// side that may itself be a correlate. A condition holding the service's form
     /// (<see cref="Sql.CosmosOperators.HoldsServiceForm"/>) is left as Calcite's rule leaves it, since that reading is of a
     /// condition Calcite evaluates.
     /// </para>
@@ -84,27 +86,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return;
 
             var rexBuilder = correlate.getCluster().getRexBuilder();
+            var serviceForm = Sql.CosmosOperators.HoldsServiceForm(filter.getCondition());
+
+            // A whole Calcite's simplification reads as false: nothing moves, and Calcite evaluates the condition above the
+            // correlate as it does in process, where a conjunct moved into a side would be evaluated there alone.
+            if (serviceForm == false && new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR).simplifyUnknownAsFalse(filter.getCondition()).isAlwaysFalse())
+                return;
 
             // What Calcite evaluates of the condition over the rows the correlate returns, each conjunct moved true on all of
             // them. Where that is the rest as written, it is Calcite's rule's own filter.
             var own = Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition());
             var moved = own.Select(conjunct => above.contains(conjunct) == false).ToList();
             var written = RexUtil.composeConjunction(rexBuilder, java.util.Arrays.asList(own.Where((_, i) => moved[i] == false).ToArray()));
-            var rest = Sql.CosmosOperators.HoldsServiceForm(filter.getCondition()) ? written : CosmosFilterSplitRule.Residual(rexBuilder, filter.getCondition(), moved, null);
-
-            // A whole read as false, which Residual gives back as it stands: nothing moves, and Calcite evaluates the condition
-            // above the correlate as it does in process, where a conjunct moved into a side would be evaluated there alone.
-            if (rest.Equals(filter.getCondition()))
-                return;
+            var rest = serviceForm ? written : CosmosFilterSplitRule.Residual(rexBuilder, filter.getCondition(), moved, null);
 
             // What is left above holds nothing a later firing would move into a side, where it would be evaluated on documents
             // the correlate returns no row for: a conjunct the reading takes down to a term of one side is kept as written.
             if (rest.Equals(written) == false && Movable(correlate, rest))
-                rest = Kept(rexBuilder, correlate, own, moved, written);
+                rest = Kept(rexBuilder, correlate, filter.getCondition(), own, moved, written);
 
             var builder = call.builder();
-            var leftRel = builder.push(correlate.getLeft()).filter(left).build();
-            var rightRel = builder.push(correlate.getRight()).filter(right).build();
+            var leftRel = Side(builder, rexBuilder, correlate.getLeft(), left);
+            var rightRel = Side(builder, rexBuilder, correlate.getRight(), right);
 
             // What it would move is applied beneath already: moved again, it would stack under itself for ever.
             if (Applied(left, leftRel, correlate.getLeft()) && Applied(right, rightRel, correlate.getRight()))
@@ -119,7 +122,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var types = RelOptUtil.getFieldTypeList(pushed.getRowType());
             if (rest.Equals(written))
-                call.transformTo(builder.push(pushed).filter(RexUtil.fixUp(rexBuilder, above, types)).build());
+            {
+                // Calcite's rule's own filter; where the builder's simplification takes a conjunct of both sides down to a term
+                // of one side, or the rest to false, the conjuncts as written, so no later firing moves the term.
+                var conjuncts = RexUtil.fixUp(rexBuilder, above, types);
+                var built = builder.push(pushed).filter(conjuncts).build();
+                var derived = built is Filter simplified ? Movable(correlate, simplified.getCondition()) : built != pushed;
+                call.transformTo(derived ? LogicalFilter.create(pushed, RexUtil.composeConjunction(rexBuilder, conjuncts)) : built);
+            }
             else if (rest.isAlwaysTrue())
                 call.transformTo(pushed);
             else
@@ -130,24 +140,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// Returns what is left above a correlate where <see cref="CosmosFilterSplitRule.Residual"/>'s reading of the whole
         /// condition holds a term of one side: each conjunct not moved whose own reading beside the conjuncts moved holds such
-        /// a term as written, beside the reading of the rest; the conjuncts not moved as written where that holds one too.
+        /// a term as written, beside the reading of the rest beside both; the conjuncts not moved as written where that holds
+        /// one too.
         /// </summary>
-        static RexNode Kept(RexBuilder rexBuilder, Correlate correlate, IReadOnlyList<RexNode> own, IReadOnlyList<bool> moved, RexNode written)
+        static RexNode Kept(RexBuilder rexBuilder, Correlate correlate, RexNode condition, IReadOnlyList<RexNode> own, IReadOnlyList<bool> moved, RexNode written)
         {
-            // The reading of the conjuncts moved beside those of the others chosen, in the order the condition holds them.
+            // A conjunct not moved read beside the conjuncts moved.
             var sent = new HashSet<RexNode>(own.Where((_, i) => moved[i]));
-            RexNode Read(Func<int, bool> chosen)
+            RexNode Read(int conjunct)
             {
-                var condition = RexUtil.composeConjunction(rexBuilder, java.util.Arrays.asList(own.Where((_, i) => moved[i] || chosen(i)).ToArray()));
-                return CosmosFilterSplitRule.Residual(rexBuilder, condition, Metadata.CosmosFilterStatement.ConjunctsOf(condition).Select(sent.Contains).ToList(), null);
+                var read = RexUtil.composeConjunction(rexBuilder, java.util.Arrays.asList(own.Where((_, i) => moved[i] || i == conjunct).ToArray()));
+                return CosmosFilterSplitRule.Residual(rexBuilder, read, Metadata.CosmosFilterStatement.ConjunctsOf(read).Select(sent.Contains).ToList(), null);
             }
 
-            var kept = Enumerable.Range(0, own.Count).Where(i => moved[i] == false && Movable(correlate, Read(j => j == i))).ToHashSet();
-            var rest = Read(i => moved[i] == false && kept.Contains(i) == false);
+            // The rest read beside the conjuncts kept as well, which Calcite's simplification of the whole reads beside it: a
+            // term a conjunct kept absorbs is read away, as Calcite reads it.
+            var kept = Enumerable.Range(0, own.Count).Where(i => moved[i] == false && Movable(correlate, Read(i))).ToHashSet();
+            var rest = CosmosFilterSplitRule.Residual(rexBuilder, condition, own.Select((_, i) => moved[i] || kept.Contains(i)).ToList(), null);
             if (Movable(correlate, rest))
                 return written;
 
             return RexUtil.composeConjunction(rexBuilder, java.util.Arrays.asList(own.Where((_, i) => kept.Contains(i)).Append(rest).ToArray()));
+        }
+
+        /// <summary>
+        /// Returns a side given the conjuncts moved into it: Calcite's rule's filter, which its builder simplifies, but over a
+        /// side that may be a correlate, the conjuncts as written, since the builder's simplification may take a conjunct of
+        /// both that correlate's sides down to a term of one, which this rule's firing there would move.
+        /// </summary>
+        static RelNode Side(RelBuilder builder, RexBuilder rexBuilder, RelNode side, java.util.List conjuncts)
+        {
+            if (conjuncts.isEmpty() == false && Rel.CosmosPlanMembers.Of(side).Any(member => member is Correlate))
+                return LogicalFilter.create(side, RexUtil.composeConjunction(rexBuilder, conjuncts));
+
+            return builder.push(side).filter(conjuncts).build();
         }
 
         /// <summary>

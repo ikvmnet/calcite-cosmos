@@ -97,6 +97,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "v2" => $"""SELECT c."id" FROM {lateral} WHERE {cb} = 7 AND NOT ({cb} = 7 OR CAST(l.b2 AS INTEGER) = 1)""",
                 "v3" => $"""SELECT c."id", u.t FROM {t} AS c LEFT JOIN UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) ON TRUE WHERE {cb} = 7 AND NOT ({cb} = 7 OR CAST(u.t AS INTEGER) = 1)""",
                 "u6" => $"""SELECT c."id", u.t FROM {unnest} WHERE {k} = 'A' AND NOT ({k} = 'A' OR CAST(u.t AS INTEGER) = 1)""",
+                _ => BesideACorrelateWritten(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a conjunct of both sides that Calcite's simplification of it takes down to
+        /// terms of one side, over a traversal, a lateral and two traversals; a conjunct of both sides beside one that holds
+        /// it; and a whole read as false each of whose conjuncts reads one side.
+        /// </summary>
+        static string BesideACorrelateWritten(string name, string t)
+        {
+            var k = KindOf("c");
+            var m = Json("c", "m");
+            var b = Json("c", "body");
+            var cb = $"CAST({b} AS INTEGER)";
+            var tags = """JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)""";
+            var unnest = $"""{t} AS c, UNNEST({tags}) AS u(t)""";
+            var twice = $"""{t} AS c, UNNEST({tags}) AS u(t), UNNEST({tags}) AS v(s)""";
+            var lateral = $"""{t} AS c CROSS JOIN LATERAL (SELECT {b} AS b2 FROM (VALUES (1)) AS v(x0)) AS l""";
+            var some = $"""{t} AS c CROSS JOIN LATERAL (SELECT {k} AS k2 FROM (VALUES (1)) AS v(x0) WHERE {m} = '1') AS l""";
+            var p = $"(({k} = 'B') = (u.t = 'x'))";
+            var pl = $"(({k} = 'B') = (l.b2 = 'abc'))";
+            string U(string where) => $"""SELECT c."id", u.t FROM {unnest} WHERE {where}""";
+            string UC(string where) => $"""SELECT COUNT(*) AS q FROM {unnest} WHERE {where}""";
+            string S(string where) => $"""SELECT c."id" FROM {some} WHERE {where}""";
+            string SC(string where) => $"""SELECT COUNT(*) AS q FROM {some} WHERE {where}""";
+            return name switch
+            {
+                "n1" => U($"{k} = 'A' AND NOT (u.t IS NULL OR {cb} <> 7)"),
+                "n1c" => UC($"{k} = 'A' AND NOT (u.t IS NULL OR {cb} <> 7)"),
+                "n2" => U($"u.t = '1' AND NOT (u.t IS NULL OR {cb} <> 7)"),
+                "n5" => S($"{k} = 'A' AND NOT (l.k2 IS NULL OR {cb} <> 7)"),
+                "n5c" => SC($"{k} = 'A' AND NOT (l.k2 IS NULL OR {cb} <> 7)"),
+                "k1" => U($"u.t = '1' AND NOT ({cb} <> 7 OR (u.t = '5' AND {k} = 'B'))"),
+                "k1c" => UC($"u.t = '1' AND NOT ({cb} <> 7 OR (u.t = '5' AND {k} = 'B'))"),
+                "k2" => S($"l.k2 = 'A' AND NOT ({cb} <> 7 OR (l.k2 = 'B' AND {m} = '2'))"),
+                "bd1" => U($"{m} IS NOT NULL AND NOT (u.t = 'x' OR {cb} <> 7)"),
+                "bd1c" => UC($"{m} IS NOT NULL AND NOT (u.t = 'x' OR {cb} <> 7)"),
+                "bd4" => S($"{k} IS NOT NULL AND NOT (l.k2 = 'x' OR {cb} <> 7)"),
+                "bd8" => $"""SELECT c."id", u.t, v.s FROM {twice} WHERE {m} IS NOT NULL AND NOT (u.t = 'x' OR {cb} <> 7)""",
+                "p1" => U($"{k} = 'A' AND {p} AND ({p} OR CAST(u.t AS INTEGER) = CHAR_LENGTH({b}))"),
+                "p1c" => UC($"{k} = 'A' AND {p} AND ({p} OR CAST(u.t AS INTEGER) = CHAR_LENGTH({b}))"),
+                "p14" => U($"{k} = 'A' AND {p} AND ({p} OR {cb} = 7)"),
+                "p6" => $"""SELECT c."id" FROM {lateral} WHERE {k} = 'A' AND {pl} AND ({pl} OR CAST(l.b2 AS INTEGER) = CHAR_LENGTH({m}))""",
+                "wf1" => U($"u.t = '1' AND u.t = '2' AND {cb} = 7"),
+                "wf1c" => UC($"u.t = '1' AND u.t = '2' AND {cb} = 7"),
+                "wf2" => U($"u.t = '1' AND u.t IN ('2', '3') AND {cb} = 7"),
+                "wf3" => S($"l.k2 = 'A' AND l.k2 = 'B' AND {cb} = 7"),
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
         }
@@ -110,6 +158,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             """{"id":"1","category":"a","kind":"A","m":"1","flag":true,"body":"7","tags":["1","x"]}""",
             """{"id":"2","category":"a","kind":"A","m":"2","flag":true,"body":"q","tags":[]}""",
             """{"id":"3","category":"b","kind":"A","m":"1","flag":false,"body":"3","tags":["2"]}""",
+        ];
+
+        /// <summary><see cref="BesideAnEmptySide"/> and a document with an element and a <c>body</c> of <c>"abc"</c>.</summary>
+        internal static readonly string[] KeptBesideAnEmptySide =
+        [
+            .. BesideAnEmptySide,
+            """{"id":"4","category":"b","kind":"A","m":"2","flag":true,"body":"abc","tags":["3"]}""",
         ];
 
         /// <summary><see cref="Traversed"/> with <c>body</c> one of <c>"5"</c> and <c>"6"</c>.</summary>
@@ -149,9 +204,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Above a correlate, and into a side that is a correlate itself, a conjunct of both sides is written as the query
+        /// wrote it where Calcite's simplification would take it down to a term of one side, which a later firing would move
+        /// into that side: n1, n2, k1, bd1, the laterals n5, k2 and bd4, the two traversals of bd8 and the <c>COUNT</c>s cast
+        /// no <c>body</c> of a document with no element or no lateral row, and answer the rows the condition keeps, declared or
+        /// not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("n1", "1,1;1,x")]
+        [InlineData("n1c", "2")]
+        [InlineData("n2", "1,1")]
+        [InlineData("n5", "1")]
+        [InlineData("n5c", "1")]
+        [InlineData("k1", "1,1")]
+        [InlineData("k1c", "1")]
+        [InlineData("k2", "1")]
+        [InlineData("bd1", "1,1")]
+        [InlineData("bd1c", "1")]
+        [InlineData("bd4", "1")]
+        [InlineData("bd8", "1,1,1;1,1,x")]
+        public async Task AConjunctOfBothSidesIsWrittenAsItStandsAboveACorrelate(string name, string rows)
+        {
+            await Answers(name, rows, Traversed, BesideAnEmptySide);
+        }
+
+        /// <summary>
+        /// A conjunct kept as written above a correlate is read beside the rest, which it absorbs: p1, p14, the lateral p6 and
+        /// p1's <c>COUNT</c> cast no element <c>"x"</c> and no <c>body</c> of <c>"abc"</c>, and answer the rows the condition
+        /// keeps, declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("p1", "1,1;3,2;4,3")]
+        [InlineData("p1c", "3")]
+        [InlineData("p14", "1,1;3,2;4,3")]
+        [InlineData("p6", "1;2;3")]
+        public async Task AConjunctKeptAboveACorrelateIsReadBesideTheRest(string name, string rows)
+        {
+            await Answers(name, rows, Traversed, KeptBesideAnEmptySide);
+        }
+
+        /// <summary>
         /// Where Calcite's simplification of the whole condition above a correlate reads it as false, nothing is moved into a
-        /// side, where a conjunct that can fail would be evaluated alone: v0, its <c>COUNT</c>, the lateral v2 and the left
-        /// traversal v3 answer no rows over a <c>body</c> of <c>"abc"</c>, declared or not, under both targets.
+        /// side, where a conjunct that can fail would be evaluated alone: v0, its <c>COUNT</c>, the lateral v2, the left
+        /// traversal v3, and wf1, wf2, the lateral wf3 and wf1's <c>COUNT</c>, each of whose conjuncts reads one side, answer no
+        /// rows over a <c>body</c> of <c>"abc"</c>, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("v0", "")]
@@ -159,6 +255,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("v2", "")]
         [InlineData("v3", "")]
         [InlineData("u6", "")]
+        [InlineData("wf1", "")]
+        [InlineData("wf1c", "0")]
+        [InlineData("wf2", "")]
+        [InlineData("wf3", "")]
         public async Task AConditionReadAsFalseMovesNothingIntoACorrelatesSide(string name, string rows)
         {
             await Answers(name, rows, Traversed, TraversedDocuments);
@@ -194,9 +294,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Above a correlate the part of a <c>WHERE</c> its rule leaves is what Calcite's simplification of the whole condition
-        /// evaluates beside the conjuncts moved into a side, so u18a, u18b, u18d, u18f, l18a and their <c>COUNT</c>s cast no
-        /// element and no <c>body</c>, and answer the rows the condition keeps, declared or not, under both targets.
+        /// u18a, u18b, u18d, u18f, the lateral l18a and their <c>COUNT</c>s, each a conjunct of the document beside a part of
+        /// both sides it decides, cast no element and no <c>body</c>, and answer the rows the condition keeps, declared or not,
+        /// under both targets.
         /// </summary>
         [Theory]
         [InlineData("u18a", "1,x;1,1;2,2")]
