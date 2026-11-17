@@ -129,7 +129,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// why the rule cannot see it unaided.
         /// </summary>
         /// <remarks>
-        /// The observation that makes <c>CoreRules.FILTER_CORRELATE</c> part of the rule set rather
+        /// The observation that makes a filter-correlate rule, the adapter's own, part of the rule set rather
         /// than a rule a caller might happen to add. <c>CosmosUnnestRule</c> reads the correlate and
         /// what hangs beneath it; a predicate here is neither, so the traversal pushed and the
         /// predicate did not. Transposed into the correlate it becomes the shape the rule renders as a

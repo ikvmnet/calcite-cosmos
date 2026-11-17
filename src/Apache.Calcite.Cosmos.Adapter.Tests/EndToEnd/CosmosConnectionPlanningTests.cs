@@ -369,6 +369,71 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Declared, with the functions a Cosmos schema names: <c>IS_STRING</c> of the promoted <c>c."$.category"</c> beside
+        /// a <c>kind</c> the schema rules out sends nothing, and the statement fails as it is implemented, no request made.
+        /// </summary>
+        [Fact]
+        public void APartKeptThatFailsBeforeItReadsARowFailsBesideAPartSentThatKeepsNothing()
+        {
+            var metadata = TestReasoning.Bind(new CosmosContainerMetadata("items", ["/category"])).WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(Schema)!));
+            var table = new CosmosTable(metadata, new NoExecutor());
+            using var source = new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder
+            {
+                Model = "inline:{\"version\":\"1.0\",\"defaultSchema\":\"adhoc\",\"schemas\":[{\"name\":\"adhoc\"}]}",
+                Schema = "adhoc",
+                CaseSensitive = true,
+            }.ConnectionString)
+                .ConfigureRootSchema(root =>
+                {
+                    root.add("items", table);
+                    for (var entries = Adapter.Sql.CosmosSchemaFunctions.Instance.entries().iterator(); entries.hasNext();)
+                    {
+                        var entry = (java.util.Map.Entry)entries.next();
+                        root.add((string)entry.getKey(), (org.apache.calcite.schema.Function)entry.getValue());
+                    }
+                })
+                .Build();
+
+            const string TypeTest = """SELECT c."id" FROM "items" AS c WHERE JSON_VALUE(c."DOC", '$.kind') = 'C' AND IS_STRING(c."$.category")""";
+            using var connection = source.OpenConnection();
+            using var explain = connection.CreateCommand();
+            explain.CommandText = "EXPLAIN PLAN FOR " + TypeTest;
+            var plan = ((string?)explain.ExecuteScalar() ?? "").Replace("\r\n", "\n");
+            plan.Should().Contain("CosmosToClrCursorConverter(sends=[nothing])", plan);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = TypeTest;
+            var run = () =>
+            {
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    continue;
+            };
+
+            run.Should().Throw<Exception>().Which.ToString().Should().Contain("Unable to implement", plan).And.Contain("IS_STRING(", plan).And.NotContain("Nothing here is run", plan);
+        }
+
+        /// <summary>
+        /// <see cref="CosmosDeclaredFactPlanningTests.APartLeftAboveACorrelateIsReadBesideWhatItMoves"/> through this
+        /// connection: u18a, u18d, u18f, l18a and their <c>COUNT</c>s plan with no cast, declared and not.
+        /// </summary>
+        [Theory]
+        [InlineData("u18a")]
+        [InlineData("u18ac")]
+        [InlineData("u18d")]
+        [InlineData("u18f")]
+        [InlineData("l18a")]
+        [InlineData("l18ac")]
+        public void APartLeftAboveACorrelateIsReadBesideWhatItMoves(string name)
+        {
+            foreach (var declared in new[] { true, false })
+            {
+                var plan = Explain(CosmosDeclaredFactPlanningTests.BesideACorrelate(name, "items"), declared, CosmosDeclaredFactPlanningTests.Traversed);
+                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("CAST(", $"{name} declared {declared}: " + plan);
+            }
+        }
+
+        /// <summary>
         /// <see cref="CosmosDeclaredFactPlanningTests.AConditionKeptAboveTheHalfSentIsNotSplitAgain"/> through this
         /// connection: each plans within the same bound, declared and not, under both targets.
         /// </summary>

@@ -134,6 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             ("Adapter.Rel.Convert.CosmosConverters", ["Announced"], PlanScoped, "keyed weakly on one implementation's implementor, which dies with the implementation"),
             ("Adapter.Rel.Convert.CosmosConverters", ["GetExecutorMethod", "GetJsonPropertyMethod", "GetJsonTextPropertyMethod", "GetLookupCacheMethod", "GetPartitionCounterMethod", "GetPathMethod", "GetPropertyMethod", "GetTextPropertyMethod", "GetWriterMethod"], Infra, Reflection),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosSelfJoinRule", ["Instances"], Infra, "the rule's instances, whose fields are their configuration"),
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosUncorrelatedProjectMergeRule", ["Instance"], Infra, "a rule with no fields"),

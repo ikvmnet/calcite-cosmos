@@ -601,7 +601,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Cosmos evaluates <c>WHERE</c> after <c>JOIN</c>, so a predicate over the element is an
         /// ordinary <c>WHERE</c> over the traversal alias. Reaching it takes two steps: a query writes
-        /// the predicate above the correlate, <c>FILTER_CORRELATE</c> pushes it inside, and
+        /// the predicate above the correlate, <c>CosmosFilterCorrelateRule</c> pushes it inside, and
         /// <c>CosmosUnnestRule</c> reads it back out as a <c>CosmosFilter</c> over the traversal.
         /// </para>
         /// <para>

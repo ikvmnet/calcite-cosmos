@@ -8,8 +8,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
 {
 
     /// <summary>
-    /// Bounds how often a planner may split a filter: past the bound it throws, so a statement whose split would fire on its
-    /// own outer without end fails its test, where it overflowed the stack and took the test process with it.
+    /// Bounds how often a planner may split a filter, or move one's conjuncts into a correlate: past the bound it throws, so
+    /// a statement whose split would fire on its own outer without end fails its test, where it overflowed the stack and took
+    /// the test process with it.
     /// </summary>
     /// <remarks>
     /// Added to a planner a test builds, or to the one a connection builds through <c>Hook.PLANNER</c>, which hands it to
@@ -33,7 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
 
         public void ruleProductionSucceeded(RelOptListener.RuleProductionEvent e)
         {
-            if (e.isBefore() || e.getRuleCall().getRule() is not CosmosFilterSplitRule)
+            if (e.isBefore() || e.getRuleCall().getRule() is not (CosmosFilterSplitRule or CosmosFilterCorrelateRule))
                 return;
 
             if (++_splits > bound)

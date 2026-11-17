@@ -66,10 +66,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false, bool subqueries = false, RelOptListener? listener = null)
         {
-            var typeFactory = new JavaTypeFactoryImpl();
             table = new CosmosTable(container);
+            return PlanOver(sql, table, new JavaTypeFactoryImpl(), out _, windows, subqueries, listener);
+        }
 
-            var rootSchema = CalciteSchema.createRootSchema(false);
+        /// <summary>
+        /// Plans a statement over a table as <see cref="PlanToCosmos"/> does, and gives the schema it is planned in.
+        /// </summary>
+        static RelNode PlanOver(string sql, CosmosTable table, JavaTypeFactoryImpl typeFactory, out CalciteSchema rootSchema, bool windows = false, bool subqueries = false, RelOptListener? listener = null)
+        {
+            rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("items", table);
 
             var properties = new java.util.Properties();

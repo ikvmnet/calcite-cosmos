@@ -225,8 +225,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <b>Over a projection, through it</b>, as Calcite merges the two before it simplifies; what is left is written
         /// back over the columns, and where a term reads what no column stands for, the conjuncts are kept as written.
         /// </para>
+        /// <para>
+        /// <see cref="CosmosFilterCorrelateRule"/> reads it too, the conjuncts it moves into a correlate's side as the half sent.
+        /// </para>
         /// </remarks>
-        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, Project? project)
+        internal static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, Project? project)
         {
             var own = Metadata.CosmosFilterStatement.ConjunctsOf(condition);
 
@@ -549,7 +552,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// weakening has been pushed the filter carrying it stays in the set.
         /// </para>
         /// </remarks>
-        static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
+        internal static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
         {
             // Once each by Calcite's equality, which compares types where the digest prints none.
             var applied = new List<RexNode>();
