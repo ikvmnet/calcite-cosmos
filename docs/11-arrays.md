@@ -38,11 +38,6 @@ The traversal and a predicate over the element are both evaluated by the service
 the element is written as a `WHERE` after the `JOIN`, which is exactly traverse-then-filter. When the
 element itself is selected, it is added to the object the statement returns.
 
-A part of the `WHERE` that reads the document and the element together stays in process, as Calcite
-reads it beside the rest of the condition: with `m` a path, `JSON_VALUE(c."DOC", '$.m') IS NOT NULL
-AND (JSON_VALUE(c."DOC", '$.m') IS NOT NULL OR CAST(t."tag" AS INTEGER) = 1)` leaves no condition in
-process and casts no element.
-
 A traversal pushes the same way whichever accessor names the array — `JSON_QUERY(… RETURNING …
 ARRAY)` or `StringToArray(JSON_QUERY(…))` — because the adapter reads the path, not the function.
 Prefer `JSON_QUERY … RETURNING … ARRAY`: it is also the spelling that gives the right answer if a

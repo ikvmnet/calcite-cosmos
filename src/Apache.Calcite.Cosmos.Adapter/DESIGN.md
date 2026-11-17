@@ -1324,15 +1324,9 @@ through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath 
 connection, a filter above the half sent is reduced with what that half holds*).
 
 **What a filter above a correlate leaves there is read the same way.** `CosmosFilterCorrelateRule` moves into a side
-what Calcite's `FILTER_CORRELATE` moves, and leaves above `Residual`'s reading of the condition beside the conjuncts
-moved, which are true on every row the correlate returns. Calcite's rule left the rest as written, so over an `UNNEST`
-of `tags`, `m IS NOT NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1)` sent `m IS NOT NULL`, or with `m` declared
-required nothing, and cast each element above, failing on `"x"` where Calcite in process answers (u18; a lateral's
-`body` the same, l18a); it keeps nothing above now. It does not fire where all it would move is applied beneath
-already, so a condition kept as it stands above is not moved again. Calcite in process picks its own rule's plan by
-cost, and where it picks it fails on what that rule leaves: `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS
-INTEGER) = 1)` answers the rows where Calcite fails (`TODO.md`, *A filter above a correlate answers where Calcite's own
-transposition fails*).
+the conjuncts Calcite's `FILTER_CORRELATE` moves and leaves above `Residual`'s reading of the rest beside them, keeping
+as written each conjunct that reading would take down to one side, and moves nothing where the whole reads as false
+(`TODO.md`, *A filter above a correlate answers where Calcite's own transposition fails*, records what was measured).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -2398,9 +2392,9 @@ A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which 
 rule reads is the shape a host produces. The adapter registers its own for the reason the other
 Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
 depend on which rules a caller happened to add — and it moves what Calcite's moves, but leaves above
-what Calcite's simplification of the whole condition evaluates beside it (*What a filter above a
-correlate leaves there is read the same way*). Where the predicate does not render, the untransposed
-plan survives the transformation and the traversal still pushes with the predicate above it.
+its own reading of the rest (*What a filter above a correlate leaves there is read the same way*).
+Where the predicate does not render, the untransposed plan survives the transformation and the
+traversal still pushes with the predicate above it.
 
 **A projection is not on that list, and it used to be.** `SELECT` runs *after* `JOIN`, so a
 projection below a traversal is written into the clause the service evaluates last: the object it
