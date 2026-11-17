@@ -166,8 +166,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             {
                 var plan = PlanToCosmos(sql, container, out _);
                 PlanText(plan).Should().Contain(KeepsNothing, "the lift's guard sends nothing: " + PlanText(plan));
-                PlanText(plan).Should().Contain("ClrCursorFilter(condition=[CASE(=(JSON_VALUE($0, '$.kind'), 'C')").And.Contain("CAST(JSON_VALUE($0, '$.body')):INTEGER",
-                    "what is lifted holds the cast, over no rows: " + PlanText(plan));
+                PlanText(plan).Split('\n').Should().ContainSingle(l => l.TrimStart().StartsWith("ClrCursorFilter(condition=["))
+                    .Which.Should().Contain("CASE(=(JSON_VALUE($0, '$.kind'), 'C')").And.Contain("CAST(JSON_VALUE($0, '$.body')):INTEGER",
+                        "what is kept above the guard holds the cast as written, over no rows: " + PlanText(plan));
             }
         }
 

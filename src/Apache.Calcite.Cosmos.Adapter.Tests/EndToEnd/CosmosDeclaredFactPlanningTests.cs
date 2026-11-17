@@ -61,9 +61,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Plans a statement over one container to the CLR convention; with <paramref name="windows"/>, with the rule every
         /// host adds to lift an <c>OVER</c> out of its projection, without which no window plans (Chapter 21.3); with
-        /// <paramref name="subqueries"/>, after the pass that makes each sub-query a correlate, as that host runs it.
+        /// <paramref name="subqueries"/>, after the pass that makes each sub-query a correlate, as that host runs it; with
+        /// <paramref name="listener"/>, told of every rule the planner fires.
         /// </summary>
-        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false, bool subqueries = false)
+        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false, bool subqueries = false, RelOptListener? listener = null)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             table = new CosmosTable(container);
@@ -84,6 +85,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+            if (listener is not null)
+                planner.addListener(listener);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());

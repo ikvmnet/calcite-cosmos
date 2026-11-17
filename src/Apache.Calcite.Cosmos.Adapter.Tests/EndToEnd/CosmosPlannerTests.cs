@@ -3629,8 +3629,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// on every row fails as Calcite fails it: the test stays Calcite's, and the statement fails as Calcite's does.
         /// </para>
         /// <para>
-        /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
-        /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
+        /// Beside an <c>AND</c> sibling nothing is sent either: what a split keeps above the half sent is Calcite's, and
+        /// the service's test has no body there, so the filter is not split and stays Calcite's whole, which fails the
+        /// statement as it is implemented, before a request is made. Negated over a path declared
         /// required, the conjunction keeps no row, but the test raises on every document, so the request is not left out
         /// and the statement fails as Calcite's does
         /// (<c>CosmosDeclaredFactPlanningTests.APresenceTestOverATextCastToVarcharFailsAsCalciteDoes</c>).
@@ -3640,7 +3641,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("NOT IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("c.\"$.category\" = 'bikes' OR IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
-        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c WHERE (c.category = @p0)")]
+        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR))", true, "SELECT VALUE c FROM products c")]
         public void ADefinednessTestOverACastOfTheTextIsNotPushed(string condition, bool declared, string sent)
         {

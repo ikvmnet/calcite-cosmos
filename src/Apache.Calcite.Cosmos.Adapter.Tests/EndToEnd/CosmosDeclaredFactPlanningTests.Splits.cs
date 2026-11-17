@@ -236,15 +236,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A part Calcite evaluates beside the part sent is evaluated: what the split keeps in Calcite is read off Calcite's
-        /// simplification of the condition as written, whole, which reads neither a lowering (<c>w = '005'</c> for
-        /// <c>CAST(w AS INTEGER) = 5</c>) nor a flattened <c>CASE</c>, nor a boolean sent as a predicate of its own null test.
-        /// Read through them, the cast went unevaluated, a residual a lowered sibling makes false was a converted filter's
-        /// <c>FALSE</c>, and x3 sent nothing, where Calcite fails on a <c>body</c> that is no number, declared or not, and on
-        /// <c>main</c> as Calcite does. lw2's half sent keeps nothing, declared, as recorded (<em>A residual beside a
-        /// contradicted split loses its raise</em>), and the cast is still Calcite's. x9, which Calcite's simplification of
-        /// the whole reads as false, is kept whole above the half sent, and Calcite evaluates it as it stands, answering as
-        /// it does in process, where the residual alone raised; no converted filter holds the <c>FALSE</c>.
+        /// A cast of <c>body</c> Calcite evaluates beside the part sent is in a node Calcite evaluates, declared and not, and
+        /// no node holds a <c>FALSE</c>; none but lw2, whose half sent keeps nothing declared, sends nothing; x9's condition
+        /// is Calcite's whole, over the half sent; and c1's <c>CASE</c>, which nothing sent decides undeclared, is Calcite's
+        /// as written.
         /// </summary>
         [Theory]
         [InlineData("lw1")]
@@ -268,6 +263,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 text.Should().NotContain("condition=[false]", $"{name} {declared}: " + text);
                 if (name != "lw2")
                     text.Should().NotContain(KeepsNothing, $"{name} {declared}: " + text);
+                if (name == "c1" && declared == "undeclared")
+                    text.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")).Should().Contain(l => l.Contains("CASE("), "the CASE nothing sent decides is Calcite's as written: " + text);
                 if (name == "x9")
                 {
                     text.Should().Contain("CosmosFilter(condition=", $"{declared}: the half sent is pushed: " + text);
@@ -275,6 +272,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 }
             }
         }
+
+        /// <summary>
+        /// <c>kind</c> is <c>A</c> or <c>B</c>, <c>opt</c> one of them, <c>nul</c> one of them or null, <c>body</c> a string,
+        /// <c>n</c> an integer from 0 to 100, <c>m</c> <c>"1"</c> or <c>"2"</c>, <c>code</c> a whole number unpadded and
+        /// <c>flag</c> a boolean, all but <c>opt</c>, <c>nul</c> and <c>flag</c> required: what the fuzzed shapes below were
+        /// drawn over.
+        /// </summary>
+        internal const string Drawn = """{"type":"object","required":["kind","body","n","m","code"],"properties":{"kind":{"enum":["A","B"]},"opt":{"enum":["A","B"]},"nul":{"enum":["A","B",null]},"body":{"type":"string"},"n":{"type":"integer","minimum":0,"maximum":100},"m":{"enum":["1","2"]},"code":{"type":"string","pattern":"^(0|[1-9][0-9]*)$"},"flag":{"type":"boolean"}}}""";
+
+        /// <summary>
+        /// A <c>WHERE</c> whose half sent reads as false alone, and not beside a cast Calcite evaluates, over the document or
+        /// over a projection of its paths.
+        /// </summary>
+        internal static string SplitAgain(string name, string t)
+        {
+            var cast = JsonInteger("c", "body");
+            var x = $"""SELECT c."id", {Json("c", "kind")} AS k, {Json("c", "opt")} AS o, {Json("c", "nul")} AS u, {Json("c", "body")} AS b, JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS n, {Json("c", "m")} AS m, {Json("c", "code")} AS cd, JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN) AS f FROM {t} AS c""";
+            return name switch
+            {
+                "q121" => $"""SELECT c."id" FROM {t} AS c WHERE {cast} > 0 AND JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) IS NULL AND JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) = 1""",
+                "t3" => $"""SELECT c."id" FROM {t} AS c WHERE {cast} > 0 AND {Json("c", "kind")} IS NULL AND {Json("c", "kind")} = 'A'""",
+                "q170" => $"""SELECT c."id" FROM {t} AS c WHERE (({Json("c", "body")} = '1') IS NULL) AND {cast} = 1 AND {Json("c", "body")} = '1'""",
+                "q32" => $"""SELECT x."id" FROM ({x}) AS x WHERE ((CAST(x.b AS INTEGER) IN (1, 7) AND CAST(x.b AS INTEGER) = 1) AND (CAST(x.b AS INTEGER) > 0 AND x.k = 'A')) AND x.k IS NULL""",
+                "q119" => $"""SELECT x."id" FROM ({x}) AS x WHERE ((((CAST(x.cd AS INTEGER) > 5) IS FALSE)) IS FALSE) AND x.u <> 'A' AND (CASE WHEN CAST(x.b AS DOUBLE) > 0.5 THEN (CASE WHEN x.u IN ('A', 'B') THEN CAST(x.b AS DOUBLE) > 0.5 ELSE x.b SIMILAR TO 'a%' END) ELSE (NOT (x.u <> 'A')) END) AND x.u IS NULL""",
+                _ => throw new System.ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
+            };
+        }
+
+        /// <summary>
+        /// The split does not split what it keeps above the half sent again once everything it would push is applied
+        /// beneath, and keeps no conjunct sent above it: these planned without end, the split firing on its own outer until
+        /// the stack overflowed, declared or not. Each plans within a bound, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("q121")]
+        [InlineData("t3")]
+        [InlineData("q170")]
+        [InlineData("q32")]
+        [InlineData("q119")]
+        public void AConditionKeptAboveTheHalfSentIsNotSplitAgain(string name)
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var (declared, container) in new[] { ("declared", Declaring(Drawn)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+                {
+                    var bound = new Infrastructure.SplitBound(SplitsBound);
+                    var text = PlanText(PlanToCosmos(SplitAgain(name, "items"), container.WithServiceTarget(target), out _, listener: bound));
+                    text.Should().Contain("CosmosToClrCursorConverter", $"{name} {target} {declared}: " + text);
+                }
+            }
+        }
+
+        /// <summary>How many splits a statement above may take to plan, many times what any takes.</summary>
+        internal const int SplitsBound = 64;
 
         /// <summary>
         /// Over a projection the split reads the condition through the expressions the columns stand for, as Calcite merges

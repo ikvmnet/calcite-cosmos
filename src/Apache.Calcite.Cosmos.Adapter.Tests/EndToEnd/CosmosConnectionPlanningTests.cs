@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -41,14 +42,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary><c>kind</c> is <c>A</c> or <c>B</c>, <c>body</c> any string, <c>n</c> 1 or 2.</summary>
         const string Schema = """{ "type": "object", "required": ["kind", "body", "n"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "n": { "enum": [1, 2] } } }""";
 
-        static string Explain(string sql, bool declared, string schema = Schema)
+        /// <summary>
+        /// An executor that answers every request with the same documents, whatever its <c>WHERE</c>, each as the row a
+        /// statement reading the document and its id is returned: <c>{ "DOC": c, "id": c.id }</c>.
+        /// </summary>
+        sealed class DocumentsExecutor(string[] documents) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default) =>
+                new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())));
+
+        }
+
+        static string Explain(string sql, bool declared, string schema = Schema, CosmosServiceTarget? target = null, Infrastructure.SplitBound? bound = null)
+        {
+            using var source = Open(declared ? schema : null, new NoExecutor(), target);
+            using var hook = bound is null ? null : org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
+            using var connection = source.OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = "EXPLAIN PLAN FOR " + sql.Replace(" items AS ", " \"items\" AS ");
+            return ((string?)command.ExecuteScalar() ?? "").Trim().Replace("\r\n", "\n");
+        }
+
+        /// <summary>
+        /// Runs a statement over a container declared nothing whose every request is answered with the same documents: the
+        /// plan implemented, and its first column read.
+        /// </summary>
+        static System.Collections.Generic.List<string> Answer(string sql, string[] documents)
+        {
+            using var source = Open(null, new DocumentsExecutor(documents), null);
+            using var connection = source.OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            using var reader = command.ExecuteReader();
+            var rows = new System.Collections.Generic.List<string>();
+            while (reader.Read())
+                rows.Add(Convert.ToString(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture)!);
+
+            return rows;
+        }
+
+        static System.Data.Common.DbDataSource Open(string? schema, ICosmosQueryExecutor executor, CosmosServiceTarget? target)
         {
             var metadata = TestReasoning.Bind(new CosmosContainerMetadata("items", ["/category"]));
-            if (declared)
+            if (schema is not null)
                 metadata = metadata.WithFacts(CosmosSchemaRecognition.ReadFrom(JsonNode.Parse(schema)!));
+            if (target is { } t)
+                metadata = metadata.WithServiceTarget(t);
 
-            var table = new CosmosTable(metadata, new NoExecutor());
-            using var source = new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder
+            var table = new CosmosTable(metadata, executor);
+            return new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder
             {
                 Model = "inline:{\"version\":\"1.0\",\"defaultSchema\":\"adhoc\",\"schemas\":[{\"name\":\"adhoc\"}]}",
                 Schema = "adhoc",
@@ -56,11 +99,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }.ConnectionString)
                 .ConfigureRootSchema(root => root.add("items", table))
                 .Build();
-
-            using var connection = source.OpenConnection();
-            using var command = connection.CreateCommand();
-            command.CommandText = "EXPLAIN PLAN FOR " + sql.Replace(" items AS ", " \"items\" AS ");
-            return ((string?)command.ExecuteScalar() ?? "").Trim().Replace("\r\n", "\n");
         }
 
         /// <summary>
@@ -295,6 +333,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 var x4 = Explain(CosmosDeclaredFactPlanningTests.EvaluatedBesideASent("x4", "items"), declared, CosmosDeclaredFactPlanningTests.Lowered);
                 x4.Should().Contain("CosmosToClrCursorConverter", x4).And.NotContain("'$.body'", $"declared {declared}: " + x4);
+            }
+        }
+
+        /// <summary>
+        /// <c>code</c> and <c>lst</c> hold the digits a cast to <c>INTEGER</c> reads and <c>kind</c> is <c>A</c> or <c>B</c>, so
+        /// nothing in the statements below raises.
+        /// </summary>
+        static readonly string[] Codes =
+        [
+            """{"id":"1","category":"a","kind":"A","body":"9","code":"5","lst":"6"}""",
+            """{"id":"2","category":"a","kind":"B","body":"1","code":"7","lst":"7"}""",
+            """{"id":"3","category":"b","kind":"A","body":"7","code":"5","lst":"6"}""",
+        ];
+
+        /// <summary>
+        /// A text equality beside a cast of the same path to <c>INTEGER</c>, nothing declared: what Calcite evaluates holds no
+        /// Cosmos type test, which it has no body for. This connection's filter merge carried a split's weaker forms up
+        /// beside the conjuncts they weaken, a split of that left them above, and the statement failed with "cannot
+        /// translate call IS_NUMBER" where Calcite answers. Each runs over documents on which nothing raises.
+        /// </summary>
+        [Theory]
+        [InlineData("g1", """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.code') = '5' AND (CAST(JSON_VALUE(c."DOC", '$.code') AS INTEGER) = 5 OR JSON_VALUE(c."DOC", '$.kind') = 'A')""", "1,3")]
+        [InlineData("g4", """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.code') = '5' AND NOT (JSON_VALUE(c."DOC", '$.kind') = 'B' AND CAST(JSON_VALUE(c."DOC", '$.code') AS INTEGER) = 7)""", "1,3")]
+        [InlineData("g9", """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.lst') = '6' AND (CAST(JSON_VALUE(c."DOC", '$.lst') AS INTEGER) = 6 OR JSON_VALUE(c."DOC", '$.kind') = 'B')""", "1,3")]
+        [InlineData("g10", """SELECT COUNT(*) AS q FROM items AS c WHERE JSON_VALUE(c."DOC", '$.code') = '5' AND (CAST(JSON_VALUE(c."DOC", '$.code') AS INTEGER) = 5 OR JSON_VALUE(c."DOC", '$.kind') = 'A')""", "2")]
+        public void NoWeakerFormIsCalcites(string name, string sql, string rows)
+        {
+            var plan = Explain(sql, declared: false);
+            plan.Should().Contain("CosmosToClrCursorConverter", plan);
+            foreach (var line in plan.Split('\n').Where(l => l.TrimStart().StartsWith("ClrCursor")))
+                line.Should().NotContain("IS_NUMBER(", $"{name}: " + plan).And.NotContain("IS_DEFINED(", $"{name}: " + plan);
+
+            Answer(sql, Codes).Should().BeEquivalentTo(rows.Split(','), $"{name}: the plan implements, and Calcite evaluates the condition as written over every document answered: " + plan);
+        }
+
+        /// <summary>
+        /// <see cref="CosmosDeclaredFactPlanningTests.AConditionKeptAboveTheHalfSentIsNotSplitAgain"/> through this
+        /// connection: each plans within the same bound, declared and not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("q121")]
+        [InlineData("t3")]
+        [InlineData("q170")]
+        [InlineData("q32")]
+        [InlineData("q119")]
+        public void AConditionKeptAboveTheHalfSentIsNotSplitAgain(string name)
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var declared in new[] { true, false })
+                {
+                    var plan = Explain(CosmosDeclaredFactPlanningTests.SplitAgain(name, "items"), declared, CosmosDeclaredFactPlanningTests.Drawn, target, new Infrastructure.SplitBound(CosmosDeclaredFactPlanningTests.SplitsBound));
+                    plan.Should().NotBeEmpty($"{name} {target} declared {declared}");
+                }
             }
         }
 

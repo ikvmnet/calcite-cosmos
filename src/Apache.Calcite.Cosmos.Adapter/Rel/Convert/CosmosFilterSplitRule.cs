@@ -38,16 +38,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// polarity needs no analysis: each one is positive by construction.
     /// </para>
     /// <para>
-    /// The split terminates. It fires only when both parts are non-empty. The inner is wholly renderable; the
-    /// outer, renderable or not, is split again only to push what it admits and the weakenings not yet applied
-    /// beneath it, which leave it, so each outer holds less to push than the filter it was split from.
+    /// The split terminates. It fires only where both parts are non-empty and something it would push is not yet
+    /// applied beneath, compared as Calcite compares expressions. The inner is wholly renderable; the outer holds no
+    /// term of a conjunct sent, or is the condition kept whole above the half sent, so split again it pushes only
+    /// weakenings not yet applied, or nothing new, and stops.
     /// </para>
     /// <para>
-    /// <b>The outer is what Calcite evaluates over the rows the inner returns</b>: where Calcite's
-    /// simplification of the whole condition, as written, reads a term of the residual away or into another,
-    /// its terms but those of the conjuncts sent, and nothing where none is left; where it reads the whole as
-    /// false, the condition as it stands, which is split no further once the half sent is applied beneath it
-    /// (<see cref="Residual"/>).
+    /// <b>The outer is the conjuncts the inner does not decide, as written</b>, or what Calcite's simplification of
+    /// the whole condition leaves beside the conjuncts sent, where it reads the two halves together (<see
+    /// cref="Residual"/>). It holds nothing of the service's form, which Calcite has no body for
+    /// (<see cref="CosmosOperators.HoldsServiceForm"/>): legality.
     /// </para>
     /// <para>
     /// <b>What the container declares is lowered first.</b> A comparison with no Cosmos form may have
@@ -176,14 +176,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
+            // Split no further where everything it would push is applied beneath already, compared as Calcite compares
+            // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
+            var applied = AlreadyApplied(filter.getInput());
+            if (pushable.All(applied.Contains))
+                return;
+
             var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
             // conjuncts admitted are the filter, the weakenings of what is left out with it.
-            var left = Residual(rexBuilder, filter.getCondition(), sent, Compose(rexBuilder, residual), ProjectOf(filter.getInput()));
+            var left = Residual(rexBuilder, filter.getCondition(), sent, ProjectOf(filter.getInput()));
 
-            // The condition kept whole above the half sent is split no further once that half is applied beneath it.
-            if (ReferenceEquals(left, filter.getCondition()) && AlreadyApplied(filter.getInput()) is var applied && pushable.All(applied.Contains))
+            // Legality: what is left above is a filter Calcite implements, and the service's form has no body there. A host's
+            // filter merge carries a split's weakenings up beside the conjuncts they weaken, and split again such a condition
+            // left them above it, which failed with "cannot translate call IS_NUMBER".
+            if (CosmosOperators.HoldsServiceForm(left))
                 return;
 
             if (left.isAlwaysTrue())
@@ -197,51 +205,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns what Calcite evaluates of a filter's condition over the rows the half sent returns: Calcite's
-        /// simplification of the condition as written, less the terms of the conjuncts sent, true where nothing is left, and
-        /// the condition itself, as it stands, where it reads the whole as false; or the residual as planned where that
-        /// simplification is the residual's own beside terms of the conjuncts sent.
+        /// Returns what Calcite evaluates of a filter's condition over the rows the half sent returns: the conjuncts that half
+        /// does not decide, as the query wrote them; where Calcite's simplification of the whole condition reads the two
+        /// halves together, its terms but those of the conjuncts sent, true where none is left; and where it reads the whole
+        /// as false, the condition as it stands.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Calcite evaluates the condition it was given simplified whole (unknown read as false, as a filter reads it), so a
-        /// conjunct its siblings make true, or a sibling makes the arm holding it false, is never evaluated:
-        /// <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is <c>kind = 'A'</c>. Split, the residual was
-        /// simplified without the half sent, and the cast raised on a <c>body</c> that is no number where Calcite answers.
-        /// So where the whole condition reads a term of the residual away, or into another, what is left above is the
-        /// whole's terms but those of the conjuncts sent, which are true on every row returned: per term, so a second
-        /// residual conjunct keeps no absorbed one beside it.
+        /// Calcite simplifies the condition it is given whole (unknown read as false), so a conjunct its siblings make go
+        /// unread is not evaluated: <c>kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)</c> is <c>kind = 'A'</c>,
+        /// and keeps nothing above it. Each conjunct sent is read alone as well as with the rest sent, so a half sent that
+        /// reads as false, beside a cast the whole does not fold, leaves no conjunct sent above to be pushed again.
         /// </para>
         /// <para>
-        /// <b>As written, and the whole alone.</b> The condition as the query wrote it, not the planning form, whose
-        /// lowerings and flattened <c>CASE</c>s Calcite never reads: read through them, <c>CAST(w AS INTEGER) = 5</c> made
-        /// <c>w = '005' OR CAST(body AS INTEGER) = 1</c> true and the cast went unevaluated where Calcite fails. And no
-        /// predicate list beside it, which reads a bare boolean's own null test as true where Calcite's simplification of
-        /// the whole does not. A conjunct sent is one the half sent decides whole: each conjunct of its planning form
-        /// admitted.
+        /// As written, not the planning form, whose lowerings and flattened <c>CASE</c>s Calcite does not read. A conjunct
+        /// sent is one each conjunct of whose planning form the half sent admits.
         /// </para>
         /// <para>
-        /// Where the whole is the residual's own simplification beside terms of the conjuncts sent, a sent conjunct the
-        /// residual implies dropped among them, the residual stays as planned, as before: Calcite's normal form of it,
-        /// which a later split reads anew, would push again what the half sent already holds.
-        /// </para>
-        /// <para>
-        /// <b>Over a projection, through it.</b> Calcite in process merges the filter with the projection beneath and
-        /// simplifies the condition over the expressions the columns stand for, and its simplifier reads a column otherwise
-        /// than an expression: a bare boolean column, or a column's null test, is a predicate of the rest, an expression's
-        /// is not. Read over the columns, <c>x.f AND NOT (x.f IS NOT NULL OR CAST(x.b AS INTEGER) = 1)</c> was false where
-        /// Calcite evaluates the cast. So the condition is read through the projection, and what is left is written back
-        /// over its columns, each expression a column stands for as that column; where a term reads what no column stands
-        /// for, the residual stays as planned.
+        /// <b>Over a projection, through it</b>, as Calcite merges the two before it simplifies; what is left is written
+        /// back over the columns, and where a term reads what no column stands for, the conjuncts are kept as written.
         /// </para>
         /// </remarks>
-        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, RexNode residual, Project? project)
+        static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, Project? project)
         {
+            var own = Metadata.CosmosFilterStatement.ConjunctsOf(condition);
+
+            // The conjuncts the half sent does not decide, as the query wrote them.
+            var written = Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList());
+
             // Beneath a second projection the condition would be read through both, as Calcite merges them.
             if (project is not null && OverProjection(project.getInput()))
-                return residual;
+                return written;
 
-            var own = Metadata.CosmosFilterStatement.ConjunctsOf(condition);
             var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
             RexNode Read(IEnumerable<RexNode> conjuncts)
             {
@@ -258,7 +253,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var apart = new HashSet<RexNode>(decided.Concat(rest));
             var kept = new HashSet<RexNode>(whole);
             if (whole.All(apart.Contains) && rest.All(kept.Contains))
-                return residual;
+                return written;
 
             // A whole Calcite reads as false is left above the half sent as it stands, for Calcite to read as it does in
             // process: written into a node, the FALSE is one Calcite's rules read, an empty relation beside a join, where
@@ -266,13 +261,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (whole.Any(term => term.isAlwaysFalse()))
                 return condition;
 
-            var left = whole.Where(term => decided.Contains(term) == false).ToList();
+            // Each conjunct sent read alone as well: where the half sent reads as false and the whole beside a cast does not,
+            // no term of the whole is the half's, and a conjunct sent left above would be pushed beneath it again.
+            var sentTerms = new HashSet<RexNode>(decided);
+            foreach (var conjunct in own.Where((_, i) => sent[i]))
+                sentTerms.UnionWith(Terms(Read([conjunct])));
+
+            var left = whole.Where(term => sentTerms.Contains(term) == false).ToList();
             if (project is null)
                 return Compose(rexBuilder, left);
 
             var columns = new Columns(project, rexBuilder);
-            var written = left.Select(term => (RexNode)term.accept(columns)).ToList();
-            return columns.Unread ? residual : Compose(rexBuilder, written);
+            var over = left.Select(term => (RexNode)term.accept(columns)).ToList();
+            return columns.Unread ? written : Compose(rexBuilder, over);
         }
 
         /// <summary>
@@ -386,8 +387,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
             // and the conjunct that proves the condition is a sibling of the one being lowered. Split
             // first and each conjunct would be weighed on its own, with nothing left to prove the
-            // guard from. The planning form: the residual is Calcite's to evaluate, and the half pushed
-            // a node Calcite reads, so neither holds a deletion, an arm never read or a FALSE.
+            // guard from. The planning form: the half pushed is a node Calcite reads, so it holds no
+            // deletion, arm never read or FALSE; what is kept above is the condition as written (Residual).
             var condition = Metadata.CosmosFactRewriter.Planned(
                 filter.getCondition(), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
 
