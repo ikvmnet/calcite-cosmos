@@ -145,6 +145,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "wf1c" => UC($"u.t = '1' AND u.t = '2' AND {cb} = 7"),
                 "wf2" => U($"u.t = '1' AND u.t IN ('2', '3') AND {cb} = 7"),
                 "wf3" => S($"l.k2 = 'A' AND l.k2 = 'B' AND {cb} = 7"),
+                _ => BesideACorrelateRead(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a conjunct of the document whose move would decide what Calcite reads of the
+        /// rest, beside a cast that conjunct leaves unread, over a traversal, a lateral and a second traversal; and a conjunct
+        /// of both sides Calcite reads beside one of the document as a side read as false.
+        /// </summary>
+        static string BesideACorrelateRead(string name, string t)
+        {
+            var k = KindOf("c");
+            var m = Json("c", "m");
+            var b = Json("c", "body");
+            var cb = $"CAST({b} AS INTEGER)";
+            var tags = """JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)""";
+            var xs = """JSON_QUERY(c."DOC", '$.xs' RETURNING VARCHAR ARRAY)""";
+            var unnest = $"""{t} AS c, UNNEST({tags}) AS u(t)""";
+            var twice = $"""{t} AS c, UNNEST({tags}) AS u(t), UNNEST({xs}) AS w(s)""";
+            var lateral = $"""{t} AS c CROSS JOIN LATERAL (SELECT {b} AS t, {k} AS k2 FROM (VALUES (1)) AS v(x0) WHERE {m} = '1') AS l""";
+            var no = $"NOT ({k} = 'B' OR u.t = 'x')";
+            var nol = $"NOT ({k} = 'B' OR l.t = 'abc')";
+            var now = $"NOT ({k} = 'B' OR w.s = 'x')";
+            var eq = $"(({k} = 'B') = (u.t = 'x'))";
+            var k5 = $"{m} = '1' AND {k} = 'A' AND {eq} AND {no} AND ({eq} OR {cb} = 7) AND ({no} OR CAST(u.t AS INTEGER) = 1)";
+            var arm = $"CASE WHEN l.t <> 'x' THEN {cb} > 0 ELSE {cb} > 0 END";
+            string U(string where) => $"""SELECT c."id", u.t FROM {unnest} WHERE {where}""";
+            string UC(string where) => $"""SELECT COUNT(*) AS q FROM {unnest} WHERE {where}""";
+            string L(string where) => $"""SELECT c."id", l.t FROM {lateral} WHERE {where}""";
+            string LC(string where) => $"""SELECT COUNT(*) AS q FROM {lateral} WHERE {where}""";
+            return name switch
+            {
+                "j1" => U($"{k} = 'A' AND {no} AND ({no} OR CAST(u.t AS INTEGER) = 1)"),
+                "j1c" => UC($"{k} = 'A' AND {no} AND ({no} OR CAST(u.t AS INTEGER) = 1)"),
+                "jb4" => L($"{k} = 'A' AND {nol} AND ({nol} OR CAST(l.t AS INTEGER) = 1)"),
+                "jb4c" => LC($"{k} = 'A' AND {nol} AND ({nol} OR CAST(l.t AS INTEGER) = 1)"),
+                "jb7" => $"""SELECT c."id", u.t, w.s FROM {twice} WHERE {k} = 'A' AND {now} AND ({now} OR CAST(w.s AS INTEGER) = 2)""",
+                "jb7c" => $"""SELECT COUNT(*) AS q FROM {twice} WHERE {k} = 'A' AND {now} AND ({now} OR CAST(w.s AS INTEGER) = 2)""",
+                "k5u" => U(k5),
+                "k5uc" => UC(k5),
+                "dd2" => U($"{cb} IN (3, 5) AND NOT (u.t IS NULL OR {cb} <> 7)"),
+                "dd2c" => UC($"{cb} IN (3, 5) AND NOT (u.t IS NULL OR {cb} <> 7)"),
+                "dd1" => L($"{cb} IN (3, 5) AND NOT (NOT ({cb} = 7 AND l.t IS NOT NULL))"),
+                "dd1c" => LC($"{cb} IN (3, 5) AND NOT (NOT ({cb} = 7 AND l.t IS NOT NULL))"),
+                "d392l" => L($"{cb} IN (3, 5) AND {arm} AND NOT ({arm} OR CAST(l.t AS INTEGER) = 1)"),
+                "d392lc" => LC($"{cb} IN (3, 5) AND {arm} AND NOT ({arm} OR CAST(l.t AS INTEGER) = 1)"),
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
         }
@@ -179,11 +225,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// Above a correlate a conjunct of both sides that the whole condition reads down to one side is left as written, where
-        /// a later firing of the rule would move the term into that side and evaluate it on a document the correlate returns
-        /// no row for: x3, x9, x9b and the lateral x8 cast no <c>body</c> of a document with no element or no lateral row, and
-        /// answer the rows the condition keeps, as does mx1, which beside such a conjunct holds one the whole reads away, and
-        /// z189u and w1 fail on the element <c>"x"</c> as Calcite does, declared or not, under both targets.
+        /// Where a conjunct the rule would move decides what Calcite's simplification of the whole reads of a conjunct of both
+        /// sides, nothing moves and the term that reading leaves stays above the correlate: x3, x9, x9b and the lateral x8
+        /// cast no <c>body</c> of a document with no element or no lateral row, and answer the rows the condition keeps, as
+        /// does mx1, which beside such a conjunct holds one the whole reads away, and z189u and w1 fail on the element
+        /// <c>"x"</c> as Calcite does, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("x3", "1,1;1,x")]
@@ -204,34 +250,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Above a correlate, and into a side that is a correlate itself, a conjunct of both sides is written as the query
-        /// wrote it where Calcite's simplification would take it down to a term of one side, which a later firing would move
-        /// into that side: n1, n2, k1, bd1, the laterals n5, k2 and bd4, the two traversals of bd8 and the <c>COUNT</c>s cast
-        /// no <c>body</c> of a document with no element or no lateral row, and answer the rows the condition keeps, declared or
-        /// not, under both targets.
+        /// A conjunct of both sides that Calcite's simplification takes down to a term of one side is planned as one of
+        /// Calcite's plans: where all its rule leaves above after its last firing is read in the whole, as that rule leaves
+        /// it, which moves the term into that side, so n1, n2, bd1, the laterals n5 and bd4, the two traversals of bd8 and
+        /// the <c>COUNT</c>s fail on the <c>body</c> of a document with no element or no lateral row as Calcite with
+        /// <c>FILTER_CORRELATE</c> does; and elsewhere with no transposition, so k1, the lateral k2 and k1's <c>COUNT</c>
+        /// cast no such <c>body</c> and answer the rows the condition keeps, declared or not, under both targets.
         /// </summary>
         [Theory]
-        [InlineData("n1", "1,1;1,x")]
-        [InlineData("n1c", "2")]
-        [InlineData("n2", "1,1")]
-        [InlineData("n5", "1")]
-        [InlineData("n5c", "1")]
+        [InlineData("n1", "raises q")]
+        [InlineData("n1c", "raises q")]
+        [InlineData("n2", "raises q")]
+        [InlineData("n5", "raises q")]
+        [InlineData("n5c", "raises q")]
         [InlineData("k1", "1,1")]
         [InlineData("k1c", "1")]
         [InlineData("k2", "1")]
-        [InlineData("bd1", "1,1")]
-        [InlineData("bd1c", "1")]
-        [InlineData("bd4", "1")]
-        [InlineData("bd8", "1,1,1;1,1,x")]
-        public async Task AConjunctOfBothSidesIsWrittenAsItStandsAboveACorrelate(string name, string rows)
+        [InlineData("bd1", "raises q")]
+        [InlineData("bd1c", "raises q")]
+        [InlineData("bd4", "raises q")]
+        [InlineData("bd8", "raises q")]
+        public async Task AConjunctOfBothSidesAboveACorrelateIsPlannedAsOneOfCalcitesPlans(string name, string rows)
         {
             await Answers(name, rows, Traversed, BesideAnEmptySide);
         }
 
         /// <summary>
-        /// A conjunct kept as written above a correlate is read beside the rest, which it absorbs: p1, p14, the lateral p6 and
-        /// p1's <c>COUNT</c> cast no element <c>"x"</c> and no <c>body</c> of <c>"abc"</c>, and answer the rows the condition
-        /// keeps, declared or not, under both targets.
+        /// A conjunct of both sides kept above a correlate is read beside the rest, which it absorbs, where the conjunct the
+        /// rule would move decides it: p1, p14, the lateral p6 and p1's <c>COUNT</c> cast no element <c>"x"</c> and no
+        /// <c>body</c> of <c>"abc"</c>, and answer the rows the condition keeps, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("p1", "1,1;3,2;4,3")]
@@ -262,6 +309,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public async Task AConditionReadAsFalseMovesNothingIntoACorrelatesSide(string name, string rows)
         {
             await Answers(name, rows, Traversed, TraversedDocuments);
+        }
+
+        /// <summary>
+        /// What <see cref="Traversed"/> admits: a document of kind <c>A</c> holding an element <c>"x"</c> and one holding an
+        /// element <c>"x"</c> and a <c>body</c> of <c>"abc"</c>, which no cast to <c>INTEGER</c> reads, both with
+        /// <c>xs</c> holding <c>"x"</c>.
+        /// </summary>
+        internal static readonly string[] KindABesideX =
+        [
+            """{"id":"1","category":"a","kind":"A","m":"1","body":"7","tags":["1","x"],"xs":["2","x"]}""",
+            """{"id":"2","category":"a","kind":"B","m":"1","body":"5","tags":["x"],"xs":["x"]}""",
+            """{"id":"3","category":"b","kind":"A","m":"2","body":"5","tags":["2"],"xs":["3"]}""",
+            """{"id":"4","category":"b","kind":"A","m":"1","body":"abc","tags":["x"],"xs":["x"]}""",
+        ];
+
+        /// <summary>
+        /// Where a conjunct Calcite's rule would move into a side decides what Calcite's simplification of the whole reads of
+        /// the rest, nothing moves, and the cast that reading leaves unread is not evaluated: j1, the lateral jb4, jb7 over a
+        /// second traversal, k5u and their <c>COUNT</c>s answer the rows the condition keeps over a document of kind
+        /// <c>A</c> holding an element <c>"x"</c>, declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("j1", "1,1;3,2")]
+        [InlineData("j1c", "2")]
+        [InlineData("jb4", "1,7")]
+        [InlineData("jb4c", "1")]
+        [InlineData("jb7", "1,1,2;1,x,2;3,2,3")]
+        [InlineData("jb7c", "3")]
+        [InlineData("k5u", "1,1")]
+        [InlineData("k5uc", "1")]
+        public async Task AConjunctThatDecidesTheRestIsNotMovedIntoACorrelatesSide(string name, string rows)
+        {
+            await Answers(name, rows, Traversed, KindABesideX);
+        }
+
+        /// <summary>
+        /// Where Calcite's rule would read a side beside a term its simplification derives from a conjunct of both sides, the
+        /// conjunct moved into that side is not evaluated there alone: dd2, the laterals dd1 and d392l and their
+        /// <c>COUNT</c>s answer no rows over a document whose <c>body</c> no integer parses and which holds no element or
+        /// has no lateral row, declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("dd2", "")]
+        [InlineData("dd2c", "0")]
+        [InlineData("dd1", "")]
+        [InlineData("dd1c", "0")]
+        [InlineData("d392l", "")]
+        [InlineData("d392lc", "0")]
+        public async Task AConjunctMovedBesideADerivedTermIsNotEvaluatedAlone(string name, string rows)
+        {
+            await Answers(name, rows, Traversed, BesideAnEmptySide);
         }
 
         /// <summary>

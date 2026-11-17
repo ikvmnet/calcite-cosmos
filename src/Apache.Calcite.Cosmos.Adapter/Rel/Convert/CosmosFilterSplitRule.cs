@@ -225,9 +225,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <b>Over a projection, through it</b>, as Calcite merges the two before it simplifies; what is left is written
         /// back over the columns, and where a term reads what no column stands for, the conjuncts are kept as written.
         /// </para>
-        /// <para>
-        /// <see cref="CosmosFilterCorrelateRule"/> reads it too, the conjuncts it moves into a correlate's side as the half sent.
-        /// </para>
         /// </remarks>
         internal static RexNode Residual(RexBuilder rexBuilder, RexNode condition, IReadOnlyList<bool> sent, Project? project)
         {
