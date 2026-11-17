@@ -2391,8 +2391,9 @@ to its alias. The clause order does the rest: `JOIN` then `WHERE` is exactly tra
 A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which is why the shape the
 rule reads is the shape a host produces. The adapter registers its own for the reason the other
 Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
-depend on which rules a caller happened to add — and it moves what Calcite's moves, but leaves above
-its own reading of the rest (*What a filter above a correlate leaves there is read the same way*).
+depend on which rules a caller happened to add — and it moves what Calcite's moves, except where the
+whole reads as false, and leaves above its own reading of the rest (*What a filter above a correlate
+leaves there is read the same way*).
 Where the predicate does not render, the untransposed plan survives the transformation and the
 traversal still pushes with the predicate above it.
 
@@ -5807,7 +5808,7 @@ src/
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
       Convert/CosmosUncorrelatedProjectMergeRule.cs ✔ A projection declaring a correlation variable it never reads, merged
-      Convert/CosmosFilterCorrelateRule.cs ✔ A filter's one-sided conjuncts moved into a correlate, the rest as Calcite reads it
+      Convert/CosmosFilterCorrelateRule.cs ✔ A filter's one-sided conjuncts moved into a correlate, the rest as written or as Calcite reads it
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔

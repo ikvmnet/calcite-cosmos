@@ -2966,17 +2966,22 @@ across documents* and *A join of a container to itself* is the record.
   answered no rows.* Where the half sent and the rest are one filter, the split keeps above the rest as written, less
   what Calcite's simplification of the whole condition reads as decided by the half sent (`DESIGN.md`, *What a split
   keeps above the half sent is the condition as written*): `kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)`
-  keeps nothing above `kind = 'A'` (`CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite`). In the host Chapter 21 describes, a filter over a subquery's split
-  still does it: `SELECT x."id" FROM (SELECT c."id", c."DOC" FROM … AS c WHERE CAST(body AS INTEGER) = 1 AND kind IN
-  ('A', 'B')) AS x WHERE kind = 'C'` (dm7b; dm7d, dm7k, st2, and ga20 and ga21 with a `GROUP BY` between) sends `kind
-  IN ('A', 'B')`, deleted as guaranteed where `kind` is declared so, and the cast, merged by Calcite's calc pass with
-  `kind = 'C'` alone, fails on `"abc"`, where Calcite reads the three together as `FALSE` and answers no rows.
-  Undeclared it fails alike, on `main` too; declared, `main` answered no rows, and since the request is decided at the
-  request it is plain pushdown's, measured on both emulators under both targets' plans
-  (`CosmosDeclaredFactPlanningTests.APartKeptInProcessIsSimplifiedWithoutThePartSent`). The connection the README opens
-  merges the filters first and answers. The fix is the filter above read beside the predicates the half sent
-  establishes, as `FILTER_REDUCE_EXPRESSIONS` reads a filter's pulled-up predicates, or the residual kept beside it; it
-  moves plans of every such stack, and is its own change. Chapter 14.2 and Chapter 23 record it.
+  keeps nothing above `kind = 'A'` (`CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite`). In the host
+  Chapter 21 describes, a filter over a subquery's split still does it: `SELECT x."id" FROM (SELECT c."id", c."DOC"
+  FROM … AS c WHERE CAST(body AS INTEGER) = 1 AND kind IN ('A', 'B')) AS x WHERE kind = 'C'` (dm7b; dm7d, dm7k, st2,
+  and ga20 and ga21 with a `GROUP BY` between) sends `kind IN ('A', 'B')`, deleted as guaranteed where `kind` is
+  declared so, and the cast, merged by Calcite's calc pass with `kind = 'C'` alone, fails on `"abc"`, where Calcite
+  reads the three together as `FALSE` and answers no rows. Undeclared it fails alike, on `main` too; declared, `main`
+  answered no rows, and since the request is decided at the request it is plain pushdown's, measured on both emulators
+  under both targets' plans (`CosmosDeclaredFactPlanningTests.APartKeptInProcessIsSimplifiedWithoutThePartSent`). The
+  connection the README opens merges the filters first and answers. Over an `UNNEST` a filter over a subquery's filter
+  does the same, measured offline: `SELECT y."id" FROM (SELECT c."id", u.t, c."DOC" FROM … AS c, UNNEST(…) AS u(t)
+  WHERE m IS NOT NULL) AS y WHERE m IS NOT NULL OR CAST(y.t AS INTEGER) = 1` fails on an element `"x"` where
+  Calcite without a filter-correlate transposition answers, the subquery's conjunct moved beneath the traversal and
+  the filter above read without it; Calcite with `FILTER_CORRELATE` fails alike. The fix is the filter above read
+  beside the predicates the half sent establishes, as `FILTER_REDUCE_EXPRESSIONS` reads a filter's pulled-up
+  predicates, or the residual kept beside it; it moves plans of every such stack, and is its own change. Chapter 14.2
+  and Chapter 23 record it.
 - **A split over a computed projection keeps what Calcite reads otherwise** — *medium, a failure where Calcite answers,
   and an answer where it fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.*
   Measured on both emulators under both targets over documents of kind `A` holding a `body` of `"abc"`, declared and
@@ -2987,35 +2992,53 @@ across documents* and *A join of a container to itself* is the record.
   x.bi = 1)` (p13). Over a `CASE` column `y`, `x.k = 'A' AND (x.y IS NOT NULL OR x.bi = 1)` (v10) answers the rows the
   request returns where Calcite fails. The fix: keep the residual as written only where its reading over the columns is
   its reading through the expressions, and keep a pushed projection's computed columns visible to Calcite above.
-- **A filter above a correlate answers where Calcite's own transposition fails** — *small, an answer where Calcite
-  fails, never a wrong row; left for a change of its own.* `CosmosFilterCorrelateRule` moves into a side the conjuncts
-  Calcite's `FILTER_CORRELATE` moves, leaves above `Residual`'s reading of the rest beside them, keeping as written
-  each conjunct that reading would take down to one side, and moves nothing where the whole reads as false. Calcite in
-  process picks its own rule's plan by cost, and the answers differ by which plan it takes. Each case here was
-  measured in the host Chapter 21 describes, declared and not, under both targets' plans, against two of that host's
-  oracles: its Calcite with `FILTER_CORRELATE` added, and the same with no filter-correlate transposition, the planner
-  with no adapter rule. On both emulators these answer where Calcite with `FILTER_CORRELATE` fails on an element `"x"`
-  or a `body` no integer parses, and as Calcite without it does: over an `UNNEST` of `tags`, `kind = 'A' AND (kind =
-  'A' OR CAST(u.t AS INTEGER) = 1)` (u3), and u2, u9, u13, u16, u17, u19, u21, u24 and u26 and their `COUNT`s, all
-  answering every row the condition keeps; a4, a15, a19 and a27 and their `COUNT`s, b1 and b6 over a `LEFT JOIN
-  LATERAL`, and g1 and g2 over two traversals; `m IS NOT NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1) AND kind
-  = 'A' AND ((kind = 'B' AND u.t = 'x') OR CAST(body AS INTEGER) = 7)`, a conjunct the whole reads away beside one it
-  reads down to the cast of `body`, which is kept as written (mx1, and mx3 over a lateral and mx8); and, answering no
-  rows after a request, `NOT (m IN ('1', '2') AND u.t <> '1') AND u.t = 'x' AND m IN ('1', '2')` beside a cast, whose
-  whole reads as false (z20u). Offline, the same: `m = '1' AND (l.k2 = 'B' OR m = '1' OR CAST(l.b2 AS INTEGER) = 1)`
-  over a lateral (l4), `u.t = '1' AND (u.t = '1' OR CAST(v.s AS INTEGER) = 1)` and its kin over two traversals (h2,
-  h1), an `IS TRUE` (f6), a `COALESCE` (f7), `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)`
-  over an `UNNEST` (u18b) and a `DISTINCT` over it (g2) answer rows, and `u.t = 'x' AND NOT (u.t = 'x' OR CAST(body AS
-  INTEGER) = 1)` answers no rows after a request (b6). The other way, on both emulators, a conjunct kept as written
-  fails as Calcite with `FILTER_CORRELATE` does where Calcite without it reads it down to one side and answers: `kind
-  = 'B' AND ((kind = 'A' AND CAST(u.t AS INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1, and a2, f1 and f3), which
-  answered, no rows after a request or rows, while the rule left above the term `u.t = 'x'` that reading derives, for
-  a later firing to move beside the traversal; `main` failed alike. So does a conjunct of the document moved into the
-  left side as Calcite's rule moves it, over a document with no element and a `body` of `"q"`: `kind = 'A' AND
-  CAST(body AS INTEGER) = 7 AND u.t = '1'` (x10, and x5), as on `main` but for x10 with nothing declared, which
-  answered rows there. Through the README's connection u18b fails as that connection's Calcite does: its own
-  decorrelation moves the `IN` beside the traversal before any adapter rule reads the condition. Failing as Calcite
-  does in each would mean reading Calcite's choice of plan.
+- **A filter above a correlate answers where Calcite's own transposition fails** — *small, an answer where one of
+  Calcite's plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.*
+  `CosmosFilterCorrelateRule` moves into a side the conjuncts Calcite's `FILTER_CORRELATE` moves, leaves above
+  `Residual`'s reading of the rest beside them, keeping as written each conjunct that reading would take down to one
+  side, and moves nothing where the whole reads as false. Calcite in process picks its own rule's plan by cost, and
+  the answers differ by which plan it takes. Each case here was measured in the host Chapter 21 describes, declared
+  and not, under both targets' plans, against two of that host's oracles: its Calcite with `FILTER_CORRELATE` added,
+  and the same with no filter-correlate transposition, the planner with no adapter rule. On both emulators these
+  answer where Calcite with `FILTER_CORRELATE` fails on an element `"x"` or a `body` no integer parses, and as Calcite
+  without it does: over an `UNNEST` of `tags`, `kind = 'A' AND (kind = 'A' OR CAST(u.t AS INTEGER) = 1)` (u3), and u2,
+  u9, u13, u16, u17, u19, u21, u24 and u26 and their `COUNT`s, all answering every row the condition keeps; a4, a15,
+  a19 and a27 and their `COUNT`s, b1 and b6 over a `LEFT JOIN LATERAL`, and g1 and g2 over two traversals; `m IS NOT
+  NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1) AND kind = 'A' AND ((kind = 'B' AND u.t = 'x') OR CAST(body AS
+  INTEGER) = 7)`, a conjunct the whole reads away beside one it reads down to the cast of `body`, which is kept as
+  written (mx1, and mx3 over a lateral and mx8); and, answering no rows after a request, `NOT (m IN ('1', '2') AND u.t
+  <> '1') AND u.t = 'x' AND m IN ('1', '2')` beside a cast, whose whole reads as false (z20u). Offline, the same: `m =
+  '1' AND (l.k2 = 'B' OR m = '1' OR CAST(l.b2 AS INTEGER) = 1)` over a lateral (l4), `u.t = '1' AND (u.t = '1' OR
+  CAST(v.s AS INTEGER) = 1)` and its kin over two traversals (h2, h1), an `IS TRUE` (f6), a `COALESCE` (f7), `kind IN
+  ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)` over an `UNNEST` (u18b) and a `DISTINCT` over it,
+  `kind = 'A' AND (kind <> 'B' OR CAST(u.t AS INTEGER) = 1)` (a10) and `n BETWEEN 1 AND 60 AND (n >= 0 OR CAST(u.t AS
+  INTEGER) = 1)` (f4) answer rows, and so does a conjunct of both sides that Calcite's simplification of it takes down
+  to a cast of `body`, which its rule moves beneath the traversal and this one keeps above as written: `kind = 'A' AND
+  NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` (n1, and n2, n5 over a lateral, n12 inside an `EXISTS` and bd8 over
+  two traversals). `u.t = 'x' AND NOT (u.t = 'x' OR CAST(body AS INTEGER) = 1)`, and `u.t = '1' AND u.t = '2' AND
+  CAST(body AS INTEGER) = 7`, a whole read as false each of whose conjuncts reads one side (wf1), answer no rows after
+  a request; y270u of the soundness check's correlate fuzz, with `kind` declared, answers no rows with no request, and
+  after one undeclared. The other way, on both emulators, a conjunct kept as written fails as Calcite with
+  `FILTER_CORRELATE` does where Calcite without it reads it down to one side and answers: `kind = 'B' AND ((kind = 'A'
+  AND CAST(u.t AS INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1, and a2, f1 and f3), which answered, no rows after
+  a request or rows, while the rule left above the term `u.t = 'x'` that reading derives, for a later firing to move
+  beside the traversal; `main` failed alike. So does a conjunct of the document moved into the left side as Calcite's
+  rule moves it, over a document with no element and a `body` of `"q"`: `kind = 'A' AND CAST(body AS INTEGER) = 7 AND
+  u.t = '1'` (x10, and x5). `main` answered statements of this kind, with a declaration and without, where its split
+  above the correlate kept the conjunct above: x10 with nothing declared, and offline, of the plans check's correlate
+  fuzz, f246u, f357u, f38l and f275l with seed 20020 and f72u, f191uu, f204u, f246u, f258u, f317u, f365l, f151l and
+  f355l with seed 20021; the split no longer fires above a correlate no rule makes part of a statement, and the
+  conjunct is moved as Calcite's rule moves it. And a term Calcite's simplification of the whole derives from a
+  conjunct of both sides, kept above as written, fails as Calcite without `FILTER_CORRELATE` does where Calcite with
+  it, which moves the term beside the traversal, answers, and `main` answered too: offline, `NOT (u.t = 'x' OR NOT
+  flag) AND ((u.t = '1' AND m IS NOT NULL) OR CAST(u.t AS INTEGER) > 0) AND u.t = '1' AND u.t IN ('1', '2')` (f35u,
+  and f82u, f156u, f253u, f293u and f383u, with seed 20020; f39u, f42u, f44u, f48uu and f112u, with seed 20021); and
+  on both emulators `(kind = 'A' OR m = '1') AND NOT (kind = 'A' OR m = '1' OR CAST(u.t AS INTEGER) = 1)`, whose whole
+  reads as false (u7 and its `COUNT`), which answered no rows. y241j of the soundness check's correlate fuzz with seed
+  20021, over a `LEFT JOIN LATERAL`, fails alike where Calcite with `FILTER_CORRELATE` answers no rows. Through the
+  README's connection u18b fails as that connection's Calcite does: its own decorrelation moves the `IN` beside the
+  traversal before any adapter rule reads the condition. Failing as Calcite does in each would mean reading Calcite's
+  choice of plan.
 - **Through a connection, a term the reduce derives from a condition of both sides is moved beneath a correlate** —
   *small, a failure where Calcite answers, and an empty answer where it fails; older, `main` the same but for one
   statement.* Through a connection that runs Calcite's default rules, as the README's does,
@@ -3026,12 +3049,14 @@ across documents* and *A join of a container to itself* is the record.
   u.t = 'x') OR CAST(body AS INTEGER) = 7)` over an `UNNEST` of `tags` (x3, its `COUNT`, and x7 with the conjuncts the
   other way round, declared) and `kind = 'A' AND ((kind = 'B' AND l.k2 = 'x') OR CAST(body AS INTEGER) = 7)` over a
   lateral that returns no row for some document (x8 and its `COUNT`, declared and not) fail on a `body` of `"q"` where
-  that Calcite answers, as on `main`. `CAST(u.t AS INTEGER) > 0 AND ((kind = 'B' AND u.t = 'q') OR CAST(body AS
-  INTEGER) = 7) AND kind = 'A'` with nothing declared (w2) answers no rows after a request where that Calcite fails on
-  an element `"x"`: the term `CAST(body AS INTEGER) = 7` beneath the correlate keeps no document, so no element is
-  cast, where `main` took a plan that kept it above and failed as Calcite does. The host Chapter 21 describes answers
-  each as its Calcite does. The fix is a transposition that leaves above a term the connection's reduce rules derive
-  from a condition reading both sides, a change of its own after "fail like Calcite".
+  that Calcite answers, as on `main`; so does, declared and measured offline, `m IS NOT NULL AND (m IS NOT NULL OR
+  CAST(u.t AS INTEGER) = 1) AND kind = 'A' AND ((kind = 'B' AND u.t = 'x') OR CAST(body AS INTEGER) = 7)` (mx1), on
+  `main` too. `CAST(u.t AS INTEGER) > 0 AND ((kind = 'B' AND u.t = 'q') OR CAST(body AS INTEGER) = 7) AND kind = 'A'`
+  with nothing declared (w2) answers no rows after a request where that Calcite fails on an element `"x"`: the term
+  `CAST(body AS INTEGER) = 7` beneath the correlate keeps no document, so no element is cast, where `main` took a plan
+  that kept it above and failed as Calcite does. The host Chapter 21 describes answers each as its Calcite does. The
+  fix is a transposition that leaves above a term the connection's reduce rules derive from a condition reading both
+  sides, a change of its own after "fail like Calcite".
 - **Through a connection, a filter above the half sent is reduced with what that half holds** — *small, an answer
   where Calcite fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.* Through a
   connection that runs Calcite's default rules, as the README's does, `FILTER_REDUCE_EXPRESSIONS` reduces the filter a
@@ -3293,11 +3318,14 @@ across documents* and *A join of a container to itself* is the record.
   both targets' plans, against that host's Calcite with no filter-correlate transposition: `kind = 'C' AND (SELECT
   MAX(CAST(u.t AS INTEGER)) FROM UNNEST(…) AS u(t)) > 0` (e4) answers no rows, with no request declared and after one
   with nothing declared, where that Calcite fails on an element `"x"`; over an `UNNEST`, `m IS NULL AND NOT (m IS NULL
-  OR CAST(u.t AS INTEGER) = 1)` answers no rows with no request, and `kind = 'A' AND CASE WHEN kind = 'A' THEN TRUE
-  ELSE CAST(u.t AS INTEGER) = 1 END` answers rows. Against the same Calcite with `FILTER_CORRELATE` each agrees: the
-  conjunct of the document goes beneath the correlate as that rule moves it, and the cast the other side computes
-  reads only the rows it keeps. The fix, as dk1's, is the move asking `never raises` of what the other side computes
-  over the rows it would no longer read.
+  OR CAST(u.t AS INTEGER) = 1)` answers no rows, with no request declared and after one with nothing declared, and
+  `kind = 'A' AND CASE WHEN kind = 'A' THEN TRUE ELSE CAST(u.t AS INTEGER) = 1 END` answers rows. Against the same
+  Calcite with `FILTER_CORRELATE` each agrees: the conjunct of the document goes beneath the correlate as that rule
+  moves it, and the cast the other side computes reads only the rows it keeps. On this branch, `CAST(u.t AS INTEGER) >
+  0 AND kind IS NULL AND kind = 'A'` (u3b) answers no rows with no request, declared and not: Calcite's simplification
+  of the whole keeps the cast, which can fail, and does not read it as false, so both conjuncts of the document go
+  beneath the correlate, where its builder writes them as an empty relation, as with `FILTER_CORRELATE`. The fix, as
+  dk1's, is the move asking `never raises` of what the other side computes over the rows it would no longer read.
 - ~~**A `LIKE` over a raw reader reads as "may raise" in the facts graph**~~ — *done, 2026-11-15.* The two rules that
   give a raw column's reading its rows in `readerrows` are the readings vocabulary's, so the facts graph reads a `LIKE`
   over the raw `id` as the rendering graph does, and `status = 'deleted' AND c."id" LIKE 'a%'` sends nothing
