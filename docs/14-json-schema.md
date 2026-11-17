@@ -161,13 +161,12 @@ Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an
 declaration with no bounds admits, and dropping the conjunct would answer where the query fails. The
 service returns a whole number within 64 bits as its digits however it was written, so the cast reads a
 stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
-adapter does not yet drop a conjunct through that cast. A conjunct the schema makes true wherever it
-does not fail is left out of the request all the same, and evaluated in Calcite over what the request
-returns, so it fails where Calcite does: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1 AND
-JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, is not sent, and the query fails on a
-`body` that is no number. In a projected `CASE` condition such a conjunct is not evaluated, so the
-column answers where Calcite fails, and a `DELETE` of a whole partition (Chapter 13) beside one deletes
-the partition where Calcite fails (Chapter 23).
+adapter does not yet drop a conjunct through that cast. The plan keeps every conjunct as the query wrote
+it, so one Calcite evaluates fails where Calcite does: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS
+INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, is not sent, and the
+query fails on a `body` that is no number. One the service takes, and one in a projected `CASE`
+condition or beside a `DELETE` of a whole partition (Chapter 13), may answer where Calcite fails
+(Chapter 23).
 
 ### A predicate no document can satisfy
 
@@ -274,8 +273,7 @@ the request. These answer no rows where Calcite in process fails (Chapter 23):
 - through a connection that runs Calcite's default rules, as the README's does, a part kept in process
   that those rules read beside what the part sent holds: `JSON_VALUE(c."DOC", '$.flag' RETURNING
   BOOLEAN) AND ((JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN) IS NOT NULL OR
-  CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1) IS NOT TRUE)` makes no request; without the
-  `IS NOT TRUE`, it answers the rows the part sent keeps (Chapter 23);
+  CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1) IS NOT TRUE)` makes no request (Chapter 23);
 - a semi-join over a subquery that keeps nothing, which the adapter may answer by fetching the outer
   documents by the subquery's keys, of which there are none, so the condition beside the `IN` is never
   evaluated (Chapter 12.1); and a filter above such a join, which reads only the documents fetched;
@@ -283,6 +281,9 @@ the request. These answer no rows where Calcite in process fails (Chapter 23):
   it, so a filter that keeps nothing leaves it unevaluated;
 - a filter on a `DISTINCT`'s keys over a cast the `DISTINCT` computes, which the plan moves beneath the
   `DISTINCT` into the request.
+
+Through that connection, the second case's `WHERE` without the `IS NOT TRUE` answers the rows the part
+sent keeps, where Calcite fails (Chapter 23).
 
 And the other way: where Calcite in process answers no rows, these fail pushed down, with a schema or
 without (Chapter 23):
@@ -292,8 +293,7 @@ without (Chapter 23):
   where the adapter's lookup join reads the subquery first (Chapter 12.1); and an `EXISTS` whose
   subquery keeps nothing, beside a condition that can fail, which the plan evaluates first;
 - a part kept in process beside a part sent, which Calcite would have simplified together with a filter
-  above them: within one filter the part kept is what Calcite's simplification of the whole condition
-  evaluates beside the part sent, but under `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's
+  above them: under `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's
   `CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') IN ('A', 'B')`
   sends the `IN`, and the cast, evaluated in process
   beside `kind = 'C'` alone, fails on a `body` that is no number, where Calcite reads the three together
