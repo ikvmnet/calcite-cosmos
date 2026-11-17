@@ -161,8 +161,8 @@ Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an
 declaration with no bounds admits, and dropping the conjunct would answer where the query fails. The
 service returns a whole number within 64 bits as its digits however it was written, so the cast reads a
 stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
-adapter does not yet drop a conjunct through that cast. The plan keeps every conjunct as the query wrote
-it, so one Calcite evaluates fails where Calcite does: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS
+adapter does not yet drop a conjunct through that cast. The plan deletes no conjunct; only the request's
+text does, so one Calcite evaluates fails where Calcite does: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS
 INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, is not sent, and the
 query fails on a `body` that is no number. One the service takes, and one in a projected `CASE`
 condition or beside a `DELETE` of a whole partition (Chapter 13), may answer where Calcite fails
@@ -324,10 +324,11 @@ Of the ranges above, and of other casts:
 The first case of the list of answers above, where Calcite fails, is the split. Where part of a `WHERE`
 cannot be sent, the adapter sends the rest and keeps that part in process (Chapter 8.1), and the part
 kept reads only the rows the part sent returns. When the part sent keeps nothing, no row reaches the
-part kept, so it cannot fail; and since the service would find nothing, no request is made either.
-Beside the `status` above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body` declared
-a required string answers no rows, where Calcite fails (Chapter 23). Failing as Calcite does here
-would mean reading the whole container in process.
+part kept, and since the service would find nothing, no request is made either. Beside the `status`
+above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body` declared a required string
+answers no rows, where Calcite fails (Chapter 23). Failing as Calcite does here would mean reading the
+whole container in process. A part kept that fails before it reads a row, such as a type test of
+anything but `JSON_VALUE` or `JSON_QUERY` of a path (Appendix B.5), still fails as Calcite does.
 
 **What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
 and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does

@@ -65,9 +65,9 @@ rules out stays in process, one request goes out, reading the documents Calcite 
 `SUM` with no `GROUP BY` is sent, its `WHERE` written `false` where one filter alone keeps nothing,
 since it answers one row over no document; the sum goes beside a count and reads `NULL` where the count
 is 0, as in Calcite. Where a part
-that can fail stays in process beside a part sent that keeps nothing, there is no request and no
-failure: the part kept reads only the rows the part sent returns, and there are none (Chapter 14.2's
-last case). Chapters 14.2 and 7.
+that can fail on a row stays in process beside a part sent that keeps nothing, there is no request and
+no row for it to fail on; a type test of anything but a path still fails, before any row (Chapter
+14.2's last case). Chapters 14.2 and 7.
 
 **A filter that pushed before reads the whole container.**
 Watch `cosmos.rendering.declines` (Chapter 20). Its `unavailable` reason on a schema's first plans means

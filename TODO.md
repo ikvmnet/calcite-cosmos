@@ -1591,7 +1591,7 @@ old wording did not allow for.
 - **Binding the traversal element in `TryBindOutput`** — *small, and blocked on one measurement.*
   `CosmosUnnest.Implement` binds the element to its traversal alias; `TryBindOutput` leaves it
   unbound, so a rule deciding above a correlate sees a column with no path. A predicate no longer
-  needs this — `FILTER_CORRELATE` and `CosmosUnnestRule` between them push one that is written above
+  needs this — `CosmosFilterCorrelateRule` and `CosmosUnnestRule` between them push one that is written above
   the traversal — but a *projection* over the element still declines and would not have to. What
   stops the one-line change is that the same binding would let `CosmosAggregateRule` group by the
   element, and whether Azure accepts `GROUP BY t0` over `JOIN t0 IN c.tags` is unmeasured. `ORDER BY
@@ -1878,7 +1878,7 @@ oracle decides: an `IN` covering a required enum, a `<>` outside one, `IS NOT NU
 scalar, a range a `CAST(… AS DOUBLE)` reads inside the declared bounds, a disjunction holding a sibling
 for a branch. `required` is still the whole of the argument: a declared value says what a path holds *if
 it holds anything*, and a document with no `kind` keeps no row of `kind = 'A'`. Where every conjunct
-goes, the statement is sent with no `WHERE`; the plan keeps the filter as written, since 2026-11-15.
+goes, the statement is sent with no `WHERE`; the plan deletes none of the filter, since 2026-11-15.
 
 **The payoff this was predicted to have, it does not have, and that is worth recording.** This entry
 said it would unblock a point read, on the reasoning that `TryExtractPointRead` refuses any conjunct
@@ -2906,9 +2906,9 @@ across documents* and *A join of a container to itself* is the record.
 - **A residual beside a contradicted split loses its raise** — *left for a change of its own after "fail like
   Calcite": an answer where Calcite fails, never a wrong row.* `CosmosFilterSplitRule` writes the residual over the
   pushed filter, so the residual reads only the rows the pushed conjuncts keep. Where those contradict the declaration
-  alone and a conjunct kept above may raise, no row
-  reaches that conjunct and nothing fails, whether the pushed filter's request is left out or sent (the service finds
-  nothing). Beside `JSON_VALUE(c."DOC", '$.status') = 'deleted'` over a required
+  alone and a conjunct kept above may raise, no row reaches that conjunct, whether the pushed filter's request is left
+  out or sent (the service finds nothing); one that fails before it reads a row, a type test of anything but a document
+  accessor, fails as Calcite does. Beside `JSON_VALUE(c."DOC", '$.status') = 'deleted'` over a required
   `enum: ["active", "archived"]`, `RETURNING INTEGER` over a required string, `UPPER` and a comparison of two properties
   each answer no rows (`CosmosDeclaredFactPlanningTests.ThePartKeptInProcessReadsOnlyWhatTheSplitSends`); planned in
   process beside a contradicted `k`, so does each case "fail like Calcite" stopped reducing — a cast of the text to
@@ -2936,7 +2936,7 @@ across documents* and *A join of a container to itself* is the record.
   compared with a parameter beside `k = 'z'` or under a `NOT`; `RETURNING INTEGER` beside `k = 'z'`; a disjunction
   holding a cast to `INTEGER` beside a never-read arm (`(CAST(body AS INTEGER) = 1 OR kind IN ('A', 'B')) AND CASE WHEN
   kind = 'C' THEN … ELSE FALSE END`); and `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND kind = 'C'`, whose
-  residual after the split was deleted as redundant before the plan kept every conjunct as written. So do a cast
+  residual after the split was deleted as redundant before the plan stopped deleting conjuncts. So do a cast
   conjunct beside a never-read arm (`kind IN ('A', 'B') AND CAST(body AS INTEGER) >= -2147483648 AND CASE WHEN kind =
   'C' THEN CAST(n AS INTEGER) = 1 ELSE FALSE END`), and a filter casting text to `INTEGER` written over a subquery
   whose own `WHERE` the declaration contradicts (`SELECT … FROM (SELECT … WHERE kind = 'C') AS x WHERE
@@ -2951,7 +2951,7 @@ across documents* and *A join of a container to itself* is the record.
   over `VALUES` (valsj). So do windows: over winpart, winrank, winbelow, winff and wincase Calcite moves a filter on
   the partition key beneath the window, or drops a window nothing reads, and the filter that then meets the scan
   takes this route. So does a filter over a lateral or an `UNNEST` that reads only the left side's columns, which
-  Calcite's correlate rule moves into the left side: `(CAST(body AS INTEGER) = 1 AND k = 'C') OR (CAST(body AS
+  the correlate rule moves into the left side: `(CAST(body AS INTEGER) = 1 AND k = 'C') OR (CAST(body AS
   INTEGER) = 2 AND k = 'D')` over an `UNNEST` of `tags` whose left side keeps `k IN ('A', 'B')` (u3) sends the weaker
   form beside what the left side keeps and computes the casts above it, beneath the correlate. Each answers no rows
   with no request where Calcite fails on `"abc"`, and undeclared answers no rows after one request, the service
@@ -2976,20 +2976,26 @@ across documents* and *A join of a container to itself* is the record.
   merges the filters first and answers. The fix is the filter above read beside the predicates the half sent
   establishes, as `FILTER_REDUCE_EXPRESSIONS` reads a filter's pulled-up predicates, or the residual kept beside it; it
   moves plans of every such stack, and is its own change. Chapter 14.2 and Chapter 23 record it.
-- **A split over a computed projection or an `UNNEST` keeps what Calcite reads otherwise** — *medium, a failure where
-  Calcite answers, and an answer where it fails; older than "fail like Calcite", the same on `main`, and left for a
-  change of its own.* Measured on both emulators under both targets, declared and not, over documents of kind `A`
-  holding a `body` of `"abc"`. Over a projection whose `z` is the constant `'A'` and `bi` the cast of `body` to
-  `INTEGER`, `x.k = 'A' AND (x.z = 'A' OR x.bi = 1)` (p1) sends `kind = 'A'` and keeps the `OR` above the pushed
-  projection, over its columns, and fails on `"abc"`, where Calcite in process reads `x.z = 'A'` as true and answers;
-  so do v8, v11, v12, v13, v16, v17, v21, v22 and v24 beside the same constant. Over a `CASE` column `y`,
-  `x.k = 'A' AND (x.y IS NOT NULL OR x.bi = 1)` (v10) answers the rows the request returns where Calcite fails. Over an
-  `UNNEST` of `tags`, `m IS NOT NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1)` (u18): Calcite's correlate rule
-  moves `m IS NOT NULL` into the request and leaves the `OR` alone above, which fails on an element `"x"`, where Calcite
-  in process keeps the whole condition above the correlate and answers; declared, `main` answered, its deletion having
-  dropped the conjunct in the plan. The fix: over a projection, keep the residual as written only where its reading over
-  the columns is its reading through the expressions, and keep a pushed projection's computed columns visible to Calcite
-  above; above a correlate, read the part left beside the conjunct the correlate rule moved into its left side.
+- **A split over a computed projection keeps what Calcite reads otherwise** — *medium, a failure where Calcite answers,
+  and an answer where it fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.*
+  Measured on both emulators under both targets over documents of kind `A` holding a `body` of `"abc"`, declared and
+  not unless said. Over a projection whose `z` is the constant `'A'` and `bi` the cast of `body` to `INTEGER`,
+  `x.k = 'A' AND (x.z = 'A' OR x.bi = 1)` (p1) sends `kind = 'A'` and keeps the `OR` above the pushed projection, over
+  its columns, and fails on `"abc"`, where Calcite in process reads `x.z = 'A'` as true and answers; so do v11, v12,
+  v13, v16, v21, v22 and v24 beside the same constant, and, declared only, v8, v17 and `x.z = x.k AND (x.k = 'A' OR
+  x.bi = 1)` (p13). Over a `CASE` column `y`, `x.k = 'A' AND (x.y IS NOT NULL OR x.bi = 1)` (v10) answers the rows the
+  request returns where Calcite fails. The fix: keep the residual as written only where its reading over the columns is
+  its reading through the expressions, and keep a pushed projection's computed columns visible to Calcite above.
+- **A filter above a correlate answers where Calcite's own transposition fails** — *small, an answer where Calcite
+  fails, never a wrong row; left for a change of its own.* `CosmosFilterCorrelateRule` moves what Calcite's
+  `FILTER_CORRELATE` moves and leaves above what Calcite's simplification of the whole condition evaluates beside it, so
+  over an `UNNEST` of `tags`, `m IS NOT NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1)` keeps nothing above and
+  answers as Calcite in process does, where Calcite's rule left the `OR` above and it failed on an element `"x"` (u18,
+  u18d, u18e and u18f, and l18a over a lateral of `body`; declared, `main` answered through its deletion, and undeclared
+  failed). Calcite in process picks its own rule's plan by cost, and where it picks it fails on what that rule leaves:
+  measured offline in the host Chapter 21 describes, `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS
+  INTEGER) = 1)` (u18b) answers every row, declared and not, where Calcite with `FILTER_CORRELATE` fails on `"x"` and
+  Calcite without it answers. Failing as Calcite does there would mean reading Calcite's choice of plan.
 - **Through a connection, a filter above the half sent is reduced with what that half holds** — *small, an answer
   where Calcite fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.* Through a
   connection that runs Calcite's default rules, as the README's does, `FILTER_REDUCE_EXPRESSIONS` reduces the filter a
@@ -3004,8 +3010,13 @@ across documents* and *A join of a container to itself* is the record.
   Calcite would make*), and so is a split side read as false beside one: `SELECT a."id" FROM (SELECT c."id" FROM … AS c
   WHERE kind = 'A' AND NOT (kind IS NOT NULL OR CAST(body AS INTEGER) = 1)) AS a JOIN (SELECT d."id" FROM … AS d WHERE
   CAST(body AS INTEGER) = 7) AS b ON a."id" = b."id"` plans an empty `Values` and sends nothing, declared and not, under
-  both targets, where that connection's Calcite fails on `"abc"` (f4, `main` the same). The fix keeps the filter above from reading what the half sent holds as a predicate, which moves
-  that connection's plans. Chapter 14.2 and Chapter 23 record it.
+  both targets, where that connection's Calcite fails on `"abc"` (f4, `main` the same). So is a `CASE` whose planning
+  form is sent beside a disjunct its arm repeats: `CASE WHEN kind = 'A' THEN m = '1' ELSE FALSE END AND (m = '1' OR
+  CAST(body AS INTEGER) = 1)`, with `m` `"1"` or `"2"` (c1), sends `kind = 'A' AND m = '1'`, and the reduce reads the
+  `OR` away beside it, answering the rows the request returns where that connection's Calcite fails on `"abc"`, under
+  both targets (c1, c2, c5, c6 and c9 declared, c6 and c1x undeclared; `main` the same). The fix keeps the filter above
+  from reading what the half sent holds as a predicate, which moves that connection's plans. Chapter 14.2 and Chapter 23
+  record it.
 - **A filter on a grouping's key stays above a grouping that computes a cast** — *medium, a failure where Calcite
   answers no rows; plain pushdown's, with a declaration or without one, and with one new: `main` answered no rows.*
   `SELECT x.k, x.m FROM (SELECT kind AS k, MAX(CAST(body AS INTEGER)) AS m FROM … AS c WHERE n = '1' GROUP BY kind) AS
@@ -3045,7 +3056,7 @@ across documents* and *A join of a container to itself* is the record.
   true is deleted before a filter above it is read: `SELECT x."id" FROM (SELECT … WHERE kind <> 'C' OR CAST(body AS
   INTEGER) > 0) AS x WHERE kind = 'C'` (dm11), and the same with the `OR`'s operands swapped (dm12), answer no rows
   with no request where Calcite fails on `"abc"`, in the host Chapter 21 describes and on main alike, when the deletion
-  reached the plan. Since 2026-11-15 a deletion is the text's alone: the plan keeps the conjunct as written. Where it
+  reached the plan. Since 2026-11-15 a deletion is the text's alone: the plan keeps the conjunct. Where it
   stays in Calcite it fails as Calcite does: `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C')` with `kind` declared
   `A` or `B` sends no `WHERE` and raises on `"abc"` in both hosts, where `main` answered. Where the service takes it,
   it sits in the converted filter, whose text drops it, and nothing evaluates it, `main` the same; measured with
@@ -3198,7 +3209,11 @@ across documents* and *A join of a container to itself* is the record.
   to 14 seconds; its outer filter alone plans in 10; Calcite with the adapter's rules left out answers it at once. Not
   traced; the split, `FILTER_MERGE` and the residual the split leaves trying their combinations is the suspicion. The
   fix is the split terminating under `FILTER_MERGE`: not splitting a filter whose input is a logical filter the merge
-  folds into it, or a merge of a residual with its own half sent giving the original filter's digest.
+  folds into it, or a merge of a residual with its own half sent giving the original filter's digest. Measured offline
+  through that connection: a stack of four filters, each holding a pair such as
+  `code = '5' AND (CAST(code AS INTEGER) = 5 OR kind = 'A')` (deep3), plans in 120 seconds undeclared, where `main`
+  had not planned it after ten minutes; with a fifth (deep4) it plans in 113 seconds declared, and passes 600 undeclared,
+  `main` passing 600 both ways.
 - **A filter above a lookup join** — *medium, an empty answer where Calcite fails; left for a change of its own after
   "fail like Calcite".* `CosmosLookupJoin`
   fetches the probe side's documents by the build side's keys, and a filter the query wrote over the probe side above
@@ -3305,7 +3320,7 @@ across documents* and *A join of a container to itself* is the record.
   targets' plans (`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown`, and
   `ARunOverACorrelateSendsNoFormOfItsCondition` for the statements sent). gb6, recorded beside them from a run in
   process, fails as Calcite does against a service, before and since. A run that reads only the left side's columns is
-  not this entry's: Calcite's correlate rule moves it into the left side, where the split takes it (u3, under *A
+  not this entry's: the correlate rule moves it into the left side, where the split takes it (u3, under *A
   residual beside a contradicted split loses its raise*).
 - ~~**A split above a filter Calcite keeps pushes the service's form into Calcite**~~ — *done, 2026-11-16: the split
   fires only on a logical filter over an input that can be a Cosmos statement (`CosmosFilterSplitRule.Reaches`): this
@@ -3320,7 +3335,7 @@ across documents* and *A join of a container to itself* is the record.
   (`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). Through a connection that merges filters, `FILTER_MERGE`
   carried a split's weaker forms up beside the conjuncts they weaken, and a split of the merged filter left them in a
   filter Calcite evaluates: `code = '5' AND (CAST(code AS INTEGER) = 5 OR kind = 'A')`, nothing declared, failed so
-  where Calcite answers, new since the plan kept every conjunct as written. Also done, 2026-11-16: the split leaves
+  where Calcite answers, new since the plan stopped deleting conjuncts. Also done, 2026-11-16: the split leaves
   above nothing that holds the service's form (`CosmosOperators.HoldsServiceForm`;
   `CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`).
 - **An `ANY` column ordered against a parameter raises over every value** — *small, precision.* Its parameter key joins

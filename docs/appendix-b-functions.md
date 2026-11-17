@@ -135,8 +135,7 @@ the service and has no in-process body*: a promoted column such as `c."$.categor
 item taken with `[…]`, a cast, or a function's result such as `UPPER(JSON_VALUE(c."DOC", '$.name'))`. A
 filter holding one fails as it fails in Calcite, even where the schema says no document satisfies it:
 the adapter does not send it for the service to answer in Calcite's place, nor answer it with no rows
-(Chapter 14.2), unless a part of the filter it sends is one the schema rules out alone (Chapter 23).
-Test the path instead — `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`, or
+(Chapter 14.2). Test the path instead — `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`, or
 `'$.tags[0]'` for an element.
 
 ## B.6 Full text and vector (Cosmos functions)

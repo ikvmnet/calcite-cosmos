@@ -348,10 +348,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// A text equality beside a cast of the same path to <c>INTEGER</c>, nothing declared: what Calcite evaluates holds no
-        /// Cosmos type test, which it has no body for. This connection's filter merge carried a split's weaker forms up
-        /// beside the conjuncts they weaken, a split of that left them above, and the statement failed with "cannot
-        /// translate call IS_NUMBER" where Calcite answers. Each runs over documents on which nothing raises.
+        /// A text equality beside a cast of the same path to <c>INTEGER</c>, nothing declared: no Calcite line holds
+        /// <c>IS_NUMBER</c> or <c>IS_DEFINED</c>, and over documents on which nothing raises the plan answers Calcite's rows.
         /// </summary>
         [Theory]
         [InlineData("g1", """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.code') = '5' AND (CAST(JSON_VALUE(c."DOC", '$.code') AS INTEGER) = 5 OR JSON_VALUE(c."DOC", '$.kind') = 'A')""", "1,3")]

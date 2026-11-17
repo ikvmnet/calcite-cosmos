@@ -1292,13 +1292,13 @@ merge the two filters, failed so with "cannot translate call IS_NUMBER" where Ca
 declared a number since the split read the planning form, and over one nothing declares on `main` too
 (`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). So did one over a lateral, an `UNNEST` or a
 scalar sub-query beside or over such a cast while any member that was no filter counted as reaching: the correlate is
-no part of a statement, and Calcite's correlate rule moved the half pushed into its left side, beside the cast
+no part of a statement, and the correlate rule moved the half pushed into its left side, beside the cast
 (`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). A run over a lateral or a scalar sub-query, naming kinds its
 left side does not keep, sent the left side the run's weaker form the same way, `kind IN ('C', 'D')` beside pc1's own
 `kind IN ('A', 'B')` and `kind IN ('B', 'C')` beside pc2's and pc5's `kind = 'A'`, whose request then kept nothing,
 and answered no rows where Calcite fails on the cast the correlate computes (pc1, pc2, pc4, pc5); it now fails as
 Calcite does, declared and not (`ARunOverACorrelateSendsNoFormOfItsCondition`). A run that reads only the left side's
-columns is not this: Calcite's correlate rule moves it into the left side, where the filter reaches the service and
+columns is not this: the correlate rule moves it into the left side, where the filter reaches the service and
 the split takes it, keeping its cast over the part sent (u3; `TODO.md`, *A residual beside a contradicted split loses
 its raise*). Which rule converts a member is the question that rule asks of it, legality.
 
@@ -1319,9 +1319,20 @@ connection that merges filters, `FILTER_MERGE` carried a split's weaker forms up
 split of the merged filter left them in a filter Calcite evaluates, which failed with "cannot translate call IS_NUMBER"
 where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). What it does not reach is `TODO.md`'s:
 a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a projection
-whose columns the service computes, and an `UNNEST` (*A split over a computed projection or an UNNEST keeps what Calcite
-reads otherwise*); and, through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above
-(*Through a connection, a filter above the half sent is reduced with what that half holds*).
+whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*); and,
+through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
+connection, a filter above the half sent is reduced with what that half holds*).
+
+**What a filter above a correlate leaves there is read the same way.** `CosmosFilterCorrelateRule` moves into a side
+what Calcite's `FILTER_CORRELATE` moves, and leaves above `Residual`'s reading of the condition beside the conjuncts
+moved, which are true on every row the correlate returns. Calcite's rule left the rest as written, so over an `UNNEST`
+of `tags`, `m IS NOT NULL AND (m IS NOT NULL OR CAST(u.t AS INTEGER) = 1)` sent `m IS NOT NULL`, or with `m` declared
+required nothing, and cast each element above, failing on `"x"` where Calcite in process answers (u18; a lateral's
+`body` the same, l18a); it keeps nothing above now. It does not fire where all it would move is applied beneath
+already, so a condition kept as it stands above is not moved again. Calcite in process picks its own rule's plan by
+cost, and where it picks it fails on what that rule leaves: `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS
+INTEGER) = 1)` answers the rows where Calcite fails (`TODO.md`, *A filter above a correlate answers where Calcite's own
+transposition fails*).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -1353,7 +1364,7 @@ still does, with a declaration or without one; the declaration saves the request
 same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; a
 semi-join answered by a lookup join; a condition above a lookup join; a select list's cast computed above a sort and the
 filters over it (sf3w); and a filter on a `DISTINCT`'s keys moved beneath it over a cast the `DISTINCT` computes
-(dk1). A conjunct the declaration makes true, deleted from the text though it can fail, is kept in the plan as written,
+(dk1). A conjunct the declaration makes true, deleted from the text though it can fail, is kept in the plan,
 so where it stays in Calcite it fails as Calcite does; one the service takes is evaluated by nothing, nor is one in a
 projected `CASE` condition or beside a whole-partition delete, which reads it as saying nothing else (`TODO.md`, *A deletion stops evaluating a conjunct that
 may raise*, *A whole-partition delete reads a conjunct that may fail as nothing else*).
@@ -2378,16 +2389,18 @@ the logical and the converted subtree and holds the two answers equal.
 writes such a predicate above the correlate, where `CosmosUnnestRule` cannot see it and the element
 has no document path a filter above the traversal could name — so it stayed outside the statement and
 every element of every document crossed the wire to be discarded in process.
-`CoreRules.FILTER_CORRELATE` pushes it into the correlate, between the traversal and the uncollect,
-which is the shape the rule recognises; the rule lifts it back out as a `CosmosFilter` over the
-`CosmosUnnest`, addressing the element by the ordinal the traversal binds to its alias. The clause
-order does the rest: `JOIN` then `WHERE` is exactly traverse-then-restrict.
+`CosmosFilterCorrelateRule` pushes it into the correlate, between the traversal and the uncollect, as
+Calcite's `FILTER_CORRELATE` does, which is the shape the rule recognises; the rule lifts it back out
+as a `CosmosFilter` over the `CosmosUnnest`, addressing the element by the ordinal the traversal binds
+to its alias. The clause order does the rest: `JOIN` then `WHERE` is exactly traverse-then-restrict.
 
 A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which is why the shape the
-rule reads is the shape a host produces. It is registered here for the reason the other Calcite
-rewrites are — a bare Volcano planner has none of them, and a pushdown must not depend on which rules
-a caller happened to add. Where the predicate does not render, the untransposed plan survives the
-transformation and the traversal still pushes with the predicate above it.
+rule reads is the shape a host produces. The adapter registers its own for the reason the other
+Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
+depend on which rules a caller happened to add — and it moves what Calcite's moves, but leaves above
+what Calcite's simplification of the whole condition evaluates beside it (*What a filter above a
+correlate leaves there is read the same way*). Where the predicate does not render, the untransposed
+plan survives the transformation and the traversal still pushes with the predicate above it.
 
 **A projection is not on that list, and it used to be.** `SELECT` runs *after* `JOIN`, so a
 projection below a traversal is written into the clause the service evaluates last: the object it
@@ -5800,6 +5813,7 @@ src/
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
       Convert/CosmosUncorrelatedProjectMergeRule.cs ✔ A projection declaring a correlation variable it never reads, merged
+      Convert/CosmosFilterCorrelateRule.cs ✔ A filter's one-sided conjuncts moved into a correlate, the rest as Calcite reads it
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔
@@ -6741,8 +6755,9 @@ evaluating a conjunct that may raise*).
 
 *Not covered: the split.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads
 only the rows the pushed conjuncts keep. Where those contradict the declaration alone, no row reaches a residual that
-may raise, and it fails on nothing, whether the pushed filter's request is left out or sent (the service finds
-nothing). Leaving it out saves only the request: gating it on the whole condition would send the request and answer
+may raise, whether the pushed filter's request is left out or sent (the service finds nothing); one that fails before
+it reads a row, a type test of anything but a document accessor, fails as Calcite does. Leaving it out saves only the
+request: gating it on the whole condition would send the request and answer
 the same. Failing as Calcite does means keeping such a filter whole in Calcite, a full read, which is a planning
 choice and not this gate's (`TODO.md`, *A residual beside a contradicted split loses its raise*). It is no regression:
 before the gate the whole filter was reduced too.

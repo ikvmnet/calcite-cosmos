@@ -301,9 +301,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The split does not split what it keeps above the half sent again once everything it would push is applied
-        /// beneath, and keeps no conjunct sent above it: these planned without end, the split firing on its own outer until
-        /// the stack overflowed, declared or not. Each plans within a bound, under both targets.
+        /// Each plans within the bound, declared and not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("q121")]
