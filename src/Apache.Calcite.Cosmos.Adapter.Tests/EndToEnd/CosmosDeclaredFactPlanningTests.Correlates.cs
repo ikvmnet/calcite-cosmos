@@ -243,8 +243,164 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "px5c" => $"""SELECT COUNT(*) AS q FROM {px}, {more} WHERE {cast} AND v.s IS NOT NULL""",
                 "pz2" => $"""SELECT x."id", x.t, v.s FROM {px}, {more} WHERE CAST(x.t AS INTEGER) > 0 AND v.s IS NOT NULL""",
                 "pz4" => $"""SELECT x."id", x.t, l.k2 FROM {px} CROSS JOIN LATERAL (SELECT {J("x", "kind")} AS k2 FROM (VALUES (1)) AS w(x0)) AS l WHERE {cast} AND l.k2 IS NOT NULL""",
+                _ => BesideAGrouping(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a <c>WHERE</c> over a lateral whose side groups another traversal by
+        /// grouping sets, by keys beside a <c>ROLLUP</c> or a <c>CUBE</c>, or by one grouping set.
+        /// </summary>
+        static string BesideAGrouping(string name, string t)
+        {
+            static string J(string a, string p) => $"""JSON_VALUE({a}."DOC", '$.{p}')""";
+            var tags = $"""UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t)""";
+            var m = J("c", "m");
+            var k = J("c", "kind");
+            var some = """CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0) WHERE x."id" <> '2') AS l""";
+            var ork = """x."id" = '1' AND (x."id" = '2' OR CAST(x.t AS INTEGER) = 1)""";
+            var z = $"""(SELECT c."id" AS "id", u.t AS t, {m} AS mm, {k} AS kk FROM {t} AS c, {tags}) AS z""";
+            var body = $"(SELECT {J("c", "body")} AS t FROM (VALUES (1)) AS w0(x0) WHERE {m} = '1') AS l";
+            var lat = """CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0) WHERE x."id" <> '5') AS l2""";
+            var orl = """x."id" = '1' AND (x."id" = '2' OR CAST(x.t AS INTEGER) = 7)""";
+            string S(string select, string from, string groupBy) => $"""(SELECT {select} FROM {from} GROUP BY {groupBy}) AS x""";
+            string Q(string x, string where) => $"""SELECT x."id", x.t, l.t2 FROM {x} {some} WHERE {where}""";
+            string QC(string x, string where) => $"""SELECT COUNT(*) AS q FROM {x} {some} WHERE {where}""";
+            var sets = $"""GROUPING SETS ((c."id", u.t), (c."id", u.t, {k}))""";
+            var gs1 = S($"""c."id", u.t, {m} AS m""", $"{t} AS c, {tags}", $"""GROUPING SETS ((c."id", u.t), (c."id", u.t, {m}))""");
+            var gs3 = S($"""c."id", u.t, {k} AS k""", $"{t} AS c, {tags}", $"""GROUPING SETS ((c."id", u.t, {k}), (c."id", u.t))""");
+            var gso = S("""c."id", u.t""", $"{t} AS c, {tags}", sets);
+            var gro = S("""c."id", u.t""", $"{t} AS c, {tags}", $"""c."id", u.t, ROLLUP({k})""");
+            var gwo = S("""c."id", u.t""", $"{t} AS c, {tags} WHERE {m} IS NOT NULL", sets);
+            var gsl = S("""c."id", u.t""", $"{t} AS c LEFT JOIN {tags} ON TRUE", sets);
+            var gsk = S($"""c."id", u.t, {k} AS k""", $"{t} AS c, {tags}", $"""GROUPING SETS ((c."id", u.t, {k}), (c."id", u.t, {k}, {m}))""");
+            var gl1 = S($"""c."id", l.t, {k} AS k""", $"{t} AS c CROSS JOIN LATERAL {body}", $"""GROUPING SETS ((c."id", l.t), (c."id", l.t, {k}))""");
+            var onk = """CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0) WHERE x.k = 'A') AS l""";
+            var ork2 = "x.k = 'A' AND (x.k = 'B' OR CAST(x.t AS INTEGER) = 1)";
+            return name switch
+            {
+                "gs1" => Q(gs1, ork),
+                "gs1c" => QC(gs1, ork),
+                "gs3" => Q(gs3, ork),
+                "gs4" => Q(S("""c."id", u.t""", $"{t} AS c, {tags}", """ROLLUP (c."id", u.t)"""), ork),
+                "gs5" => Q(S("""c."id", u.t""", $"{t} AS c, {tags}", """GROUPING SETS ((c."id", u.t))"""), ork),
+                "gl1" => $"""SELECT x."id", x.t, l2.t2 FROM {gl1} {lat} WHERE {orl}""",
+                "gl1c" => $"""SELECT COUNT(*) AS q FROM {gl1} {lat} WHERE {orl}""",
+                "gs5p" => Q(S("""c."id", u.t""", $"{t} AS c, {tags}", $"""GROUPING SETS ((c."id", u.t), (c."id", u.t, {m}))"""), ork),
+                "gs7" => Q(S("""z."id", z.t""", z, """z."id", z.t, ROLLUP(z.mm)"""), ork),
+                "gso" => Q(gso, ork),
+                "gsoc" => QC(gso, ork),
+                "gro" => Q(gro, ork),
+                "groc" => QC(gro, ork),
+                "gwo" => Q(gwo, ork),
+                "gwoc" => QC(gwo, ork),
+                "gsl" => Q(gsl, ork),
+                "gslc" => QC(gsl, ork),
+                "gsk" => $"""SELECT x."id", x.k, l.t2 FROM {gsk} {onk} WHERE {ork2}""",
+                "gskc" => $"""SELECT COUNT(*) AS q FROM {gsk} {onk} WHERE {ork2}""",
+                "wr" => $"""SELECT x."id", x.t, l.t2, x.rn FROM (SELECT c."id", u.t, ROW_NUMBER() OVER (PARTITION BY c."id", u.t ORDER BY u.t) AS rn FROM {t} AS c, {tags}) AS x {some} WHERE {ork}""",
+                "wr2" => $"""SELECT x."id", x.t, l.t2, x.rn FROM (SELECT c."id", u.t, ROW_NUMBER() OVER (PARTITION BY c."id" ORDER BY u.t) AS rn FROM {t} AS c, {tags}) AS x {some} WHERE {ork}""",
+                "wj2" => $"""SELECT x."id", x.t, l.t2 FROM (SELECT c."id", u.t FROM {t} AS c CROSS JOIN {tags} JOIN {t} AS d ON d."id" = c."id") AS x {some} WHERE {ork}""",
+                "wm6" => $"""SELECT x."id", x.t, l.t2 FROM (SELECT y."id", y.t FROM (SELECT c."id", u.t FROM {t} AS c, {tags}) AS y TABLESAMPLE BERNOULLI(50) REPEATABLE(7)) AS x {some} WHERE {ork}""",
+                _ => BesideTwoCorrelates(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a <c>WHERE</c> over a traversal or a lateral of a sub-query that holds its
+        /// own <c>WHERE</c> over another, the outer one holding a conjunct of the document that decides the rest and the
+        /// sub-query's none (ws1 to ws5, ws8 and their <c>COUNT</c>s); neither holding one (ws6); and the sub-query's alone
+        /// (ws7).
+        /// </summary>
+        static string BesideTwoCorrelates(string name, string t)
+        {
+            static string J(string a, string p) => $"""JSON_VALUE({a}."DOC", '$.{p}')""";
+            static string Q(string a, string p) => $"""JSON_QUERY({a}."DOC", '$.{p}' RETURNING VARCHAR ARRAY)""";
+            var xn = """JSON_VALUE(x."DOC", '$.n' RETURNING INTEGER)""";
+            var xb = J("x", "body");
+            var k = J("c", "kind");
+            var un = $"UNNEST({Q("c", "tags")}) AS u(t)";
+            var more = $"UNNEST({Q("x", "more")}) AS v(s)";
+            var lateral = $"CROSS JOIN LATERAL (SELECT {J("x", "s")} AS s FROM (VALUES (1)) AS w(x0) WHERE {J("x", "s")} IS NOT NULL) AS v";
+            string U(string where) => $"""(SELECT c."id", c."DOC", u.t FROM {t} AS c, {un} WHERE {where}) AS x""";
+            string S(string sub, string where) => $"""SELECT x."id", x.t, v.s FROM {sub}, {more} WHERE {where}""";
+            string SC(string sub, string where) => $"""SELECT COUNT(*) AS q FROM {sub}, {more} WHERE {where}""";
+            var w = $"CAST({J("c", "w")} AS INTEGER) > 50";
+            var inner = $"CAST(u.t AS INTEGER) = 1 AND {w}";
+            var outer = $"CAST({xb} AS INTEGER) = 7 AND {xn} > 50 AND ({xn} > 40 OR v.s = '1')";
+            var swapped = $"({xn} > 40 OR v.s = '1') AND {xn} > 50 AND CAST({xb} AS INTEGER) = 7";
+            var l = $"""(SELECT c."id", c."DOC", l.t FROM {t} AS c CROSS JOIN LATERAL (SELECT {J("c", "m")} AS t FROM (VALUES (1)) AS w0(x0)) AS l WHERE CAST(l.t AS INTEGER) = 1 AND {w}) AS x""";
+            var ul = $"""(SELECT c."id", c."DOC", u.t FROM {t} AS c LEFT JOIN {un} ON TRUE WHERE {inner}) AS x""";
+            var byKind = $"CAST({xb} AS INTEGER) = 7 AND {J("x", "kind")} = 'A' AND ({J("x", "kind")} = 'B' OR v.s = 'a')";
+            var decides = $"{k} = 'A' AND ({k} = 'B' OR u.t = '1')";
+            return name switch
+            {
+                "ws1" => S(U(inner), outer),
+                "ws1c" => SC(U(inner), outer),
+                "ws2" => S(U($"{w} AND CAST(u.t AS INTEGER) = 1"), swapped),
+                "ws2c" => SC(U($"{w} AND CAST(u.t AS INTEGER) = 1"), swapped),
+                "ws3" => S(l, outer),
+                "ws3c" => SC(l, outer),
+                "ws4" => $"""SELECT x."id", x.t, v.s FROM {U(inner)} {lateral} WHERE {outer}""",
+                "ws4c" => $"""SELECT COUNT(*) AS q FROM {U(inner)} {lateral} WHERE {outer}""",
+                "ws5" => S(U(inner), byKind),
+                "ws5c" => SC(U(inner), byKind),
+                "ws8" => S(ul, outer),
+                "ws8c" => SC(ul, outer),
+                "ws6" => S(U(inner), $"CAST({xb} AS INTEGER) = 7 AND v.s = 'a'"),
+                "ws6c" => SC(U(inner), $"CAST({xb} AS INTEGER) = 7 AND v.s = 'a'"),
+                "ws7" => S(U(decides), $"CAST({xb} AS INTEGER) = 7 AND v.s IS NOT NULL"),
+                "ws7c" => SC(U(decides), $"CAST({xb} AS INTEGER) = 7 AND v.s IS NOT NULL"),
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
+        }
+
+        /// <summary>
+        /// <c>kind</c> is <c>A</c> or <c>B</c> and <c>body</c> a string, both required; <c>n</c> an integer from 0 to 100;
+        /// <c>m</c> and <c>s</c> strings; <c>tags</c> and <c>more</c> arrays of strings.
+        /// </summary>
+        internal const string TwoTraversals = """{ "type": "object", "required": ["kind", "body"], "properties": { "kind": { "enum": ["A", "B"] }, "m": { "type": "string" }, "n": { "type": "integer", "minimum": 0, "maximum": 100 }, "body": { "type": "string" }, "s": { "type": "string" }, "tags": { "type": "array", "items": { "type": "string" } }, "more": { "type": "array", "items": { "type": "string" } } } }""";
+
+        /// <summary>
+        /// What <see cref="TwoTraversals"/> admits: a document of kind <c>B</c> holding an element and an <c>m</c> of
+        /// <c>"x"</c>; one of kind <c>A</c> with a <c>body</c> of <c>"zz"</c> and nothing in <c>more</c>; and one of kind
+        /// <c>A</c> whose every cast reads.
+        /// </summary>
+        internal static readonly string[] TwoTraversalsDocuments =
+        [
+            """{"id":"1","category":"a","kind":"B","m":"x","w":10,"tags":["x"],"body":"5","n":10,"more":["b"],"s":"b"}""",
+            """{"id":"2","category":"a","kind":"A","m":"1","w":60,"tags":["1"],"body":"zz","n":60}""",
+            """{"id":"3","category":"b","kind":"A","m":"1","w":60,"tags":["1"],"body":"7","n":60,"more":["a"],"s":"a"}""",
+        ];
+
+        /// <summary>
+        /// A statement is planned with Calcite's transposition at every correlate or at none: where the <c>WHERE</c> over a
+        /// traversal or a lateral of a sub-query would not be transposed, the sub-query's own <c>WHERE</c> over a traversal
+        /// is not either, so ws1 to ws5, ws8 and their <c>COUNT</c>s fail on the element <c>"x"</c> as Calcite with no
+        /// transposition does, where moving the sub-query's alone answered; ws6, whose two are both transposed, fails on the
+        /// <c>body</c> <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does; and ws7, whose sub-query's is not, answers
+        /// as Calcite with no transposition does, declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("ws1", "raises x")]
+        [InlineData("ws1c", "raises x")]
+        [InlineData("ws2", "raises x")]
+        [InlineData("ws2c", "raises x")]
+        [InlineData("ws3", "raises x")]
+        [InlineData("ws3c", "raises x")]
+        [InlineData("ws4", "raises x")]
+        [InlineData("ws4c", "raises x")]
+        [InlineData("ws5", "raises x")]
+        [InlineData("ws5c", "raises x")]
+        [InlineData("ws8", "raises x")]
+        [InlineData("ws8c", "raises x")]
+        [InlineData("ws6", "raises zz")]
+        [InlineData("ws6c", "raises zz")]
+        [InlineData("ws7", "3,1,a")]
+        [InlineData("ws7c", "1")]
+        public async Task AStatementIsTransposedAtEveryCorrelateOrAtNone(string name, string rows)
+        {
+            await Answers(name, rows, TwoTraversals, TwoTraversalsDocuments);
         }
 
         /// <summary>
@@ -300,7 +456,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// lateral np8, np10 over a lateral, nq1 and px5 over a sub-query's <c>WHERE</c>, nt1 through two projections, nd1
         /// beside an <c>EXISTS</c>, ag1 through a grouping, h1pl, h8pll and h8pld over a lateral traversed again, pz2, pz4
         /// and the <c>COUNT</c>s cast no element or <c>body</c> of a kind the condition rules out, and answer the rows it
-        /// keeps, as c2 and h3, the same conditions with no sub-query, do, declared or not, under both targets.
+        /// keeps, as c2 and h3, the same conditions with no sub-query, do, declared or not, under both targets. So do the
+        /// groupings by grouping sets, by keys beside a <c>ROLLUP</c> and by one grouping set, past which Calcite's rule
+        /// carries a conjunct whose columns every set holds: gs1, gs3, gs5, gs5p, gs7, gso, gro, gwo beside a sub-query's
+        /// <c>WHERE</c>, gsl over a <c>LEFT JOIN</c>, gsk, the lateral gl1 and the <c>COUNT</c>s; and gs4, a <c>ROLLUP</c>
+        /// of every key, which no column of every set lets the conjuncts pass, fails on <c>"x"</c> as Calcite with
+        /// <c>FILTER_CORRELATE</c> does.
         /// </summary>
         [Theory]
         [InlineData("np1", "n", "1,1,1;3,1,2")]
@@ -315,6 +476,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("c2", "n", "1,1,1;3,1,2")]
         [InlineData("ag1", "n", "1,1,1")]
         [InlineData("ag1c", "n", "1")]
+        [InlineData("gs1", "n", "1,1,1;1,1,1")]
+        [InlineData("gs1c", "n", "2")]
+        [InlineData("gs3", "n", "1,1,1;1,1,1")]
+        [InlineData("gs4", "n", "raises x")]
+        [InlineData("gs5", "n", "1,1,1")]
+        [InlineData("gl1", "n", "1,7,7;1,7,7")]
+        [InlineData("gl1c", "n", "2")]
+        [InlineData("gs5p", "n", "1,1,1;1,1,1")]
+        [InlineData("gs7", "n", "1,1,1;1,1,1")]
+        [InlineData("gso", "n", "1,1,1;1,1,1")]
+        [InlineData("gsoc", "n", "2")]
+        [InlineData("gro", "n", "1,1,1;1,1,1")]
+        [InlineData("groc", "n", "2")]
+        [InlineData("gwo", "n", "1,1,1;1,1,1")]
+        [InlineData("gwoc", "n", "2")]
+        [InlineData("gsl", "n", "1,1,1;1,1,1")]
+        [InlineData("gslc", "n", "2")]
+        [InlineData("gsk", "n", "1,A,1;1,A,1;3,A,1;3,A,1")]
+        [InlineData("gskc", "n", "4")]
         [InlineData("h1pl", "h", "1,2")]
         [InlineData("h1plc", "h", "1")]
         [InlineData("h8pll", "h", "1,2")]

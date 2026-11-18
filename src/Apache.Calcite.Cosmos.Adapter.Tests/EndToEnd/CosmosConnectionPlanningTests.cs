@@ -432,6 +432,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Through this connection, whose rules carry a filter past a window's partition keys, into a join's inputs and past
+        /// a sample, the conjuncts a <c>WHERE</c> over a lateral would move into its side are read at the traversal they
+        /// reach beneath such a member: where they decide what Calcite reads of the cast beside them there, as in wr, wj2
+        /// and wm6, nothing in the statement is transposed and the traversal's filter on <c>id</c> stays above it; where the
+        /// window passes only <c>id</c>, as in wr2, it is moved beneath the traversal, declared and not.
+        /// </summary>
+        [Theory]
+        [InlineData("wr", true)]
+        [InlineData("wj2", true)]
+        [InlineData("wm6", true)]
+        [InlineData("wr2", false)]
+        public void AConjunctCarriedPastAWindowAJoinOrASampleIsReadAtTheTraversalBeneath(string name, bool above)
+        {
+            foreach (var declared in new[] { true, false })
+            {
+                var plan = Explain(CosmosDeclaredFactPlanningTests.BesideACorrelate(name, "items"), declared, CosmosDeclaredFactPlanningTests.Traversed);
+                var lines = plan.Split('\n');
+                var unnest = System.Array.FindIndex(lines, l => l.Contains("CosmosUnnest", StringComparison.Ordinal));
+                var filter = System.Array.FindIndex(lines, l => l.Contains("CosmosFilter(condition=[=($", StringComparison.Ordinal) && l.Contains("'1')", StringComparison.Ordinal));
+                unnest.Should().BeGreaterThanOrEqualTo(0, $"{name} declared {declared}: " + plan);
+                filter.Should().BeGreaterThanOrEqualTo(0, $"{name} declared {declared}: " + plan);
+                (filter < unnest).Should().Be(above, $"{name} declared {declared}: " + plan);
+            }
+        }
+
+        /// <summary>
         /// <see cref="CosmosDeclaredFactPlanningTests.AConditionKeptAboveTheHalfSentIsNotSplitAgain"/> through this
         /// connection: each plans within the same bound, declared and not, under both targets.
         /// </summary>

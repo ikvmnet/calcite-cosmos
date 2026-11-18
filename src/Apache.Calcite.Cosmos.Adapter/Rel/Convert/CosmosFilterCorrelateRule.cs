@@ -2,18 +2,22 @@ using System.Collections.Generic;
 using System.Linq;
 
 using org.apache.calcite.plan;
+using org.apache.calcite.plan.hep;
+using org.apache.calcite.plan.volcano;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
+using org.apache.calcite.rel.logical;
+using org.apache.calcite.rel.rules;
+using org.apache.calcite.rel.type;
 using org.apache.calcite.rex;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 {
 
     /// <summary>
-    /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, where every conjunct of Calcite's simplification of
-    /// what that rule leaves above the correlate after its last firing is a conjunct of Calcite's simplification of the
-    /// whole condition, and its firings over a correlate the filter it writes into a side reaches, through a projection, a
-    /// grouping's keys or a filter, are taken alike; elsewhere, and where the whole reads as false, it moves nothing.
+    /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, wherever every filter of the statement the planner
+    /// plans, at every correlate the planner's rules carry it onto, would be transposed by its test; and nowhere in a
+    /// statement where one would not.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -57,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return;
 
             var rexBuilder = correlate.getCluster().getRexBuilder();
-            if (Sql.CosmosOperators.HoldsServiceForm(filter.getCondition()) == false && Transposes(rexBuilder, correlate, filter.getCondition(), above, left, right) == false)
+            if (Sql.CosmosOperators.HoldsServiceForm(filter.getCondition()) == false && Statement(call.getPlanner(), rexBuilder, filter) == false)
                 return;
 
             // Calcite's rule, as it writes it.
@@ -75,6 +79,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             builder.filter(RexUtil.fixUp(rexBuilder, above, RelOptUtil.getFieldTypeList(builder.peek().getRowType())));
             call.transformTo(builder.build());
         }
+
+        /// <summary>
+        /// Determines whether the statement the planner plans takes Calcite's transposition: every filter of it as registered,
+        /// and every join's condition, at every correlate the planner's rules carry it onto, is transposed there by
+        /// <see cref="Walk.Transposes"/>.
+        /// </summary>
+        /// <remarks>
+        /// Read off the planner's root as registered, the tree the query was converted to, so every firing over one statement
+        /// answers alike; a planner with no root is read from the filter.
+        /// </remarks>
+        static bool Statement(RelOptPlanner planner, RexBuilder rexBuilder, Filter filter)
+        {
+            var walk = new Walk(rexBuilder, planner);
+            var seen = CosmosPlanMembers.NewSeen();
+            var pending = new Stack<RelNode>();
+            pending.Push(Original(planner.getRoot() ?? filter));
+            while (pending.Count > 0)
+            {
+                var node = pending.Pop();
+                if (seen.Add(node) == false)
+                    continue;
+
+                if (node is Filter own && walk.Reaches(own.getInput(), RelOptUtil.conjunctions(own.getCondition()), false, 0, CosmosPlanMembers.NewSeen()) == false)
+                    return false;
+
+                // A join's own condition, which the planner's rules may carry into its inputs as a filter.
+                if (node is Join && walk.Carried(node, new java.util.ArrayList(), false).Any(c => walk.Reaches(c.Input, c.Conjuncts, false, 0, CosmosPlanMembers.NewSeen()) == false))
+                    return false;
+
+                var inputs = node.getInputs();
+                for (var i = 0; i < inputs.size(); i++)
+                    pending.Push(Original((RelNode)inputs.get(i)));
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the node a registered input stands for as the query was converted: an equivalence set's original, a vertex's
+        /// current node, or the node itself.
+        /// </summary>
+        static RelNode Original(RelNode node) => node switch
+        {
+            RelSubset subset => subset.getOriginal() ?? node,
+            HepRelVertex vertex => vertex.getCurrentRel(),
+            _ => node,
+        };
 
         /// <summary>
         /// Classifies a condition's conjuncts as Calcite's rule does: one naming a correlation variable stays above, and of the
@@ -103,157 +154,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether Calcite's transposition is taken: Calcite's simplification of the whole condition, unknown read
-        /// as false, reads it as false neither as written nor as Calcite's builder writes it; every conjunct of that
-        /// simplification of what Calcite's rule leaves above after its last firing is a conjunct of that simplification of
-        /// the whole as the builder writes it, compared as Calcite compares expressions; and where the filter a firing writes
-        /// into a side reaches a correlate, the transposition of it there is taken too.
-        /// </summary>
-        /// <remarks>
-        /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
-        /// and a side's filter as Calcite's rule fires on it next, where Calcite's rules carry it, so each firing over the
-        /// filters this one writes decides as this one does.
-        /// </remarks>
-        static bool Transposes(RexBuilder rexBuilder, Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth = 0)
-        {
-            var simplify = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
-            if (depth == Firings || simplify.simplifyUnknownAsFalse(condition).isAlwaysFalse())
-                return false;
-
-            var whole = simplify.simplifyFilterPredicates(java.util.Collections.singletonList(condition));
-            if (whole is null || simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse())
-                return false;
-
-            // Each firing's builder writes what is left above as Calcite's RelBuilder does, and the next firing moves what of
-            // that reads one side; a rest the builder writes as false, or firings past the bound, move nothing.
-            var rest = simplify.simplifyFilterPredicates(above);
-            for (var firing = 1; ; firing++)
-            {
-                if (Side(rexBuilder, simplify, correlate.getLeft(), left, depth) == false || Side(rexBuilder, simplify, correlate.getRight(), right, depth) == false)
-                    return false;
-
-                if (rest is null)
-                    return false;
-
-                (above, left, right) = Classify(correlate, rest);
-                if (left.isEmpty() && right.isEmpty())
-                    break;
-
-                if (firing == Firings)
-                    return false;
-
-                rest = simplify.simplifyFilterPredicates(above);
-            }
-
-            var read = new HashSet<RexNode>(Conjuncts(simplify.simplifyUnknownAsFalse(whole)));
-            return Conjuncts(simplify.simplifyUnknownAsFalse(rest)).All(read.Contains);
-        }
-
-        /// <summary>
-        /// Determines whether the filter a firing writes over a side, of the conjuncts it moves there, leaves the correlate
-        /// it reaches as Calcite's rule would: its transposition of that filter is taken, or moves nothing.
-        /// </summary>
-        static bool Side(RexBuilder rexBuilder, RexSimplify simplify, RelNode side, java.util.List conjuncts, int depth) =>
-            Reaches(rexBuilder, simplify, side, conjuncts, true, depth, Rel.CosmosPlanMembers.NewSeen());
-
-        /// <summary>
-        /// Follows conjuncts down a side to the correlate Calcite's rules carry them onto: past a projection as
-        /// <c>FILTER_PROJECT_TRANSPOSE</c> writes them, past a grouping's keys as <c>FILTER_AGGREGATE_TRANSPOSE</c> does,
-        /// and onto a filter, beside whose condition they are evaluated, which must itself be transposed there; a filter the
-        /// builder writes as false, which <paramref name="written"/> says it may, is none. <paramref name="path"/> holds the
-        /// members on the way down, which keeps the search finite.
-        /// </summary>
-        static bool Reaches(RexBuilder rexBuilder, RexSimplify simplify, RelNode node, java.util.List conjuncts, bool written, int depth, HashSet<RelNode> path)
-        {
-            if (conjuncts.isEmpty())
-                return true;
-
-            var members = Rel.CosmosPlanMembers.Of(node);
-            if (members.OfType<Correlate>().FirstOrDefault() is Correlate inner)
-            {
-                var condition = written ? simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(rexBuilder, conjuncts);
-                if (condition is null)
-                    return true;
-
-                var (above, left, right) = Classify(inner, condition);
-                return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(condition) || Transposes(rexBuilder, inner, condition, above, left, right, depth + 1);
-            }
-
-            if (members.OfType<Project>().FirstOrDefault(p => p.containsOver() == false) is Project project && path.Add(project))
-            {
-                try
-                {
-                    var pushed = new java.util.ArrayList();
-                    for (var i = 0; i < conjuncts.size(); i++)
-                        pushed.add(RelOptUtil.pushPastProject((RexNode)conjuncts.get(i), project));
-
-                    return Reaches(rexBuilder, simplify, project.getInput(), pushed, written, depth, path);
-                }
-                finally
-                {
-                    path.Remove(project);
-                }
-            }
-
-            if (members.OfType<Aggregate>().FirstOrDefault(a => a.getGroupType() == Aggregate.Group.SIMPLE) is Aggregate aggregate && path.Add(aggregate))
-            {
-                try
-                {
-                    return Reaches(rexBuilder, simplify, aggregate.getInput(), ThroughKeys(rexBuilder, aggregate, conjuncts), written, depth, path);
-                }
-                finally
-                {
-                    path.Remove(aggregate);
-                }
-            }
-
-            if (members.OfType<Filter>().FirstOrDefault() is Filter filter && path.Add(filter))
-            {
-                try
-                {
-                    var own = RelOptUtil.conjunctions(filter.getCondition());
-                    var merged = new java.util.ArrayList(conjuncts);
-                    merged.addAll(own);
-                    return Reaches(rexBuilder, simplify, filter.getInput(), new java.util.ArrayList(own), false, depth, path) && Reaches(rexBuilder, simplify, filter.getInput(), merged, true, depth, path);
-                }
-                finally
-                {
-                    path.Remove(filter);
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Returns the conjuncts <c>FILTER_AGGREGATE_TRANSPOSE</c> moves beneath a grouping, those reading its keys alone,
-        /// each over the grouping's input.
-        /// </summary>
-        static java.util.List ThroughKeys(RexBuilder rexBuilder, Aggregate aggregate, java.util.List conjuncts)
-        {
-            var keys = aggregate.getGroupSet();
-            var output = aggregate.getRowType().getFieldList();
-            var input = aggregate.getInput().getRowType().getFieldList();
-            var adjustments = new int[output.size()];
-            for (var j = 0; j < keys.cardinality(); j++)
-                adjustments[j] = keys.nth(j) - j;
-
-            var pushed = new java.util.ArrayList();
-            for (var i = 0; i < conjuncts.size(); i++)
-            {
-                var conjunct = (RexNode)conjuncts.get(i);
-                if (org.apache.calcite.util.ImmutableBitSet.range(0, keys.cardinality()).contains(RelOptUtil.InputFinder.bits(conjunct)))
-                    pushed.add(conjunct.accept(new RelOptUtil.RexInputConverter(rexBuilder, output, input, adjustments)));
-            }
-
-            return pushed;
-        }
-
-        /// <summary>
         /// How many of Calcite's rule's firings over one filter, or correlates within one another, are followed before nothing
         /// is moved.
         /// </summary>
         const int Firings = 16;
+
+        /// <summary>
+        /// How many rule applications the planner's rules are given to carry conjuncts past one member.
+        /// </summary>
+        const int Carries = 64;
 
         /// <summary>
         /// Returns a condition's conjuncts as Calcite reads them, what it calls always true left out.
@@ -263,6 +172,217 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var conjunctions = RelOptUtil.conjunctions(condition);
             for (var i = 0; i < conjunctions.size(); i++)
                 yield return (RexNode)conjunctions.get(i);
+        }
+
+        /// <summary>
+        /// The test, over one statement: Calcite's simplification and the planner's own rules that carry a filter past a
+        /// member.
+        /// </summary>
+        sealed class Walk
+        {
+
+            readonly RexBuilder _rexBuilder;
+            readonly RexSimplify _simplify;
+            readonly java.util.List _carriers;
+            readonly bool _merges;
+
+            /// <summary>
+            /// Initializes a new instance, reading the planner's rules that move a filter, or a join's condition, beneath
+            /// another member: past a projection, a grouping, a window, a join, a sample, a set operation, a sort or a table
+            /// function; and whether one merges a filter into the filter beneath. A correlate is this rule's, and a filter
+            /// beneath is read beside the conjuncts as <see cref="Reaches"/> says.
+            /// </summary>
+            public Walk(RexBuilder rexBuilder, RelOptPlanner planner)
+            {
+                _rexBuilder = rexBuilder;
+                _simplify = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
+                _carriers = new java.util.ArrayList();
+                var rules = planner.getRules();
+                for (var i = 0; i < rules.size(); i++)
+                    if (rules.get(i) is FilterProjectTransposeRule or FilterAggregateTransposeRule or FilterWindowTransposeRule or ProjectToWindowRule.ProjectToLogicalProjectAndWindowRule
+                        or FilterJoinRule or FilterSampleTransposeRule or FilterSetOpTransposeRule or FilterSortTransposeRule or FilterTableFunctionTransposeRule)
+                        _carriers.add(rules.get(i));
+                    else if (rules.get(i) is FilterMergeRule)
+                        _merges = true;
+            }
+
+            /// <summary>
+            /// Determines whether Calcite's transposition is taken: Calcite's simplification of the whole condition, unknown read
+            /// as false, reads it as false neither as written nor as Calcite's builder writes it; every conjunct of that
+            /// simplification of what Calcite's rule leaves above after its last firing is a conjunct of that simplification of
+            /// the whole as the builder writes it, compared as Calcite compares expressions; and where the filter a firing writes
+            /// into a side reaches a correlate, the transposition of it there is taken too.
+            /// </summary>
+            /// <remarks>
+            /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
+            /// and a side's filter as Calcite's rule fires on it next, where the planner's rules carry it, so each firing over the
+            /// filters this one writes decides as this one does.
+            /// </remarks>
+            public bool Transposes(Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth)
+            {
+                if (depth == Firings || _simplify.simplifyUnknownAsFalse(condition).isAlwaysFalse())
+                    return false;
+
+                var whole = _simplify.simplifyFilterPredicates(java.util.Collections.singletonList(condition));
+                if (whole is null || _simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse())
+                    return false;
+
+                // Each firing's builder writes what is left above as Calcite's RelBuilder does, and the next firing moves what of
+                // that reads one side; a rest the builder writes as false, or firings past the bound, move nothing.
+                var rest = _simplify.simplifyFilterPredicates(above);
+                for (var firing = 1; ; firing++)
+                {
+                    if (Reaches(correlate.getLeft(), left, true, depth, CosmosPlanMembers.NewSeen()) == false || Reaches(correlate.getRight(), right, true, depth, CosmosPlanMembers.NewSeen()) == false)
+                        return false;
+
+                    if (rest is null)
+                        return false;
+
+                    (above, left, right) = Classify(correlate, rest);
+                    if (left.isEmpty() && right.isEmpty())
+                        break;
+
+                    if (firing == Firings)
+                        return false;
+
+                    rest = _simplify.simplifyFilterPredicates(above);
+                }
+
+                var read = new HashSet<RexNode>(Conjuncts(_simplify.simplifyUnknownAsFalse(whole)));
+                return Conjuncts(_simplify.simplifyUnknownAsFalse(rest)).All(read.Contains);
+            }
+
+            /// <summary>
+            /// Follows conjuncts down from a node, as registered, to the correlates the planner's rules carry them onto, and
+            /// determines whether each transposes them there: at a correlate, <see cref="Transposes"/>; at a filter, that
+            /// filter's own transposition, theirs alone and, where the planner's rules merge filters, the transposition of the
+            /// two together; past any other member, the filter the planner's rules write beneath it as they write it
+            /// (<see cref="Carried"/>), and a member they carry nothing past stops the walk. A filter the builder writes as
+            /// false, which <paramref name="written"/> says it may, is none. <paramref name="path"/> holds the members on the
+            /// way down, which keeps the search finite.
+            /// </summary>
+            public bool Reaches(RelNode node, java.util.List conjuncts, bool written, int depth, HashSet<RelNode> path)
+            {
+                if (conjuncts.isEmpty())
+                    return true;
+
+                var member = Original(node);
+                if (member is Correlate correlate)
+                {
+                    var condition = written ? _simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(_rexBuilder, conjuncts);
+                    if (condition is null)
+                        return true;
+
+                    var (above, left, right) = Classify(correlate, condition);
+                    return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(condition) || Transposes(correlate, condition, above, left, right, depth + 1);
+                }
+
+                if (path.Add(member) == false)
+                    return true;
+
+                try
+                {
+                    if (member is Filter filter)
+                    {
+                        var own = RelOptUtil.conjunctions(filter.getCondition());
+                        var merged = new java.util.ArrayList(conjuncts);
+                        merged.addAll(own);
+                        return Reaches(filter.getInput(), new java.util.ArrayList(own), false, depth, path) && Reaches(filter.getInput(), conjuncts, written, depth, path)
+                            && (_merges == false || Reaches(filter.getInput(), merged, true, depth, path));
+                    }
+
+                    return Carried(member, conjuncts, written).All(c => Reaches(c.Input, c.Conjuncts, false, depth, path));
+                }
+                finally
+                {
+                    path.Remove(member);
+                }
+            }
+
+            /// <summary>
+            /// Returns what the planner's rules carry beneath a member, a filter of the given conjuncts above it, as the builder
+            /// writes them where <paramref name="written"/> says so, or none for a join's own condition: the member's inputs
+            /// stood in for by leaves, its rules applied as Calcite's planner applies them, and each input given the conjuncts
+            /// of the filter left directly over its leaf, as the rule wrote it.
+            /// </summary>
+            public IEnumerable<(RelNode Input, java.util.List Conjuncts)> Carried(RelNode member, java.util.List conjuncts, bool written)
+            {
+                var inputs = member.getInputs();
+                if (_carriers.isEmpty() || inputs.isEmpty())
+                    yield break;
+
+                var cluster = member.getCluster();
+                var leaves = new java.util.ArrayList();
+                for (var i = 0; i < inputs.size(); i++)
+                    leaves.add(new Leaf(cluster, ((RelNode)inputs.get(i)).getRowType(), i));
+
+                RelNode root = member.copy(member.getTraitSet(), leaves);
+                if (conjuncts.isEmpty() == false)
+                {
+                    var condition = written ? _simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(_rexBuilder, conjuncts);
+                    if (condition is null)
+                        yield break;
+
+                    root = LogicalFilter.create(root, condition);
+                }
+
+                var hep = new HepPlanner(new HepProgramBuilder().addMatchLimit(Carries).addRuleCollection(_carriers).build());
+                hep.setRoot(root);
+                var carried = hep.findBestExp();
+
+                var over = new Dictionary<int, java.util.List>();
+                Over(carried, over, CosmosPlanMembers.NewSeen());
+                foreach (var (ordinal, landed) in over)
+                    yield return ((RelNode)inputs.get(ordinal), landed);
+            }
+
+            /// <summary>
+            /// Collects, for each leaf in a tree, the conjuncts of the filter directly over it.
+            /// </summary>
+            static void Over(RelNode node, Dictionary<int, java.util.List> over, HashSet<RelNode> seen)
+            {
+                if (seen.Add(node) == false)
+                    return;
+
+                if (node is Filter filter && filter.getInput() is Leaf leaf)
+                    over[leaf.Ordinal] = RelOptUtil.conjunctions(filter.getCondition());
+
+                var inputs = node.getInputs();
+                for (var i = 0; i < inputs.size(); i++)
+                    Over((RelNode)inputs.get(i), over, seen);
+            }
+
+        }
+
+        /// <summary>
+        /// A leaf standing for one input of a member while the planner's rules carry a filter past that member.
+        /// </summary>
+        sealed class Leaf : AbstractRelNode
+        {
+
+            readonly RelDataType _rowType;
+
+            /// <summary>
+            /// Initializes a new instance.
+            /// </summary>
+            public Leaf(RelOptCluster cluster, RelDataType rowType, int ordinal) :
+                base(cluster, cluster.traitSetOf(Convention.NONE))
+            {
+                _rowType = rowType;
+                Ordinal = ordinal;
+            }
+
+            /// <summary>
+            /// Gets the input the leaf stands for.
+            /// </summary>
+            public int Ordinal { get; }
+
+            /// <inheritdoc />
+            protected override RelDataType deriveRowType() => _rowType;
+
+            /// <inheritdoc />
+            public override RelWriter explainTerms(RelWriter pw) => base.explainTerms(pw).item("input", java.lang.Integer.valueOf(Ordinal));
+
         }
 
     }
