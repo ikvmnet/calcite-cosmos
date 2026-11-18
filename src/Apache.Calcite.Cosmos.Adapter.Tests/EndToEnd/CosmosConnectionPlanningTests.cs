@@ -54,7 +54,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         }
 
-        static string Explain(string sql, bool declared, string schema = Schema, CosmosServiceTarget? target = null, Infrastructure.SplitBound? bound = null)
+        static string Explain(string sql, bool declared, string schema = Schema, CosmosServiceTarget? target = null, java.util.function.Consumer? bound = null)
         {
             using var source = Open(declared ? schema : null, new NoExecutor(), target);
             using var hook = bound is null ? null : org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
@@ -433,10 +433,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Through this connection, whose rules carry a filter past a window's partition keys, into a join's inputs and past
-        /// a sample, the conjuncts a <c>WHERE</c> over a lateral would move into its side are read at the traversal they
-        /// reach beneath such a member: where they decide what Calcite reads of the cast beside them there, as in wr, wj2
-        /// and wm6, nothing in the statement is transposed and the traversal's filter on <c>id</c> stays above it; where the
-        /// window passes only <c>id</c>, as in wr2, it is moved beneath the traversal, declared and not.
+        /// a sample, a <c>WHERE</c> over a lateral whose side holds such a member over a traversal: the traversal's filter on
+        /// <c>id</c> stays above the traversal in wr, wj2 and wm6, and is beneath it in wr2, whose window passes only
+        /// <c>id</c>, declared and not.
         /// </summary>
         [Theory]
         [InlineData("wr", true)]
@@ -454,6 +453,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 unnest.Should().BeGreaterThanOrEqualTo(0, $"{name} declared {declared}: " + plan);
                 filter.Should().BeGreaterThanOrEqualTo(0, $"{name} declared {declared}: " + plan);
                 (filter < unnest).Should().Be(above, $"{name} declared {declared}: " + plan);
+            }
+        }
+
+        /// <summary>
+        /// <see cref="CosmosDeclaredFactPlanningTests.AStackOfWheresOverATraversalIsReadOnceWithinABound"/> through this
+        /// connection, whose rules merge a filter into the filter beneath: each statement's answer is worked out once, within
+        /// the bound given on the planner's runs over a member, declared and not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("dp", 10, 64)]
+        [InlineData("dn", 8, 160)]
+        public void AStackOfWheresOverATraversalIsReadOnceWithinABound(string family, int depth, int bound)
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var declared in new[] { true, false })
+                {
+                    var seen = new Infrastructure.PlannersSeen();
+                    Explain(CosmosDeclaredFactPlanningTests.Stacked(family, depth, "items"), declared, CosmosDeclaredFactPlanningTests.Traversed, target, seen).Should().NotBeEmpty();
+                    var work = seen.Planners.Select(Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work).ToList();
+                    work.Should().OnlyContain(w => w.Times <= 1, $"{family}{depth} {target} declared {declared}");
+                    work.Sum(w => w.Carries).Should().BeLessThanOrEqualTo(bound, $"{family}{depth} {target} declared {declared}");
+                }
             }
         }
 

@@ -135,6 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Rel.Convert.CosmosConverters", ["Announced"], PlanScoped, "keyed weakly on one implementation's implementor, which dies with the implementation"),
             ("Adapter.Rel.Convert.CosmosConverters", ["GetExecutorMethod", "GetJsonPropertyMethod", "GetJsonTextPropertyMethod", "GetLookupCacheMethod", "GetPartitionCounterMethod", "GetPathMethod", "GetPropertyMethod", "GetTextPropertyMethod", "GetWriterMethod"], Infra, Reflection),
             ("Adapter.Rel.Convert.CosmosFilterCorrelateRule", ["Instance"], Infra, "a rule with no fields"),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule", ["Statements"], PlanScoped, "keyed weakly on the planner that plans one statement, which dies with the statement"),
             ("Adapter.Rel.Convert.CosmosSelfJoinRule", ["Instances"], Infra, "the rule's instances, whose fields are their configuration"),
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosUncorrelatedProjectMergeRule", ["Instance"], Infra, "a rule with no fields"),
@@ -251,6 +252,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosFilterStatement.Read", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
             ("Adapter.Metadata.CosmosRowFacts.Decided", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.Convert.CosmosConverters.Announced", nameof(NoStaticReachesWhatASchemaLearned)),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule.Statements", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.CosmosConstraintCompiler.Cache", nameof(AConstraintRememberedUnderALongLivedFactoryKeepsNoTable)),
             ("Facts.Rendering.RenderingAnswerMemo.Digests", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
             ("Facts.Saturation.PredicateRules.Defined", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
@@ -469,8 +471,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var table = (CosmosTable)schema.tables().get("c")!;
             var reasoning = table.Container.Reasoning!;
 
+            var planners = new Infrastructure.PlannersSeen();
             using (var dataSource = new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder { CaseSensitive = true }.ConnectionString).AddSchema("COSMOS", schema).Build())
             using (var connection = dataSource.OpenConnection())
+            using (org.apache.calcite.runtime.Hook.PLANNER.addThread(planners))
                 foreach (var sql in new[]
                 {
                     """SELECT c."id" FROM "COSMOS"."c" AS c WHERE c."id" = 'x' AND JSON_VALUE(c."DOC", '$.pk') = 'p'""",
@@ -478,6 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     """SELECT COUNT(*) FROM "COSMOS"."c" AS c WHERE JSON_VALUE(c."DOC", '$.ref') > 'a'""",
                     """SELECT c."id" FROM "COSMOS"."c" AS c ORDER BY JSON_VALUE(c."DOC", '$.ref') FETCH NEXT 5 ROWS ONLY""",
                     """SELECT a."id" FROM "COSMOS"."c" AS a JOIN "COSMOS"."c" AS b ON a."id" = b."id" WHERE JSON_VALUE(a."DOC", '$.pk') = 'p'""",
+                    EndToEnd.CosmosDeclaredFactPlanningTests.Stacked("dn", 4, "\"COSMOS\".\"c\""),
                 })
                 {
                     using var command = connection.CreateCommand();
@@ -488,6 +493,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 }
 
             reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");
+            planners.Planners.Should().Contain(p => Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(p).Times > 0, "a statement over traversals was worked out by the correlate rule, and its answer kept with its planner");
 
             return
             [

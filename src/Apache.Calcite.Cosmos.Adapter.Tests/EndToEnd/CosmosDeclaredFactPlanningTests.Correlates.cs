@@ -374,12 +374,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// A statement is planned with Calcite's transposition at every correlate or at none: where the <c>WHERE</c> over a
-        /// traversal or a lateral of a sub-query would not be transposed, the sub-query's own <c>WHERE</c> over a traversal
-        /// is not either, so ws1 to ws5, ws8 and their <c>COUNT</c>s fail on the element <c>"x"</c> as Calcite with no
-        /// transposition does, where moving the sub-query's alone answered; ws6, whose two are both transposed, fails on the
-        /// <c>body</c> <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does; and ws7, whose sub-query's is not, answers
-        /// as Calcite with no transposition does, declared or not, under both targets.
+        /// The correlate rule takes Calcite's transposition at every correlate of a statement or at none: where the
+        /// <c>WHERE</c> over a traversal or a lateral of a sub-query would not be transposed, the sub-query's own <c>WHERE</c>
+        /// over a traversal is not either, so ws1 to ws5, ws8 and their <c>COUNT</c>s fail on the element <c>"x"</c> as
+        /// Calcite with no transposition does, where moving the sub-query's alone answered; ws6, whose two are both
+        /// transposed, fails on the <c>body</c> <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does; and ws7, whose
+        /// sub-query's is not, answers as Calcite with no transposition does, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("ws1", "raises x")]
@@ -679,6 +679,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         public async Task AConjunctMovedBesideADerivedTermIsNotEvaluatedAlone(string name, string rows)
         {
             await Answers(name, rows, Traversed, BesideAnEmptySide);
+        }
+
+        /// <summary>
+        /// A stack of <paramref name="depth"/> <c>WHERE</c>s over a traversal: in <c>dp</c>, one on each sub-query over a
+        /// sub-query whose own <c>WHERE</c> is over an <c>UNNEST</c> of <c>tags</c>; in <c>dn</c>, one on each of as many
+        /// traversals, each an <c>UNNEST</c> of the <c>tags</c> of the sub-query beneath.
+        /// </summary>
+        internal static string Stacked(string family, int depth, string t)
+        {
+            var tags = (string a) => $"""UNNEST(JSON_QUERY({a}."DOC", '$.tags' RETURNING VARCHAR ARRAY))""";
+            var q = family switch
+            {
+                "dp" => $"""SELECT c."id" AS "id", c."DOC" AS "DOC", u.t AS t FROM {t} AS c, {tags("c")} AS u(t) WHERE {KindOf("c")} = 'A' AND u.t = '1'""",
+                "dn" => $"""SELECT c."id" AS "id", c."DOC" AS "DOC" FROM {t} AS c WHERE {KindOf("c")} = 'A'""",
+                _ => throw new ArgumentOutOfRangeException(nameof(family), family, "No such family."),
+            };
+
+            for (var i = 1; i <= depth; i++)
+                q = family == "dp"
+                    ? $"""SELECT x{i}."id" AS "id", x{i}."DOC" AS "DOC", x{i}.t AS t FROM ({q}) AS x{i} WHERE x{i}."id" <> 'z{i}'"""
+                    : $"""SELECT x{i}."id" AS "id", x{i}."DOC" AS "DOC" FROM ({q}) AS x{i}, {tags($"x{i}")} AS u{i}(t) WHERE u{i}.t = '1' AND x{i}."id" <> 'z{i}'""";
+
+            return q;
+        }
+
+        /// <summary>
+        /// The correlate rule works a statement's answer out once, at its first firing, and runs the planner's rules over a
+        /// member once for each set of conjuncts that reaches it, so a stack of <c>WHERE</c>s over a traversal plans within a
+        /// bound on those runs that grows with the stack's square, where reading every path down to each correlate at every
+        /// firing doubled it with each <c>WHERE</c>: ten over a sub-query's <c>UNNEST</c> (dp) and eight traversals each
+        /// with its own (dn), declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("dp", 10, 64)]
+        [InlineData("dn", 8, 64)]
+        public void AStackOfWheresOverATraversalIsReadOnceWithinABound(string family, int depth, int bound)
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var (declared, container) in new[] { ("declared", Declaring(Traversed)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+                {
+                    var seen = new Infrastructure.PlannersSeen();
+                    PlanToCosmos(Stacked(family, depth, "items"), container.WithServiceTarget(target), out _, listener: seen).Should().NotBeNull();
+                    var (carries, times) = Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(seen.Planners.Should().ContainSingle().Subject);
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{family}{depth:00} {target} {declared}: carries {carries}, times {times}");
+                    times.Should().Be(1, $"{family}{depth} {target} {declared}");
+                    carries.Should().BeLessThanOrEqualTo(bound, $"{family}{depth} {target} {declared}");
+                }
+            }
         }
 
         /// <summary>

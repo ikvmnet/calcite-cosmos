@@ -16,8 +16,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
     /// <summary>
     /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, wherever every filter of the statement the planner
-    /// plans, at every correlate the planner's rules carry it onto, would be transposed by its test; and nowhere in a
-    /// statement where one would not.
+    /// plans, at every correlate the planner's rules carry it onto where that rule would move a part of it, would be
+    /// transposed by its test; and nowhere in a statement where one would not.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -30,7 +30,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// moves it.
     /// </para>
     /// <para>
-    /// One instance for every container, as Calcite's own rules are registered once whatever registers them.
+    /// One instance for every container, as Calcite's own rules are registered once whatever registers them. A statement's
+    /// answer is worked out at the rule's first firing over it and kept with the Volcano planner planning it
+    /// (<see cref="Statements"/>).
     /// </para>
     /// </remarks>
     public class CosmosFilterCorrelateRule : RelOptRule
@@ -40,6 +42,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// The rule.
         /// </summary>
         public static CosmosFilterCorrelateRule Instance { get; } = new();
+
+        /// <summary>
+        /// Each Volcano planner's statement, as its root and the number of rules it held, whether it takes Calcite's
+        /// transposition, and the planner runs and the times it took to work that out; weak on the planner, which dies with
+        /// the statement.
+        /// </summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<RelOptPlanner, Answered> Statements = new();
+
+        /// <summary>
+        /// A statement's answer: the root and the number of rules it was read under, the answer, and how many planner runs
+        /// carried conjuncts past a member and how many times the answer was worked out, over the planner's life.
+        /// </summary>
+        sealed record Answered(RelNode Root, int Rules, bool Transposes, long Carries, int Times);
+
+        /// <summary>
+        /// Returns how many times the planner's rules were run over a member to carry conjuncts past it, and how many times
+        /// the statement's answer was worked out, for the statements a planner planned.
+        /// </summary>
+        internal static (long Carries, int Times) Work(RelOptPlanner planner) =>
+            Statements.TryGetValue(planner, out var answered) ? (answered.Carries, answered.Times) : (0, 0);
 
         // As CosmosFilterSplitRule: RelOptRule's operand builders are deprecated in favour of RelRule.Config, whose operand
         // supplier costs more ceremony from C# than it buys. The operands are Calcite's rule's.
@@ -86,26 +108,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <see cref="Walk.Transposes"/>.
         /// </summary>
         /// <remarks>
-        /// Read off the planner's root as registered, the tree the query was converted to, so every firing over one statement
-        /// answers alike; a planner with no root is read from the filter.
+        /// Read off the planner's root as registered, the tree the query was converted to, once for a Volcano planner's root
+        /// and rules and kept with the planner, so every firing over one statement answers alike; a planner with no root is
+        /// read from the filter, and another planner, whose root is the tree as it now stands, at each firing.
         /// </remarks>
         static bool Statement(RelOptPlanner planner, RexBuilder rexBuilder, Filter filter)
         {
+            var root = planner.getRoot();
+            if (root is null || planner is not VolcanoPlanner)
+                return Statement(new Walk(rexBuilder, planner), root ?? filter);
+
+            var rules = planner.getRules().size();
+            Statements.TryGetValue(planner, out var known);
+            if (known is not null && ReferenceEquals(known.Root, root) && known.Rules == rules)
+                return known.Transposes;
+
             var walk = new Walk(rexBuilder, planner);
+            var transposes = Statement(walk, root);
+            Statements.AddOrUpdate(planner, new Answered(root, rules, transposes, (known?.Carries ?? 0) + walk.Carries, (known?.Times ?? 0) + 1));
+            return transposes;
+        }
+
+        /// <summary>
+        /// Walks the tree beneath a root, asking each filter's conjuncts, and each join's condition, of the correlates they
+        /// reach.
+        /// </summary>
+        static bool Statement(Walk walk, RelNode root)
+        {
             var seen = CosmosPlanMembers.NewSeen();
             var pending = new Stack<RelNode>();
-            pending.Push(Original(planner.getRoot() ?? filter));
+            pending.Push(Original(root));
             while (pending.Count > 0)
             {
                 var node = pending.Pop();
                 if (seen.Add(node) == false)
                     continue;
 
-                if (node is Filter own && walk.Reaches(own.getInput(), RelOptUtil.conjunctions(own.getCondition()), false, 0, CosmosPlanMembers.NewSeen()) == false)
+                if (node is Filter own && walk.Reaches(own.getInput(), RelOptUtil.conjunctions(own.getCondition()), false, 0, CosmosPlanMembers.NewSeen(), true) == false)
                     return false;
 
                 // A join's own condition, which the planner's rules may carry into its inputs as a filter.
-                if (node is Join && walk.Carried(node, new java.util.ArrayList(), false).Any(c => walk.Reaches(c.Input, c.Conjuncts, false, 0, CosmosPlanMembers.NewSeen()) == false))
+                if (node is Join && walk.Carried(node, new java.util.ArrayList(), false).Any(c => walk.Reaches(c.Input, c.Conjuncts, false, 0, CosmosPlanMembers.NewSeen(), true) == false))
                     return false;
 
                 var inputs = node.getInputs();
@@ -162,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// How many rule applications the planner's rules are given to carry conjuncts past one member.
         /// </summary>
-        const int Carries = 64;
+        const int CarriesBound = 64;
 
         /// <summary>
         /// Returns a condition's conjuncts as Calcite reads them, what it calls always true left out.
@@ -178,6 +221,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// The test, over one statement: Calcite's simplification and the planner's own rules that carry a filter past a
         /// member.
         /// </summary>
+        /// <remarks>
+        /// Each question is asked once over a statement (<see cref="_reached"/>), and each member's carry once for one set of
+        /// conjuncts (<see cref="_carried"/>), so the work grows with the members and the sets of conjuncts reaching each,
+        /// not with the paths down to it.
+        /// </remarks>
         sealed class Walk
         {
 
@@ -185,6 +233,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             readonly RexSimplify _simplify;
             readonly java.util.List _carriers;
             readonly bool _merges;
+            readonly Dictionary<Asked, bool> _reached = new();
+            readonly Dictionary<Asked, List<(RelNode Input, java.util.List Conjuncts)>> _carried = new();
+            int _cuts;
+
+            /// <summary>
+            /// Gets how many times the planner's rules were run over a member to carry conjuncts past it.
+            /// </summary>
+            public long Carries { get; private set; }
 
             /// <summary>
             /// Initializes a new instance, reading the planner's rules that move a filter, or a join's condition, beneath
@@ -218,7 +274,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             /// and a side's filter as Calcite's rule fires on it next, where the planner's rules carry it, so each firing over the
             /// filters this one writes decides as this one does.
             /// </remarks>
-            public bool Transposes(Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth)
+            public bool Transposes(Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth, bool merging)
             {
                 if (depth == Firings || _simplify.simplifyUnknownAsFalse(condition).isAlwaysFalse())
                     return false;
@@ -232,7 +288,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var rest = _simplify.simplifyFilterPredicates(above);
                 for (var firing = 1; ; firing++)
                 {
-                    if (Reaches(correlate.getLeft(), left, true, depth, CosmosPlanMembers.NewSeen()) == false || Reaches(correlate.getRight(), right, true, depth, CosmosPlanMembers.NewSeen()) == false)
+                    if (Reaches(correlate.getLeft(), left, true, depth, CosmosPlanMembers.NewSeen(), merging) == false || Reaches(correlate.getRight(), right, true, depth, CosmosPlanMembers.NewSeen(), merging) == false)
                         return false;
 
                     if (rest is null)
@@ -254,19 +310,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             /// <summary>
             /// Follows conjuncts down from a node, as registered, to the correlates the planner's rules carry them onto, and
-            /// determines whether each transposes them there: at a correlate, <see cref="Transposes"/>; at a filter, that
-            /// filter's own transposition, theirs alone and, where the planner's rules merge filters, the transposition of the
-            /// two together; past any other member, the filter the planner's rules write beneath it as they write it
+            /// determines whether each transposes them there: at a correlate, <see cref="Transposes"/>; at a filter, theirs
+            /// alone and, where the planner's rules merge filters and <paramref name="merging"/> says they still may, the two
+            /// together; past any other member, the filter the planner's rules write beneath it as they write it
             /// (<see cref="Carried"/>), and a member they carry nothing past stops the walk. A filter the builder writes as
             /// false, which <paramref name="written"/> says it may, is none. <paramref name="path"/> holds the members on the
             /// way down, which keeps the search finite.
             /// </summary>
-            public bool Reaches(RelNode node, java.util.List conjuncts, bool written, int depth, HashSet<RelNode> path)
+            /// <remarks>
+            /// A filter beneath is asked its own conjuncts where the statement walks to it, not again for each filter above.
+            /// Where filters merge, conjuncts carried past a filter without it reach what is beneath only once that filter has
+            /// gone into the correlate beneath it, whose sides then hold its parts, so they meet any filter further down with
+            /// those parts, which the two merged are asked: alone, they merge with none. An answer is kept where no member on
+            /// the way was cut short, which in a tree none is.
+            /// </remarks>
+            public bool Reaches(RelNode node, java.util.List conjuncts, bool written, int depth, HashSet<RelNode> path, bool merging)
             {
                 if (conjuncts.isEmpty())
                     return true;
 
-                var member = Original(node);
+                var asked = new Asked(Original(node), new java.util.ArrayList(conjuncts), written, depth, merging && _merges);
+                if (_reached.TryGetValue(asked, out var known))
+                    return known;
+
+                var cuts = _cuts;
+                var reached = Reach(asked, path);
+                if (_cuts == cuts)
+                    _reached[asked] = reached;
+
+                return reached;
+            }
+
+            /// <summary>
+            /// Answers one question of <see cref="Reaches"/>.
+            /// </summary>
+            bool Reach(Asked asked, HashSet<RelNode> path)
+            {
+                var (member, conjuncts, written, depth, merging) = asked;
                 if (member is Correlate correlate)
                 {
                     var condition = written ? _simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(_rexBuilder, conjuncts);
@@ -274,24 +354,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                         return true;
 
                     var (above, left, right) = Classify(correlate, condition);
-                    return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(condition) || Transposes(correlate, condition, above, left, right, depth + 1);
+                    return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(condition) || Transposes(correlate, condition, above, left, right, depth + 1, merging);
                 }
 
                 if (path.Add(member) == false)
+                {
+                    _cuts++;
                     return true;
+                }
 
                 try
                 {
                     if (member is Filter filter)
                     {
-                        var own = RelOptUtil.conjunctions(filter.getCondition());
+                        if (Reaches(filter.getInput(), conjuncts, written, depth, path, false) == false)
+                            return false;
+
+                        if (merging == false)
+                            return true;
+
                         var merged = new java.util.ArrayList(conjuncts);
-                        merged.addAll(own);
-                        return Reaches(filter.getInput(), new java.util.ArrayList(own), false, depth, path) && Reaches(filter.getInput(), conjuncts, written, depth, path)
-                            && (_merges == false || Reaches(filter.getInput(), merged, true, depth, path));
+                        merged.addAll(RelOptUtil.conjunctions(filter.getCondition()));
+                        return Reaches(filter.getInput(), merged, true, depth, path, true);
                     }
 
-                    return Carried(member, conjuncts, written).All(c => Reaches(c.Input, c.Conjuncts, false, depth, path));
+                    return Carried(member, conjuncts, written).All(c => Reaches(c.Input, c.Conjuncts, false, depth, path, merging));
                 }
                 finally
                 {
@@ -305,11 +392,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             /// stood in for by leaves, its rules applied as Calcite's planner applies them, and each input given the conjuncts
             /// of the filter left directly over its leaf, as the rule wrote it.
             /// </summary>
-            public IEnumerable<(RelNode Input, java.util.List Conjuncts)> Carried(RelNode member, java.util.List conjuncts, bool written)
+            public List<(RelNode Input, java.util.List Conjuncts)> Carried(RelNode member, java.util.List conjuncts, bool written)
             {
+                var asked = new Asked(member, new java.util.ArrayList(conjuncts), written, 0, false);
+                if (_carried.TryGetValue(asked, out var known))
+                    return known;
+
+                var carried = new List<(RelNode Input, java.util.List Conjuncts)>();
+                _carried[asked] = carried;
+
                 var inputs = member.getInputs();
                 if (_carriers.isEmpty() || inputs.isEmpty())
-                    yield break;
+                    return carried;
 
                 var cluster = member.getCluster();
                 var leaves = new java.util.ArrayList();
@@ -321,19 +415,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 {
                     var condition = written ? _simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(_rexBuilder, conjuncts);
                     if (condition is null)
-                        yield break;
+                        return carried;
 
                     root = LogicalFilter.create(root, condition);
                 }
 
-                var hep = new HepPlanner(new HepProgramBuilder().addMatchLimit(Carries).addRuleCollection(_carriers).build());
+                Carries++;
+                var hep = new HepPlanner(new HepProgramBuilder().addMatchLimit(CarriesBound).addRuleCollection(_carriers).build());
                 hep.setRoot(root);
-                var carried = hep.findBestExp();
 
                 var over = new Dictionary<int, java.util.List>();
-                Over(carried, over, CosmosPlanMembers.NewSeen());
+                Over(hep.findBestExp(), over, CosmosPlanMembers.NewSeen());
                 foreach (var (ordinal, landed) in over)
-                    yield return ((RelNode)inputs.get(ordinal), landed);
+                    carried.Add(((RelNode)inputs.get(ordinal), landed));
+
+                return carried;
             }
 
             /// <summary>
@@ -351,6 +447,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 for (var i = 0; i < inputs.size(); i++)
                     Over((RelNode)inputs.get(i), over, seen);
             }
+
+        }
+
+        /// <summary>
+        /// A question of the walk: conjuncts at a member as registered, whether the builder writes them, at what depth of
+        /// firings, and whether they may still merge with a filter beneath; the member compared by reference and the
+        /// conjuncts as Calcite compares expressions, in order.
+        /// </summary>
+        readonly record struct Asked(RelNode Member, java.util.List Conjuncts, bool Written, int Depth, bool Merging)
+        {
+
+            /// <inheritdoc />
+            public bool Equals(Asked other) =>
+                ReferenceEquals(Member, other.Member) && Written == other.Written && Depth == other.Depth && Merging == other.Merging && Conjuncts.Equals(other.Conjuncts);
+
+            /// <inheritdoc />
+            public override int GetHashCode() =>
+                System.HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Member), Conjuncts.GetHashCode(), Written, Depth, Merging);
 
         }
 
