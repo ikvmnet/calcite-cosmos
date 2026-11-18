@@ -2995,10 +2995,10 @@ across documents* and *A join of a container to itself* is the record.
 - **A filter above a correlate answers where one of Calcite's plans fails** — *small, an answer where one of Calcite's
   plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.* Calcite in process
   takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, by cost, while
-  `CosmosFilterCorrelateRule` takes it, as Calcite's rule writes it, only where all that rule leaves above after its last
-  firing is read in Calcite's simplification of the whole condition, and where the filter it writes into a side reaches
-  another correlate, through a sub-query's projection or a grouping's keys and beside its own `WHERE`, only where that
-  correlate's transposition of it is taken too. Measured in the host Chapter 21 describes, declared
+  `CosmosFilterCorrelateRule` takes it, as Calcite's rule writes it, at every correlate of a statement where, for every
+  filter of the statement at every correlate the planner's rules carry it onto, all that rule leaves above after its last
+  firing is read in Calcite's simplification of the whole condition, and at none of the statement otherwise. Measured in
+  the host Chapter 21 describes, declared
   and not, under both targets' plans, against that host's Calcite with `FILTER_CORRELATE` added and the same with no
   filter-correlate transposition. Where the transposition is taken, a conjunct moved into a side is evaluated on every
   document or element that side reads, those the correlate returns no row for among them, as with `FILTER_CORRELATE`:
@@ -3008,21 +3008,30 @@ across documents* and *A join of a container to itself* is the record.
   the correlate as Calcite without the transposition evaluates it: for example `kind = 'B' AND ((kind = 'A' AND CAST(u.t
   AS INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1) answers where Calcite with `FILTER_CORRELATE` fails on `"x"`, and
   `u.t IS NOT NULL AND NOT (kind = 'B' OR u.t = 'x') AND (NOT (kind = 'B' OR u.t = 'x') OR CAST(u.t AS INTEGER) = 1)`
-  (jx2) fails where it answers. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows
+  (jx2) fails where it answers. A sub-query's own `WHERE` over a traversal is not transposed where a `WHERE` above it is
+  not: for example `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` in a sub-query beneath `CAST(body AS INTEGER) = 7 AND n > 50
+  AND (n > 40 OR v.s = '1')` over a traversal of its `more` (ws1) fails on an element `"x"` of a document of kind `B`,
+  where Calcite with `FILTER_CORRELATE` and `main` answer. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows
   the part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example `m =
   '2' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of
   `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same).
+  Through the README's connection, where a statement moves nothing, that connection's own rules still carry a `WHERE`'s
+  conjuncts onto a traversal beneath a grouping, where they are evaluated on its every element as its Calcite does
+  without the transposition: for example `x.id = '1' AND (x.id = '2' OR CAST(x.t AS INTEGER) = 7)` over a grouping of an
+  `UNNEST` of an array of `body` and `m`, beneath a lateral (agr1), fails on a `body` of `"q"` where `main` answered.
   Through the README's connection, Calcite's own decorrelation moves `kind IN ('A', 'B')`
   beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)` (u18b) before any
   adapter rule reads the condition, and it fails as that connection's Calcite does.
 - **A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral reads every document** — *small, a cost, the
   answer the same but where something in the `WHERE` can fail; new in "fail like Calcite", and left for a change of its
-  own.* Where `CosmosFilterCorrelateRule` moves nothing, because a conjunct it would move decides what Calcite reads of
-  the rest or Calcite reads the whole as false, the condition stays above the traversal and its request carries none of
-  the document's conjuncts. Measured offline in the host Chapter 21 describes, for example: `kind = 'A' AND (kind = 'B'
-  OR u.t = '1')` reads every document where `main` sent `WHERE (c.kind = @p0)`; `kind = 'A' AND kind = 'B' AND u.t =
-  '1'` reads every document where `main` sent none; and `u.t = '1' AND u.t = '2' AND kind = 'A'` reads every document
-  where `main` sent `WHERE (c.kind = @p0)`. Where something in the `WHERE` can fail, the answer is the one the correlate
+  own.* Where `CosmosFilterCorrelateRule` moves nothing in a statement, because a conjunct it would move, there or at
+  another correlate of the statement, decides what Calcite reads of the rest, or Calcite reads a whole as false, each
+  such condition stays above its traversal and its request carries none of the document's conjuncts. Measured offline in
+  the host Chapter 21 describes, for example: `kind = 'A' AND (kind = 'B' OR u.t = '1')` reads every document where
+  `main` sent `WHERE (c.kind = @p0)`; `kind = 'A' AND kind = 'B' AND u.t = '1'` reads every document where `main` sent
+  none; `u.t = '1' AND u.t = '2' AND kind = 'A'` reads every document where `main` sent `WHERE (c.kind = @p0)`; and in
+  ws1 (above) the sub-query's `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` reads every document where `main` sent `WHERE
+  ((c.kind = @p0) AND (c.n > @p1))`. Where something in the `WHERE` can fail, the answer is the one the correlate
   entry above gives where the transposition is not taken: `l.k2 = 'A' AND l.k2 = 'B' AND CAST(body AS INTEGER) = 7` over
   a lateral answers no rows over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does. The fix,
   sending such a `WHERE`'s conjuncts of the document while Calcite evaluates the whole above, over only the documents
