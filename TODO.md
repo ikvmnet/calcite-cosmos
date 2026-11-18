@@ -2998,10 +2998,9 @@ across documents* and *A join of a container to itself* is the record.
   `CosmosFilterCorrelateRule` takes it, as Calcite's rule writes it, at every correlate of a statement where, for every
   filter of the statement at every correlate the planner's rules carry it onto where that rule would move a part of it,
   the whole condition is not read as false and all that rule leaves above after its last firing is read in Calcite's
-  simplification of the whole, and at none of the statement otherwise. Measured in
-  the host Chapter 21 describes, declared
-  and not, under both targets' plans, against that host's Calcite with `FILTER_CORRELATE` added and the same with no
-  filter-correlate transposition. Where the transposition is taken, a conjunct moved into a side is evaluated on every
+  simplification of the whole, and at none of the statement otherwise. Measured in the host Chapter 21 describes,
+  declared and not, under both targets' plans, against that host's Calcite with `FILTER_CORRELATE` added and the same
+  with no filter-correlate transposition. Where the transposition is taken, a conjunct moved into a side is evaluated on every
   document or element that side reads, those the correlate returns no row for among them, as with `FILTER_CORRELATE`:
   for example `kind = 'A' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` (n1) fails on the `body` `"q"` of a
   document with no element where Calcite without the transposition answers, and a side the transposition writes as
@@ -3022,26 +3021,26 @@ across documents* and *A join of a container to itself* is the record.
   `FILTER_CORRELATE` does where Calcite without it fails on `"x"`. A condition holding the service's form, which a split
   writes and Calcite has no body for above a correlate, still moves as Calcite's rule moves it in a statement that
   otherwise moves nothing: measured once, through the README's connection, in a `WHERE` over two traversals that Calcite
-  reads as false (a188uw),
-  whose answer is that connection's Calcite's. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows
-  the part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example `m =
+  reads as false (a188uw), whose answer is that connection's Calcite's. Beside a correlate as anywhere, a part of a
+  condition kept in process reads only the rows the part sent returns (Chapter 14.2), so a statement can answer where
+  both of Calcite's plans fail: for example `m =
   '2' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of
   `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same).
   Through the README's connection, where a statement moves nothing, that connection's own rules still carry a `WHERE`'s
   conjuncts onto a traversal beneath a grouping, where they are evaluated on its every element as its Calcite does
   without the transposition: for example `x.id = '1' AND (x.id = '2' OR CAST(x.t AS INTEGER) = 7)` over a grouping of an
   `UNNEST` of an array of `body` and `m`, beneath a lateral (agr1), fails on a `body` of `"q"` where `main` answered.
-  Through the README's connection, Calcite's own decorrelation moves `kind IN ('A', 'B')`
-  beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)` (u18b) before any
-  adapter rule reads the condition, and it fails as that connection's Calcite does; so there a statement may hold that
+  Through the README's connection, Calcite's own decorrelation moves `kind IN ('A', 'B')` beside the traversal in `kind
+  IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)` (u18b) before any adapter rule reads the
+  condition, and it fails as that connection's Calcite does; so there a statement may hold that
   transposition at one correlate and none at another, as where a `WHERE` over a lateral is moved into its side and the
   traversal beneath keeps its filter on `id` above it (wr, wj2 and wm6, `CosmosConnectionPlanningTests`).
 - **A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral reads every document** — *small, a cost, the
   answer the same but where something in the `WHERE` can fail; new in "fail like Calcite", and left for a change of its
   own.* Where `CosmosFilterCorrelateRule` moves nothing in a statement, because a conjunct it would move, there or at
   another correlate of the statement, decides what Calcite reads of the rest, or Calcite reads as false a whole of which
-  it would move a part, each
-  such condition stays above its traversal and its request carries none of the document's conjuncts. Measured offline in
+  it would move a part, each such condition stays above its traversal and its request carries none of the document's
+  conjuncts. Measured offline in
   the host Chapter 21 describes, for example: `kind = 'A' AND (kind = 'B' OR u.t = '1')` reads every document where
   `main` sent `WHERE (c.kind = @p0)`; `kind = 'A' AND kind = 'B' AND u.t = '1'` reads every document where `main` sent
   none; `u.t = '1' AND u.t = '2' AND kind = 'A'` reads every document where `main` sent `WHERE (c.kind = @p0)`; and in
@@ -3292,7 +3291,11 @@ across documents* and *A join of a container to itself* is the record.
   WHERE u.t = '1' AND (u.t = '2' OR CAST(body AS INTEGER) = 7)) AS x, UNNEST(x.xs) AS v(s) WHERE CAST(x.body AS
   INTEGER) = 7 AND v.s = '1') AS y, UNNEST(y.tags) AS z(r) WHERE y.kind = 'A' AND CAST(z.r AS INTEGER) = 1`, each array
   read through `JSON_QUERY` and each property through `JSON_VALUE` (twf2p2p1). Measured offline under Azure's plan with
-  the bound at 5,000: 323 productions in 17 seconds, where `main` takes 699 in 20; declared, 27 to 30.
+  the bound at 5,000: 323 productions in 17 seconds, where `main` takes 699 in 20; declared, 27 to 30. Eight traversals
+  each of the sub-query beneath, each with its own `x.id <> 'z' AND (u.t = '1' OR m = 'q')` (dx08), plan there in 19
+  to 20 seconds, declared or not, where `main` plans them in about 13: the split's and the correlate rule's 1,632
+  productions, of which the correlate rule's statement test takes a tenth of a second; with four (dx04), 2.5 to 2.8
+  against 1.9 seconds.
 - **A filter above a lookup join** — *medium, an empty answer where Calcite fails; left for a change of its own after
   "fail like Calcite".* `CosmosLookupJoin`
   fetches the probe side's documents by the build side's keys, and a filter the query wrote over the probe side above
