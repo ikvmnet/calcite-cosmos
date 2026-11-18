@@ -2996,7 +2996,9 @@ across documents* and *A join of a container to itself* is the record.
   plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.* Calcite in process
   takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, by cost, while
   `CosmosFilterCorrelateRule` takes it, as Calcite's rule writes it, only where all that rule leaves above after its last
-  firing is read in Calcite's simplification of the whole condition. Measured in the host Chapter 21 describes, declared
+  firing is read in Calcite's simplification of the whole condition, and where the filter it writes into a side reaches
+  another correlate, through a sub-query's projection or a grouping's keys and beside its own `WHERE`, only where that
+  correlate's transposition of it is taken too. Measured in the host Chapter 21 describes, declared
   and not, under both targets' plans, against that host's Calcite with `FILTER_CORRELATE` added and the same with no
   filter-correlate transposition. Where the transposition is taken, a conjunct moved into a side is evaluated on every
   document or element that side reads, those the correlate returns no row for among them, as with `FILTER_CORRELATE`:
@@ -3013,23 +3015,34 @@ across documents* and *A join of a container to itself* is the record.
   Through the README's connection, Calcite's own decorrelation moves `kind IN ('A', 'B')`
   beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)` (u18b) before any
   adapter rule reads the condition, and it fails as that connection's Calcite does.
-- **A `WHERE` over a correlate that Calcite reads as false reads every document** — *small, a cost, the answer the
-  same; new in "fail like Calcite", and left for a change of its own.* Where Calcite's simplification reads the whole
-  condition above an `UNNEST` or a lateral as false, `CosmosFilterCorrelateRule` moves nothing unless the condition holds
-  the service's form, so the traversal's request carries no `WHERE` and reads every document, where `main`, through
-  `FILTER_CORRELATE`, sent none: for example `kind = 'A' AND kind = 'B' AND u.t = '1'` and `kind = 'A' AND NOT (kind =
-  'A' OR CAST(u.t AS INTEGER) = 1)`, measured offline in the host Chapter 21 describes.
+- **A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral reads every document** — *small, a cost, the
+  answer the same but where something in the `WHERE` can fail; new in "fail like Calcite", and left for a change of its
+  own.* Where `CosmosFilterCorrelateRule` moves nothing, because a conjunct it would move decides what Calcite reads of
+  the rest or Calcite reads the whole as false, the condition stays above the traversal and its request carries none of
+  the document's conjuncts. Measured offline in the host Chapter 21 describes, for example: `kind = 'A' AND (kind = 'B'
+  OR u.t = '1')` reads every document where `main` sent `WHERE (c.kind = @p0)`; `kind = 'A' AND kind = 'B' AND u.t =
+  '1'` reads every document where `main` sent none; and `u.t = '1' AND u.t = '2' AND kind = 'A'` reads every document
+  where `main` sent `WHERE (c.kind = @p0)`. Where something in the `WHERE` can fail, the answer is the one the correlate
+  entry above gives where the transposition is not taken: `l.k2 = 'A' AND l.k2 = 'B' AND CAST(body AS INTEGER) = 7` over
+  a lateral answers no rows over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does. The fix,
+  sending such a `WHERE`'s conjuncts of the document while Calcite evaluates the whole above, over only the documents
+  the request returns as a split's part kept in process is (Chapter 14.2), is a change of its own after "fail like
+  Calcite".
 - **Through a connection, a term the reduce derives from a condition of both sides is moved beneath a correlate** —
   *small, a failure where Calcite answers, and an empty answer where it fails; older, `main` the same but for one
   statement.* Through a connection that runs Calcite's default rules, as the README's does,
-  `FILTER_REDUCE_EXPRESSIONS` reads a conjunct of the document and the element beside the conjuncts of the document
-  and derives a term of the document alone, which the transposition then moves into the left side of the correlate,
-  where it is evaluated on every document the request returns, whatever its elements or its lateral's rows. Measured
+  `FILTER_REDUCE_EXPRESSIONS` reads a conjunct of both sides beside the conjuncts of one side and derives a term of
+  either side alone, which the transposition then moves into that side, where it is evaluated on every row that side
+  reads, whatever the other side holds for it: a term of the document on every document the request returns, and a
+  term of a lateral beside the lateral's own `WHERE`. Measured
   on both emulators under both targets' plans, against that connection's own Calcite, for example: `kind = 'A' AND
   ((kind = 'B' AND u.t = 'x') OR CAST(body AS INTEGER) = 7)` over an `UNNEST` of `tags` (x3) fails on a `body` of `"q"`
   where that Calcite answers, as on `main`; and `CAST(u.t AS INTEGER) > 0 AND ((kind = 'B' AND u.t = 'q') OR CAST(body
   AS INTEGER) = 7) AND kind = 'A'` with nothing declared (w2) answers no rows after a request where that Calcite fails on
-  an element `"x"`, where `main` took a plan that kept the term above and failed as Calcite does. The fix is a
+  an element `"x"`, where `main` took a plan that kept the term above and failed as Calcite does; and over a lateral
+  of `body` where `m = '1'` and an `UNNEST` of `xs`, `kind = 'A' AND (kind = 'B' OR CAST(l.t AS INTEGER) = 1)` (h3) fails
+  on a `body` of `"abc"` of a document of kind `A` whose lateral returns no row, where that Calcite answers, as on
+  `main`, the term read down to `CAST(l.t AS INTEGER) = 1` and moved into the lateral. The fix is a
   transposition that leaves above a term the connection's reduce rules derive from a condition reading both sides, a
   change of its own after "fail like Calcite".
 - **Through a connection, a filter above the half sent is reduced with what that half holds** — *small, an answer

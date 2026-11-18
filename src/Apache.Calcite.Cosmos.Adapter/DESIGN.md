@@ -1325,10 +1325,12 @@ connection, a filter above the half sent is reduced with what that half holds*).
 
 **A filter above a correlate is transposed as Calcite's rule transposes it, or not at all.**
 `CosmosFilterCorrelateRule` writes Calcite's `FILTER_CORRELATE` as Calcite's rule writes it where every conjunct of
-Calcite's simplification of what that rule leaves above after its last firing, over this correlate and over any side
-that is one, is a conjunct of Calcite's simplification of the whole condition, and otherwise moves nothing, as where the
-whole reads as false; a condition holding the service's form moves as Calcite's rule moves it (`TODO.md`, *A filter
-above a correlate answers where one of Calcite's plans fails*, records what was measured).
+Calcite's simplification of what that rule leaves above after its last firing, over this correlate and over the
+correlate the filter it writes into a side reaches through a projection or a grouping's keys, there read beside a
+sub-query's own `WHERE`, which is transposed alike, is a conjunct of Calcite's simplification of the whole condition,
+and otherwise moves nothing, as where the whole reads as false; a condition holding the service's form moves as
+Calcite's rule moves it (`TODO.md`, *A filter above a correlate answers where one of Calcite's plans fails*, records
+what was measured).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
