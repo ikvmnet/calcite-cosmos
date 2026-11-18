@@ -3011,7 +3011,13 @@ across documents* and *A join of a container to itself* is the record.
   (jx2) fails where it answers. A sub-query's own `WHERE` over a traversal is not transposed where a `WHERE` above it is
   not: for example `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` in a sub-query beneath `CAST(body AS INTEGER) = 7 AND n > 50
   AND (n > 40 OR v.s = '1')` over a traversal of its `more` (ws1) fails on an element `"x"` of a document of kind `B`,
-  where Calcite with `FILTER_CORRELATE` and `main` answer. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows
+  where Calcite with `FILTER_CORRELATE` and `main` answer; and a `WHERE` over a traversal that Calcite reads as false keeps
+  the statement's other filters from moving, so `CAST(body AS DOUBLE) = 1e0` beside an `EXISTS` whose sub-query's `WHERE`
+  over an `UNNEST` of `tags` is `u.t IS NULL AND NOT (u.t IS NULL OR m IS NULL)` (bx26e) counts 0 where Calcite with
+  `FILTER_CORRELATE` fails on a `body` of `"q"`. A condition holding the service's form, which a split writes and Calcite
+  has no body for above a correlate, still moves as Calcite's rule moves it in a statement that otherwise moves nothing:
+  measured once, through the README's connection, in a `WHERE` over two traversals that Calcite reads as false (a188uw),
+  whose answer is that connection's Calcite's. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows
   the part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example `m =
   '2' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of
   `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same).
