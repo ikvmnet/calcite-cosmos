@@ -191,8 +191,147 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "dd1c" => LC($"{cb} IN (3, 5) AND NOT (NOT ({cb} = 7 AND l.t IS NOT NULL))"),
                 "d392l" => L($"{cb} IN (3, 5) AND {arm} AND NOT ({arm} OR CAST(l.t AS INTEGER) = 1)"),
                 "d392lc" => LC($"{cb} IN (3, 5) AND {arm} AND NOT ({arm} OR CAST(l.t AS INTEGER) = 1)"),
+                _ => BesideANestedCorrelate(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a <c>WHERE</c> over a correlate whose side holds another correlate
+        /// beneath a sub-query's projection, its own <c>WHERE</c>, a second projection or a grouping, each traversed again
+        /// by an <c>UNNEST</c> or a lateral, whose conjunct of the document decides what Calcite reads of a cast beside it.
+        /// </summary>
+        static string BesideANestedCorrelate(string name, string t)
+        {
+            static string J(string a, string p) => $"""JSON_VALUE({a}."DOC", '$.{p}')""";
+            static string Q(string a, string p) => $"""JSON_QUERY({a}."DOC", '$.{p}' RETURNING VARCHAR ARRAY)""";
+            var tags = $"""{t} AS c, UNNEST({Q("c", "tags")}) AS u(t)""";
+            var x = $"""(SELECT c."id", c."DOC", u.t FROM {tags}) AS x""";
+            var xs = $"UNNEST({Q("x", "xs")}) AS v(s)";
+            var or = $"({J("x", "kind")} = 'B' OR CAST(x.t AS INTEGER) = 1) AND {J("x", "kind")} = 'A'";
+            var body = $"(SELECT {J("c", "body")} AS t FROM (VALUES (1)) AS w0(x0) WHERE {J("c", "m")} = '1') AS l";
+            var y = $"""(SELECT c."id", c."DOC", l.t AS lt FROM {t} AS c CROSS JOIN LATERAL {body}) AS y""";
+            var yl = $"""(SELECT c."id", c."DOC", l.t AS lt FROM {t} AS c LEFT JOIN LATERAL {body} ON TRUE) AS y""";
+            var ws = $"UNNEST({Q("y", "xs")}) AS w(s)";
+            var ory = $"{J("y", "kind")} = 'A' AND ({J("y", "kind")} = 'B' OR CAST(y.lt AS INTEGER) = 1)";
+            var more = $"UNNEST({Q("x", "more")}) AS v(s)";
+            var p1 = $"WHERE {J("c", "kind")} = 'A' AND (({J("c", "kind")} = 'B' AND u.t = 'x') OR u.t <> 'z')";
+            var px = $"""(SELECT c."id", c."DOC", u.t FROM {tags} {p1}) AS x""";
+            var cast = $"CAST({J("x", "body")} AS INTEGER) = 7";
+            var keys = $"""(SELECT c."id", u.t FROM {tags} GROUP BY c."id", u.t) AS x""";
+            var some = """CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0) WHERE x."id" <> '2') AS l""";
+            var ork = """x."id" = '1' AND (x."id" = '2' OR CAST(x.t AS INTEGER) = 1)""";
+            return name switch
+            {
+                "np1" => $"""SELECT x."id", x.t, v.s FROM {x}, {xs} WHERE {or}""",
+                "np1c" => $"""SELECT COUNT(*) AS q FROM {x}, {xs} WHERE {or}""",
+                "np6" => $"""SELECT x."id", x.t, v.s FROM (SELECT c."id", c."DOC", u.t FROM {t} AS c LEFT JOIN UNNEST({Q("c", "tags")}) AS u(t) ON TRUE) AS x, {xs} WHERE {or}""",
+                "np8" => $"""SELECT x."id", x.t, l.t2 FROM {x} CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0) WHERE {J("x", "m")} = '1') AS l WHERE {or}""",
+                "np10" => $"""SELECT x."id", x.t, v.s FROM (SELECT c."id", c."DOC", l.t FROM {t} AS c CROSS JOIN LATERAL {body}) AS x, {xs} WHERE ({J("x", "kind")} = 'B' OR CAST(x.t AS INTEGER) = 7) AND {J("x", "kind")} = 'A'""",
+                "np10c" => $"""SELECT COUNT(*) AS q FROM (SELECT c."id", c."DOC", l.t FROM {t} AS c CROSS JOIN LATERAL {body}) AS x, {xs} WHERE ({J("x", "kind")} = 'B' OR CAST(x.t AS INTEGER) = 7) AND {J("x", "kind")} = 'A'""",
+                "nq1" => $"""SELECT x."id", x.t, v.s FROM (SELECT c."id", c."DOC", u.t FROM {tags} WHERE u.t <> 'zz') AS x, {xs} WHERE {or}""",
+                "nt1" => $"""SELECT x."id", x.t, v.s FROM (SELECT y."id", y."DOC", y.t FROM (SELECT c."id", c."DOC", u.t FROM {tags}) AS y) AS x, {xs} WHERE {or}""",
+                "nd1" => $"""SELECT x."id", x.t FROM {x} WHERE {or} AND EXISTS (SELECT 1 FROM {xs} WHERE v.s = '1')""",
+                "c2" => $"""SELECT c."id", u.t, v.s FROM {tags}, UNNEST({Q("c", "xs")}) AS v(s) WHERE ({J("c", "kind")} = 'B' OR CAST(u.t AS INTEGER) = 1) AND {J("c", "kind")} = 'A'""",
+                "ag1" => $"""SELECT x."id", x.t, l.t2 FROM {keys} {some} WHERE {ork}""",
+                "ag1c" => $"""SELECT COUNT(*) AS q FROM {keys} {some} WHERE {ork}""",
+                "h1pl" => $"""SELECT y."id", w.s FROM {y}, {ws} WHERE {ory} AND w.s <> 'q'""",
+                "h1plc" => $"""SELECT COUNT(*) AS q FROM {y}, {ws} WHERE {ory} AND w.s <> 'q'""",
+                "h8pll" => $"""SELECT y."id", w.s FROM {yl}, {ws} WHERE {ory}""",
+                "h8pld" => $"""SELECT DISTINCT y."id" FROM {y}, {ws} WHERE {ory}""",
+                "h3" => $"""SELECT c."id", w.s FROM {t} AS c CROSS JOIN LATERAL {body} CROSS JOIN UNNEST({Q("c", "xs")}) AS w(s) WHERE {J("c", "kind")} = 'A' AND ({J("c", "kind")} = 'B' OR CAST(l.t AS INTEGER) = 1)""",
+                "px5" => $"""SELECT x."id", x.t, v.s FROM {px}, {more} WHERE {cast} AND v.s IS NOT NULL""",
+                "px5c" => $"""SELECT COUNT(*) AS q FROM {px}, {more} WHERE {cast} AND v.s IS NOT NULL""",
+                "pz2" => $"""SELECT x."id", x.t, v.s FROM {px}, {more} WHERE CAST(x.t AS INTEGER) > 0 AND v.s IS NOT NULL""",
+                "pz4" => $"""SELECT x."id", x.t, l.k2 FROM {px} CROSS JOIN LATERAL (SELECT {J("x", "kind")} AS k2 FROM (VALUES (1)) AS w(x0)) AS l WHERE {cast} AND l.k2 IS NOT NULL""",
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
+        }
+
+        /// <summary>
+        /// What <see cref="Traversed"/> admits: a document of kind <c>B</c> holding an element <c>"x"</c> and no <c>xs</c>,
+        /// beside documents of kind <c>B</c> with no element, one of which holds a <c>body</c> of <c>"zz"</c>.
+        /// </summary>
+        internal static readonly string[] NestedBesideNoElement =
+        [
+            """{"id":"1","category":"a","kind":"A","m":"1","tags":["1"],"xs":["1"],"body":"7","n":1}""",
+            """{"id":"2","category":"a","kind":"B","m":"2","tags":["x"],"xs":[],"body":"q","n":2}""",
+            """{"id":"3","category":"b","kind":"A","m":"1","tags":["1","2"],"xs":["2"],"body":"5","n":3}""",
+            """{"id":"4","category":"b","kind":"B","m":"2","tags":[],"xs":["3"],"body":"abc","n":4}""",
+            """{"id":"5","category":"c","kind":"B","m":"1","tags":[],"xs":[],"body":"zz","n":5}""",
+        ];
+
+        /// <summary>
+        /// What <see cref="Traversed"/> admits: documents of kind <c>B</c> whose lateral returns a <c>body</c> no integer
+        /// parses and whose <c>xs</c> is empty.
+        /// </summary>
+        internal static readonly string[] LateralBesideNoElement =
+        [
+            """{"id":"1","category":"a","kind":"A","m":"1","body":"1","tags":["1","x"],"xs":["2"],"n":1}""",
+            """{"id":"2","category":"a","kind":"B","m":"1","body":"q","tags":["z"],"xs":[],"n":2}""",
+            """{"id":"3","category":"b","kind":"A","m":"1","body":"7","tags":["7"],"xs":["x"],"n":3}""",
+            """{"id":"4","category":"b","kind":"B","m":"2","body":"5","tags":["x"],"xs":["1"],"n":4}""",
+            """{"id":"5","category":"c","kind":"A","m":"2","body":"abc","tags":[],"xs":[],"n":5}""",
+            """{"id":"6","category":"c","kind":"B","m":"1","body":"zz","tags":["5"],"xs":[],"n":6}""",
+        ];
+
+        /// <summary>
+        /// What <see cref="Traversed"/> admits: a document of kind <c>B</c> whose <c>tags</c> and <c>more</c> hold elements,
+        /// with a <c>body</c> of <c>"zz"</c>, or, with <paramref name="element"/>, of kind <c>B</c> holding an element
+        /// <c>"x"</c>.
+        /// </summary>
+        static string[] ElementsBesideAKindRuledOut(bool element) =>
+        [
+            """{"id":"1","category":"a","kind":"A","m":"1","tags":["1","3"],"more":["1"],"body":"7","n":1}""",
+            """{"id":"2","category":"a","kind":"A","m":"2","tags":[],"more":[],"body":"9","n":2}""",
+            element
+                ? """{"id":"3","category":"b","kind":"B","m":"1","tags":["x"],"more":["2"],"body":"5","n":60}"""
+                : """{"id":"3","category":"b","kind":"B","m":"1","tags":["2"],"more":["2"],"body":"5","n":60}""",
+            """{"id":"4","category":"b","kind":"A","m":"1","tags":["2"],"more":[],"body":"3","n":4}""",
+            element
+                ? """{"id":"5","category":"c","kind":"B","m":"2","tags":["1"],"more":["1"],"body":"8","n":70}"""
+                : """{"id":"5","category":"c","kind":"B","m":"2","tags":["1"],"more":["1"],"body":"zz","n":70}""",
+            """{"id":"6","category":"c","kind":"A","m":"1","tags":["7","1"],"more":["1","2"],"body":"7","n":50}""",
+        ];
+
+        /// <summary>
+        /// Where a correlate's side holds another correlate beneath a sub-query's projection, its own <c>WHERE</c>, a second
+        /// projection or a grouping, the conjuncts Calcite's rule would move into that side reach the inner correlate, and
+        /// are moved only where its transposition of them, beside any <c>WHERE</c> they meet, is taken too: np1, np6, the
+        /// lateral np8, np10 over a lateral, nq1 and px5 over a sub-query's <c>WHERE</c>, nt1 through two projections, nd1
+        /// beside an <c>EXISTS</c>, ag1 through a grouping, h1pl, h8pll and h8pld over a lateral traversed again, pz2, pz4
+        /// and the <c>COUNT</c>s cast no element or <c>body</c> of a kind the condition rules out, and answer the rows it
+        /// keeps, as c2 and h3, the same conditions with no sub-query, do, declared or not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("np1", "n", "1,1,1;3,1,2")]
+        [InlineData("np1c", "n", "2")]
+        [InlineData("np6", "n", "1,1,1;3,1,2")]
+        [InlineData("np8", "n", "1,1,1;3,1,1")]
+        [InlineData("np10", "n", "1,7,1")]
+        [InlineData("np10c", "n", "1")]
+        [InlineData("nq1", "n", "1,1,1;3,1,2")]
+        [InlineData("nt1", "n", "1,1,1;3,1,2")]
+        [InlineData("nd1", "n", "1,1")]
+        [InlineData("c2", "n", "1,1,1;3,1,2")]
+        [InlineData("ag1", "n", "1,1,1")]
+        [InlineData("ag1c", "n", "1")]
+        [InlineData("h1pl", "h", "1,2")]
+        [InlineData("h1plc", "h", "1")]
+        [InlineData("h8pll", "h", "1,2")]
+        [InlineData("h8pld", "h", "1")]
+        [InlineData("h3", "h", "1,2")]
+        [InlineData("px5", "zz", "1,1,1;1,3,1;6,1,1;6,1,2;6,7,1;6,7,2")]
+        [InlineData("px5c", "zz", "6")]
+        [InlineData("pz4", "zz", "1,1,A;1,3,A;6,1,A;6,7,A")]
+        [InlineData("pz2", "x", "1,1,1;1,3,1;6,1,1;6,1,2;6,7,1;6,7,2")]
+        public async Task AConjunctMovedIntoASideIsMovedOnlyAsTheCorrelateItReachesTakesIt(string name, string documents, string rows)
+        {
+            await Answers(name, rows, Traversed, documents switch
+            {
+                "n" => NestedBesideNoElement,
+                "h" => LateralBesideNoElement,
+                _ => ElementsBesideAKindRuledOut(documents == "x"),
+            });
         }
 
         /// <summary>

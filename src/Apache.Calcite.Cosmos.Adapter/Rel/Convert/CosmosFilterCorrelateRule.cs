@@ -12,8 +12,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <summary>
     /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, where every conjunct of Calcite's simplification of
     /// what that rule leaves above the correlate after its last firing is a conjunct of Calcite's simplification of the
-    /// whole condition, and its firings over a side that is a correlate are taken alike; elsewhere, and where the whole
-    /// reads as false, it moves nothing.
+    /// whole condition, and its firings over a correlate the filter it writes into a side reaches, through a projection, a
+    /// grouping's keys or a filter, are taken alike; elsewhere, and where the whole reads as false, it moves nothing.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -106,13 +106,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether Calcite's transposition is taken: Calcite's simplification of the whole condition, unknown read
         /// as false, reads it as false neither as written nor as Calcite's builder writes it; every conjunct of that
         /// simplification of what Calcite's rule leaves above after its last firing is a conjunct of that simplification of
-        /// the whole as the builder writes it, compared as Calcite compares expressions; and where a firing moves conjuncts
-        /// into a side that is itself a correlate, the transposition of the filter it writes there is taken too.
+        /// the whole as the builder writes it, compared as Calcite compares expressions; and where the filter a firing writes
+        /// into a side reaches a correlate, the transposition of it there is taken too.
         /// </summary>
         /// <remarks>
         /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
-        /// and a side's filter as Calcite's rule fires on it next, so each firing over the filters this one writes decides
-        /// as this one does.
+        /// and a side's filter as Calcite's rule fires on it next, where Calcite's rules carry it, so each firing over the
+        /// filters this one writes decides as this one does.
         /// </remarks>
         static bool Transposes(RexBuilder rexBuilder, Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth = 0)
         {
@@ -150,21 +150,103 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether the filter a firing writes over a side, of the conjuncts it moves there, leaves that side as
-        /// Calcite's rule would: where a member of the side is a correlate, its transposition of that filter is taken, or
-        /// moves nothing; a filter the builder writes as false is none.
+        /// Determines whether the filter a firing writes over a side, of the conjuncts it moves there, leaves the correlate
+        /// it reaches as Calcite's rule would: its transposition of that filter is taken, or moves nothing.
         /// </summary>
-        static bool Side(RexBuilder rexBuilder, RexSimplify simplify, RelNode side, java.util.List conjuncts, int depth)
+        static bool Side(RexBuilder rexBuilder, RexSimplify simplify, RelNode side, java.util.List conjuncts, int depth) =>
+            Reaches(rexBuilder, simplify, side, conjuncts, true, depth, Rel.CosmosPlanMembers.NewSeen());
+
+        /// <summary>
+        /// Follows conjuncts down a side to the correlate Calcite's rules carry them onto: past a projection as
+        /// <c>FILTER_PROJECT_TRANSPOSE</c> writes them, past a grouping's keys as <c>FILTER_AGGREGATE_TRANSPOSE</c> does,
+        /// and onto a filter, beside whose condition they are evaluated, which must itself be transposed there; a filter the
+        /// builder writes as false, which <paramref name="written"/> says it may, is none. <paramref name="path"/> holds the
+        /// members on the way down, which keeps the search finite.
+        /// </summary>
+        static bool Reaches(RexBuilder rexBuilder, RexSimplify simplify, RelNode node, java.util.List conjuncts, bool written, int depth, HashSet<RelNode> path)
         {
-            if (conjuncts.isEmpty() || Rel.CosmosPlanMembers.Of(side).OfType<Correlate>().FirstOrDefault() is not Correlate inner)
+            if (conjuncts.isEmpty())
                 return true;
 
-            var written = simplify.simplifyFilterPredicates(conjuncts);
-            if (written is null)
-                return true;
+            var members = Rel.CosmosPlanMembers.Of(node);
+            if (members.OfType<Correlate>().FirstOrDefault() is Correlate inner)
+            {
+                var condition = written ? simplify.simplifyFilterPredicates(conjuncts) : RexUtil.composeConjunction(rexBuilder, conjuncts);
+                if (condition is null)
+                    return true;
 
-            var (above, left, right) = Classify(inner, written);
-            return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(written) || Transposes(rexBuilder, inner, written, above, left, right, depth + 1);
+                var (above, left, right) = Classify(inner, condition);
+                return (left.isEmpty() && right.isEmpty()) || Sql.CosmosOperators.HoldsServiceForm(condition) || Transposes(rexBuilder, inner, condition, above, left, right, depth + 1);
+            }
+
+            if (members.OfType<Project>().FirstOrDefault(p => p.containsOver() == false) is Project project && path.Add(project))
+            {
+                try
+                {
+                    var pushed = new java.util.ArrayList();
+                    for (var i = 0; i < conjuncts.size(); i++)
+                        pushed.add(RelOptUtil.pushPastProject((RexNode)conjuncts.get(i), project));
+
+                    return Reaches(rexBuilder, simplify, project.getInput(), pushed, written, depth, path);
+                }
+                finally
+                {
+                    path.Remove(project);
+                }
+            }
+
+            if (members.OfType<Aggregate>().FirstOrDefault(a => a.getGroupType() == Aggregate.Group.SIMPLE) is Aggregate aggregate && path.Add(aggregate))
+            {
+                try
+                {
+                    return Reaches(rexBuilder, simplify, aggregate.getInput(), ThroughKeys(rexBuilder, aggregate, conjuncts), written, depth, path);
+                }
+                finally
+                {
+                    path.Remove(aggregate);
+                }
+            }
+
+            if (members.OfType<Filter>().FirstOrDefault() is Filter filter && path.Add(filter))
+            {
+                try
+                {
+                    var own = RelOptUtil.conjunctions(filter.getCondition());
+                    var merged = new java.util.ArrayList(conjuncts);
+                    merged.addAll(own);
+                    return Reaches(rexBuilder, simplify, filter.getInput(), new java.util.ArrayList(own), false, depth, path) && Reaches(rexBuilder, simplify, filter.getInput(), merged, true, depth, path);
+                }
+                finally
+                {
+                    path.Remove(filter);
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Returns the conjuncts <c>FILTER_AGGREGATE_TRANSPOSE</c> moves beneath a grouping, those reading its keys alone,
+        /// each over the grouping's input.
+        /// </summary>
+        static java.util.List ThroughKeys(RexBuilder rexBuilder, Aggregate aggregate, java.util.List conjuncts)
+        {
+            var keys = aggregate.getGroupSet();
+            var output = aggregate.getRowType().getFieldList();
+            var input = aggregate.getInput().getRowType().getFieldList();
+            var adjustments = new int[output.size()];
+            for (var j = 0; j < keys.cardinality(); j++)
+                adjustments[j] = keys.nth(j) - j;
+
+            var pushed = new java.util.ArrayList();
+            for (var i = 0; i < conjuncts.size(); i++)
+            {
+                var conjunct = (RexNode)conjuncts.get(i);
+                if (org.apache.calcite.util.ImmutableBitSet.range(0, keys.cardinality()).contains(RelOptUtil.InputFinder.bits(conjunct)))
+                    pushed.add(conjunct.accept(new RelOptUtil.RexInputConverter(rexBuilder, output, input, adjustments)));
+            }
+
+            return pushed;
         }
 
         /// <summary>
