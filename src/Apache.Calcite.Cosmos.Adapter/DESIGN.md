@@ -1323,10 +1323,12 @@ whose columns the service computes (*A split over a computed projection keeps wh
 through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
 connection, a filter above the half sent is reduced with what that half holds*).
 
-**What a filter above a correlate leaves there is read the same way.** `CosmosFilterCorrelateRule` moves into a side
-the conjuncts Calcite's `FILTER_CORRELATE` moves and leaves above `Residual`'s reading of the rest beside them, keeping
-as written each conjunct that reading would take down to one side, and moves nothing where the whole reads as false
-(`TODO.md`, *A filter above a correlate answers where Calcite's own transposition fails*, records what was measured).
+**A filter above a correlate is transposed as Calcite's rule transposes it, or not at all.**
+`CosmosFilterCorrelateRule` writes Calcite's `FILTER_CORRELATE` as Calcite's rule writes it where every conjunct of
+Calcite's simplification of what that rule leaves above after its last firing, over this correlate and over any side
+that is one, is a conjunct of Calcite's simplification of the whole condition, and otherwise moves nothing, as where the
+whole reads as false; a condition holding the service's form moves as Calcite's rule moves it (`TODO.md`, *A filter
+above a correlate answers where one of Calcite's plans fails*, records what was measured).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -2391,9 +2393,9 @@ to its alias. The clause order does the rest: `JOIN` then `WHERE` is exactly tra
 A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which is why the shape the
 rule reads is the shape a host produces. The adapter registers its own for the reason the other
 Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
-depend on which rules a caller happened to add — and it moves what Calcite's moves, except where the
-whole reads as false, and leaves above its own reading of the rest (*What a filter above a correlate
-leaves there is read the same way*).
+depend on which rules a caller happened to add — and it is Calcite's, taken only where the conjuncts it
+moves decide nothing of what Calcite reads of the rest (*A filter above a correlate is transposed as
+Calcite's rule transposes it, or not at all*).
 Where the predicate does not render, the untransposed plan survives the transformation and the
 traversal still pushes with the predicate above it.
 
@@ -5808,7 +5810,7 @@ src/
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
       Convert/CosmosUncorrelatedProjectMergeRule.cs ✔ A projection declaring a correlation variable it never reads, merged
-      Convert/CosmosFilterCorrelateRule.cs ✔ A filter's one-sided conjuncts moved into a correlate, the rest as written or as Calcite reads it
+      Convert/CosmosFilterCorrelateRule.cs ✔ Calcite's filter-correlate transposition, taken where what it moves decides nothing of the rest
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔

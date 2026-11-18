@@ -345,10 +345,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Where Calcite's rule would read a side beside a term its simplification derives from a conjunct of both sides, the
-        /// conjunct moved into that side is not evaluated there alone: dd2, the laterals dd1 and d392l and their
-        /// <c>COUNT</c>s answer no rows over a document whose <c>body</c> no integer parses and which holds no element or
-        /// has no lateral row, declared or not, under both targets.
+        /// A conjunct of the document is not evaluated alone in a side beside which Calcite's simplification reads a term it
+        /// derives from a conjunct of both sides as false: dd2, the laterals dd1 and d392l and their <c>COUNT</c>s answer no
+        /// rows over a document whose <c>body</c> no integer parses and which holds no element or has no lateral row,
+        /// declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("dd2", "")]
