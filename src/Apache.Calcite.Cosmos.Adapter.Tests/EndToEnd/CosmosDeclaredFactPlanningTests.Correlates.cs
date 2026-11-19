@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -806,14 +805,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Plans a statement in the host Chapter 21 describes, its calc pass after, and runs it over a container whose every
-        /// request is answered with the same documents, each as the row a statement reading the document and its id is
-        /// returned: the rows, each as its columns' text joined by commas, or what the run raised.
+        /// Plans a statement in the host Chapter 21 describes, its calc pass after, and runs it over a container whose requests
+        /// are answered over the documents given, each request's <c>WHERE</c> evaluated as the service evaluates it: the rows,
+        /// each as its columns' text joined by commas, or what the run raised.
         /// </summary>
         static async Task<(List<string>? Rows, Exception? Raised, string Plan)> Answer(string sql, CosmosContainerMetadata container, string[] documents)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(container, new DocumentsExecutor(documents));
+            var table = new CosmosTable(container, new DocumentsExecutor(documents, container.ServiceTarget));
             var plan = "";
             try
             {
@@ -836,7 +835,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 return (rows, null, plan);
             }
-            catch (Exception e)
+            catch (Exception e) when (Infrastructure.DocumentRequests.IsRefusal(e) == false)
             {
                 return (null, e, plan);
             }
@@ -845,16 +844,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// An executor that answers every request reading the document with the same documents, whatever its <c>WHERE</c>,
-        /// each as <c>{ "DOC": c, "id": c.id }</c>, and refuses any other.
+        /// Where set, each request a pin's plan sends, on its target, with the documents it was answered over: what
+        /// <see cref="CorrelatePinsServiceTests"/> sends the service.
         /// </summary>
-        sealed class DocumentsExecutor(string[] documents) : ICosmosQueryExecutor
+        internal static readonly AsyncLocal<List<(CosmosServiceTarget Target, CosmosQuery Query, string[] Documents)>?> Sending = new();
+
+        /// <summary>
+        /// An executor that answers a request reading whole documents over the documents given, its <c>WHERE</c> evaluated as
+        /// the service evaluates it on the container's target (<see cref="Infrastructure.DocumentRequests"/>), and refuses
+        /// any other.
+        /// </summary>
+        sealed class DocumentsExecutor(string[] documents, CosmosServiceTarget target) : ICosmosQueryExecutor
         {
 
-            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default) =>
-                query.Sql.StartsWith("SELECT VALUE { \"DOC\": c,", StringComparison.Ordinal) && query.Sql.Contains(" JOIN ", StringComparison.Ordinal) == false
-                    ? new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())))
-                    : throw new InvalidOperationException("Not answered here: " + query.Sql);
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                var rows = Infrastructure.DocumentRequests.Answer(query, partitionKey, documents, target);
+                if (Sending.Value is { } sending)
+                    lock (sending)
+                        sending.Add((target, query, documents));
+
+                return new(Infrastructure.ListCursor.Documents(rows));
+            }
 
         }
 
