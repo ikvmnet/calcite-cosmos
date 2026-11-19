@@ -457,9 +457,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// <see cref="CosmosDeclaredFactPlanningTests.AStackOfWheresOverATraversalIsReadOnceWithinABound"/> through this
-        /// connection, whose rules merge a filter into the filter beneath: each statement's answer is worked out once, within
-        /// the bound given on the planner's runs over a member, declared and not, under both targets.
+        /// The statements of <see cref="CosmosDeclaredFactPlanningTests.AStackOfWheresOverATraversalIsReadOnceWithinABound"/>
+        /// plan through this connection, declared and not, under both targets, with the correlate rule working the statement's
+        /// answer out at most once on each planner and running the planner's rules over members no more times, over all its
+        /// planners, than the bound given.
         /// </summary>
         [Theory]
         [InlineData("dp", 10, 64)]

@@ -705,11 +705,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The correlate rule works a statement's answer out once, at its first firing, and runs the planner's rules over a
-        /// member once for each set of conjuncts that reaches it, so a stack of <c>WHERE</c>s over a traversal plans within a
-        /// bound on those runs that grows with the stack's square, where reading every path down to each correlate at every
-        /// firing doubled it with each <c>WHERE</c>: ten over a sub-query's <c>UNNEST</c> (dp) and eight traversals each
-        /// with its own (dn), declared or not, under both targets.
+        /// Ten <c>WHERE</c>s stacked over a sub-query's <c>UNNEST</c> (dp) and eight traversals each with its own (dn) plan
+        /// with one planner, on which the correlate rule works the statement's answer out once and runs the planner's rules
+        /// over members no more times, in all, than the bound given, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("dp", 10, 64)]

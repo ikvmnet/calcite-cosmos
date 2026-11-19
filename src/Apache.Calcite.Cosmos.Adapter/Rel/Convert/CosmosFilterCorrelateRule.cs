@@ -31,8 +31,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// </para>
     /// <para>
     /// One instance for every container, as Calcite's own rules are registered once whatever registers them. A statement's
-    /// answer is worked out at the rule's first firing over it and kept with the Volcano planner planning it
-    /// (<see cref="Statements"/>).
+    /// answer is kept with the Volcano planner planning it, for the planner's root and the number of its rules, and worked
+    /// out again where either changes (<see cref="Statements"/>).
     /// </para>
     /// </remarks>
     public class CosmosFilterCorrelateRule : RelOptRule
