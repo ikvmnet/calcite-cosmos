@@ -413,8 +413,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The correlate rule takes Calcite's transposition at every correlate of a statement or at none, and over a traversal
         /// or a lateral of a sub-query whose own <c>WHERE</c> is over another, takes it where nothing its tests newly evaluate
-        /// can fail on a document the declaration admits. Where <c>n</c> is declared an integer, ws1 to ws4 and their
-        /// <c>COUNT</c>s are transposed and fail on the <c>body</c> <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does;
+        /// can fail on a document the declaration admits. Where <c>n</c> is declared an integer from 0 to 100, ws1 to ws4
+        /// and their <c>COUNT</c>s are transposed and fail on the <c>body</c> <c>"zz"</c> as Calcite with
+        /// <c>FILTER_CORRELATE</c> does;
         /// where nothing is declared, the <c>RETURNING</c> of <c>n</c> their tests ask can fail, nothing is transposed, and
         /// they fail on the element <c>"x"</c> as Calcite with no transposition does. ws5, ws6, ws7 and their <c>COUNT</c>s,
         /// whose tests ask nothing that can fail, fail on <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does, declared or
@@ -595,8 +596,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// correlate: x3, x9, x9b and the lateral x8 cast no <c>body</c> of a document with no element or no lateral row, and
         /// answer the rows the condition keeps, as does mx1, which beside such a conjunct holds one the whole reads away, and
         /// z189u fails on the element <c>"x"</c> as Calcite does, declared or not, under both targets. w1, under <see
-        /// cref="TraversedFixed"/>, whose cast of <c>body</c> cannot fail, is transposed where declared, and fails on
-        /// <c>"x"</c> as both of Calcite's plans do, as it does where nothing is declared and nothing moves.
+        /// cref="TraversedFixed"/>, whose cast of <c>body</c> cannot fail, has a test that asks nothing that can fail where
+        /// declared, yet the planner keeps its <c>WHERE</c> above the correlate, and it fails on <c>"x"</c> as both of
+        /// Calcite's plans do, declared or not.
         /// </summary>
         [Theory]
         [InlineData("x3", "1,1;1,x")]
@@ -844,8 +846,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// describes, declared and not, under both targets: each request as the text after the container's alias with its
         /// parameters, empty for one that reads every document, or <c>nothing</c>. fr0 and fruu, whose transposition newly
         /// evaluates only comparisons of the element and the document's text, send their conjunct of the document; frkk, which
-        /// keeps no document, sends none; ws1k sends its conjuncts of the document where <c>n</c> is declared an integer, so that its
-        /// <c>RETURNING</c> never fails, and reads every document where nothing is declared; j3n sends
+        /// keeps no document, sends none; ws1k sends its conjuncts of the document where <c>n</c> is declared an integer from 0
+        /// to 100, so that its <c>RETURNING</c> never fails, and reads every document where nothing is declared; j3n sends
         /// <c>kind</c> and keeps its cast of <c>body</c> in process; wf3, a1, w13, rf2 and fz2_320, whose transposition newly
         /// evaluates a cast that can fail or a comparison of the element with a computed value, read every document, as wf3
         /// does not under <see cref="TraversedFixed"/>, where no cast of <c>body</c> fails; so does mf1, whose first firing

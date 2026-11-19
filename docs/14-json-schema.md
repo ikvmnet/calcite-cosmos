@@ -135,9 +135,9 @@ sent: every document has an `id`, an `_etag` and a `_ts`, so what a comparison o
 of its presence restricts nothing.
 
 In a planner you build (Chapter 21), a declaration that rules out a cast's or a `RETURNING`'s failure
-also lets a `WHERE` over an `UNNEST` that reads it send its conditions on the document — with `n`
-declared an integer, `JSON_VALUE(… '$.n' RETURNING INTEGER)` cannot fail — where without the
-declaration the request may read every document (Chapter 11.2).
+can also let a `WHERE` over an `UNNEST` that reads it send its conditions on the document — with `n`
+declared an integer from 0 to 100, `JSON_VALUE(… '$.n' RETURNING INTEGER)` cannot fail — where
+without the declaration the request may read every document (Chapter 11.2).
 
 ### A conjunct the schema already guarantees is not sent
 

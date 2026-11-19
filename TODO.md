@@ -3022,42 +3022,43 @@ across documents* and *A join of a container to itself* is the record.
   `FILTER_CORRELATE` fails on `"x"`. A sub-query's own `WHERE` over a traversal is not transposed where a `WHERE` above
   it would move a part and is not transposed: for example, where nothing declares `n`, so that the `RETURNING` of `n`
   the test above asks can fail, `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` in a sub-query beneath `CAST(body AS INTEGER)
-  = 7 AND n > 50 AND (n > 40 OR v.s = '1')` over a traversal of its `more` (ws1) fails on an element `"x"` of a document
-  of kind `B`, where Calcite with `FILTER_CORRELATE` and `main` answer. A `WHERE` over a traversal of which that rule
-  would move nothing, every conjunct reading both sides, keeps none from moving, so in a `UNION ALL` of `CAST(u.t AS
-  INTEGER) = 1 AND kind = 'A'` over `tags` and `u2.t || m = 'x1' AND u2.t || m <> 'x1'` over another traversal (fw4) the
-  first moves, and the statement answers as Calcite with `FILTER_CORRELATE` does where Calcite without it fails on
-  `"x"`. A condition holding the service's form, which a split writes and Calcite has no body for above a correlate,
-  still moves as Calcite's rule moves it in a statement that otherwise moves nothing: measured once, through the
-  README's connection, in a `WHERE` over two traversals that Calcite reads as false (a188uw), whose answer is that
-  connection's Calcite's. Beside a correlate as anywhere, a part of a condition kept in process reads only the rows the
-  part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example `m = '2'
-  AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of `tags`,
-  `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same). A statement the
-  rule takes because nothing its test asks can raise sends its conjuncts of the document, and can do so too: `kind = 'A'
-  AND CAST(body AS INTEGER) = 7 AND (kind = 'B' OR u.t = '1')` (j3n) sends `WHERE (c.kind = @p0)`, keeps the cast in
-  process, and over a document of kind `B` holding an element and a `body` of `"q"` answers the row of kind `A` where
-  both of Calcite's plans fail on `"q"`, declared and not
+  = 7 AND n > 50 AND (n > 40 OR v.s = '1')` over a traversal of its `more` (ws1k) fails on an element `"x"` of a
+  document of kind `B`, where Calcite with `FILTER_CORRELATE` and `main` answer. A `WHERE` over a traversal of which
+  that rule would move nothing, every conjunct reading both sides, keeps none from moving, so in a `UNION ALL` of
+  `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` over `tags` and `u2.t || m = 'x1' AND u2.t || m <> 'x1'` over another
+  traversal (fw4) the first moves, and the statement answers as Calcite with `FILTER_CORRELATE` does where Calcite
+  without it fails on `"x"`. A condition holding the service's form, which a split writes and Calcite has no body for
+  above a correlate, still moves as Calcite's rule moves it in a statement that otherwise moves nothing: measured once,
+  through the README's connection, in a `WHERE` over two traversals that Calcite reads as false (a188uw), whose answer
+  is that connection's Calcite's. Beside a correlate as anywhere, a part of a condition kept in process reads only the
+  rows the part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example
+  `m = '2' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of
+  `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same). A
+  statement the rule takes because nothing its test asks can raise sends its conjuncts of the document, and can do so
+  too: `kind = 'A' AND CAST(body AS INTEGER) = 7 AND (kind = 'B' OR u.t = '1')` (j3n) sends its conjunct on `kind`,
+  keeps the cast in process, and over a document of kind `B` holding an element and a `body` of `"q"` answers the row of
+  kind `A` where both of Calcite's plans fail on `"q"`, declared and not
   (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). And a
   transposition can prune, before it is reached, something Calcite without it fails on: a term of the `WHERE`, or the
-  traversal's own failure over an array holding a value that is no string, or over an object where the array is. That is
-  `FILTER_CORRELATE`'s answer where Calcite's planner takes the same transpositions, and neither plan's where it does
-  not: `m IS NOT NULL AND CAST(u.t AS INTEGER) > 0` (tk2; tk3 and u18u alike), which the rule takes, answers rows where
-  both plans fail on an element `"x"` of a document with no `m`, measured offline; and with `n` declared an integer,
-  ws1's outer `WHERE` over a sub-query whose `WHERE` over a `LEFT JOIN` of `tags` is `CAST(u.t AS INTEGER) = 1 AND
-  CAST(w AS INTEGER) > 50` (ws8) is planned with the transposition beneath alone, whose `w` keeps the document holding
-  an element `"x"` from its cast, and the outer `WHERE` above its traversal, where a document with a `body` of `"zz"`
-  joins no element of `more`: it answers a row where Calcite with `FILTER_CORRELATE`, taking both, fails on `"zz"`, and
-  Calcite without it on `"x"` (`AStatementIsTransposedAtEveryCorrelateOrAtNone`). Through the README's connection, where
-  a statement moves nothing, that connection's own rules still carry a `WHERE`'s conjuncts onto a traversal beneath a
-  grouping, where they are evaluated on its every element as its Calcite does without the transposition: for example
-  `x.id = '1' AND (x.id = '2' OR CAST(x.t AS INTEGER) = 7)` over a grouping of an `UNNEST` of an array of `body` and
-  `m`, beneath a lateral (agr1), fails on a `body` of `"q"` where `main` answered. Through the README's connection,
-  Calcite's own decorrelation moves `kind IN ('A', 'B')` beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A',
-  'B') OR CAST(u.t AS INTEGER) = 1)` (u18b) before any adapter rule reads the condition, and it fails as that
-  connection's Calcite does; so there a statement may hold that transposition at one correlate and none at another, as
-  where a `WHERE` over a lateral is moved into its side and the traversal beneath keeps its filter on `id` above it (wr,
-  wj2 and wm6, `CosmosConnectionPlanningTests`).
+  traversal's own failure over an array holding a value that is neither a string nor a null, or over an object where the
+  array is. That is `FILTER_CORRELATE`'s answer where Calcite's planner takes the same transpositions, and neither
+  plan's where it does not: `m IS NOT NULL AND CAST(u.t AS INTEGER) > 0` (tk2; tk3 and u18u alike), which the rule
+  takes, answers rows where both plans fail on an element `"x"` of a document with no `m`, measured offline; and with
+  `n` declared an integer from 0 to 100, ws1k's outer `WHERE` over a sub-query whose `WHERE` over a `LEFT JOIN` of
+  `tags` is `CAST(u.t AS INTEGER) = 1 AND CAST(w AS INTEGER) > 50` (ws8) is planned with the transposition beneath
+  alone, whose `w` keeps the document holding an element `"x"` from its cast, and the outer `WHERE` above its traversal,
+  where a document with a `body` of `"zz"` joins no element of `more`: it answers a row where Calcite with
+  `FILTER_CORRELATE`, taking both, fails on `"zz"`, and Calcite without it on `"x"`
+  (`AStatementIsTransposedAtEveryCorrelateOrAtNone`). Through the README's connection, where a statement moves nothing,
+  that connection's own rules still carry a `WHERE`'s conjuncts onto a traversal beneath a grouping, where they are
+  evaluated on its every element as its Calcite does without the transposition: for example `x.id = '1' AND (x.id = '2'
+  OR CAST(x.t AS INTEGER) = 7)` over a grouping of an `UNNEST` of an array of `body` and `m`, beneath a lateral (agr1),
+  fails on a `body` of `"q"` where `main` answered. Through the README's connection, Calcite's own decorrelation moves
+  `kind IN ('A', 'B')` beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)`
+  (u18b) before any adapter rule reads the condition, and it fails as that connection's Calcite does; so there a
+  statement may hold that transposition at one correlate and none at another, as where a `WHERE` over a lateral is moved
+  into its side and the traversal beneath keeps its filter on `id` above it (wr, wj2 and wm6,
+  `CosmosConnectionPlanningTests`).
 - **A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral that Calcite evaluates sends none of its
   conjuncts of the document** — *small, a cost, the answer the same but where something in the `WHERE` can fail; new in
   "fail like Calcite", and left for a change of its own.* Where `CosmosFilterCorrelateRule` moves nothing in a
@@ -3066,16 +3067,16 @@ across documents* and *A join of a container to itself* is the record.
   follow), or the statement reaches the rule's bound of sixteen firings over one filter or correlates within one
   another, each such condition stays above its traversal, and where Calcite evaluates that traversal, its request
   carries none of that `WHERE`'s conjuncts of the document. Measured offline in the host Chapter 21 describes, for
-  example: in ws1 (above), where nothing declares `n`, the sub-query's `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` reads
+  example: in ws1k (above), where nothing declares `n`, the sub-query's `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` reads
   every document where `main` sent `WHERE ((c.kind = @p0) AND (c.n > @p1))`; and `l.k2 = 'A' AND l.k2 = 'B' AND
   CAST(body AS INTEGER) = 7` over a lateral (wf3), which Calcite reads as false, reads every document where `body` is
   declared a string or nothing is declared, since the cast it would move can fail. Where something in the `WHERE` can
   fail, the answer is the one the correlate entry above gives where the transposition is not taken: wf3 answers no rows
-  over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does. Where nothing a test asks can
-  fail, the statement takes the transposition and sends its conjuncts of the document, declared and not: `kind = 'A' AND
-  (kind = 'B' OR u.t = '1')` and `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A'
-  AND kind = 'B' AND u.t = '1'` sends no request, as `main` did; so does ws1 with `n` declared an integer, `WHERE
-  ((c.kind = @p0) AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body = @p0)`
+  over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does. Where the facts graph answers
+  that nothing a test asks can fail, the rule takes the transposition: `kind = 'A' AND (kind = 'B' OR u.t = '1')` and
+  `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A' AND kind = 'B' AND u.t = '1'`
+  sends no request, declared and not; so does ws1k with `n` declared an integer from 0 to 100, `WHERE ((c.kind = @p0)
+  AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body = @p0)`
   (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`).
   The fix, sending such a `WHERE`'s conjuncts of the document while Calcite evaluates the whole above, over only the
   documents the request returns as a split's part kept in process is (Chapter 14.2), is a change of its own after "fail
