@@ -100,6 +100,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         public static readonly J[] Near = [new J.Num(6.0000000000000001m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(0.0000001m)];
 
+        /// <summary>
+        /// Arrays of strings and nulls alone, what a <c>VARCHAR</c> traversal yields each element of: strings a cast parses and
+        /// strings it does not, one spelling a number with a point, one padded, a boolean's spellings, and a null.
+        /// </summary>
+        public static readonly J[] StringArrays =
+        [
+            Strings("1", "2"), Strings("30", null), Strings("x"), Strings((string?)null), Strings("7", "abc"), Strings(" 30 ", "2.5"), Strings("true", "false"), Strings("1e30", ""),
+        ];
+
+        static J Strings(params string?[] values) => new J.Arr([.. values.Select(v => v is null ? (J)new J.Null() : new J.Str(v))]);
+
+        /// <summary>
+        /// Draws, from a stream of its own, documents the declaration admits that hold an array of strings and nulls at a
+        /// path a traversal reads (<see cref="StringArrays"/>), each a drawn document with the array set there: what an element
+        /// is read over beside the drawn documents' own arrays, which hold one string at most. One the declaration does not
+        /// admit is not drawn.
+        /// </summary>
+        public IEnumerable<J.Obj> Arrayed(Random random, IEnumerable<J.Obj> documents, IReadOnlyList<JsonDocumentPath> arrays)
+        {
+            foreach (var document in documents)
+                foreach (var array in arrays.Where(a => a.Depth == 1))
+                {
+                    var properties = new SortedDictionary<string, J>(document.Properties, StringComparer.Ordinal) { [array.Names[0]] = StringArrays[random.Next(StringArrays.Length)] };
+                    var arrayed = new J.Obj(properties);
+                    if (Admits(arrayed))
+                        yield return arrayed;
+                }
+        }
+
         /// <summary>The paths a domain of banded strings may be declared of: those a document holds a scalar at.</summary>
         static readonly JsonDocumentPath[] Scalars = { A, B, N };
 

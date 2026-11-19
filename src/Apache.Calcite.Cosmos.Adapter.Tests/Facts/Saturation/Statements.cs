@@ -249,6 +249,98 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// Draws, from a stream of its own, what the correlate rule asks the raises question of beside a traversal: one to
+        /// three conjuncts over one or two traversals of the declaration's scalar paths, which hold an array now and then,
+        /// two of one array among them, and at least one over an element. Such a conjunct reads the element as the loader
+        /// reads a column bound to one, its text written apart as a field or not: compared, a member, tested for null, matched,
+        /// or cast to a number or a boolean; now and then through a reading no row measured of it, a raw value's, its cast to
+        /// text or a <c>RETURNING</c>, or it reads an element of a type no row names; now and then beside a conjunct of the
+        /// document in one disjunction. Any other is of the document: its text compared, or a conjunct the trial drew. Each
+        /// negated now and then.
+        /// </summary>
+        public static IReadOnlyList<SqlPredicate> Traversed(Random random, Declaration declaration, IReadOnlyList<SqlPredicate> drawn)
+        {
+            var arrays = new[] { Declaration.A, Declaration.B, Declaration.N };
+            var first = arrays[random.Next(arrays.Length)];
+            var elements = new List<JsonDocumentPath> { first.Yielded(random.Next(6) == 0 ? "INTEGER" : "VARCHAR", 0) };
+            if (random.Next(3) == 0)
+                elements.Add((random.Next(2) == 0 ? first : arrays[random.Next(arrays.Length)]).Yielded("VARCHAR", 1));
+
+            SqlValue.Literal Text() => SqlValue.Of(random.Next(3) == 0 ? ElementTexts[random.Next(ElementTexts.Length)] : Texts[random.Next(Texts.Length)]);
+
+            SqlPredicate Document()
+            {
+                var path = Declaration.Paths[random.Next(Declaration.Paths.Length)];
+                var text = new SqlValue.Text(path);
+                return random.Next(3) switch
+                {
+                    0 => new SqlPredicate.IsNull(text),
+                    1 => new SqlPredicate.In(text, ValueSet.Of(Literal(random, declaration, path, text).Value, Literal(random, declaration, path, text).Value)),
+                    _ => new SqlPredicate.Compare(Op(random), text, Literal(random, declaration, path, text)),
+                };
+            }
+
+            SqlPredicate Element()
+            {
+                var element = elements[random.Next(elements.Count)];
+                SqlValue text = random.Next(2) == 0 ? new SqlValue.Text(element) : new SqlValue.Text(element) { Form = PredicateAtom.FieldForm };
+                switch (random.Next(14))
+                {
+                    case < 3:
+                        return new SqlPredicate.Compare(Op(random), text, Text());
+                    case 3:
+                        return new SqlPredicate.In(text, ValueSet.Of(Text().Value, Text().Value));
+                    case 4:
+                        return new SqlPredicate.IsNull(text);
+                    case 5:
+                    {
+                        var s = JsonValues.StringOf(Text().Value);
+                        var pattern = random.Next(4) switch { 0 => s, 1 => s + "%", 2 => "%" + s, _ => "_" + (s.Length > 0 ? s[1..] : "") };
+                        return new SqlPredicate.Affix(PredicateAtom.LikeTest, text, pattern.Replace("[", "").Replace("]", ""));
+                    }
+
+                    case < 11:
+                    {
+                        var target = new[] { "INTEGER", "BIGINT", "DOUBLE", "BOOLEAN" }[random.Next(4)];
+                        var cast = new SqlValue.Cast(target, text);
+                        return target == "BOOLEAN" ? new SqlPredicate.Compare(PredicateAtom.Equal, cast, SqlValue.Of(random.Next(2) == 0))
+                            : random.Next(5) == 0 ? new SqlPredicate.IsNull(cast)
+                            : new SqlPredicate.Compare(Op(random), cast, random.Next(2) == 0 ? Whole[random.Next(Whole.Length)] : SqlValue.Of(Numbers[random.Next(Numbers.Length)]));
+                    }
+
+                    case 11:
+                        return random.Next(2) == 0 ? new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Raw(element), Text()) : new SqlPredicate.In(new SqlValue.Raw(element), ValueSet.Of(Text().Value, Text().Value));
+                    case 12:
+                        return new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Cast("VARCHAR", new SqlValue.Raw(element)), Text());
+                    default:
+                        return new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Typed(element, "VARCHAR"), Text());
+                }
+            }
+
+            var conjuncts = new List<SqlPredicate>();
+            for (var n = 1 + random.Next(3); n > 0; n--)
+            {
+                var conjunct = random.Next(8) switch
+                {
+                    < 5 => Element(),
+                    5 => SqlPredicate.AnyOf([Element(), Document()]),
+                    6 => Document(),
+                    _ => drawn[random.Next(drawn.Count)],
+                };
+
+                conjuncts.Add(random.Next(5) == 0 ? new SqlPredicate.Not(conjunct) : conjunct);
+            }
+
+            if (conjuncts.All(c => IrEval.Elements(c).Count == 0))
+                conjuncts.Add(Element());
+
+            return conjuncts;
+        }
+
+        /// <summary>Texts an element a traversal yields is compared with: those a drawn array of strings holds (<see cref="Declaration.StringArrays"/>).</summary>
+        static readonly string[] ElementTexts = ["1", "2", "30", "x", "7", "abc", " 30 ", "2.5", "true", "false", "1e30", ""];
+
+        /// <summary>
         /// Draws, from a stream of its own, strings computed from the declaration's paths and from strings of every class:
         /// a concatenation, a case mapping, a window, a reversal, a repetition, a replacement, a trim and a conditional,
         /// nested two deep, as the loader reads a call of each. What the theory derives of their characters is checked on

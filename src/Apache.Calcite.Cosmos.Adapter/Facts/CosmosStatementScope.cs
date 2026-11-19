@@ -34,6 +34,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// only where its gate raises on no document the declaration admits: whether the statement keeps nothing and fails on
     /// nothing, so that its request need not be sent. The gate is the WHERE, or for a projected <c>CASE</c> condition every
     /// predicate of its expression</description></item>
+    /// <item><term><see cref="OracleQuestion.Raises"/></term><description>nothing: <c>FALSE</c> gated on the WHERE, which the
+    /// gate holds only where nothing in the WHERE raises on a document the declaration admits, so that the node is
+    /// contradictory exactly there</description></item>
     /// <item><term><see cref="OracleQuestion.Arm"/></term><description>every conjunct but this one, and the conditions the
     /// arm of a <c>CASE</c> inside it is read under, each the facts graph reads exactly (h15)</description></item>
     /// <item><term><see cref="OracleQuestion.NeverRead"/></term><description>what <see cref="OracleQuestion.Arm"/> assumes,
@@ -393,6 +396,9 @@ namespace Apache.Calcite.Cosmos.Facts
                     all.Where(i => i != Check(licence.Conjunct) && _terms.ReadsExactly(Statement.Conjuncts[i])).ToArray(),
                 OracleQuestion.Kept or OracleQuestion.Reduce =>
                     all.ToArray(),
+                // FALSE gated on the WHERE: no conjunct's facts.
+                OracleQuestion.Raises =>
+                    Array.Empty<int>(),
                 OracleQuestion.PointRead =>
                     all.Where(i => IsPin(Statement.Conjuncts[i], licence.Pins!)).ToArray(),
                 OracleQuestion.Applied =>
@@ -554,6 +560,11 @@ namespace Apache.Calcite.Cosmos.Facts
                 // statement keeps no document and fails on none.
                 case OracleQuestion.Reduce:
                     return conjuncts.Count == 0 ? _terms.Root : _terms.Gated(_terms.Root, "reduce", new[] { Where }, Gate);
+
+                // FALSE gated on the WHERE: held only where nothing the statement holds raises, and a truth value holds as
+                // nothing but itself, so that a contradiction says nothing raises on a document the declaration admits.
+                case OracleQuestion.Raises:
+                    return _terms.Gated(_terms.Root, "raises", new[] { new SqlPredicate.Constant(false) }, Where);
 
                 case OracleQuestion.PointRead:
                     return _terms.Child(_terms.Root, conjuncts.Where(c => IsPin(c, licence.Pins!)));

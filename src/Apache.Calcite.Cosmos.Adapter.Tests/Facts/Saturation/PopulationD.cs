@@ -71,6 +71,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// is, no conjunct raises or fails to compile, and no document that makes true everything the arm assumes makes its
     /// question true.
     /// </para>
+    /// <para>
+    /// <b>And where the raises question says nothing raises</b> (<see cref="OracleLicence.Raises"/>, what the correlate rule
+    /// asks of what a transposition would newly evaluate): no conjunct raises or fails to compile on a row it is evaluated
+    /// on. Asked of the statement, and of one beside a traversal drawn from a stream of its own
+    /// (<see cref="Statements.Traversed"/>), over the trial's documents and documents of its own holding arrays of strings
+    /// and nulls (<see cref="Declaration.Arrayed"/>), a conjunct over the element a traversal yields on each row a document
+    /// joins (<see cref="IrEval.Joined"/>). A document whose traversal raises first is not counted against such a conjunct,
+    /// since Calcite fails there in both plans before the conjunct is read.
+    /// </para>
     /// </remarks>
     sealed class PopulationD
     {
@@ -261,6 +270,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             + $"where conjuncts {string.Join(", ", assumed)} are");
                         break;
                     }
+            }
+
+            // What the correlate rule asks (OracleLicence.Raises), drawn as the reduce is: where its node says nothing raises, no
+            // conjunct raises or fails to compile on a row it is evaluated on. It assumes nothing, so where it is not
+            // contradictory it holds what the declaration does, of every document. Asked of the statement, and of one beside a
+            // traversal, drawn from a stream of its own with documents of its own beside the trial's, over the rows each joins.
+            var raises = scope.AssumedIn(OracleLicence.Raises);
+            if (raises.Count > 0)
+                report.Fail("licence", $"the raises question assumes conjuncts {string.Join(", ", raises)}, where it assumes none");
+
+            report.RaisesNothing = RaisesOnNone("the raises question", scope, conjuncts, documents);
+            check.Scope("the raises question", scope, OracleLicence.Raises, report.RaisesNothing ? [] : documents, []);
+
+            var traversal = new Random(unchecked(seed * 3571 + 41));
+            report.Traversed = Statements.Traversed(traversal, declaration, conjuncts);
+            var arrays = report.Traversed.SelectMany(c => IrEval.Elements(c)).Select(IrEval.ArrayOf).Distinct().ToArray();
+            report.TraversedRaisesNothing = RaisesOnNone("the raises question beside a traversal", oracle.Admit(new PredicateStatement(report.Traversed)), report.Traversed,
+                [.. documents, .. declaration.Arrayed(traversal, documents, arrays)]);
+
+            // Whether a raises question's node is contradictory; and where it is, that nothing asked fails to compile or raises
+            // on a row it is evaluated on: a conjunct over the element a traversal yields on each row a document joins, and one
+            // that reads no element on the document itself. A document whose traversal raises first, over an array holding
+            // anything but a string or a null, or an object where the array is, is not counted against a conjunct over its
+            // element: Calcite fails there in both plans before the conjunct is read.
+            bool RaisesOnNone(string name, CosmosStatementScope asked, IReadOnlyList<SqlPredicate> statement, IReadOnlyList<J.Obj> over)
+            {
+                if (asked.IsContradictory(OracleLicence.Raises) == false)
+                    return false;
+
+                foreach (var c in statement.Where(IrEval.FailsToCompile))
+                    report.Fail("raises", $"{name} says nothing raises, and {c} fails to compile");
+
+                foreach (var conjunct in statement)
+                {
+                    var elements = IrEval.Elements(conjunct);
+                    var raised = over.SelectMany(document => IrEval.Joined(document, elements) ?? []).FirstOrDefault(row => IrEval.Raises(conjunct, row, world));
+                    if (raised is not null)
+                        report.Fail("raises", $"{name} says nothing raises, and {conjunct} raises on {Documents.Json(raised)}");
+                }
+
+                return true;
             }
 
             // And a weakening beside the statement, read beside what a filter beneath applies, drawn the same way.

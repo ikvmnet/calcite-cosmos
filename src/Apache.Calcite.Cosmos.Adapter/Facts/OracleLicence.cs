@@ -53,6 +53,20 @@ namespace Apache.Calcite.Cosmos.Facts
         public static OracleLicence Reduce { get; } = new(OracleQuestion.Reduce, -1, null);
 
         /// <summary>
+        /// Whether anything a statement holds raises on a document the declaration admits: nothing assumed, <c>FALSE</c>
+        /// gated on the statement's conjunction.
+        /// </summary>
+        /// <remarks>
+        /// The reduce's gated node with <c>FALSE</c> in place of the WHERE: the gate assumes it only where nothing in the WHERE
+        /// raises on a document the declaration admits, and a truth value holds as nothing but itself, so the node is
+        /// contradictory exactly there, whether the WHERE keeps a document or not. No rule decides it apart, and nothing a
+        /// conjunct says of the documents is assumed, so no conjunct's facts license the answer. A run stopped on a limit
+        /// reads its parent, the declaration's context, so that something may raise wherever the declaration admits a
+        /// document.
+        /// </remarks>
+        public static OracleLicence Raises { get; } = new(OracleQuestion.Raises, -1, null);
+
+        /// <summary>
         /// What the arm of a <c>CASE</c> inside a conjunct may lean on: the siblings, and the conditions it is read under.
         /// </summary>
         /// <remarks>

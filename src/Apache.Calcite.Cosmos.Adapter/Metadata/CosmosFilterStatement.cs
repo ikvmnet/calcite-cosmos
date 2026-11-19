@@ -31,6 +31,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>a contradiction, the text sent made <c>FALSE</c> and the request not sent
     /// (<see cref="IsContradictory"/>)</term><description>the WHERE as one conjunction, assumed only where the WHERE raises
     /// on no document the declaration admits: so that the statement keeps nothing and fails on nothing</description></item>
+    /// <item><term>whether anything the statement holds raises (<see cref="RaisesNothing"/>)</term><description>nothing:
+    /// <c>FALSE</c> gated on the WHERE, held only where nothing in the WHERE raises on a document the declaration
+    /// admits</description></item>
     /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
     /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
     /// too</description></item>
@@ -500,6 +503,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                     return _contradictory ??= Scope.IsContradictory(OracleLicence.Reduce);
             }
         }
+
+        /// <summary>
+        /// Gets whether nothing the statement holds raises on a document the declaration admits
+        /// (<see cref="OracleLicence.Raises"/>): what the correlate rule asks of the conjuncts a transposition would newly
+        /// evaluate, loaded as this statement's condition, joined by an <c>AND</c> and never simplified, so that no conjunct
+        /// is folded away before the facts graph reads it.
+        /// </summary>
+        /// <remarks>
+        /// It opens no stratum, as a contradiction needs none, and so asks nothing of the renderer: a statement read through
+        /// a binding with the element a traversal yields, which no request can spell, is asked this and nothing that renders.
+        /// </remarks>
+        public bool RaisesNothing => Scope.IsContradictory(OracleLicence.Raises);
 
         /// <summary>
         /// Gets what holds of every row the filter keeps, every conjunct assumed: what a strengthening may read, and a
