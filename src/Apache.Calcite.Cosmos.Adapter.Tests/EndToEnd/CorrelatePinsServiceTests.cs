@@ -42,6 +42,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             nameof(CosmosDeclaredFactPlanningTests.AConjunctThatDecidesTheRestIsNotMovedIntoACorrelatesSide),
             nameof(CosmosDeclaredFactPlanningTests.AConjunctMovedBesideADerivedTermIsNotEvaluatedAlone),
             nameof(CosmosDeclaredFactPlanningTests.APartLeftAboveACorrelateIsReadBesideWhatItMoves),
+            nameof(CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends),
         ];
 
         readonly Fixture _service;
