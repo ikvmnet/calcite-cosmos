@@ -257,6 +257,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="segments">The path's segments, relative to the document root.</param>
         /// <param name="typeName">The SQL type the plan was built against.</param>
         /// <returns>The value, or <c>null</c> where the path is absent or JSON null.</returns>
+        /// <exception cref="InvalidOperationException">A segment is the element a traversal yields.</exception>
         public static object? GetPath(JsonElement document, IReadOnlyList<CosmosPathSegment> segments, SqlTypeName typeName)
         {
             return GetPath(document, segments, typeName, null);
@@ -280,6 +281,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             foreach (var segment in segments)
             {
+                // The element a traversal yields, which only the correlate rule's question binds: a defect here.
+                if (segment.IsYielded)
+                    throw new InvalidOperationException("A point read's path holds the element a traversal yields, which a document read cannot address: only the correlate rule's question binds one.");
+
                 if (segment.IsIndex)
                 {
                     if (value.ValueKind != JsonValueKind.Array || segment.ArrayIndex >= value.GetArrayLength())

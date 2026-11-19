@@ -4,8 +4,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 {
 
     /// <summary>
-    /// A single step in a <see cref="CosmosPath"/>: either a property name or an array index.
+    /// A single step in a <see cref="CosmosPath"/>: a property name, an array index, or the element a traversal of an array
+    /// yields.
     /// </summary>
+    /// <remarks>
+    /// The third kind is the correlate rule's question's alone (<see cref="CosmosImplementor.TryBindElements"/>): a column
+    /// that holds an element a traversal yields, bound to the array's path and this step, which the facts graph reads as a
+    /// path of its own and no request, policy or document read can spell. A reader of a segment's kind declines it where it
+    /// answers a question and throws where it would write it. See DESIGN.md, <i>An element a traversal yields is a path of
+    /// its own</i>.
+    /// </remarks>
     public readonly struct CosmosPathSegment : IEquatable<CosmosPathSegment>
     {
 
@@ -15,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="name">The property name.</param>
         /// <returns>The segment.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="name"/> is <c>null</c>.</exception>
-        public static CosmosPathSegment Property(string name) => new(name ?? throw new ArgumentNullException(nameof(name)), -1);
+        public static CosmosPathSegment Property(string name) => new(name ?? throw new ArgumentNullException(nameof(name)), -1, null, -1);
 
         /// <summary>
         /// Creates a segment that accesses an array element.
@@ -23,24 +31,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="index">The zero-based index.</param>
         /// <returns>The segment.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
-        public static CosmosPathSegment Index(int index) => index >= 0 ? new(null, index) : throw new ArgumentOutOfRangeException(nameof(index));
+        public static CosmosPathSegment Index(int index) => index >= 0 ? new(null, index, null, -1) : throw new ArgumentOutOfRangeException(nameof(index));
+
+        /// <summary>
+        /// Creates the segment of the element a traversal of an array yields: its element type, as data, and the traversal's
+        /// number, so two traversals of one array are two segments.
+        /// </summary>
+        /// <param name="type">The element type, by its <c>SqlTypeName</c>'s name: <c>VARCHAR</c>.</param>
+        /// <param name="traversal">The traversal's number, from zero, in the order a binding walks a statement's traversals.</param>
+        /// <returns>The segment.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="traversal"/> is negative.</exception>
+        internal static CosmosPathSegment Yielded(string type, int traversal) =>
+            new(null, -1, type ?? throw new ArgumentNullException(nameof(type)), traversal >= 0 ? traversal : throw new ArgumentOutOfRangeException(nameof(traversal)));
 
         readonly string? _name;
         readonly int _index;
+        readonly string? _type;
+        readonly int _traversal;
 
-        CosmosPathSegment(string? name, int index)
+        CosmosPathSegment(string? name, int index, string? type, int traversal)
         {
             _name = name;
             _index = index;
+            _type = type;
+            _traversal = traversal;
         }
 
         /// <summary>
-        /// Gets whether this segment is an array index rather than a property name.
+        /// Gets whether this segment is an array index: neither a property name nor the element a traversal yields.
         /// </summary>
-        public bool IsIndex => _name is null;
+        public bool IsIndex => _name is null && _type is null;
 
         /// <summary>
-        /// Gets the property name, or <c>null</c> when <see cref="IsIndex"/> is <c>true</c>.
+        /// Gets whether this segment is the element a traversal of an array yields, which no request, policy or document read
+        /// can spell.
+        /// </summary>
+        public bool IsYielded => _type is not null;
+
+        /// <summary>
+        /// Gets the property name, or <c>null</c> for an index and for the element a traversal yields.
         /// </summary>
         public string? Name => _name;
 
@@ -49,14 +79,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public int ArrayIndex => _index;
 
+        /// <summary>
+        /// Gets the element type a traversal yields its element as, or <c>null</c> when <see cref="IsYielded"/> is <c>false</c>.
+        /// </summary>
+        internal string? ElementType => _type;
+
+        /// <summary>
+        /// Gets the traversal's number, or <c>-1</c> when <see cref="IsYielded"/> is <c>false</c>.
+        /// </summary>
+        internal int Traversal => _traversal;
+
         /// <inheritdoc />
-        public bool Equals(CosmosPathSegment other) => _index == other._index && string.Equals(_name, other._name, StringComparison.Ordinal);
+        public bool Equals(CosmosPathSegment other) =>
+            _index == other._index && _traversal == other._traversal && string.Equals(_name, other._name, StringComparison.Ordinal) && string.Equals(_type, other._type, StringComparison.Ordinal);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is CosmosPathSegment other && Equals(other);
 
         /// <inheritdoc />
-        public override int GetHashCode() => HashCode.Combine(_name, _index);
+        public override int GetHashCode() => HashCode.Combine(_name, _index, _type, _traversal);
 
     }
 

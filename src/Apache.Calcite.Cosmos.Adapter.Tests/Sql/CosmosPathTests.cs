@@ -190,6 +190,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             path.Should().Be(expected);
         }
 
+        /// <summary>
+        /// The element a traversal yields is a segment of a third kind: no name and no index, equal only to the same
+        /// traversal's element of the same type.
+        /// </summary>
+        [Fact]
+        public void TheElementATraversalYieldsIsASegmentOfItsOwn()
+        {
+            var yielded = CosmosPathSegment.Yielded("VARCHAR", 0);
+
+            yielded.IsYielded.Should().BeTrue();
+            yielded.IsIndex.Should().BeFalse();
+            yielded.Name.Should().BeNull();
+            yielded.ArrayIndex.Should().Be(-1);
+            CosmosPathSegment.Index(0).IsIndex.Should().BeTrue();
+            CosmosPathSegment.Index(0).IsYielded.Should().BeFalse();
+            CosmosPathSegment.Property("a").IsYielded.Should().BeFalse();
+
+            yielded.Should().Be(CosmosPathSegment.Yielded("VARCHAR", 0));
+            yielded.Should().NotBe(CosmosPathSegment.Yielded("VARCHAR", 1));
+            yielded.Should().NotBe(CosmosPathSegment.Yielded("INTEGER", 0));
+            yielded.Should().NotBe(CosmosPathSegment.Index(0));
+            yielded.GetHashCode().Should().Be(CosmosPathSegment.Yielded("VARCHAR", 0).GetHashCode());
+
+            var act = () => CosmosPathSegment.Yielded("VARCHAR", -1);
+            act.Should().Throw<ArgumentOutOfRangeException>();
+        }
+
+        /// <summary>
+        /// A path holding the element a traversal yields is no path a request or a policy can spell: writing it is refused as
+        /// the defect it is, while its own text names it for a diagnostic.
+        /// </summary>
+        [Fact]
+        public void APathHoldingTheElementATraversalYieldsIsRefusedWhereItWouldBeSpelled()
+        {
+            var path = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0));
+
+            path.HasYielded.Should().BeTrue();
+            CosmosPath.Root("c").Property("tags").Index(0).HasYielded.Should().BeFalse();
+            path.ToString().Should().Be("c.tags[yield VARCHAR 0]");
+
+            var write = () => path.WriteTo(new StringBuilder());
+            write.Should().Throw<InvalidOperationException>().WithMessage("c.tags[yield VARCHAR 0] holds the element a traversal yields, which a request cannot address*");
+
+            var policy = () => path.ToPolicyPath();
+            policy.Should().Throw<InvalidOperationException>().WithMessage("*which an indexing policy cannot address*");
+        }
+
     }
 
 }

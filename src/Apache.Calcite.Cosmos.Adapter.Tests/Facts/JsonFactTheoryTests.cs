@@ -277,6 +277,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// A statement's path ending at the element a traversal yields, which the correlate rule's question alone binds, is
+        /// the document path's yielded step where elements are asked for, and nothing where they are not; one with a step
+        /// beneath the element, read out of its text, is nothing either way.
+        /// </summary>
+        [Fact]
+        public void AYieldedSegmentIsTheYieldedStepLastOnly()
+        {
+            var yielded = StatementPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 3));
+
+            CosmosDocumentPaths.From(yielded, "c", elements: true).Should().Be(JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", 3));
+            CosmosDocumentPaths.From(yielded, "c").Should().BeNull("a caller that reads no element reads none a traversal yields");
+            CosmosDocumentPaths.From(yielded, "t", elements: true).Should().BeNull();
+            CosmosDocumentPaths.From(yielded.Property("a"), "c", elements: true).Should().BeNull("what is beneath the element is read out of its text");
+            CosmosDocumentPaths.From(yielded.Index(0), "c", elements: true).Should().BeNull();
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("items").Index(1).Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 0)), "c", elements: true)
+                .Should().Be(JsonDocumentPath.Root.Property("items").Element(1).Property("tags").Yielded("VARCHAR", 0));
+        }
+
+        /// <summary>
         /// An integer is a number: a whole value, a domain of them, and the narrower type all establish
         /// <c>number</c>, and none of them excludes it. #217.
         /// </summary>

@@ -608,7 +608,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <summary>
             /// A container-rooted path as the SQL/JSON path the accessor names it by, in the grammar the path reader accepts
             /// (<see cref="CosmosRexPaths.TryExtendByJsonPath"/>); <c>null</c> for one it cannot spell: a name quoting both
-            /// ways, an index beyond an <c>int</c>.
+            /// ways, an index beyond an <c>int</c>, the element a traversal yields, which no accessor names.
             /// </summary>
             static string? JsonPathOf(JsonDocumentPath path)
             {
@@ -725,16 +725,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// <remarks>
             /// A field read as text or as a scalar type is that reading written apart as a field (h15b), which a test's body
             /// cannot take apart; one typed as a raw value is its column's own reading. Of a path holding an element the shared
-            /// vocabulary reads each as the element reading, which no row measured of a field.
+            /// vocabulary reads each as the element reading, which no row measured of a field. A field bound to the element a
+            /// traversal yields, which only the correlate rule's question binds, is its text written apart as a field and
+            /// nothing else: what that reads is its traversal's row's (<c>yieldreads</c>), and no row reads its raw value or a
+            /// <c>RETURNING</c> of it.
             /// </remarks>
             SqlValue? Field(RexInputRef reference)
             {
-                if (Document(reference) is not JsonDocumentPath path)
+                if (_paths.TryResolvePath(reference, out var bound) == false || Addressed(bound, field: true) is not JsonDocumentPath path)
                     return null;
 
                 var index = reference.getIndex();
                 var reading = index < _readings.Count ? _readings[index] : CosmosReading.Typed;
                 var type = reference.getType()?.getSqlTypeName();
+
+                if (bound!.HasYielded)
+                    return reading == CosmosReading.Text && IsCharacter(type) ? new SqlValue.Text(path) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm } : null;
 
                 if (reading == CosmosReading.Text)
                     return IsCharacter(type) ? new SqlValue.Text(path) { Form = Cosmos.Facts.Saturation.PredicateAtom.FieldForm } : null;
@@ -862,11 +868,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             JsonDocumentPath? Document(RexNode node) => _paths.TryResolvePath(node, out var path) ? Addressed(path) : null;
 
-            /// <summary>The container-rooted document path a resolved path addresses, or <c>null</c>.</summary>
-            JsonDocumentPath? Addressed(CosmosPath? path) =>
+            /// <summary>
+            /// The container-rooted document path a resolved path addresses, or <c>null</c>; one holding the element a traversal
+            /// yields only as a <paramref name="field"/>'s own, since an accessor over the element reads its text parsed, which
+            /// is no path, so <c>JSON_VALUE(u.t, '$.a')</c> stays opaque.
+            /// </summary>
+            JsonDocumentPath? Addressed(CosmosPath? path, bool field = false) =>
                 // A path rooted at a traversal alias addresses an element of an array, not the document; and the document
                 // itself is no path a filter compares.
-                path is not null && CosmosDocumentPaths.From(path, _rootAlias, elements: true) is JsonDocumentPath document && document.IsRoot == false ? document : null;
+                path is not null && (field || path.HasYielded == false)
+                    && CosmosDocumentPaths.From(path, _rootAlias, elements: true) is JsonDocumentPath document && document.IsRoot == false ? document : null;
 
             static bool IsDocumentValue(RexCall call) => CosmosRexShapes.IsDocumentValueType(call.getType()?.getSqlTypeName());
 

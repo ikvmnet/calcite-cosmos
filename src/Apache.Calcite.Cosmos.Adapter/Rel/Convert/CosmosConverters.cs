@@ -494,6 +494,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <see cref="CosmosImplementor.RenderedExpressions"/>.
         /// </param>
         /// <returns>The lambda, or <c>null</c> where a read cannot produce some field and cannot serve.</returns>
+        /// <exception cref="InvalidOperationException">A field's path holds the element a traversal yields.</exception>
         public static LambdaExpression? DocumentRowBuilder(ClrPhysType physType, RelDataType rowType, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, IReadOnlyList<string?> rendered)
         {
             var row = Expression.Parameter(typeof(JsonElement), "document");
@@ -518,6 +519,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // statement has to be a query.
                 if (fields[i] is not CosmosPath path)
                     return null;
+
+                path.RefuseYielded("a document read");
 
                 var type = ((RelDataTypeField)typeFields.get(i)).getType();
 

@@ -57,6 +57,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public bool IsRoot => _segments.Length == 0;
 
         /// <summary>
+        /// Gets whether a segment of this path is the element a traversal yields (<see cref="CosmosPathSegment.IsYielded"/>),
+        /// which only the correlate rule's question binds and no request, policy or document read can address.
+        /// </summary>
+        public bool HasYielded => Array.Exists(_segments, s => s.IsYielded);
+
+        /// <summary>
+        /// Refuses a path holding the element a traversal yields where it would be spelled: a defect, since only the correlate
+        /// rule's question binds one and nothing it binds is written.
+        /// </summary>
+        /// <param name="into">What the path would be spelled into: a request, a policy, a document read.</param>
+        /// <exception cref="InvalidOperationException">The path holds the element a traversal yields.</exception>
+        internal void RefuseYielded(string into)
+        {
+            if (HasYielded)
+                throw new InvalidOperationException($"{this} holds the element a traversal yields, which {into} cannot address: only the correlate rule's question binds one.");
+        }
+
+        /// <summary>
         /// Returns a new path with a property access appended.
         /// </summary>
         /// <param name="name">The property name.</param>
@@ -115,8 +133,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// against included or excluded paths should account for them separately.
         /// </remarks>
         /// <returns>The policy-form path, or <c>/</c> for a root path.</returns>
+        /// <exception cref="InvalidOperationException">The path holds the element a traversal yields.</exception>
         public string ToPolicyPath()
         {
+            RefuseYielded("an indexing policy");
+
             if (_segments.Length == 0)
                 return "/";
 
@@ -133,11 +154,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="builder">The buffer to append to.</param>
         /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">The path holds the element a traversal yields.</exception>
         public void WriteTo(StringBuilder builder)
         {
             if (builder is null)
                 throw new ArgumentNullException(nameof(builder));
 
+            RefuseYielded("a request");
             builder.Append(_alias);
 
             foreach (var segment in _segments)
@@ -181,13 +204,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Returns the rendered Cosmos SQL path.
+        /// Returns the rendered Cosmos SQL path; for diagnostics, the element a traversal yields spelled as no request spells
+        /// it, <c>c.tags[yield VARCHAR 0]</c>.
         /// </summary>
         /// <returns>The path text.</returns>
         public override string ToString()
         {
             var builder = new StringBuilder();
-            WriteTo(builder);
+            if (HasYielded == false)
+            {
+                WriteTo(builder);
+                return builder.ToString();
+            }
+
+            builder.Append(_alias);
+            foreach (var segment in _segments)
+            {
+                if (segment.IsYielded)
+                    builder.Append("[yield ").Append(segment.ElementType).Append(' ').Append(segment.Traversal.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                else if (segment.IsIndex)
+                    CosmosSql.WriteIndexAccess(builder, segment.ArrayIndex);
+                else
+                    CosmosSql.WritePropertyAccess(builder, segment.Name!);
+            }
+
             return builder.ToString();
         }
 

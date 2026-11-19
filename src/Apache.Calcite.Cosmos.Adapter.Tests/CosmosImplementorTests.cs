@@ -1,7 +1,9 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
@@ -222,6 +224,198 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             implementor.CreatePaths().TryResolvePath(Ref(0, SqlTypeName.VARCHAR), out _).Should().Be(resolves);
             implementor.CreateTranslator(null).Paths.TryResolvePath(Ref(0, SqlTypeName.VARCHAR), out _).Should().Be(resolves);
+        }
+
+        /// <remarks>
+        /// The element a traversal yields is no path the service addresses: where the target stores a name escaped the path
+        /// readers decline it as one naming an escape, and elsewhere a translator that reaches it to write it refuses it as
+        /// the defect it is, since only the correlate rule's question binds one and nothing it binds is translated.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure)]
+        [InlineData(CosmosServiceTarget.Emulator)]
+        public void TheElementATraversalYieldsIsNoPathTheServiceAddresses(CosmosServiceTarget target)
+        {
+            var implementor = Implementor(TestReasoning.Bind(new CosmosContainerMetadata("products")).WithServiceTarget(target));
+            implementor.Fields = new[] { CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0)) };
+
+            CosmosRexPaths.NamesAnEscape(implementor.Fields[0]).Should().BeTrue();
+            if (target == CosmosServiceTarget.Emulator)
+            {
+                implementor.CreatePaths().TryResolvePath(Ref(0, SqlTypeName.VARCHAR), out _).Should().BeFalse();
+                implementor.CreateTranslator(null).TryTranslateValue(Ref(0, SqlTypeName.VARCHAR), out _).Should().BeFalse();
+                return;
+            }
+
+            var act = () => implementor.CreateTranslator(null).TryTranslateValue(Ref(0, SqlTypeName.VARCHAR), out _);
+            act.Should().Throw<System.InvalidOperationException>().WithMessage("*c.tags[yield VARCHAR 0]*element a traversal yields*");
+        }
+
+        // ── Binding a correlate's row for the correlate rule's question ────────────
+
+        const string Tags = """JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)""";
+
+        /// <summary>The products container's row as every binding binds it.</summary>
+        static readonly string[] Documents = ["c", "c.id", "c._ts", "c._etag", "c.category"];
+
+        /// <summary>The products container's row, then the given columns.</summary>
+        static string?[] Products(params string?[] right) => [.. Documents, .. right];
+
+        /// <summary>The registered members of a statement of a kind, outermost first.</summary>
+        static IReadOnlyList<T> Members<T>(string sql) => RegisteredMembers.Of(sql).OfType<T>().ToList();
+
+        /// <summary>
+        /// Binds a correlate's row with the elements on, as the correlate rule's question does; and checks that the same row
+        /// without them binds as every other caller has it bound, every field the elements bind there unbound and every
+        /// other field the same, with the readings the same where both bind.
+        /// </summary>
+        static (IReadOnlyList<string?> Fields, IReadOnlyList<CosmosReading> Readings) Elements(org.apache.calcite.rel.core.Correlate correlate, params string?[] plain)
+        {
+            CosmosImplementor.TryBindElements(correlate, out var fields, out var readings, out var container).Should().BeTrue();
+            container!.Name.Should().Be("products");
+
+            CosmosImplementor.TryBindOutput(correlate, out var unbound, out var unboundReadings, out _).Should().BeTrue();
+            unbound.Select(f => f?.ToString()).Should().Equal(plain, "without the elements the row binds as it always has");
+            fields.Should().HaveCount(unbound.Count);
+            for (var i = 0; i < unbound.Count; i++)
+                if (unbound[i] is not null)
+                {
+                    fields[i].Should().Be(unbound[i]);
+                    readings[i].Should().Be(unboundReadings[i]);
+                }
+
+            return (fields.Select(f => f?.ToString()).ToList(), readings);
+        }
+
+        /// <summary>
+        /// The element of an <c>UNNEST</c> binds, through the renaming projection its alias registers, to its array's path and
+        /// a step naming the array's element type and the traversal, read as the text.
+        /// </summary>
+        [Fact]
+        public void AnElementBindsToItsArraysPathAndAStepOfItsOwn()
+        {
+            var correlate = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c, UNNEST({Tags}) AS u(t) WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'""")[0];
+            ((org.apache.calcite.plan.volcano.RelSubset)correlate.getRight()).getOriginal().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the alias registers a renaming projection over the uncollect");
+
+            var (fields, readings) = Elements(correlate, Products([null]));
+
+            fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            readings[5].Should().Be(CosmosReading.Text);
+        }
+
+        /// <summary>
+        /// Through the right's own filter, the one Calcite's transposition writes into the right, and over a <c>LEFT</c>
+        /// correlate, whose element is null where the array holds none, the element binds alike.
+        /// </summary>
+        [Fact]
+        public void AnElementBindsThroughTheRightsOwnFilterAndOverALeftCorrelate()
+        {
+            var correlate = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c, UNNEST({Tags}) AS u(t) WHERE u.t = '1'""")[0];
+            var right = correlate.getRight();
+            var element = _rex.makeInputRef(((org.apache.calcite.rel.type.RelDataTypeField)right.getRowType().getFieldList().get(0)).getType(), 0);
+            var filtered = org.apache.calcite.rel.logical.LogicalFilter.create(right, _rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, element, Str("z")));
+            var moved = (org.apache.calcite.rel.core.Correlate)correlate.copy(correlate.getTraitSet(), com.google.common.collect.ImmutableList.of(correlate.getLeft(), filtered));
+
+            Elements(moved, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+
+            var left = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c LEFT JOIN UNNEST({Tags}) AS u(t) ON TRUE WHERE u.t = '1'""")[0];
+            left.getJoinType().Should().Be(org.apache.calcite.rel.core.JoinRelType.LEFT);
+            Elements(left, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+        }
+
+        /// <summary>
+        /// The element type is the array's component's by name, any length dropped, and data: a <c>RETURNING INTEGER
+        /// ARRAY</c>'s element binds with its type, which no row reads, and <c>VARCHAR(1)</c>'s is <c>VARCHAR</c>'s.
+        /// <c>StringToArray</c>'s element, an array parsed out of the text, is no plain <c>JSON_QUERY</c>'s and stays unbound.
+        /// </summary>
+        [Fact]
+        public void AnElementBindsWithItsTypeAsDataAndStringToArraysStaysUnbound()
+        {
+            var integers = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id", u.n FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.nums' RETURNING INTEGER ARRAY)) AS u(n) WHERE u.n = 1""")[0];
+            var (fields, readings) = Elements(integers, Products([null]));
+            fields.Should().Equal(Products("c.nums[yield INTEGER 0]"));
+            readings[5].Should().Be(CosmosReading.Text);
+
+            var short1 = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR(1) ARRAY)) AS u(t) WHERE u.t = '1'""")[0];
+            Elements(short1, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+
+            var parsed = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c."DOC", '$.tags'))) AS t""")[0];
+            Elements(parsed, Products([null])).Fields.Should().Equal(Products([null]));
+        }
+
+        /// <summary>
+        /// A lateral's column that reads the correlation variable alone binds to the document path it reads, with the reading
+        /// a projection gives it: the text accessor as text, a <c>RETURNING</c> as typed, a plain <c>JSON_QUERY</c> as JSON
+        /// text, a field of the left as the left reads it. A computed column and a column of the lateral's own row stay
+        /// unbound. The lateral's own <c>WHERE</c> is walked through.
+        /// </summary>
+        [Fact]
+        public void ALateralsAccessorColumnsBindToThePathsTheyRead()
+        {
+            var correlate = Members<org.apache.calcite.rel.core.Correlate>("""
+                SELECT c."id", l.k2 FROM products AS c CROSS JOIN LATERAL (SELECT JSON_VALUE(c."DOC", '$.kind') AS k2,
+                JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS n2, JSON_QUERY(c."DOC", '$.o') AS o2, UPPER(JSON_VALUE(c."DOC", '$.body')) AS b2,
+                c."id" AS i2, v.x0 AS z FROM (VALUES (1)) AS v(x0) WHERE JSON_VALUE(c."DOC", '$.m') = '1') AS l WHERE l.k2 = 'A'
+                """)[0];
+
+            var (fields, readings) = Elements(correlate, Products(null, null, null, null, null, null));
+
+            fields.Should().Equal(Products("c.kind", "c.n", "c.o", null, "c.id", null));
+            readings.Skip(5).Should().Equal(CosmosReading.Text, CosmosReading.Typed, CosmosReading.JsonText, CosmosReading.Typed, readings[1], CosmosReading.Typed);
+
+            // Over a sub-query, a field the left reads as text passes through as text, and an accessor over it, which parses
+            // the text, is refused as it is over a field reference; the element beneath passes through as the element.
+            var over = Members<org.apache.calcite.rel.core.Correlate>($"""
+                SELECT x.k, l.k3 FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.kind') AS k, u.t FROM products AS c, UNNEST({Tags}) AS u(t)) AS x
+                CROSS JOIN LATERAL (SELECT x.k AS k3, JSON_VALUE(x.k, '$') AS j3, x.t AS t3, JSON_VALUE(x.t, '$') AS e3 FROM (VALUES (1)) AS v(x0)) AS l WHERE l.k3 = 'A'
+                """)[0];
+
+            (fields, readings) = Elements(over, "c", "c.kind", null, null, null, null, null);
+
+            fields.Should().Equal("c", "c.kind", "c.tags[yield VARCHAR 0]", "c.kind", null, "c.tags[yield VARCHAR 0]", null);
+            readings[3].Should().Be(CosmosReading.Text);
+            readings[5].Should().Be(CosmosReading.Text);
+        }
+
+        /// <summary>
+        /// An element surfaces through a sub-query on the left as the column it is, bound by the walk beneath, and the
+        /// correlate above numbers its own traversal after it. The walk goes through the sub-query's filter, one that asks a
+        /// recheck where the elements are off.
+        /// </summary>
+        [Fact]
+        public void AnElementBeneathSurfacesThroughTheLeftAndTheWalkNumbersTraversalsInOrder()
+        {
+            var members = RegisteredMembers.Of($"""
+                SELECT x."id", x.t, v.s FROM (SELECT c."id", c."DOC", u.t FROM products AS c, UNNEST({Tags}) AS u(t) WHERE u.t > ?) AS x,
+                UNNEST(JSON_QUERY(x."DOC", '$.xs' RETURNING VARCHAR ARRAY)) AS v(s) WHERE JSON_VALUE(x."DOC", '$.kind') = 'A'
+                """);
+            var outer = members.OfType<org.apache.calcite.rel.core.Correlate>().First();
+            var recheck = members.OfType<org.apache.calcite.rel.core.Filter>().Single(f => f.getCondition().ToString()!.Contains('?'));
+
+            CosmosImplementor.TryBindOutput(recheck, out _, out var written).Should().BeTrue();
+            written.HasFlag(CosmosClauses.Recheck).Should().BeTrue("the filter asks a recheck where the elements are off");
+
+            Elements(outer, "c.id", "c", null, null).Fields.Should().Equal("c.id", "c", "c.tags[yield VARCHAR 0]", "c.xs[yield VARCHAR 1]");
+        }
+
+        /// <summary>
+        /// Two traversals of one array are two paths; one traversal is one path wherever its column surfaces; and an accessor
+        /// over the element, which reads its text parsed, binds nothing.
+        /// </summary>
+        [Fact]
+        public void TwoTraversalsAreTwoPathsAndOneIsOneWhereverItSurfaces()
+        {
+            var twice = Members<org.apache.calcite.rel.core.Correlate>($"""
+                SELECT c."id", u.t, v.s FROM products AS c, UNNEST({Tags}) AS u(t), UNNEST({Tags}) AS v(s) WHERE u.t = '1' AND v.s = '2'
+                """)[0];
+            Elements(twice, Products(null, null)).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]", "c.tags[yield VARCHAR 1]"));
+
+            var surfaced = Members<org.apache.calcite.rel.core.Correlate>($"""
+                SELECT x.a, x.b, x.j, x.ja, v.s FROM (SELECT c."DOC", u.t AS a, u.t AS b, JSON_VALUE(u.t, '$') AS j, JSON_VALUE(u.t, '$.a') AS ja
+                FROM products AS c, UNNEST({Tags}) AS u(t)) AS x, UNNEST(JSON_QUERY(x."DOC", '$.xs' RETURNING VARCHAR ARRAY)) AS v(s) WHERE x.a = v.s
+                """)[0];
+            Elements(surfaced, "c", null, null, null, null, null).Fields
+                .Should().Equal("c", "c.tags[yield VARCHAR 0]", "c.tags[yield VARCHAR 0]", null, null, "c.xs[yield VARCHAR 1]");
         }
 
         [Fact]

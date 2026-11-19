@@ -849,6 +849,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// The element a traversal yields is no step a point read can walk: reaching one is refused as the defect it is,
+        /// since only the correlate rule's question binds one.
+        /// </summary>
+        [Fact]
+        public void APointReadRefusesTheElementATraversalYields()
+        {
+            var document = Bytes("""{"id":"1","tags":["a"]}""");
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment[] path = [Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Property("tags"), Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 0)];
+
+            var act = () => CosmosJson.GetPath(document, path, SqlTypeName.VARCHAR);
+
+            act.Should().Throw<InvalidOperationException>().WithMessage("*element a traversal yields, which a document read cannot address*");
+        }
+
+        /// <summary>
         /// Text that is UTF-8 everywhere still reads, its escapes decoded, and a value that holds no text at all is not
         /// searched for any.
         /// </summary>

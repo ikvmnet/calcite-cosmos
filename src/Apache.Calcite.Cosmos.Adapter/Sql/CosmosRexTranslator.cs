@@ -1335,6 +1335,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 foreach (var segment in path.Segments)
                 {
+                    // The element a traversal yields is no step of a constant document: declined, with nothing written.
+                    if (segment.IsYielded)
+                        return false;
+
                     if (segment.IsIndex)
                     {
                         if (value.ValueKind != JsonValueKind.Array || segment.ArrayIndex >= value.GetArrayLength())

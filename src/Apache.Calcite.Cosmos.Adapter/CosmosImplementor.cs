@@ -405,7 +405,33 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </param>
         internal static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
         {
-            return TryBindOutput(node, out fields, out readings, out ordering, out written, out container, resolved: null);
+            return TryBindOutput(node, out fields, out readings, out ordering, out written, out container, resolved: null, elements: null);
+        }
+
+        /// <summary>
+        /// Binds a correlate's row for the correlate rule's question: the walk of <see cref="TryBindOutput(RelNode?, out IReadOnlyList{CosmosPath?}, out CosmosClauses)"/>
+        /// with its elements on, so that the element a traversal yields and a lateral's accessor columns bind
+        /// (<see cref="CosmosTraversalColumns"/>), at this correlate and at every one beneath it whose columns surface through
+        /// its left.
+        /// </summary>
+        /// <remarks>
+        /// The only binding that names the element a traversal yields (<see cref="CosmosPathSegment.IsYielded"/>), which is read
+        /// by the facts graph's question and never handed to a caller that translates, renders or reads a document: every
+        /// writer of a path refuses one. Every other caller binds with the elements off, as before. A filter on the way asks
+        /// no recheck, since the question reads fields and readings, never what the subtree writes.
+        /// </remarks>
+        /// <param name="correlate">The correlate, as registered.</param>
+        /// <param name="fields">On success, the binding of the correlate's row, indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each field of the row is read.</param>
+        /// <param name="container">On success, the container the row's documents are read from.</param>
+        /// <returns><c>true</c> where the row binds a container; otherwise <c>false</c>.</returns>
+        internal static bool TryBindElements(Correlate correlate, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out CosmosContainerMetadata? container)
+        {
+            if (TryBindOutput(correlate, out fields, out readings, out _, out _, out container, resolved: null, elements: new CosmosTraversalColumns()) && container is not null)
+                return true;
+
+            container = null;
+            return false;
         }
 
         /// <param name="node">The node whose output binding is wanted.</param>
@@ -415,7 +441,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
         /// <param name="container">On success, the container the subtree reads.</param>
         /// <param name="resolved">The members this walk has resolved a set to, or <c>null</c> before it has resolved one.</param>
-        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
+        /// <param name="elements">
+        /// The binding of a correlate's right columns, which numbers the walk's traversals, where the correlate rule's question
+        /// asks for them (<see cref="TryBindElements"/>); <c>null</c>, off, for every other caller.
+        /// </param>
+        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved, CosmosTraversalColumns? elements)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
@@ -452,15 +482,16 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
                 {
-                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
+                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container, resolved, elements) == false)
                         return false;
 
                     // A filter onto it is conjoined with it: see CosmosClauses.Where.
                     written |= CosmosClauses.Where;
 
                     // A comparison a parameter's value decides is rechecked by the reader, row by row, which only rows
-                    // the WHERE filtered can be: see CosmosClauses.Recheck.
-                    if (CosmosRexTranslator.MayRecheck(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder()))
+                    // the WHERE filtered can be: see CosmosClauses.Recheck. Not asked while the correlate rule's question
+                    // binds, which reads no clause and may hold the element a traversal yields, no path a translator takes.
+                    if (elements is null && CosmosRexTranslator.MayRecheck(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder()))
                         written |= CosmosClauses.Recheck;
 
                     return true;
@@ -468,7 +499,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container, resolved, elements) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -490,7 +521,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // calls binds nothing at all: its output is computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved, elements) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -522,7 +553,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved, elements) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -536,7 +567,10 @@ namespace Apache.Calcite.Cosmos.Adapter
                     for (var i = 0; i < paths.Length; i++)
                     {
                         var expression = (RexNode)projects.get(i);
-                        paths[i] = resolver.TryResolvePath(expression, out var path) ? path : null;
+
+                        // The element a traversal yields, which only the correlate rule's question binds, passes through as
+                        // the field it is and no further: an accessor over it reads its text parsed, which is no path.
+                        paths[i] = resolver.TryResolvePath(expression, out var path) && (elements is null || path!.HasYielded == false || expression is RexInputRef) ? path : null;
 
                         // Derived here because here is where the walk is -- both halves of it are
                         // questions about which expression sits at this ordinal. Whether the container
@@ -578,10 +612,11 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // had no case here, so a rule that had fired on the logical form threw "The lookup key
                 // can no longer be restricted." after the planner had chosen the plan (soundness review,
                 // cause K). The element is left unbound in both: CosmosUnnest.Implement binds it to its
-                // alias, and the walk knowing less declines and never fails (TODO.md, section 5).
+                // alias, and the walk knowing less declines and never fails (TODO.md, section 5). Only the
+                // correlate rule's question binds it, and a lateral's columns, over the Correlate (TryBindElements).
                 default:
                     if (TraversedInput(node) is RelNode traversed)
-                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container, resolved);
+                        return TryBindTraversal(node, traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container, resolved, elements);
 
                     return false;
             }
@@ -623,17 +658,19 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </summary>
         /// <remarks>
         /// One method for the two forms a traversal takes — the <c>Correlate</c> a rule sees and the
-        /// <see cref="CosmosUnnest"/> implementation sees — so that they cannot bind differently. A
+        /// <see cref="CosmosUnnest"/> implementation sees — so that every walk but one binds them alike. A
         /// traversal writes no clause of its own: it completes a projection beneath it rather than
-        /// starting one.
+        /// starting one. The one is the correlate rule's question (<paramref name="elements"/>), which over a
+        /// <c>Correlate</c> binds its right columns too (<see cref="CosmosTraversalColumns"/>), the element to
+        /// the array's path and a step no request can spell.
         /// </remarks>
-        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
+        static bool TryBindTraversal(RelNode traversal, RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved, CosmosTraversalColumns? elements)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
 
-            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container, resolved) == false)
+            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container, resolved, elements) == false)
                 return false;
 
             var paths = new CosmosPath?[fieldCount];
@@ -643,6 +680,9 @@ namespace Apache.Calcite.Cosmos.Adapter
                 paths[i] = i < left.Count ? left[i] : null;
                 reads[i] = i < leftReadings.Count ? leftReadings[i] : CosmosReading.Typed;
             }
+
+            if (elements is not null && traversal is Correlate correlate)
+                elements.Bind(correlate, left, leftReadings, paths, reads);
 
             fields = paths;
             readings = reads;
