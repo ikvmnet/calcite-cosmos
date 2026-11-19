@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
         public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
-            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath, Columns, ClassTypes, ParametersAs);
+            Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath, YieldKinds, YieldReads, Columns, ClassTypes, ParametersAs);
 
         /// <summary>
         /// The readings an index reads as of a path holding the element, a test's body over each among it
@@ -213,6 +213,20 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// element rules read. None in a definition that names none, where every accessor of an element reads the element reading.
         /// </summary>
         public IReadOnlyList<string> AsOfAPath { get; init; } = [];
+
+        /// <summary>
+        /// Each JSON kind a traversal of an array of an element type yields an element of, by the type's name
+        /// (<c>CosmosAxiomRows.ReadYieldKinds</c>): the readings vocabulary's <c>yieldkinds</c>. None in a definition that names
+        /// none, where a yielded element may hold anything.
+        /// </summary>
+        public IReadOnlyList<(string Type, string Kind)> YieldKinds { get; init; } = [];
+
+        /// <summary>
+        /// The reading the elements a traversal of an array of an element type yields read as, by the type's name
+        /// (<c>CosmosAxiomRows.ReadYieldReads</c>): the readings vocabulary's <c>yieldreads</c>. None in a definition that names
+        /// none, where a yielded element reads as nothing.
+        /// </summary>
+        public IReadOnlyList<(string Type, string Reader)> YieldReads { get; init; } = [];
 
         /// <summary>
         /// Each raw column whose comparison with a parameter a row says answers as another column's (<c>CosmosAxiomRows.ReadParametersAs</c>):

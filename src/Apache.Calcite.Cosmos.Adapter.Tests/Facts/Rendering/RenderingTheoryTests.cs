@@ -524,6 +524,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// What a traversal of each element type yields, and the reading its elements read as (<c>CosmosAxiomRows.ReadYieldKinds</c>,
+        /// <c>ReadYieldReads</c>), are facts of both graphs' roots, S's and the facts graph's, a type's kinds in one value.
+        /// </summary>
+        [Fact]
+        public void TheYieldRowsAreFactsOfBothGraphs()
+        {
+            var (d, s) = (Measured, ProbeTheory);
+            var facts = new JsonContexts(Adapter.Metadata.CosmosReasoning.Rows);
+            d.YieldReads.Should().NotBeEmpty();
+            d.YieldKinds.Should().NotBeEmpty();
+            foreach (var (type, reader) in d.YieldReads)
+            {
+                s.Theory.Check(s.Calcite.YieldReads.Of(type, reader)).Should().BeTrue($"S reads {type}'s elements as {reader}");
+                facts.Json.Check(facts.Rules.Readings.YieldReads.Of(type, reader)).Should().BeTrue($"the facts graph reads {type}'s elements as {reader}");
+            }
+
+            foreach (var g in d.YieldKinds.GroupBy(r => r.Type))
+            {
+                s.Theory.Get(s.Calcite.YieldKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"S's {g.Key}");
+                facts.Json.Get(facts.Rules.Readings.YieldKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"the facts graph's {g.Key}");
+            }
+
+            GC.KeepAlive(facts);
+        }
+
+        /// <summary>
         /// A box is read by its rows (G8): within one, the comparisons <c>Calcite.VariantEqualsOnlyItsOwnBox</c> says see
         /// through it, and its null test, are atoms of the reading it holds, and a raw value compared with a literal boxed as
         /// values of the literal's own kind are is the raw value's comparison, which its cells decide; an order, a literal in

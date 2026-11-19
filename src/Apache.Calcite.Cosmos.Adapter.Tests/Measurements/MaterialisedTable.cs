@@ -92,6 +92,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             return connection;
         }
 
+        /// <summary>Adds the table to a connection's root schema under a name of its own, and returns the name.</summary>
+        public string AddTo(DbConnection connection)
+        {
+            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
+            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
+            return name;
+        }
+
         /// <summary>
         /// Asks predicates of every row in one statement, each projected: a string a predicate of <c>T</c>, <c>F</c> and
         /// <c>U</c>, a letter a row in key order. A statement that fails throws.
@@ -105,9 +113,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         public string[] Ask(DbConnection connection, object?[] parameters, params string[] predicates)
         {
-            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
-            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
-
+            var name = AddTo(connection);
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT \"k\", {string.Join(", ", predicates.Select(p => "(" + p + ")"))} FROM \"{name}\"";
             foreach (var value in parameters)
@@ -132,9 +138,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>The keys of the rows a predicate keeps as a <c>WHERE</c>, in key order. A statement that fails throws.</summary>
         public int[] Keeps(DbConnection connection, string predicate)
         {
-            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
-            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
-
+            var name = AddTo(connection);
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT \"k\" FROM \"{name}\" WHERE {predicate}";
 
@@ -148,18 +152,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// What an expression is over each row, in key order, <c>null</c> where it is null; a row whose evaluation raises
-        /// is asked alone, and its value is the innermost exception.
+        /// is asked alone, and its value is the innermost exception. <paramref name="joined"/> follows the table in the
+        /// <c>FROM</c> clause, a traversal each row joins one row of, which the expression may read.
         /// </summary>
-        public object?[] Values(DbConnection connection, string expression)
+        public object?[] Values(DbConnection connection, string expression, string joined = "")
         {
-            var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
-            ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
-
+            var name = AddTo(connection);
             var values = new object?[_rows.Count];
             try
             {
                 using var command = connection.CreateCommand();
-                command.CommandText = $"SELECT \"k\", ({expression}) FROM \"{name}\"";
+                command.CommandText = $"SELECT \"k\", ({expression}) FROM \"{name}\"{joined}";
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                     values[Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture)] = reader.IsDBNull(1) ? null : reader.GetValue(1);
@@ -171,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     try
                     {
                         using var command = connection.CreateCommand();
-                        command.CommandText = $"SELECT ({expression}) FROM \"{name}\" WHERE \"k\" = {k}";
+                        command.CommandText = $"SELECT ({expression}) FROM \"{name}\"{joined} WHERE \"k\" = {k}";
                         using var reader = command.ExecuteReader();
                         values[k] = reader.Read() && !reader.IsDBNull(0) ? reader.GetValue(0) : null;
                     }
