@@ -897,12 +897,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("fruu", "Traversed")]
         [InlineData("ws1k", "TwoTraversals")]
         [InlineData("j3n", "Traversed")]
+        [InlineData("wf3", "Traversed")]
+        [InlineData("wf3", "TraversedFixed")]
+        [InlineData("a1", "Traversed")]
         [InlineData("w13", "Traversed")]
+        [InlineData("rf2", "Traversed")]
+        [InlineData("fz2_320", "Traversed")]
+        [InlineData("r3a", "Traversed")]
+        [InlineData("mf1", "Traversed")]
+        [InlineData("mf1", "TraversedFixed")]
         public void ATraversalTheCorrelateRuleAsksAboutIsCalcites(string name, string schema)
         {
+            var declaration = schema switch { "TwoTraversals" => TwoTraversals, "TraversedFixed" => TraversedFixed, _ => Traversed };
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
             {
-                foreach (var (label, container) in new[] { ("declared", Declaring(schema == "TwoTraversals" ? TwoTraversals : Traversed)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+                foreach (var (label, container) in new[] { ("declared", Declaring(declaration)), ("undeclared", Declaring("""{ "type": "object" }""")) })
                 {
                     var seen = new Infrastructure.PlannersSeen();
                     var plan = PlanText(PlanToCosmos(BesideACorrelate(name, "items"), container.WithServiceTarget(target), out _, windows: true, subqueries: true, listener: seen));
