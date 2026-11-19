@@ -771,6 +771,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
+        /// The element of a traversal of a type no row names loads as its text written apart too, as the binding reads every
+        /// element: what it reads is the rows' to say, and with no row it reads nothing.
+        /// </summary>
+        [Fact]
+        public void AnElementOfATypeNoRowNamesLoadsAsItsTextWrittenApart()
+        {
+            AboveTheCorrelate("""
+                SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING INTEGER ARRAY)) AS u(t)
+                WHERE u.t IS NULL
+                """).Should().Equal(IsNull(new SqlValue.Text(P("tags").Yielded("INTEGER", 0)) { Form = PredicateAtom.FieldForm }));
+        }
+
+        /// <summary>
         /// Above a planned lateral, an accessor column loads its document path with the reading its accessor gives it, the
         /// text written apart or a <c>RETURNING</c> written apart, and a computed column is opaque.
         /// </summary>

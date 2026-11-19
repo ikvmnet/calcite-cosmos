@@ -10927,9 +10927,8 @@ it is. So the question is given the element, as a path of its own.
   the element reading that always raises, never read it. Comparisons, `IN`, `LIKE`, null tests and casts then read it
   through the rules already there, and `PredicateAtom.RaisesOver` judges each atom over what `possible` holds of it.
 - **The loader.** A field bound to a yielded element is read as its text written apart as a field, the form a field read
-  as text takes, and as nothing else: read typed, or of a type that is no text, it is opaque. `Addressed` passes a
-  yielded path only as a field's own reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is
-  opaque.
+  as text takes, and as nothing else: read typed, it is opaque. `Addressed` passes a yielded path only as a field's own
+  reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is opaque.
 - **Why a path of its own.** The element a condition reads cannot be a number, while an element of the array can, so it
   is not `Each(p)`; what is declared of every element must still reach it, which the instance rule carries; and two
   traversals of one array yield elements apart. Read as one path, `u.t = '1' AND v.s = '2'` over two traversals of

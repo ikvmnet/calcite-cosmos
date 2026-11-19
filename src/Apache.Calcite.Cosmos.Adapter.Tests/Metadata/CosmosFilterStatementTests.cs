@@ -2,6 +2,8 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
+using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
@@ -40,8 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A comparison of the element a traversal yields and of the document's text raises nowhere, a cast of the element
-        /// may raise on a string it does not parse, and an element of a type no row names reads nothing, so a comparison of
-        /// it may raise. Asked of the statement whole, nothing assumed, whether it keeps a document or not.
+        /// may raise on a string it does not parse, and an element of a type no row names reads nothing, so a null test of
+        /// it may raise: it loads as its text written apart, as a <c>VARCHAR</c> element's does, and the rows decide. Asked
+        /// of the statement whole, nothing assumed, whether it keeps a document or not.
         /// </summary>
         [Fact]
         public void RaisesNothingAsksWhetherAnythingTheStatementHoldsRaises()
@@ -52,7 +55,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             AboveTheCorrelate(Traversal("JSON_VALUE(c.\"DOC\", '$.kind') = 'A' AND CAST(u.t AS INTEGER) = 1")).RaisesNothing.Should().BeFalse("the element may be \"x\"");
             AboveTheCorrelate(Traversal("JSON_VALUE(c.\"DOC\", '$.kind') = 'A' OR CAST(u.t AS INTEGER) = 1")).RaisesNothing.Should().BeFalse("Calcite reads both sides of an OR");
-            AboveTheCorrelate(Traversal("u.t = 1", "INTEGER")).RaisesNothing.Should().BeFalse("no row names what an INTEGER traversal yields");
+            AboveTheCorrelate(Traversal("u.t IS NULL")).RaisesNothing.Should().BeTrue();
+            var integer = AboveTheCorrelate(Traversal("u.t IS NULL", "INTEGER"));
+            integer.Statement.Conjuncts.Should().Equal(new SqlPredicate.IsNull(new SqlValue.Text(JsonDocumentPath.Root.Property("tags").Yielded("INTEGER", 0)) { Form = PredicateAtom.FieldForm }));
+            integer.RaisesNothing.Should().BeFalse("no row names what an INTEGER traversal yields");
         }
 
     }
