@@ -553,7 +553,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "A double that is NaN, the text 'NaN' cast to DOUBLE, SQRT or POWER of a negative over any numeric reading, 0/0 over a FLOAT, REAL or DOUBLE column, compares as nothing alike, itself included: = < <= > >= FALSE and <> TRUE.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 7), "Measurements.CalciteReaderOrderMeasurementTests.ANaNComparesAsNothingAlike"),
             new("Calcite.ConnectivesAreKleene",
-                "AND, OR and NOT are Kleene's over TRUE, FALSE and UNKNOWN, in either order; an operand that raises raises AND beside FALSE and OR beside TRUE, in either order, both operands of a nullable connective being evaluated.",
+                "AND, OR and NOT are Kleene's over TRUE, FALSE and UNKNOWN, in either order; an operand that raises, nullable or NOT NULL, raises AND beside FALSE and OR beside TRUE, nullable or NOT NULL, in either order, projected and as a WHERE, both operands of a connective being evaluated.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteConnectiveMeasurementTests.TheConnectivesAreKleenesAndEvaluateBothOperands",
                 [
                     new(Test.And, Class.True, CosmosAxiomTarget.Calcite, "true=true false=false undefined=undefined"),
