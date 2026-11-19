@@ -2995,7 +2995,7 @@ across documents* and *A join of a container to itself* is the record.
   its reading through the expressions, and keep a pushed projection's computed columns visible to Calcite above.
 - **A filter above a correlate answers where one of Calcite's plans fails** — *small, an answer where one of Calcite's
   plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.* Calcite in process
-  takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, by cost, while
+  takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, while
   `CosmosFilterCorrelateRule` takes it, as Calcite's rule writes it, at every correlate of a statement where, for every
   filter of the statement at every correlate the planner's rules carry it onto where that rule would move a part of it,
   the whole condition is not read as false and all that rule leaves above after its last firing is read in Calcite's
@@ -3294,9 +3294,10 @@ across documents* and *A join of a container to itself* is the record.
   read through `JSON_QUERY` and each property through `JSON_VALUE` (twf2p2p1). Measured offline under Azure's plan, one
   planning takes 323, the split's 139 and the correlate rule's 184, where `main`'s split and Calcite's `FILTER_CORRELATE`
   take 803, 699 and 104; declared, 27 against 36.
-- **Nested traversals each holding an `OR` of the element and the document plan more slowly through the connection than
-  on `main`** — *small, a cost; new in "fail like Calcite", and left for a change of its own.* Through the connection
-  the README opens, eight traversals each of the sub-query beneath, each with its own `x.id <> 'z' AND (u.t = '1' OR m =
+- **Nested traversals each holding a conjunct of the document beside an `OR` of the element and the document plan
+  more slowly through the connection than on `main`** — *small, a cost; new in "fail like Calcite", and left for a
+  change of its own.* Through the connection the README opens, eight traversals each of the sub-query beneath, each
+  with its own `x.id <> 'z' AND (u.t = '1' OR m =
   'q')` (dx08), plan in 4.2 to 4.5 seconds, declared or not, where `main` plans them in 2.5 to 2.7; with four (dx04),
   0.34 to 0.37 seconds against 0.23 to 0.30. In one planning of dx08 the correlate rule makes 1,225 productions where
   `main`'s `FILTER_CORRELATE` makes 168, the split 407 where `main`'s makes 637, and all rules 22,595 against 16,966; of
