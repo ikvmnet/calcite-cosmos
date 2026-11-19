@@ -51,6 +51,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// there before any rule sees it.
     /// </para>
     /// <para>
+    /// <c>SUM</c> with no grouping is pushed only as its reduction, a <c>$SUM0</c> and a <c>COUNT(*)</c> with the
+    /// <c>CASE</c> above in Calcite: over no document the service's <c>SUM</c> is 0 and SQL's <c>NULL</c>, so
+    /// <c>SELECT SUM(c."_ts")</c> over a <c>WHERE</c> no document matched answered 0, and an <c>AVG</c> reduced to it
+    /// divided by zero.
+    /// </para>
+    /// <para>
     /// <c>MIN</c> and <c>MAX</c> are orders the service computes, and are asked as one:
     /// <see cref="CosmosServiceOrder.Extreme"/>, of the facts the rows aggregated satisfy. The
     /// service skips an absent path as Calcite skips a null, so that much of the null class is
@@ -106,7 +112,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     return arguments.size() == 0;
 
                 case nameof(SqlKind.__Enum.SUM):
-                    return arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
+                    // Only per group: over no document the service sums to 0, measured on both emulators, where SQL's SUM
+                    // is NULL, and only an aggregate with no grouping sums no document. AGGREGATE_REDUCE_FUNCTIONS writes that
+                    // one as CASE WHEN COUNT(x) = 0 THEN NULL ELSE $SUM0(x) END, which pushes its two calls.
+                    return grouped && arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
+
+                case nameof(SqlKind.__Enum.SUM0):
+                    // SUM with no NULL of its own, where SUM is not pushed: with no grouping, over no document 0, as the
+                    // service's SUM is on both emulators. Azure's over no document is not measured; the $SUM0 the reduce
+                    // writes is read only where the count beside it is not 0, and nothing else writes one with no grouping.
+                    return grouped == false && arguments.size() == 1 && IsNonNullable(inputRowType, ((java.lang.Integer)arguments.get(0)).intValue());
 
                 case nameof(SqlKind.__Enum.MIN):
                 case nameof(SqlKind.__Enum.MAX):
@@ -262,7 +277,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             return call.getAggregation().getKind().name() switch
             {
                 nameof(SqlKind.__Enum.COUNT) => "COUNT",
-                nameof(SqlKind.__Enum.SUM) => "SUM",
+                nameof(SqlKind.__Enum.SUM) or nameof(SqlKind.__Enum.SUM0) => "SUM",
                 nameof(SqlKind.__Enum.MIN) => "MIN",
                 nameof(SqlKind.__Enum.MAX) => "MAX",
                 nameof(SqlKind.__Enum.AVG) => "AVG",

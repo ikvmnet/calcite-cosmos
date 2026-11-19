@@ -52,14 +52,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// At 9007199254740994.4 the cast rounds to 2^53 + 4 where the text's double is 2^53 + 2, so a <c>DOUBLE</c> equality
-        /// with 9007199254740994 is TRUE of it, read either way, and the cell answers so. The plant that converts by the cast
-        /// answers FALSE there, which the evaluator refutes.
+        /// with 9007199254740994 is TRUE of it, read either way, and the cell answers so, beside the raise of a fraction whose
+        /// double is whole, which the service may return as its digits (<c>Service.IntegralNumbersReadBackAsHeld</c>) and
+        /// <c>RETURNING DOUBLE</c> fails on. The plant that converts by the cast answers FALSE there, which the evaluator
+        /// refutes.
         /// </summary>
         [Fact]
         public void TheCastIsCaughtAtARoundingBoundary()
         {
             const decimal stored = 9007199254740994.4m, literal = 9007199254740994m;
-            ((double)stored).Should().NotBe(DoubleBound.Of(stored));
+
+            // The runtime's conversion, which a compiler may fold a constant's otherwise: SDK 11's folds it correctly rounded.
+            var held = stored;
+            ((double)held).Should().NotBe(DoubleBound.Of(stored));
 
             var atom = PredicateAtom.Compare(PredicateAtom.TypedReader("DOUBLE"), PredicateAtom.Equal, Of(literal));
             var predicate = new SqlPredicate.Compare(PredicateAtom.Equal, new SqlValue.Typed(JsonDocumentPath.Root.Property("a"), "DOUBLE"), new SqlValue.Literal(Of(literal)));
@@ -67,8 +72,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var truths = new[] { IrEval.TypedAs.Returning, IrEval.TypedAs.Column }.Select(mode => IrEval.Truth(predicate, document, new World(0), mode)).ToList();
 
             truths.Should().Equal(Truths.True, Truths.True);
-            atom.OnCell(new PathCell.Point(Of(stored)), Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows).Should().Be(Truths.True);
-            ((double)stored == (double)literal ? Truths.True : Truths.False).Should().Be(Truths.False, "the plant answers what the evaluator refutes");
+            atom.OnCell(new PathCell.Point(Of(stored)), Rendering.ProbeRows.Columns, Rendering.ProbeRows.ReaderRows).Should().Be(Truths.True | Truths.Raises);
+            ((double)held == (double)literal ? Truths.True : Truths.False).Should().Be(Truths.False, "the plant answers what the evaluator refutes");
         }
 
     }

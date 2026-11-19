@@ -34,7 +34,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// characters' own: a value's read narrower than it is — its surrogates, its characters outside ASCII below them,
     /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
-    /// one value in every document without the path's presence. The last is <c>D0</c>'s: a declared path read as there.
+    /// one value in every document without the path's presence. Another is <c>D0</c>'s: a declared path read as there.
+    /// The last two are the reduce's, which only the stronger check of a statement made FALSE sees: the gate without its
+    /// guard, and a disjunction read as raising nowhere its left side raises nowhere.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -45,19 +47,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A rendering's preimage read as exact: an equality with text is decided TRUE where every value its path may
-        /// hold is in the preimage. A stored 30.0 is in the preimage of <c>'30'</c> as the theory spells it, and renders
-        /// as <c>30.0</c>.
+        /// hold is one the preimage admits. A number whose double is the text's is in the preimage, which reads no spelling,
+        /// and need not render as the text: a stored 30 is in that of <c>'30.0'</c>, and the service returns it as
+        /// <c>30</c>.
         /// </summary>
+        /// <remarks>
+        /// The facts graph's tables are read before the plant, not in its filter: building them builds a graph, which no
+        /// filter may.
+        /// </remarks>
         [Fact]
-        public void ATooWidePreimageRowIsCaught() => Caught(Planted(rules =>
-            rules.Decide.DefineRule("planted: an equality with text holds where the path holds only its preimage", r =>
-            {
-                var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
-                r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
-                r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
-                    && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, FactsReadings.Rows).Values is { } preimage && held.All(preimage.Contains));
-                r.Then(rules.AlwaysTrue.Of(e));
-            })));
+        public void ATooWidePreimageRowIsCaught()
+        {
+            var (rows, columns) = (FactsReadings.Rows, FactsReadings.Columns);
+            Caught(Planted(rules =>
+                rules.Decide.DefineRule("planted: an equality with text holds where the path holds only its preimage", r =>
+                {
+                    var (e, p, a, x) = r.Vars<Pred, JPath, PredicateAtom, PathValues>("e", "p", "a", "x");
+                    r.When(rules.Atom.Of(e, p, a), x.Is(rules.Possible.Of(p)));
+                    r.Where(a, x, (atom, values) => atom.Reader == PredicateAtom.TextReader && atom.Parameter == false && atom.Test is PredicateAtom.Equal or PredicateAtom.InTest
+                        && values.IsPresent && values.Values is { Count: > 0 } held && atom.Kept(true, rows, columns) is var preimage && held.All(preimage.Admits));
+                    r.Then(rules.AlwaysTrue.Of(e));
+                })));
+        }
 
         /// <summary>
         /// A disjunction that holds read as each of its arms holding: an arm's facts established from what only weakens
@@ -268,16 +279,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// What one arm of a disjunction that holds says of a path's characters, stated of the disjunction: a filter's
         /// <c>OR</c> narrowing the characters where it should widen them.
         /// </summary>
+        /// <remarks>The facts graph's tables are read before the plant, as <see cref="ATooWidePreimageRowIsCaught"/> reads them.</remarks>
         [Fact]
-        public void AnArmsCharactersStatedOfItsDisjunctionAreCaught() => Caught(Planted(rules =>
-            rules.Establish.DefineRule("planted: a disjunction that holds holds its left arm's characters", r =>
-            {
-                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
-                var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
-                r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
-                r.Where(k, atom => atom.Kept(true, FactsReadings.Rows).Values is not null);
-                r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, FactsReadings.Rows).Values!))));
-            })), "fact");
+        public void AnArmsCharactersStatedOfItsDisjunctionAreCaught()
+        {
+            var (rows, columns) = (FactsReadings.Rows, FactsReadings.Columns);
+            Caught(Planted(rules =>
+                rules.Establish.DefineRule("planted: a disjunction that holds holds its left arm's characters", r =>
+                {
+                    var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                    var (p, k) = r.Vars<JPath, PredicateAtom>("p", "k");
+                    r.When(rules.Holds.Of(e, true), e.Is(rules.Or.Of(a, b)), rules.Atom.Of(a, p, k));
+                    r.Where(k, atom => atom.Kept(true, rows, columns).Values is not null);
+                    r.Then(rules.Json.Chars.Of(p).Is(Compute.Of(k, atom => CharactersOf(atom.Kept(true, rows, columns).Values!))));
+                })), "fact");
+        }
 
         /// <summary>
         /// A union of two predicates: a conjunction with an arm the context decides always true made one class with its
@@ -338,6 +354,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 r.Where(c, pattern => pattern.StartsWith('%'));
                 r.Then(rules.Atom.Of(e, p, Compute.Of(k, op, c, (reader, test, pattern) => PredicateAtom.Affix(reader, test, pattern.TrimStart('%')))));
             })));
+
+        /// <summary>
+        /// The gate without its guard: what a gated node gates assumed whether or not the WHERE raises, so that a
+        /// statement whose conjuncts contradict the declaration is made FALSE where Calcite would fail on a document.
+        /// </summary>
+        [Fact]
+        public void AGateThatAssumesWhereTheWhereMayRaiseIsCaught() => Caught(Planted(rules =>
+            rules.Establish.DefineRule("planted: an assumption the WHERE gates holds", r =>
+            {
+                var (e, w) = r.Vars<Pred, Pred>("e", "w");
+                r.When(rules.Gated.Of(e, w));
+                r.Then(rules.Holds.Of(e, true));
+            })), "reduce");
+
+        /// <summary>
+        /// A disjunction read as raising nowhere its left side raises nowhere: Calcite reads both sides of an
+        /// <c>OR</c> whose left is not TRUE, so a raise on the right is the statement's.
+        /// </summary>
+        [Fact]
+        public void ADisjunctionReadAsRaisingWhereItsLeftSideDoesIsCaught() => Caught(Planted(rules =>
+            rules.RaiseRules.DefineRule("planted: a disjunction raises nowhere its left side raises nowhere", r =>
+            {
+                var (e, a, b) = r.Vars<Pred, Pred, Pred>("e", "a", "b");
+                r.When(e.Is(rules.Or.Of(a, b)), rules.NeverRaises.Of(a));
+                r.Then(rules.NeverRaises.Of(e));
+            })), "reduce");
 
         /// <summary>
         /// The predicate rules of a graph of the test's own, planted.

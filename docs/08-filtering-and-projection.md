@@ -94,8 +94,9 @@ Cosmos `LIKE` for any other. One run between two `%` stops at the same U+0000 wh
 `'%b%'` does not find the `b` of `a`U+0000`b`, so that shape pushes where `x` is proved to hold none.
 `_` is one code point to both engines, but the service's matches a line terminator and Calcite's never
 does, so a pattern holding `_` — `'a_b'` — pushes only where `x` is proved to hold no line terminator,
-and runs in process elsewhere. Every other shape — `'a%'`, `'%a'`, `'%a%b%'` — pushes wherever `LIKE`
-does.
+and runs in process elsewhere. In a select list it is not yet held to that: it is sent, and a string
+holding a line terminator can read true where Calcite reads false (Chapter 23). Every other shape —
+`'a%'`, `'%a'`, `'%a%b%'` — pushes wherever `LIKE` does.
 
 The value matters as much as the pattern. Calcite's `UPPER` is Java's, which writes `ß` as `SS`; the
 service's `UPPER` and its case-insensitive match leave `ß` as it is, so `UPPER(x) LIKE '%SS%'` keeps
@@ -137,8 +138,9 @@ WHERE JSON_VALUE(c."DOC", '$.name') = 'Trail Blazer'
 
 An equality against text a boolean renders as is sent as the string or the boolean, exactly. One against
 text an integer renders as is sent as the string or a number equal to it, beside the property's presence,
-and is rechecked — a stored `30.0` renders otherwise; one against text only a double renders as,
-`'1.0E30'`, sends only that the property is there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
+and is rechecked — the number also matches a fraction whose double is 30, which Azure was not measured
+returning as `30`; one against text only a double renders as, `'1.0E30'`, sends only that the property
+is there, and is rechecked. On the emulator, which stores U+0000 as U+FDD0 `0` and U+FDD0 as U+FDD0 `1`
 and compares what it is sent with that, a value holding either — a literal, a parameter, an `IN`
 member, a `LIKE 'abc%'` prefix — is sent in that spelling, so `=`, `IN`, `<>` and the prefix answer
 exactly; a value holding neither is sent as it is, and Azure is sent every value as written
@@ -358,9 +360,13 @@ WHERE c."$.category" = 'bikes' AND JSON_VALUE(c."DOC", '$.price' RETURNING INTEG
 ```
 
 The equality may be on the promoted column (`c."$.category"`) or on the path through `JSON_VALUE`. A
-range or a disjunction names no single value and does not route — though the service itself prunes an
-`IN` list over the partition key to the partitions that hold its values. With a hierarchical key,
-pinning a prefix of the paths routes to the partitions under that prefix.
+number pins the key only where the container's schema leaves it one value the comparison may keep, an
+integer it declares or a value its `enum` or `const` lists: elsewhere Calcite compares a number by its
+double, and the adapter does not yet route on one (Chapter 7.3). Through a cast to `DOUBLE`, a number may
+be routed to a listed value's partition where the request then finds nothing (Chapter 7.3). A range or a
+disjunction names no single value and does not route — though the service itself prunes an `IN` list
+over the partition key to the partitions that hold its values. With a hierarchical key, pinning a prefix
+of the paths routes to the partitions under that prefix.
 
 Through `JSON_VALUE` the comparison is with the key's text, and text a number also renders as names two
 partitions: `JSON_VALUE(c."DOC", '$.category') = '30'` matches a stored `"30"` and a stored `30`, so it
@@ -560,7 +566,7 @@ documents it has to read.
 | a function with no Cosmos counterpart (`LPAD`, `MD5`, `REGEXP_LIKE`, …) | nothing to render it as — [Appendix B](appendix-b-functions.md) lists them |
 | a JSON path with a wildcard, descent or filter | no Cosmos path expresses it |
 | `LIKE` with a `[` no equality, `STARTSWITH`, `ENDSWITH` or `CONTAINS` says, `ESCAPE`, a computed pattern or U+0000 in the pattern | Cosmos reads `[…]` as a range, and Calcite reads U+0000 as an escape; a `]` that closes none and a backslash are themselves to both |
-| `LIKE` with a `_`, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2) |
+| `LIKE` with a `_` in a filter, over a string that may hold a line terminator | the service's `_` matches one, and Calcite's never does (8.2); in a select list it is sent (Chapter 23) |
 | `CAST` to a sized or numeric type in a projection, and a sized one in a comparison | it converts, and the service would not; `VARCHAR(3)` truncates |
 | `JSON_VALUE(… RETURNING DECIMAL)`, anywhere but the property's presence a comparison through it sends | it parses a stored string, and the service has the string (Chapter 7) |
 | `JSON_VALUE(… RETURNING VARIANT)` in any filter: a comparison, a null test or a type test | Calcite holds its value in no `VARIANT` box, so it equals no value cast to one, and its null test is true over an object, where the service compares and tests the stored value (8.3) |

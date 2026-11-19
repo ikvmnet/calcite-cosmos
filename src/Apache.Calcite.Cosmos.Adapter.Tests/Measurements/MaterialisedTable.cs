@@ -96,13 +96,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Asks predicates of every row in one statement, each projected: a string a predicate of <c>T</c>, <c>F</c> and
         /// <c>U</c>, a letter a row in key order. A statement that fails throws.
         /// </summary>
-        public string[] Ask(DbConnection connection, params string[] predicates)
+        public string[] Ask(DbConnection connection, params string[] predicates) => Ask(connection, [], predicates);
+
+        /// <summary>
+        /// Asks predicates of every row in one statement, as <see cref="Ask(DbConnection, string[])"/> does, each <c>?</c> the
+        /// statement holds bound in order to a value of <paramref name="parameters"/> through the command's parameters, as a
+        /// caller binds one; <c>null</c> binds SQL null.
+        /// </summary>
+        public string[] Ask(DbConnection connection, object?[] parameters, params string[] predicates)
         {
             var name = "m" + Interlocked.Increment(ref _named).ToString(CultureInfo.InvariantCulture);
             ((SchemaPlus)((CalciteConnection)connection).RootSchema).add(name, this);
 
             using var command = connection.CreateCommand();
             command.CommandText = $"SELECT \"k\", {string.Join(", ", predicates.Select(p => "(" + p + ")"))} FROM \"{name}\"";
+            foreach (var value in parameters)
+            {
+                var parameter = command.CreateParameter();
+                parameter.Value = value ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+            }
 
             var letters = predicates.Select(_ => new char[_rows.Count]).ToArray();
             using var reader = command.ExecuteReader();
@@ -179,11 +192,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Returns the innermost exception asking a predicate fails with, at validation, at code generation or at run
         /// time; or <c>null</c> where it answers.
         /// </summary>
-        public Exception? Failure(DbConnection connection, string predicate)
+        public Exception? Failure(DbConnection connection, string predicate) => Failure(connection, [], predicate);
+
+        /// <summary>
+        /// Returns the innermost exception asking a predicate fails with, its <c>?</c> bound to <paramref name="parameters"/>
+        /// as <see cref="Ask(DbConnection, object?[], string[])"/> binds them; or <c>null</c> where it answers.
+        /// </summary>
+        public Exception? Failure(DbConnection connection, object?[] parameters, string predicate)
         {
             try
             {
-                Ask(connection, predicate);
+                Ask(connection, parameters, predicate);
                 return null;
             }
             catch (Exception e)

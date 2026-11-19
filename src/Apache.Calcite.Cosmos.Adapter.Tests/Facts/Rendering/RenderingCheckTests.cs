@@ -235,7 +235,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// wrong. S states no round beneath it (<c>StratumFor</c> falls back to the root), where the label is not proven,
         /// so S sends the kind alone and, since the switch, the label's weakening beside it, where the translator sent the
         /// bare label from that stratum: its text alternatives and its presence, each a conjunct of the filter it is pushed
-        /// in. The alternatives' guarded arm is admitted beneath <c>IS_NUMBER(label)</c>, which the facts graph reads
+        /// in, the presence deleted from the text sent, the alternatives implying it. The alternatives' guarded arm is admitted beneath <c>IS_NUMBER(label)</c>, which the facts graph reads
         /// exactly, so the service is sent the number 7 there, and a number label is kept; the arm's licence assumes only
         /// what the facts graph reads exactly (h15), so the coarse kind, which would rule the number out, is not assumed.
         /// </summary>
@@ -251,8 +251,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
             Saturation.FactsReadings.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
-            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "((c.label = @p1) OR (IS_NUMBER(c.label) AND (c.label = @p2)))", "IS_DEFINED(c.label)"],
-                "the kind is sent, and the label's weakening beside it, which keeps a number label");
+            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "((c.label = @p1) OR (IS_NUMBER(c.label) AND (c.label = @p2)))"],
+                "the kind is sent, and the label's weakening beside it, which keeps a number label, its presence deleted from the text as the alternatives imply it");
             checks.Should().OnlyContain(c => c.LaterRound == false && c.Import!.Digest.Contains(" beneath ") == false, "nothing is read beneath the coarse stratum");
         }
 

@@ -77,6 +77,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <inheritdoc />
         /// <remarks>
+        /// A statement answered without being sent (<see cref="CosmosQuery.SendsNothing"/>) says so in an explained plan,
+        /// <c>sends=[nothing]</c>, and nowhere else: never in the digest the planner tells two expressions apart by, which
+        /// would make a node that sends nothing another relation.
+        /// </remarks>
+        public override RelWriter explainTerms(RelWriter pw)
+        {
+            return base.explainTerms(pw)
+                .itemIf("sends", "nothing", CosmosConverters.ExplainsRequests(pw) && CosmosConverters.SendsNothing(getInput(), getCluster().getRexBuilder()));
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
         /// <para>
         /// <b>This node is the wire, so what it costs is how much crosses it.</b> Until that was
         /// priced the cost was rows alone, and a projection pushed below this node reduced nothing the

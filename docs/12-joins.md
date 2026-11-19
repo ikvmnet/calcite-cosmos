@@ -79,6 +79,19 @@ answer a full join would:
 Anything else is joined by reading both sides, with the container side still filtered by whatever
 predicates of its own push down.
 
+One answer differs from Calcite's. A condition on the container's side that stays above the join, as
+one beside an `IN` does once Calcite turns the `IN` into a join, is evaluated only on the documents
+the keys fetch, where Calcite evaluates it on every document. Where it can fail, on a cast of text to
+`INTEGER` say, on a document no key fetches, Calcite fails and the lookup join answers; with no keys,
+it answers no rows, and with no request where the schema rules out the small side (Chapter 14.2).
+That is not decided yet (Chapter 23).
+
+Where the schema rules out what the container side's own `WHERE` keeps, the join still reads the
+small side, every row of it, and fetches no batch: `EXPLAIN` marks the join `probes=[nothing]`, and an
+outer join keeps every row of the small side unmatched. So a condition in the small side that can fail
+fails the statement, with a schema or without, where Calcite's own semi-join reads the empty container
+side first, never evaluates the small side and answers no rows (Chapter 23).
+
 ### Which side is fetched by key
 
 The side whose keys are collected is read normally; the container on the other side is fetched by

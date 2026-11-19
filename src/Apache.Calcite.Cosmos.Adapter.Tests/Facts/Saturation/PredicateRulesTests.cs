@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json.Nodes;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
@@ -62,11 +63,127 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             new Eggnog.ConstructorHandle[] { rules.Ir.Text, rules.Ir.Raw, rules.Ir.Typed, rules.Ir.Cast, rules.Ir.Box, rules.Ir.Query, rules.Ir.Apart, rules.Ir.Null, rules.Ir.Literal, rules.Ir.Parameter, rules.Ir.Compare, rules.Ir.In, rules.Ir.IsNull, rules.Ir.And, rules.Ir.Or, rules.Ir.Not, rules.Ir.Opaque, rules.Ir.TypeTest, rules.Ir.Case, rules.Ir.Affix, rules.Ir.Truth }
                 .Should().OnlyContain(constructor => constructor.Extractable == false);
 
-            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(77,
+            (rules.Analyse.Rules.Count + rules.Establish.Rules.Count + rules.Decide.Rules.Count).Should().Be(86,
                 "the vocabulary's thirteen of G8, which both graphs read since h15, h15b's ten of the element and the readings written apart among them, "
-                + "and each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not");
+                + "each accessor's reading, of an element as a path's where an index reads it so and as the element reading where not, "
+                + "the gate that assumes what a gated node gates where the WHERE raises on no row, a truth value held as nothing but itself, "
+                + "and the domain an atom's preimage keeps among the types its path may hold, and among its strings their characters; "
+                + "TRUE and FALSE held as themselves, and a CASE taking its THEN's or its ELSE's truth value where its condition decides, "
+                + "and its condition decided where an arm takes the other truth value");
+            rules.Establish.Rules.Count(rule => rule.Name == "an assumption the WHERE gates holds where the WHERE raises on no row").Should().Be(1);
             rules.Decide.Rules.Count(rule => rule.Name.Contains("conjunction") || rule.Name.Contains("disjunction") || rule.Name.StartsWith("not of") || rule.Name.StartsWith("what is always")).Should().Be(12);
             rules.Exactness.Rules.Count.Should().Be(9, "an atom read otherwise than Calcite, and each side of each connective holding one (h15)");
+            rules.RaiseRules.Rules.Select(rule => rule.Name).Should().BeEquivalentTo(new[]
+            {
+                "an atom that raises on nothing its path may hold never raises",
+                "a truth value never raises",
+                "a negation raises nowhere its operand raises nowhere",
+                "a conjunction raises nowhere both its sides raise nowhere",
+                "a disjunction raises nowhere both its sides raise nowhere",
+                "a CASE raises nowhere its condition and both its arms raise nowhere",
+                "an atom UNKNOWN of nothing its path may hold is two-valued",
+                "TRUE and FALSE are two-valued",
+                "a negation of a two-valued predicate is two-valued",
+                "a conjunction of two-valued predicates is two-valued",
+                "a disjunction of two-valued predicates is two-valued",
+                "a CASE whose arms are two-valued is two-valued",
+            }, "an atom, a truth value and each connective, which raise nowhere or are never UNKNOWN; an opaque term or any other constructor may raise, and may be UNKNOWN");
+
+            // What a gated node assumes, and what it judged before assuming anything, are that node's alone, as what a
+            // case chose is: none is lifted.
+            new Eggnog.TableHandle[] { rules.Gated, rules.NeverRaises, rules.TwoValued, rules.Holds }.Should().OnlyContain(table => table.Lift == false);
+        }
+
+        // The reduce's rules, in a node gated by hand as the reduce's is: what the WHERE assumes holds only where the
+        // stage before anything is assumed found that the WHERE raises on no row.
+
+        /// <summary>
+        /// Opens a child of the declaration's <c>D0</c> holding the WHERE's term, mentioning the paths it reads, asserts
+        /// <c>gated(W, W)</c> where <paramref name="gated"/> is set and no <c>holds</c> row, runs
+        /// <see cref="PredicateRules.Reduction"/>, and returns whether it is contradictory and whether the WHERE never raises.
+        /// </summary>
+        /// <remarks>
+        /// By hand, mirroring the gated branch of <c>StatementTerms.Open</c> that <c>StatementTerms.Gated</c> reaches for the
+        /// reduce's node and the never-read arm's, so that a node with no <c>gated</c> row is asked beside it; a change to
+        /// that branch is made here too. The nodes themselves are held through their licences by
+        /// <see cref="TheReduceAsksEveryRowFalse"/>, <see cref="AnArmIsNeverReadWhereItsFactsContradictAndTheWhereRaisesNowhere"/>
+        /// and <c>CosmosOracleTests</c>.
+        /// </remarks>
+        static (bool Contradictory, bool NeverRaises) Reduced(JsonFactTheory theory, SqlPredicate where, bool gated = true)
+        {
+            var terms = Declared(theory, where).Terms;
+            var rules = terms.Rules!;
+            var json = rules.Json;
+            var writer = new PredicateWriter(rules.Ir, path => JsonFactEncoding.Path(path).ToTerm(json), (junction, truth, arms) =>
+                new Eggnog.Fact[] { rules.Arms.Of(junction, truth).Is(Eggnog.ValueSet.From(Enumerable.Range(0, arms.Count).Select(m => (long)m))) }
+                    .Concat(arms.Select((arm, m) => (Eggnog.Fact)rules.Arm.Of(junction, truth, (long)m, arm))));
+
+            using var scope = terms.Root.Scope!.CreateChild();
+            var specs = where.Paths.Select(JsonFactEncoding.Path).ToArray();
+            JsonContexts.Mention(json, scope, specs);
+
+            var facts = specs.Select(spec => (Eggnog.Fact)json.Mentioned.Of(spec.ToTerm(json))).ToList();
+            var w = writer.Term(where, facts);
+            scope.Make(w);
+            if (gated)
+                facts.Add(rules.Gated.Of(w, w));
+
+            scope.Assume(facts.ToArray());
+            var report = scope.Run(rules.Reduction, new Eggnog.RunOptions { StopOnContradiction = true });
+            var contradictory = report.StopReason == Eggnog.RunStopReason.Contradiction || scope.IsContradictory;
+            var never = contradictory == false && scope.Check(rules.NeverRaises.Of(w));
+            System.GC.KeepAlive(terms);
+            return (contradictory, never);
+        }
+
+        /// <summary>
+        /// The gate fires only where the WHERE raises on no document the declaration admits: a text comparison, its
+        /// negation and a CASE of such raise nowhere, so a contradiction stands; the first design's counterexample, a cast
+        /// to <c>DOUBLE</c> of a path that may hold a string, may raise, and so may an opaque term, so the node assumes
+        /// nothing and is not contradictory, while the node that assumes every conjunct still is. Ungated, a node assumes
+        /// nothing whatever the WHERE says.
+        /// </summary>
+        [Fact]
+        public void AGatedNodeAssumesTheWhereOnlyWhereItRaisesOnNoRow()
+        {
+            var kindA = Theory(Outright(Kind, Present), Outright(Kind, Enum("a")), Outright(N, Present), Outright(N, Enum(30m, "x")));
+            var text = Eq(Text(Kind), "z");
+
+            Reduced(kindA, text, gated: false).Should().Be((false, true), "an ungated node assumes nothing, and a text comparison raises on no row");
+            Reduced(kindA, text).Contradictory.Should().BeTrue("the gate assumes the WHERE, which no document the declaration admits makes TRUE");
+            Reduced(kindA, Not(Eq(Text(Kind), "a"))).Contradictory.Should().BeTrue("a negation raises nowhere its operand raises nowhere");
+            Reduced(kindA, Or(text, Eq(Text(Kind), "y"))).Contradictory.Should().BeTrue("a disjunction raises nowhere both its sides raise nowhere");
+
+            var guarded = new SqlPredicate.Case(Eq(Text(Kind), "a"), text, new SqlPredicate.Constant(false));
+            Reduced(kindA, guarded, gated: false).NeverRaises.Should().BeTrue("a CASE of text comparisons and a truth value raises nowhere");
+
+            var cast = And(Cmp(Cast("DOUBLE", Text(N)), ">", Lit(0m)), text);
+            Declared(kindA, cast).IsContradictory(OracleLicence.Kept).Should().BeTrue("assuming every conjunct contradicts the declaration");
+            Reduced(kindA, cast).Should().Be((false, false), "the cast raises on the string n may hold, so the gate does not fire");
+
+            var opaque = And(Opaque(1), text);
+            Declared(kindA, opaque).IsContradictory(OracleLicence.Kept).Should().BeTrue();
+            Reduced(kindA, opaque).Should().Be((false, false), "no rule says an opaque term never raises");
+        }
+
+        /// <summary>
+        /// A <c>CASE</c> that takes another truth value than its THEN has its condition not TRUE, which a two-valued condition
+        /// makes FALSE. <c>(kind = 'b') IS NULL</c>, written as Calcite reads a truth test, a <c>CASE</c> on the comparison
+        /// and on its negation, is so contradictory in a gated node where <c>kind</c> is always there and never <c>b</c>, the
+        /// text comparison never UNKNOWN; and not where <c>kind</c> may be absent, the accessor reading null and the
+        /// comparison UNKNOWN, which makes the test TRUE.
+        /// </summary>
+        [Fact]
+        public void ATruthTestIsReadByItsConditionOnlyWhereThatIsTwoValued()
+        {
+            var comparison = Eq(Text(Kind), "b");
+            var isNull = new SqlPredicate.Case(comparison, new SqlPredicate.Constant(false),
+                new SqlPredicate.Case(Not(comparison), new SqlPredicate.Constant(false), new SqlPredicate.Constant(true)));
+
+            Reduced(Theory(Outright(Kind, Present), Outright(Kind, Enum("a"))), isNull).Contradictory
+                .Should().BeTrue("the comparison is never UNKNOWN where kind is always there");
+            Reduced(Theory(Outright(Kind, Enum("a"))), isNull)
+                .Should().Be((false, true), "an absent kind reads null, the comparison is UNKNOWN there and the test TRUE, and nothing raises");
         }
 
         // What a predicate that holds establishes.
@@ -101,9 +218,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The rendering preimage: a stored number renders as its digits, so an equality with them keeps a document storing
-        /// the number as well as one storing the string, and establishes both and nothing narrower. #117's fact, which a
-        /// conjunct used to certify itself exact with, is not among them.
+        /// The rendering preimage: the service holds a number as its double (<c>Service.NumbersBeyondLongCompareAsDoubles</c>)
+        /// and returns a whole one within a long as its digits (<c>Service.IntegralNumbersReadBackAsHeld</c>), so an equality
+        /// with them keeps a document storing any number whose double is theirs as well as one storing the string, and
+        /// establishes the numbers' window and nothing narrower. #117's fact, which a conjunct used to certify itself exact with, is not among them.
         /// </summary>
         [Fact]
         public void AnEqualityWithTextANumberRendersAsEstablishesTheStringOrTheNumber()
@@ -111,14 +229,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var facts = Established(Theory(), Eq(Text(Label), "30"));
 
             Knows(facts, Label, Present).Should().BeTrue();
-            Knows(facts, Label, Enum("30", 30m)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, Label, new JsonClaim.LowerBound(30m)).Should().BeFalse("29.9999999999999999's double is 30");
+            Knows(facts, Label, Enum("30", 30m)).Should().BeFalse("30.000000000000001's double is 30, which the service returns as 30");
             Knows(facts, Label, Value("30")).Should().BeFalse();
             Knows(facts, Label, Type(JsonType.String, orNull: true)).Should().BeFalse();
         }
 
         /// <summary>
         /// A declared string meets the preimage and leaves the string alone, which deletes the stored-number disjunct
-        /// (<c>TODO.md</c>, under <em>The numeric forms stop at whole numbers</em>).
+        /// (<c>TODO.md</c>, under <em>The numeric forms stop at whole numbers</em>): the preimage's cases are met with the
+        /// types before they are joined, so the numbers' window takes nothing from the string's value.
         /// </summary>
         [Fact]
         public void ADeclaredStringLeavesTheStringMemberOfThePreimage()
@@ -135,13 +257,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Knows(Established(Theory(), Eq(Text(A), "true")), A, Enum("true", true)).Should().BeTrue();
         }
 
+        /// <summary>
+        /// A membership keeps the union of its points' preimages: a window of numbers beside the strings, which names no
+        /// domain, and the strings themselves where the path holds no number.
+        /// </summary>
         [Fact]
         public void AMembershipEstablishesTheUnionOfItsPreimages()
         {
             var facts = Established(Theory(), In(Text(A), "x", "30"));
 
-            Knows(facts, A, Enum("x", "30", 30m)).Should().BeTrue();
             Knows(facts, A, Present).Should().BeTrue();
+            Knows(facts, A, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, A, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, A, Enum("x", "30", 30m)).Should().BeFalse("30.000000000000001 is returned as 30");
+
+            var declared = Established(Theory(Outright(A, Type(JsonType.String))), In(Text(A), "x", "30"));
+            Knows(declared, A, Enum("x", "30")).Should().BeTrue();
         }
 
         [Fact]
@@ -194,10 +325,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Knows(Established(Theory(), Eq(Raw(A), "bikes")), A, Value("bikes")).Should().BeTrue();
         }
 
+        /// <summary>
+        /// The column a typed <c>INTEGER</c> stands for reads a number written with a point as its double where that is
+        /// whole, so <c>30.000000000000001</c> is equal to 30 there: an equality establishes a number within the literal's
+        /// rounding, not the literal itself; and beside a fraction, which no integer equals, it keeps nothing.
+        /// </summary>
         [Fact]
-        public void ATypedEqualityEstablishesAValueOfItsType()
+        public void ATypedEqualityEstablishesANumberRoundingToItsLiteral()
         {
-            Knows(Established(Theory(), Eq(Typed(N, "INTEGER"), 30m)), N, Value(30m)).Should().BeTrue();
+            var facts = Established(Theory(), Eq(Typed(N, "INTEGER"), 30m));
+
+            Knows(facts, N, Type(JsonType.Number)).Should().BeTrue();
+            Knows(facts, N, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, N, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue();
+            Knows(facts, N, Value(30m)).Should().BeFalse("a stored 30.000000000000001 is read as 30");
             Established(Theory(), Eq(Typed(N, "INTEGER"), 30.5m)).IsContradictory.Should().BeTrue("an INTEGER is never 30.5");
         }
 
@@ -221,8 +362,145 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var facts = Established(Theory(), Cmp(Typed(N, "INTEGER"), ">", Lit(500m)));
 
             Knows(facts, N, Present).Should().BeTrue();
-            Knows(facts, N, Type(JsonType.Integer)).Should().BeTrue("RETURNING asserts the type");
+            Knows(facts, N, Type(JsonType.Number)).Should().BeTrue("RETURNING and the column read a number alone");
+            Knows(facts, N, Type(JsonType.Integer)).Should().BeFalse("the column reads a number written with a point whose double is whole");
             Knows(facts, N, new JsonClaim.LowerBound(499m, Exclusive: true)).Should().BeFalse("what RETURNING does at the comparison is unmeasured");
+        }
+
+        /// <summary>
+        /// What the statement keeps (<see cref="OracleLicence.Kept"/>) holds every row its readings may keep, so a declaration
+        /// that admits such a row is no contradiction: <c>RETURNING DOUBLE</c> compares doubles, and 0.1's is
+        /// 0.10000000000000001's; a <c>VARIANT</c> casts a number to text as null; an <c>ANY</c> renders
+        /// 0.10000000000000001 as its double's spelling, <c>0.1</c>; and an <c>INTEGER</c> column reads 6.0000000000000001
+        /// as 6, which is more than 5. Beside each, a statement whose readings keep no row the declaration admits still
+        /// contradicts it.
+        /// </summary>
+        /// <remarks>
+        /// The reduce (<see cref="OracleLicence.Reduce"/>) narrows by the same <c>Kept</c> once its gate assumes the WHERE,
+        /// so none of the four is reduced either, and each control that raises nowhere is. Over the <c>INTEGER</c> column,
+        /// <c>= 7</c> is not, since its number cells may raise: the gate does not fire, though what the statement keeps
+        /// contradicts.
+        /// </remarks>
+        [Fact]
+        public void WhatAStatementKeepsHoldsEveryRowItsReadingsMayKeep()
+        {
+            static bool Contradicts(JsonFactTheory theory, SqlPredicate conjunct, OracleLicence licence) => Declared(theory, conjunct).IsContradictory(licence);
+
+            foreach (var licence in new[] { OracleLicence.Kept, OracleLicence.Reduce })
+            {
+                var tenth = Theory(Outright(A, Enum(0.1m, 0.25m)));
+                Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.10000000000000001m), licence).Should().BeFalse("0.1 and 0.10000000000000001 are one double, under {0}", licence.Question);
+                Contradicts(tenth, Eq(Typed(A, "DOUBLE"), 0.3m), licence).Should().BeTrue("no double of the enum is 0.3's, under {0}", licence.Question);
+
+                var category = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Integer)));
+                Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "VARIANT" })), licence).Should().BeFalse("a VARIANT casts a number to text as null, under {0}", licence.Question);
+                Contradicts(category, IsNull(Cast("VARCHAR", new SqlValue.Raw(Kind) { Column = "ANY" })), licence).Should().BeTrue("an ANY casts a number to its text, under {0}", licence.Question);
+
+                var near = Theory(Outright(A, Enum(0.10000000000000001m, 0.25m)));
+                Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.1"), licence).Should().BeFalse("an ANY renders 0.10000000000000001 as 0.1, under {0}", licence.Question);
+                Contradicts(near, Eq(Cast("VARCHAR", new SqlValue.Raw(A) { Column = "ANY" }), "0.2"), licence).Should().BeTrue("an ANY renders no number of the enum as 0.2, under {0}", licence.Question);
+
+                var six = Theory(Outright(A, Enum(6.0000000000000001m)));
+                Contradicts(six, Cmp(Typed(A, "INTEGER"), ">", Lit(5m)), licence).Should().BeFalse("an INTEGER column reads 6.0000000000000001 as 6, under {0}", licence.Question);
+            }
+
+            var sixth = Theory(Outright(A, Enum(6.0000000000000001m)));
+            Contradicts(sixth, Eq(Typed(A, "INTEGER"), 7m), OracleLicence.Kept).Should().BeTrue("the column reads 6.0000000000000001 as 6, not 7");
+            Contradicts(sixth, Eq(Typed(A, "INTEGER"), 7m), OracleLicence.Reduce).Should().BeFalse("an INTEGER column's number cells may raise, so the gate does not fire");
+        }
+
+        /// <summary>
+        /// An arm of a <c>CASE</c> is written <c>FALSE</c> (<see cref="OracleLicence.NeverRead"/>) where its question's
+        /// facts contradict, as <see cref="OracleLicence.Arm"/>'s do, and the WHERE raises on no document: here
+        /// <c>kind = 'b'</c> beneath a sibling <c>kind = 'a'</c>. Beside a conjunct that may raise, an opaque one, it is
+        /// not, though the arm's own node still contradicts: the <c>FALSE</c> would stop Calcite evaluating it.
+        /// </summary>
+        [Fact]
+        public void AnArmIsNeverReadWhereItsFactsContradictAndTheWhereRaisesNowhere()
+        {
+            var condition = Eq(Text(Kind), "b");
+            var @case = Or(new SqlPredicate.Case(condition, Eq(Text(N), "y"), new SqlPredicate.Constant(false)), Eq(Text(A), "x"));
+            var conditions = new[] { condition };
+
+            var safe = Declared(Theory(), Eq(Text(Kind), "a"), @case);
+            safe.IsContradictory(OracleLicence.Arm(1, conditions)).Should().BeTrue("kind cannot be both a and b");
+            safe.IsContradictory(OracleLicence.NeverRead(1, conditions)).Should().BeTrue("and nothing in the WHERE raises");
+
+            var raising = Declared(Theory(), Eq(Text(Kind), "a"), @case, Opaque(9));
+            raising.IsContradictory(OracleLicence.Arm(1, conditions)).Should().BeTrue("kind cannot be both a and b");
+            raising.IsContradictory(OracleLicence.NeverRead(1, conditions)).Should().BeFalse("no rule says an opaque conjunct never raises");
+        }
+
+        /// <summary>
+        /// A container's declaration beside the service's facts, which make <c>id</c> a present string, as a planner reads one.
+        /// </summary>
+        static JsonFactTheory Container(string schema) =>
+            Theory([.. CosmosServiceFacts.Rules, .. JsonSchemaFacts.ReadFrom(JsonNode.Parse(schema)!)]);
+
+        /// <summary>
+        /// The reduce (<see cref="OracleLicence.Reduce"/>) asks every row FALSE: its node is contradictory only where the
+        /// WHERE keeps no row the declaration admits and raises on none. A text contradiction is reduced, alone or beside an
+        /// equality that raises nowhere: <c>c."id" = 'x'</c>, a raw value in a <c>VARCHAR</c> over the string the service
+        /// makes it; an equality over the <c>VARIANT</c> column a partition key is promoted to, whatever the declaration says
+        /// of the key; the same key read through a field typed <c>VARCHAR</c>, where the declaration makes it a string; and
+        /// <c>c."id" = ?</c> and the partition key's <c>= ?</c>. It is not reduced where a conjunct may raise, though what
+        /// every conjunct keeps still contradicts: <c>RETURNING INTEGER</c> over a declared string, the first design's
+        /// counterexample (the cast of the text to <c>DOUBLE</c> over a path that may hold a string), the partition key's
+        /// <c>&lt; ?</c> and <c>&lt; 'x'</c>, a <c>VARIANT</c> ordering Calcite does not compile against a parameter or a
+        /// literal, and an <c>ANY</c> field's <c>&gt; ?</c> over a path declared an integer or a string, which raises across
+        /// types.
+        /// </summary>
+        [Fact]
+        public void TheReduceAsksEveryRowFalse()
+        {
+            var (id, body, category) = (P("id"), P("body"), P("category"));
+            const string Declaration = """
+                { "type": "object", "required": ["kind", "body"], "properties": {
+                    "kind": { "enum": ["a"] }, "body": { "type": "string" }, "n": { "type": ["integer", "string"] } } }
+                """;
+            var theory = Container(Declaration);
+            var contradiction = Eq(Text(Kind), "z");
+            var variant = new SqlValue.Raw(category) { Column = "VARIANT" };
+
+            void Reduced(JsonFactTheory declared, string because, params SqlPredicate[] conjuncts)
+            {
+                var scope = Declared(declared, conjuncts);
+                scope.IsContradictory(OracleLicence.Kept).Should().BeTrue("every conjunct together keeps no row, {0}", because);
+                scope.IsContradictory(OracleLicence.Reduce).Should().BeTrue("nothing raises, {0}", because);
+            }
+
+            void NotReduced(JsonFactTheory declared, string because, params SqlPredicate[] conjuncts)
+            {
+                var scope = Declared(declared, conjuncts);
+                scope.IsContradictory(OracleLicence.Kept).Should().BeTrue("every conjunct together keeps no row, {0}", because);
+                scope.IsContradictory(OracleLicence.Reduce).Should().BeFalse("a conjunct may raise, {0}", because);
+            }
+
+            Reduced(theory, "for a text comparison", contradiction);
+            Reduced(theory, "beside c.\"id\" = 'x'", contradiction, Eq(new SqlValue.Raw(id) { Column = "VARCHAR" }, "x"));
+
+            var keys = new[]
+            {
+                ("nothing", "{}"), ("a string", """{ "type": "string" }"""), ("an integer", """{ "type": "integer" }"""),
+                ("a structure", """{ "type": ["object", "array"] }"""),
+            };
+            foreach (var (name, key) in keys)
+            {
+                var declared = Container(Declaration.Replace("\"n\":", $"\"category\": {key}, \"n\":"));
+                Reduced(declared, $"beside the partition key's VARIANT equality, the key declared {name}", contradiction, Eq(variant, "x"));
+                Reduced(declared, $"beside the partition key's = ?, the key declared {name}", contradiction, Cmp(variant, "=", Param(0, "VARIANT")));
+            }
+
+            var aString = Container(Declaration.Replace("\"n\":", "\"category\": { \"type\": \"string\" }, \"n\":"));
+            Reduced(aString, "beside the key read through a field typed VARCHAR, the key declared a string", contradiction,
+                Eq(new SqlValue.Raw(category) { Column = "VARCHAR" }, "x"));
+            Reduced(theory, "beside c.\"id\" = ?", contradiction, Cmp(new SqlValue.Raw(id) { Column = "VARCHAR" }, "=", Param(0, "VARCHAR")));
+
+            NotReduced(theory, "for RETURNING INTEGER over a declared string", Eq(Typed(body, "INTEGER"), 2m));
+            NotReduced(theory, "for the first design's counterexample", Cmp(Cast("DOUBLE", Text(N)), ">", Lit(0m)), contradiction);
+            NotReduced(theory, "beside the partition key's < ?", contradiction, Cmp(variant, "<", Param(0, "VARIANT")));
+            NotReduced(theory, "beside the partition key's < 'x'", contradiction, Cmp(variant, "<", Lit("x")));
+            NotReduced(theory, "beside an ANY field's > ? over an integer or a string", contradiction, Cmp(new SqlValue.Raw(N) { Column = "ANY" }, ">", Param(0, "ANY")));
         }
 
         [Fact]
@@ -344,8 +622,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// A range the declared bounds satisfy is a tautology of the number, converted by a double's parse of the rendering.
-        /// An integer's parse of the rendering raises on a stored <c>30.0</c> or <c>3000000000</c>, which the declaration
-        /// admits, so there it is decided neither way; and a cast of the raw value is decided neither way since h15b, being
+        /// An integer's parse of the rendering raises on a stored <c>3000000000</c>, which the declaration admits, so there it
+        /// is decided neither way; it reads <c>30.0</c>, which the service returns as <c>30</c>, though a verdict reads the
+        /// coarse reading, which puts the parse's raise beside every number (<c>TODO.md</c>). A cast of the raw value is
+        /// decided neither way since h15b, being
         /// each column's own, which no row measured (<c>measuredcast</c>): an <c>ANY</c> wraps a long beyond an int, so a
         /// stored 2147483648 the bound admits casts to -2147483648
         /// (<c>CalciteVariantMeasurementTests.ACastOfARawNumberIsEachColumnsOwn</c>).
@@ -360,7 +640,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Decide(Cmp(Cast("INTEGER", Raw(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
             scope.Decide(Cmp(Cast("DOUBLE", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Always);
 
-            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 30.0");
+            scope.Decide(Cmp(Cast("INTEGER", Text(N)), ">=", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown, "Calcite raises on a stored 3000000000");
             scope.Decide(Cmp(Cast("INTEGER", Text(N)), "<", Lit(0m)), OracleLicence.Declaration).Should().Be(Truth.Unknown);
         }
 

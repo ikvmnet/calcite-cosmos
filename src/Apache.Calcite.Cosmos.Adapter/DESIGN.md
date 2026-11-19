@@ -990,18 +990,20 @@ string alone, which is the deletion of the stored-number disjunct `TODO.md` reco
 theory of JSON never needed: a domain keeps only values of a type its path may hold. The planner never states a
 domain beside a narrower type; a preimage does.
 
-**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.0`, and a numeric cast on
+**A row Calcite raises on is no truth value.** `RETURNING INTEGER` raises on a stored `30.7`, and a numeric cast on
 a string it cannot parse. Such a row is no row a predicate keeps, so it constrains nothing an assumed predicate
 establishes — the asymmetry *Reading a value back* records for `RETURNING`, the caller's declaration held rather than
 checked. It supports no verdict either: deleting the predicate would answer where Calcite fails, and which of the two
-a pushdown may do is not settled.
+a pushdown may do is not settled. Nor does a raise support the reduce: a filter answered with no request must be one
+Calcite fails on no row of (*The reduce asks every row false*).
 
 An integer cast of the accessor is a parse of its rendering, not a conversion of the number: `CAST(JSON_VALUE(…) AS
-INTEGER)` raises on a stored `30.0`, `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have
-truncated or held it at the limit. The theory spells `30` and `30.0` alike, so a number there may always raise, and
-nothing is decided of one; a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
-every rendering, and of a cast of the raw value, and not of this. The first table said otherwise, and the population-D
-checker found it.
+INTEGER)` raises on a stored `2.5` or `1e30`, and on `3000000000`, where a cast of the number would have truncated or
+held it at the limit. The service returns a whole number within a long as its digits however it was written, `30.0` as
+`30` (`Service.IntegralNumbersReadBackAsHeld`), so the parse raises on no integer its type holds, as its cells read
+(`NumberCast.ParsesWhole`); a range its declared bounds satisfy is a tautology of `CAST(… AS DOUBLE)`, whose parse reads
+every rendering, and nothing drops it through this cast yet, since a deletion reads the coarse answer, which puts the
+parse's raise beside every number (`TODO.md`). The first table said otherwise, and the population-D checker found it.
 
 **A predicate holds with a truth value.** `holds(e, true)` is a conjunct the context assumes. `NOT` swaps the value,
 a conjunction that holds holds on both sides, and a disjunction that fails fails on both. A disjunction that holds,
@@ -1063,7 +1065,8 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
 | a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
 | inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
-| whether the filter keeps nothing | every conjunct, admitted or not: a strengthening, which a conjunct's own facts may justify |
+| whether the filter keeps nothing and fails on nothing | the WHERE as one conjunction, assumed by a rule only where it raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`Reduce`) |
+| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | every other conjunct of the statement as written, one the deletions drop among them, and the conditions the arm is read under, each assumed by the same rule only where the WHERE as written raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`NeverRead`) |
 | routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
 | whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
@@ -1094,6 +1097,16 @@ because another implies it holds wherever the other does; lent to that other as 
 other be lowered on what the other itself establishes — #117's self-certification one step removed — and the lowered
 form would be the original only where a conjunct the filter no longer applies holds. An ordering onto a stored form
 is no strengthening, so a row the original drops could be kept.
+
+**A never-read arm is asked of the statement as written**, a conjunct the deletions drop among its siblings and in
+the WHERE its gate reads. A deleted conjunct is no longer evaluated, and where the arm's `FALSE` then decides the
+filter, a gate that never saw it answered no rows where it raises: `NOT (CAST(body AS INTEGER) = 1 AND kind = 'C') AND
+CASE WHEN kind = 'C' THEN … ELSE FALSE END` over a `kind` never `C` deletes the `NOT` as redundant, and a gate on what
+was left wrote the arm `FALSE` and the filter with it, though the cast raises on any `body` that is no number
+(`CosmosDeclaredFactPlanningTests.AnArmBesideADeletedConjunctThatMayRaiseIsNotWrittenFalse`). Assuming a deleted
+conjunct is sound here where it is not for a lowering: the `FALSE` stands only where `AND` and `OR` reach it, so the
+rewritten conjunct is true only where the conjunct as written is, and that with the kept siblings implies every
+deleted one; on a row the rewritten filter keeps, every conjunct holds, and the arm is not read there.
 
 **The arm of a `CASE` is a licence of its own**, which the plan's table lacked and the shadow's judge found it
 needed. A merged view's column is `CASE WHEN <that view's filter> THEN … END`, and what its arm is lowered by is what
@@ -1161,10 +1174,11 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
 | the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
-| `CosmosFactRewriter`, the filter made `FALSE` | `IsContradictory` | every conjunct (a strengthening) |
+| `CosmosFactRewriter`, the text sent made `FALSE`, and a projection's `CASE` conditions, in the text sent alone, through `RewriteConditions`; `CosmosImplementor.Build`, whether the statement is sent | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`); several filters' WHERE as one statement (`CosmosRowFacts.KeepsNothing`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
-| the rewriter, inside the arm of a `CASE` | `Within`, `NeverWithin` | those siblings and the arm's conditions |
+| the rewriter, inside the arm of a `CASE` | `Within` | those siblings and the arm's conditions (`Arm`) |
+| the rewriter, an arm never read, written `FALSE` in the text sent | `NeverWithin` | what `Arm` assumes of the statement as written, a deleted conjunct among it, each only where the WHERE as written raises on no admitted document, or for a projected condition no predicate of the projected expression does (`NeverRead`) |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
 | a node built without facts, by hand or by a host's rule | `CosmosImplementor.FactsOf` | the declaration (L0), spelled there and nowhere else |
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
@@ -1214,15 +1228,187 @@ a `VARIANT` field is compared with a literal since the switch (h15), never throu
 query asked. The value is the oracle's, not the literal's: an equality over text a number renders as pins nothing,
 `'30'` being a stored `"30"` and a stored `30`, two partitions. A number is sent as the client sends a literal of it, a
 whole one as a `long` and any other as a `double`, the oracle holding a `decimal` no partition key component takes.
+An equality with a number pins the key only where the declaration leaves the key one value the comparison may keep:
+`Kept` keeps the literal's window (*Which stratum a later round may rest on is a row*), a window is no domain of one,
+and only a declaration that leaves one value in it is — an integer, whose window holds one whole number, or an `enum`
+or a `const` with one member there, a fraction among them, sent as a `double`. Through `RETURNING DOUBLE` that value's
+double is the literal's. Routing by the window's double, which every number in it shares, is a follow-up that needs
+a measurement of how the service hashes a number (`TODO.md`). A cast of the key to text over the `VARIANT` column pins
+the stored string, which is all such a cast keeps, a number and a boolean casting to null there.
 
-**A filter that keeps nothing is no request, and one that keeps everything has no `WHERE`.** The rewrite answers
-`FALSE` where every conjunct together contradicts the declaration, and `TRUE` where it deleted every conjunct.
-Either reached the planner only on the converted filter, a `CosmosFilter` carrying the constant — `WHERE @p0` bound to
-`false`, a round trip for no rows — which `CoreRules.FILTER_REDUCE_EXPRESSIONS`, configured for a `LogicalFilter`,
-never sees. `CosmosFilterReduceRule` matches the logical filter, over its own convention's container only, and puts
-the empty relation, or the filter's input, beside it; a host with a rule for an empty `Values` answers the first with
-no request at all. Only the logical filter: a converted one carries a condition some convention already rewrote, and
-a filter in a host's convention is not the adapter's to reduce.
+Three older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
+comparison through the cast of the text to `DOUBLE` is read through `NumberCast`'s `Window`, looser than a double's
+rounding, so one the declaration rules out may still send a request that finds nothing, and on the key may route to a
+listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). Where such a comparison is
+split, the weaker form's number can meet the comparison's `DOUBLE` in Calcite's simplifier, which a connection with
+Calcite's default rules runs, and the statement fails to plan (*Two weakenings over one path still share one raw
+value*). And a key the declaration fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
+condition, so a comparison of the key the declaration shows true may be dropped from the text and the request read
+every partition (*A number pins no partition unless the declaration leaves the key one value*).
+
+**A statement that keeps nothing is not sent, and one that keeps everything has no `WHERE`; neither reaches a condition Calcite evaluates, though a clause above one that keeps nothing, and a part of its `WHERE` admitted only beside another, may be planned otherwise (below).**
+Nothing the declaration alone decides of a condition is in a node Calcite reads. A `CosmosFilter` holds the planning
+form of its condition (`CosmosFactRewriter.Planned`): the lowerings and the safe `CASE` flattening, each true on the
+rows the condition is. The rendering form adds the conjuncts the rest imply deleted, the arms never read written
+`FALSE`, and the whole `FALSE` where the WHERE keeps nothing and raises nowhere, and goes only into the text sent
+(`CosmosFilter.Sent`, admitted beside the node's by `CosmosFilterRule`, and the node's own where it does not render as
+the rule admitted it). A `TRUE` writes no `WHERE`. The split rule builds the half it pushes from the planning form and
+keeps above it the condition as written (below), and `CosmosRowFacts` reads the planning form.
+
+Why: Calcite reads a node's condition. `FILTER_MERGE` matches a filter of any convention, and merged the `FALSE` a
+`CosmosFilter` held with the filter beneath into an empty `Values`; the prune-empty rules read an empty `Values`, and a
+filter whose condition is `FALSE` has a maximum row count of 0; a filter above reads the condition as a pulled-up
+predicate. Each carried what the declaration said of the documents into what Calcite evaluated, and answered a join, a
+set operation or a stack of filters with no rows where Calcite fails. The reduce that answered a filter with an empty
+relation (`CosmosFilterReduceRule`, `CosmosNoRows`) went with it: which filters Calcite evaluates beneath a filter, and
+how, is the plan Calcite picks by cost, and a reading of it that each round found wrong does not settle.
+
+What a clause above reads of the rows is another matter. The rules for the clauses above a filter, the aggregate's,
+the sort's, the projection's and the lookup join's, read what the rows hold from the filter's node assuming every
+conjunct (`CosmosRowFacts.For`), which a `WHERE` the declaration rules out leaves holding nothing, so whatever those
+rules push only on what the rows hold is computed in Calcite above it, over the empty answer, where without a
+declaration, or beside a `WHERE` the declaration admits, it is pushed: for example a select list's `UPPER(body)`
+beside `body = 'abc'`, a `GROUP BY kind` with its `COUNT(*)`, a `DISTINCT kind`, a `MIN`, a `MAX` or an `ORDER BY`; and
+the split counts a weakening applied in a scope that contradicts, which drops it from the half pushed (`IsApplied`,
+the same on `main`). Admission stops alike: its rounds end at a stratum that keeps nothing (*Admission asked once a
+round*), so a conjunct rendered only from what a sibling establishes, beside one the declaration rules out, stays in a
+Calcite filter over a statement that sends nothing, where beside a sibling the declaration admits, or with nothing
+declared, the `WHERE` is sent whole: `UPPER(body) = 'ABC'`, rendered from the stratum assuming `body = 'abc'`, beside
+`kind = 'C'` under `kind` declared `A` or `B`. The answers are the same and the plans are not
+(`CosmosDeclaredFactPlanningTests.AClauseAboveAWhereTheDeclarationRulesOutIsCalcites`, and
+`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` in both hosts). Reading them, and running the
+rounds after such a stratum, under a licence that does not assume a `WHERE` the declaration rules out would make them
+the same, which is left for a change of its own (`TODO.md`, *A clause above a WHERE the declaration rules out reads
+nothing of its rows*).
+
+**The split fires only where the filter it splits off reaches the service.** A logical filter, over an input some
+equivalent form of which is part of a statement already, or one a rule converts over an input that can be: this
+container's scan, a projection, a filter `CosmosFilterRule` converts whole, or a traversal `CosmosUnnestRule` converts
+(`CosmosFilterSplitRule.Reaches`). The filter rule converts a filter only over an input that converts, so a filter it
+declines leaves every filter above it in Calcite, and a filter Calcite implements copies as one: split in either, the
+half pushed was a filter Calcite evaluates, and a weakening in it the service's form written as a Rex, a Cosmos type
+test with no in-process body. A text equality over a subquery's cast of the text to `INTEGER`, in a host that does not
+merge the two filters, failed so with "cannot translate call IS_NUMBER" where Calcite answers: over a property
+declared a number since the split read the planning form, and over one nothing declares on `main` too
+(`CosmosDeclaredFactPlanningTests.AFilterOverOneCalciteKeepsIsNotSplit`). So did one over a lateral, an `UNNEST` or a
+scalar sub-query beside or over such a cast while any member that was no filter counted as reaching: the correlate is
+no part of a statement, and the correlate rule moved the half pushed into its left side, beside the cast
+(`AFilterOverACorrelateOverOneCalciteKeepsIsNotSplit`). A run over a lateral or a scalar sub-query, naming kinds its
+left side does not keep, sent the left side the run's weaker form the same way, `kind IN ('C', 'D')` beside pc1's own
+`kind IN ('A', 'B')` and `kind IN ('B', 'C')` beside pc2's and pc5's `kind = 'A'`, whose request then kept nothing,
+and answered no rows where Calcite fails on the cast the correlate computes (pc1, pc2, pc4, pc5); it now fails as
+Calcite does, declared and not (`ARunOverACorrelateSendsNoFormOfItsCondition`). A run that reads only the left side's
+columns is not this: in a statement that takes the transposition, the correlate rule moves it into the left side,
+where the filter reaches the service and the split takes it, keeping its cast over the part sent (u3; `TODO.md`, *A
+residual beside a contradicted split loses its raise*). Which rule converts a member is the question that rule asks of
+it, legality.
+
+**What a split keeps above the half sent is the condition as written.** `CosmosFilterSplitRule.Residual` keeps the
+conjuncts the half sent does not decide as the query wrote them, not their planning form, whose lowerings and flattened
+`CASE`s Calcite does not read. Where Calcite's simplification of the whole condition reads the two halves together, it
+keeps that simplification's terms but those of the conjuncts sent, each read alone as well as together, and nothing
+where none is left: `kind = 'A' AND (kind = 'A' OR CAST(body AS INTEGER) = 1)` keeps nothing above `kind = 'A'`. Where
+it reads the whole as false, it keeps the condition as it stands. A conjunct sent is one each conjunct of whose planning
+form is admitted (`CosmosFactRewriter.PlannedConjuncts`): of the declaration it reads only which conjuncts the request
+decides, the admission's, and chooses no row, a writer. Over a projection it reads the condition through the expressions
+the columns stand for, as Calcite merges the two, and writes what is left back over the columns. The split does not
+fire where all it would push is applied beneath already, compared as Calcite compares expressions, so a condition kept
+above the half sent is not split again: `CAST(body AS INTEGER) > 0 AND n IS NULL AND n = 1`, whose half sent reads as
+false alone and not beside the cast, split its own outer until the stack overflowed. And it leaves above nothing that
+holds the service's form, which Calcite has no body for (`CosmosOperators.HoldsServiceForm`, legality): through a
+connection that merges filters, `FILTER_MERGE` carried a split's weaker forms up beside the conjuncts they weaken, and a
+split of the merged filter left them in a filter Calcite evaluates, which failed with "cannot translate call IS_NUMBER"
+where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). What it does not reach is `TODO.md`'s:
+a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a projection
+whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*); and,
+through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
+connection, a filter above the half sent is reduced with what that half holds*).
+
+**The correlate rule takes Calcite's transposition at every correlate of a statement, or at none.**
+`CosmosFilterCorrelateRule` writes Calcite's `FILTER_CORRELATE` as Calcite's rule writes it where, for every filter and
+join condition of the statement as registered, at every correlate the planner's own rules carry it onto where Calcite's
+rule would move a part of it into a side, the whole condition does not read as false and every conjunct of Calcite's
+simplification of what that rule leaves above after its last firing is a conjunct of Calcite's simplification of the
+whole, and otherwise moves nothing in the statement; a condition holding the service's form moves as Calcite's rule
+moves it. Through a connection whose Calcite decorrelates, its own `FilterCorrelateRule` may move a `WHERE` before this
+rule reads the plan (`TODO.md`, *A filter above a correlate answers where one of Calcite's plans fails*, records what
+was measured). The answer is kept with the planner for its root and the number of its rules, and worked out again where
+the planner replaces its root or its rules change in number; each time, each question of it is asked once, so the work
+grows with the statement's members and the sets of conjuncts reaching each, not with the paths down to them. Where
+filters merge, conjuncts carried past a filter without it merge with no filter further down: they reach what is beneath
+only once that filter has gone into its correlate, whose sides then hold its parts, and those parts merged with them are
+asked as well.
+
+**Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
+sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
+statement's `WHERE` keeps no document the declaration admits and raises on none: one filter's statement under
+`Reduce`, several filters' conjuncts joined as one statement, each filter's opaque terms numbered apart
+(`CosmosRowFacts.KeepsNothing`). The answer is `CosmosQuery.SendsNothing`, decided before anything is bound; a parameter
+is read as any value of its type, so it holds for every binding. Calcite's own reading of a condition as never true is
+not asked: on a cell where Calcite raises the service may answer anything, so only a `WHERE` that also raises nowhere
+is one the service answers with no document. Where the service would answer no document, `CosmosCursors.OpenAsync`
+opens no request, the ordered program's statements with it, and `CosmosLookup` answers a probe's every key absent
+while it reads the build side to its end. Calcite's operators above run as over the service's real, empty answer, so
+the answer is the one sending the request gives, whatever plan Calcite picked. An aggregate with no grouping
+(`FlatProjection` without a `GROUP BY`) is sent all the same, since it answers one row over no document, its `WHERE`
+holding the constant where one filter alone keeps nothing and as the filters rendered it where only their conditions
+together do: each filter's text is rendered alone, and only `SendsNothing` joins them. Its `SUM` is pushed only as
+Calcite's reduction of it, a `$SUM0` beside a `COUNT(*)` with the `CASE` above in
+Calcite (`CosmosAggregate.CanImplement`): the service sums no document to 0, measured on both emulators, where SQL's
+`SUM` is `NULL`, so `SUM(c."_ts")` over a `WHERE` that matched nothing answered 0, declared or not, and an `AVG`
+reduced to it divided by zero (`CosmosDifferentialTests.ASumOverNoDocumentIsNull`); before the request was decided, the
+empty relation hid it under a `WHERE` the declaration ruled out. `EXPLAIN` marks a statement left unsent at every level a
+person reads, the converter's `sends=[nothing]` and the lookup join's `probes=[nothing]`, never in the digest the
+planner tells two expressions apart by (`CosmosConverters.ExplainsRequests`).
+
+What a skipped request hides is what sending it could have reported: a lost key, a deleted container, throttling, a
+form the service refuses. The empty relation hid the same.
+
+**What the answer is.** Plain pushdown's. Where Calcite in process fails and the query pushed down answers no rows, it
+still does, with a declaration or without one; the declaration saves the request. Those cases are recorded, each the
+same on `main` (`TODO.md`; Chapter 23): the split, a part kept in process beside a part sent that keeps nothing; a
+semi-join answered by a lookup join; a condition above a lookup join; a select list's cast computed above a sort and the
+filters over it (sf3w); and a filter on a `DISTINCT`'s keys moved beneath it over a cast the `DISTINCT` computes
+(dk1). A conjunct the declaration makes true, deleted from the text though it can fail, is kept in the plan,
+so where it stays in Calcite it fails as Calcite does; one the service takes is evaluated by nothing, nor is one in a
+projected `CASE` condition or beside a whole-partition delete, which reads it as saying nothing else (`TODO.md`, *A deletion stops evaluating a conjunct that
+may raise*, *A whole-partition delete reads a conjunct that may fail as nothing else*).
+
+And the other way: where Calcite in process answers no rows and the query pushed down fails, it fails with a
+declaration or without one, where `main`'s reduce answered no rows. A semi-join or a correlated `EXISTS` over an outer
+side that keeps nothing is a lookup join that reads its subquery first, where Calcite's own semi-join reads the empty
+outer side first and never evaluates the subquery (sj2, j3, j6, through the connection the README opens), and an
+uncorrelated `EXISTS` whose subquery keeps nothing is a join that reads the side beside it first (ex4); and the part
+a subquery's split keeps in process is merged with a filter above it without the part sent, where Calcite simplifies
+the three together to `FALSE` (dm7b, dm7d, dm7k, ga20, ga21, in the host Chapter 21 describes); and a filter on a grouping's key stays above a
+grouping that computes a cast for every group, where Calcite moves it beneath and computes the cast for the groups it
+keeps (ga25, declared and not, a choice by cost). Each is `TODO.md`'s. An anti-join over such an
+outer side answers no rows as Calcite does, both reading the sorted outer side first: no divergence.
+
+`CosmosDeclaredFactPlanningTests.EachShapeIsPlainPushdown` pins the shapes the reading of Calcite's plan answered with
+no rows and no request where Calcite fails, declared and not, in the host Chapter 21 describes, and
+`CosmosConnectionPlanningTests.EachShapeIsPlainPushdown` the same shapes through the connection the README opens;
+`ARunOverACorrelateSendsNoFormOfItsCondition` pc1, pc2, pc4 and pc5's statements;
+`AStackWhoseLowerFiltersContradictPlans` t15, its plain twin and the older kind = 'C', id <> 'zz', kind = 'D', each a
+stack whose request keeps nothing; `AScalarAggregateOverAContradictedWhereIsSent`, `AScalarSumIsSentBesideItsCount`,
+`ATypeTautologyOverACastThatMayFailIsSent`, `AnImpossiblePartKeptInCalciteSendsOneRequest`,
+`AClauseAboveAWhereTheDeclarationRulesOutIsCalcites` and
+`AConjunctAdmittedBesideASiblingStaysInCalciteBesideAKindRuledOut` and `ASiblingSentLeavesNothingInCalcite` (in both
+hosts) the rest;
+`CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger` the range
+Chapter 14.2 gives through that connection; `CosmosCursorsTests`, `CosmosOrderedCursorTests` and `CosmosLookupTests`
+the reader's side.
+
+**A statement the reduce once masked plans.** A scalar sub-query in a select list nothing above reads: Calcite's field
+trimmer drops its column and keeps the correlation variable its projection declares (`RelFieldTrimmer`), so in a host
+that trims before it removes sub-queries, as the connection the README opens does, no rule converted the projection,
+Calcite's merge refusing it too, and the statement did not plan (gb4), the empty relation above it only hiding that.
+`CosmosUncorrelatedProjectMergeRule` merges such a projection into the one beneath it, declaring none, a new relation
+the planner tells apart from the old (a projection's digest leaves its variables out), and `CosmosProjectRule` pushes a
+projection declaring a variable no expression reads. ff3mid, three filters stacked over a projection, is measured to
+plan through that connection, declared and not (`CosmosConnectionPlanningTests`); another stack of three over a
+container that declares nothing has not finished planning there, on `main` either (`TODO.md`, *A stack of filters
+plans slowly through the connection, or not at all*).
 
 **Each rule reads its own container's declaration.** A rule set is registered per container, and every rule in it
 sees every operator in the plan, whoever's table it reads. The split rules always found the scan beneath them and
@@ -1294,10 +1480,21 @@ those `Kept` admits for it — and C5, every e-node of the predicate, value and 
 children's representatives against its class's. Where nothing was ever unioned every class has one node and C5 has
 nothing to compare; it is the only check that sees a union, and it is there for the day one is written.
 
+**The reduce is checked more strongly than a scope.** Where the reduce's node is contradictory, no drawn document
+makes a conjunct raise or fail to compile (`IrEval.Raises`, `IrEval.FailsToCompile`), and none makes every conjunct
+TRUE; where a never-read arm's node is, none makes a conjunct raise or fail to compile, and none that makes every
+conjunct the node assumes TRUE makes the condition TRUE. Failures are named `reduce`. So a run draws what may raise
+beside the filter it drew: a raw value in a named column against a parameter, a definedness or type test over a
+`RETURNING` or a raw value, and a reading of doubles against a literal a double holds inexactly, over 8 documents more
+holding such numbers (`PopulationD.Drawn` is 88). Two plants only this check sees are held to it (`PlantedBugTests`:
+the gate without `never raises`, and a `raises` rule reading one side of an `OR`).
+
 **A raise is held at the atoms, not at the verdicts.** The connectives' rules do not model a raise, and whether an
 answer may stand where Calcite fails is the refinement order still to settle; so a verdict is checked on the rows
 Calcite answers, and the connectives decide first, as Calcite may: a conjunction with a FALSE arm is FALSE whatever
-the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so.
+the other arm does. Whether a row raises is the table's to say, and the atom check holds it to say so. The reduce asks
+of raises apart from the verdicts, through `never raises`, derived before anything is assumed and read by no verdict
+(*The reduce asks every row false*).
 
 **What it found**: two rows of the table that contradicted Calcite. An integer cast of the accessor is a parse of the
 rendering, which raises on a stored `30.0`, and the table converted the number; `RETURNING DECIMAL` parses the
@@ -1973,7 +2170,9 @@ documents lacking the property:
 
 So `COUNT(*)` is safe, while the value aggregates agree with SQL only over an input that cannot
 be null — the same reasoning that governs sort null placement. `CosmosAggregate` pushes down
-accordingly and declines otherwise.
+accordingly and declines otherwise. Over no document at all the service's `SUM` is 0 and SQL's `NULL`, so a `SUM`
+with no grouping, the one aggregate that can sum nothing, is pushed only as `$SUM0` beside `COUNT(*)`, the `CASE`
+reading `NULL` where the count is 0 in Calcite.
 
 **A flat select list and an object constructor are not interchangeable.** The documentation
 presents `SELECT e1 AS p1, e2 AS p2` as sugar for `SELECT VALUE { p1: e1, p2: e2 }`, and for
@@ -2195,16 +2394,20 @@ the logical and the converted subtree and holds the two answers equal.
 writes such a predicate above the correlate, where `CosmosUnnestRule` cannot see it and the element
 has no document path a filter above the traversal could name — so it stayed outside the statement and
 every element of every document crossed the wire to be discarded in process.
-`CoreRules.FILTER_CORRELATE` pushes it into the correlate, between the traversal and the uncollect,
-which is the shape the rule recognises; the rule lifts it back out as a `CosmosFilter` over the
-`CosmosUnnest`, addressing the element by the ordinal the traversal binds to its alias. The clause
-order does the rest: `JOIN` then `WHERE` is exactly traverse-then-restrict.
+`CosmosFilterCorrelateRule` pushes it into the correlate, between the traversal and the uncollect, as
+Calcite's `FILTER_CORRELATE` does, which is the shape the rule recognises; the rule lifts it back out
+as a `CosmosFilter` over the `CosmosUnnest`, addressing the element by the ordinal the traversal binds
+to its alias. The clause order does the rest: `JOIN` then `WHERE` is exactly traverse-then-restrict.
 
 A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which is why the shape the
-rule reads is the shape a host produces. It is registered here for the reason the other Calcite
-rewrites are — a bare Volcano planner has none of them, and a pushdown must not depend on which rules
-a caller happened to add. Where the predicate does not render, the untransposed plan survives the
-transformation and the traversal still pushes with the predicate above it.
+rule reads is the shape a host produces. The adapter registers its own for the reason the other
+Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
+depend on which rules a caller happened to add — and it is Calcite's, taken, but for a condition holding the
+service's form, in a statement only where the conjuncts it would move at each correlate decide nothing of what
+Calcite reads of the rest (*The correlate rule takes Calcite's transposition at every correlate of a statement, or
+at none*).
+Where the predicate does not render, the untransposed plan survives the transformation and the
+traversal still pushes with the predicate above it.
 
 **A projection is not on that list, and it used to be.** `SELECT` runs *after* `JOIN`, so a
 projection below a traversal is written into the clause the service evaluates last: the object it
@@ -2424,9 +2627,10 @@ which is a decision rather than a fix.
 `= '30'` keeps a stored string `'30'` and every stored number Java renders as `30`, and every such
 number has the value 30 — so the value is that string or it is that number, and the rule pushes
 `c.x = '30' OR c.x = 30` under the comparison Calcite still makes. It is implied and not exact, by one
-spelling: a stored `30.0` is a double in the JSON text Calcite reads and renders `30.0`, while at the
-service it is the same number as `30`, so the number branch keeps it and the recheck drops it. That
-row crossing the wire is the whole cost, against a container read whole. The branches follow the
+spelling: a stored `30.000000000000001` is the number 30 at the service, which the emulator returns as
+`30` and Azure was not measured to (`Service.IntegralNumbersReadBackAsHeld`), so the number branch keeps
+it and the recheck may drop it; a stored `30.0` comes back `30`, which the recheck keeps. That row
+crossing the wire is the whole cost, against a container read whole. The branches follow the
 rendering: a number-like literal takes the parsed number — the whole number it spells, as a `BIGINT`,
 past where a double holds every whole number, since the service keeps a stored integer exactly and the
 double `'9007199254740993'` rounds to is another number there (measured on the emulator: it lost the
@@ -2591,11 +2795,14 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
-**Only a value typed `ANY`.** The cast over `JSON_VALUE` drops in a comparison, where the literal
-excludes every case that could differ; a projection has no literal, and measured, `JSON_VALUE` answers
-null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered column
-over it would carry text for a document the in-process plan carries nothing for, so it stays in
-process — the filters around it push regardless.
+**Only a value typed `ANY` or `VARIANT`** (`CosmosRexShapes.IsDocumentValueType`). The cast over `JSON_VALUE` drops
+in a comparison, where the literal excludes every case that could differ; a projection has no literal, and measured,
+`JSON_VALUE` answers null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered
+column over it would carry text for a document the in-process plan carries nothing for, so it stays in process — the
+filters around it push regardless. The `VARIANT` key column is admitted and is wrong: Calcite casts a number or a
+boolean there to null, where the pushed column carries its rendering, `30` or `true`, older than "fail like Calcite"
+and the same on `main` (`TODO.md`, *The facts graph reads a text cast of a raw value as its rendering*, whose column
+writer is the fix; Chapter 23 records it). Admitting the cast over an `ANY` value alone is the bridge.
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw
@@ -2625,13 +2832,18 @@ affix over a path that may hold another kind (`TODO.md`).
 
 The raw value in that guard is named differently in the two spellings, and the difference is what
 survives a host. Over the accessor the rule re-types the call `ANY`, which says "the value at this
-path" rather than "its rendering". Over the column it *casts* the field to `ANY` instead: a re-typed
-reference says the same thing, but `FILTER_PROJECT_TRANSPOSE` replaces a reference with the
-projection's expression and the type that said it goes with it — the guard would arrive below the
-projection as the rendered comparison again, and be refused again. A cast is a call of its own, is
-copied intact, and `CosmosRexTranslator.WriteCast` renders a cast to `ANY` over a rendering as the
-path. The residual half of the split needs no such care: no rule converts it, because the filter rule
-declines it in either spelling, and nothing copies a Cosmos filter that was never made.
+path" rather than "its rendering". Over the column a re-typed reference would say the same thing,
+but `FILTER_PROJECT_TRANSPOSE` replaces a reference with the projection's expression and the type that
+said it goes with it — the guard would arrive below the projection as the rendered comparison again,
+and be refused again. The rule cast the field to `ANY` instead until 2026-11-12, which the translator
+wrote as the path; but that cast is one a query can write, and Calcite evaluates
+`CAST(JSON_VALUE(…) AS ANY)` as the text it holds, so `'6'` is equal to a stored `6` through it where
+`c.q = "6"` is not, and reading it as the raw value answered no rows where Calcite answers one. So a
+field read as text is named by its path's accessor over the document column, re-typed `ANY`
+(`RenderingRexBuilder.Accessor.Retyped`), which no query writes, and a cast to `ANY` is the conversion
+it is, which no row measured and the translator refuses. The residual half of the split needs no such
+care: no rule converts it, because the filter rule declines it in either spelling, and nothing copies a
+Cosmos filter that was never made.
 
 **`JSON_QUERY` is the other half, and it is guarded by the complement.** SQL/JSON splits the two
 accessors on the same line: `JSON_VALUE` answers for a string, a number, a boolean and a JSON null,
@@ -3044,8 +3256,9 @@ whole.
 expression before anything is written and refuses a rendering wherever what reads it is not told it is
 reading one. Told are a comparison, which reasons about which documents a rendering matches; a null
 test, which asks only whether there is one; `LIKE`, which refuses a rendering subject on its own
-terms (#84 had taught it this and nothing else); a cast that names the raw value or that a stored
-boolean proves; and the geography, full text, vector and type-test functions, which take the path as
+terms (#84 had taught it this and nothing else); a cast that a stored boolean proves (and, until
+2026-11-12, one that named the raw value: a query's own cast of the text to `ANY` is the text Calcite
+holds, not the stored value); and the geography, full text, vector and type-test functions, which take the path as
 an address. A cast that converts nothing hands its operand on to whatever encloses it. Everything else
 — a string function, arithmetic, the arm of a `CASE` — is refused, and a new operator is refused until
 it is told, which is the direction a mistake should fall in.
@@ -3578,6 +3791,11 @@ has not moved and its `TODO.md` entry. Everything else C# does with a fact reads
   run that might stop on a limit and be discarded (*Predicates as facts: the oracle*). It is live through
   `CosmosFilterStatement.IsApplied` and `RedundantConjuncts`. It goes when the verdicts of what a context assumes
   survive a run that stops (`TODO.md`, *A verdict that rests on no run*).
+- **Whether a lowered arm can raise.** `CosmosFactRewriter.IsSafe` passes a comparison of an input reference and
+  refuses every cast, by operator name, before `TryFlattenCase` writes `p AND q`, where Calcite's `CASE` evaluated `q`
+  only where `p` held. The lowered arm is a predicate the rewriter builds after the oracle answers, so no node holds it
+  to ask `never raises` of. It goes when the lowered arm is given a gated term of its own (`TODO.md`, *A flattened
+  `CASE` decides its arm's raise in C#*).
 
 The overlay that answered a schema-less container's strata beside the engine, restating seven rules of JSON and the
 oracle's establishing rules, was on this list and is retired (*Generations, and what a question costs*). So is
@@ -5009,8 +5227,9 @@ key's null test over a `UUID` cast — the conjunct the paragraph above lowers i
 lowered in a projection. A `CASE` takes an arm where its condition is true and passes over it where the
 condition is false or unknown, which is the distinction a filter draws and the only one the rewriter
 preserves; so `CosmosFactRewriter.RewriteConditions` rewrites each condition as a predicate, and the
-projection rules push what it gives them. It mattered most for a page: a sort above a projection that
-stays in process stays in process with it.
+projection rules push a projection wherever the text it gives renders. The node holds what the query
+wrote, and only the text sent holds the rewrite (*The never-read arm, and a projection's conditions*).
+It mattered most for a page: a sort above a projection that stays in process stays in process with it.
 
 **A filter through two merged views is a filter through two `CASE`s, and nothing walked into one
 (#183).** Through one view a host's simplifier takes `CASE WHEN M THEN q END = X` apart itself. Through
@@ -5340,7 +5559,8 @@ against Calcite's runtime, `RETURNING` a numeric or boolean type other than `DEC
 conversion at all: the scalar is cast to the Java class the JSON reader would have built for the type,
 and anything else throws. `RETURNING INTEGER` returns a stored `30` and throws on `30.7`, on `"30"`, on
 `true` and on `3000000000`, which parses as a long; `RETURNING DOUBLE` and `FLOAT` return `30.0` and
-throw on `30`, which parses as an integer, and `RETURNING BIGINT` throws on `30` for the same reason;
+throw on `30`, which parses as an integer and is what the service returns of a stored `30.0`
+(`Service.IntegralNumbersReadBackAsHeld`), and `RETURNING BIGINT` throws on `30` for the same reason;
 `SMALLINT`, `TINYINT` and `REAL` name classes the reader never builds and throw on every scalar;
 `BOOLEAN` throws on `"true"`; and `NULL ON ERROR` does not catch any of it
 (`CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal`). So a
@@ -5348,6 +5568,16 @@ comparison through an asserting `RETURNING` pushes exactly, as it always has: fo
 can evaluate, the declared type is the stored type and the service compares the same value. What the
 pushdown changes is the document Calcite would have thrown on, which the service excludes instead —
 the caller's declaration held rather than checked, the same asymmetry the reading side already accepts.
+A filter is not reduced on that asymmetry. Where the declaration types the property otherwise, the comparison keeps
+no row Calcite answers, but Calcite fails on the rest, so the statement is planned, not answered empty: over a
+required property every cell of which raises, as a declared string's does under `RETURNING INTEGER` or `DOUBLE`, it
+stays in Calcite and fails there, and over an optional one it is sent and the service finds nothing (*The reduce asks
+every row false*). Over a declared integer, `RETURNING DOUBLE`, and `RETURNING BIGINT` within an `INTEGER`, are sent
+though Calcite fails on every document: the loader reads `RETURNING` as a column of its type (`typed`, D12), which
+reads those numbers, so the cells answer beside the raise and the rendering graph lifts the agreement
+(`CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent`,
+`AReturningBigintOverIntegersWithinAnIntegerIsSent`; `TODO.md`, *The rendering graph lifts an agreement where a raise
+sits beside a truth value*).
 
 **`DECIMAL` converts, and this paragraph used to say it did not.** It was measured only over numbers,
 where `DECIMAL(3, 1)` returning `30.75` unrounded looked like the same assertion. It is a parse: a
@@ -5589,7 +5819,8 @@ src/
       CosmosRel.cs                    ✔ Implement contract
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
-      Convert/CosmosFilterReduceRule.cs ✔ A filter the oracle says keeps nothing, or everything
+      Convert/CosmosUncorrelatedProjectMergeRule.cs ✔ A projection declaring a correlation variable it never reads, merged
+      Convert/CosmosFilterCorrelateRule.cs ✔ Calcite's filter-correlate transposition, taken, but for the service's form, only in a statement where what each filter would move decides nothing of the rest
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔
@@ -6291,7 +6522,9 @@ So the strings below `""`, those between `l` and `l` + U+0000, and bounds that h
 and nothing the import admits is. Classes are read through `JsonValues.BandsOfText` a unit at a time, so classes the
 string fixes add come through unchanged.
 
-**`PredicateAtom.OnCell` stands beside `On`, and the facts graph reads only `On`.** A reading's cell methods default to
+**`PredicateAtom.OnCell` stands beside `On`, and the facts graph's verdicts read only `On`.** Its raise question reads
+the cells, through `PredicateAtom.RaisesOver` (*The reduce asks every row false*), and a comparison with a parameter
+there reads its column's parameter key in `rawunion`. A reading's cell methods default to
 its answer on the state the cell lies in. Text places a string, a boolean, and an interval wholly to one side of a
 literal exactly, and a number by its rendering's first unit, `-` or a digit; raw string equality is exact on every cell,
 a raw ordering and a raw equality with a number read their columns (*The raw reading's raises*, below);
@@ -6358,7 +6591,9 @@ would refute; at `Pos` false and undefined are alike, and at `Neg` the reading i
 `reads`, `atom` and `point`, and the `analyse` ruleset's nine rules. Each graph defines both, and `PredicateWriter`
 writes the loader's IR into them, a literal's `point` always beside its atom. `JsonRules` and `PredicateRules` forward
 to them, so the facts graph's callers read them where they did; what `PredicateRules` keeps — `possible`, `holds`,
-`chosen`, `arms`, `arm` and the two later rulesets — is F's alone.
+`chosen`, `arms`, `arm`, `gated`, `never raises` and the later rulesets, `raises` among them — is F's alone. The raw
+columns' tables, `rawcolumn`, `rawunion` and the rest, and the rules that derive them are `ReadingVocabulary`'s since
+2026-11-10, so both graphs derive them alike, the two that join a column's parameter key among them.
 
 **A junction's arms are the caller's.** The writer hands each junction, with its arms flattened, to a callback: F's
 numbers them for its split over arms, as it did; S pairs written members with arms by its own rules. A hidden
@@ -6431,17 +6666,108 @@ applying it before Calcite applies the whole filter, so the 127 pushes the raise
 builder wrote over a declared field, were not the owner's to decide, and since h15b the builder writes such a test over
 the path's accessor re-typed `ANY`.
 
-**F's reduce reads a raise as no row kept.** The decision is S's reading, and F's vacuity is not yet one. Where the
-facts graph finds a filter's conjuncts and the declaration contradict (`IsContradictory`), the rewrite answers `FALSE`
-and `CosmosFilterReduceRule` the empty relation, no request made; and F reads a cell Calcite raises on as a row kept by
-neither truth value, a body that raises everywhere keeping none (`PredicateAtom.Reading.Raising`) and a presence test's
-falsehood keeping the absent documents whatever its body does (`PredicateAtom.Kept`). So `CAST(JSON_VALUE(c."DOC",
-'$.n') AS BOOLEAN) = TRUE` over a path declared an integer, which Calcite fails on every document holding one, answers
-no rows on this branch where main failed it, as a `RETURNING INTEGER` compared over a declared key of another kind
-already answers none on main, and so does `NOT IS_DEFINED(CAST(JSON_VALUE(c."DOC", '$.k') AS VARCHAR))` over a path
-declared a required string, which Calcite cannot implement (review 3). F reading the raise as a cell of its own, apart
-from a row kept or not, is the fix; it is F's reading of the cells (`TODO.md`, *A filter that raises is reduced as one
-that keeps nothing*).
+**The reduce asks every row false.** A request left unsent stands in for the service's answer, so it is left out only
+where the service answers no document: on a cell where Calcite raises, the rendering agreement says nothing of what the
+service answers, so the `WHERE` must keep nothing and raise nowhere. It was first the empty relation standing in for
+Calcite's answer, given where Calcite answers no rows and fails on none (*A statement that keeps nothing is not sent*). F used to answer `FALSE` wherever the conjuncts and the declaration
+contradicted, reading a cell Calcite raises on as a row neither truth value keeps; so `CAST(JSON_VALUE(c."DOC", '$.n')
+AS BOOLEAN) = TRUE` over a declared integer, `NOT IS_DEFINED(CAST(JSON_VALUE(c."DOC", '$.k') AS VARCHAR))` over a
+required string and a `RETURNING INTEGER` over a declared string answered no rows where Calcite fails. Since
+2026-11-10 none does.
+
+*The node.* `IsContradictory` asks under `OracleLicence.Reduce`, which opens `StatementTerms.Gated` beneath `D0`: the
+statement's terms, the WHERE's term `W` (`SqlPredicate.AllOf` of the conjuncts as written, one a deletion drops among
+them), every path it reads mentioned, and `gated(W, W)` asserted where the Kept node asserts `holds`; for several
+filters written into one statement, `W` is their conjuncts joined (`CosmosRowFacts.KeepsNothing`); for a projected
+`CASE` condition, `gated(W, G)`, `G` the predicates of
+the projected expression (*The never-read arm, and a projection's conditions*). It runs `PredicateRules.Reduction` in
+two stages: `Answer` and then the `raises` ruleset alone, before anything is assumed; then `Saturation`, as every node
+runs it.
+
+*The rules.* `raises` holds twelve. Six say what never raises: an atom never raises where `PredicateAtom.RaisesOver` finds no raise over any state
+`possible` admits, reading the cells, `readerrows` and `rawunion`, an undecided answer counting as a raise, except in a
+comparison with a parameter, which raises only where the reading's answer to one raises (`ParameterOn`; a raw value's
+answer is its column's parameter key); a truth value never raises; and a `NOT`, an `AND`, an `OR` and a `CASE` never
+raise where every operand never raises, since Calcite raises in a connective only where an operand does
+(`Calcite.ConnectivesAreKleene`). An opaque term, a comparison no atom reads and any other constructor get no row, so a
+WHERE holding one may raise. Six say what is never UNKNOWN (`two valued`): an atom whose cells over every state
+`possible` admits answer no UNKNOWN (`PredicateAtom.UnknownOver`; a comparison with a parameter may be, bound to a
+null), `TRUE` and `FALSE`, and a `NOT`, an `AND` and an `OR` of two-valued operands, Kleene's connectives answering
+UNKNOWN only of an UNKNOWN; a `CASE`, whose value is its `THEN`'s or its `ELSE`'s, where both are. The gate is one
+Establish rule: `gated(e, w)` and `never raises(w)` give `holds(e, true)`. Every other node asserts no `gated` row, so
+the gate is silent there. Another reads a truth value as itself: `FALSE` holding true, or `TRUE` false, or `UNKNOWN`
+either, is a contradiction; and `TRUE` and `FALSE` hold as themselves. Four read a `CASE`, which takes its `THEN`'s
+truth value where its condition is TRUE and its `ELSE`'s where it is FALSE or UNKNOWN (`Calcite.TruthTestsAreCases`
+reads a truth test so): its condition holding true, the `CASE` takes the `THEN`'s value; holding false, the `ELSE`'s;
+a `CASE` taking a value its `ELSE` does not has its condition TRUE; and one taking a value its `THEN` does not has a
+two-valued condition FALSE. So `(x = 'b') IS NULL`, read `CASE(p, FALSE, CASE(NOT p, FALSE, TRUE))`, is never true
+where `p` is two-valued: `p` false gives the inner `CASE` true, `NOT p` false, `p` true. A `CASE` whose `ELSE FALSE` is
+the only arm a row can reach is never true.
+
+*The rows it reads.* The raw columns' rows live in `ReadingVocabulary`, derived in both graphs, so F's `RaisesOver`
+reads what S reads; and each raw column joins a parameter key into `rawunion`, its answer to a comparison with a
+parameter beside every class it sits beside, so a raw ordering against a parameter carries its column's compile
+failure and its raise across types.
+
+*Why it is sound.* The node's documents are `D0`'s, and nothing is asserted from C#. When `raises` runs only `Answer`
+has, so `possible` over-approximates every admitted document, and `RaisesOver` counts every raise the cells carry:
+`never raises(W)` holds only where no admitted document makes anything in the WHERE raise, whatever order Calcite
+evaluates in. `raises` never runs again and `never raises` is local and never lifted, so nothing assumed reaches it.
+Past the gate, the node runs what the Kept node runs, so a contradiction means no admitted document makes the WHERE
+TRUE, resting on `Kept` over-approximating every reading Establish narrows by (*Which stratum a later round may rest
+on is a row*, below). Together, every admitted document makes the WHERE FALSE or UNKNOWN
+and none raises. Past the gate the node holds the Kept node's facts, so it reduces only where the Kept node is
+contradictory. `Kept` reads a raw value's cast to text by its column (`RawText.ByColumn`), which adds a sound
+contradiction of its own where a declaration rules out a stored string: `CAST(c."$.ref" AS VARCHAR) = '30'` over a key
+declared an integer keeps nothing, and its statement is not sent, since Calcite casts a `VARIANT`'s number to null
+(`Calcite.CastOfARawValueToText`), where before it was routed to `30`
+(`CosmosDeclaredFactPlanningTests.ACastToTextOfAKeyDeclaredANumberKeepsNothing`).
+
+*What still assumes every conjunct.* `Kept`, for a strengthening and for routing, which read what the rows the filter
+keeps satisfy and never stand in for an answer.
+
+*A statement that is sent* is planned as any other. Where every cell of a conjunct is a raise, S lifts nothing and the
+filter stays in Calcite, which fails on the first document (*A filter Calcite fails on every row fails as Calcite fails
+it*). Where some cells answer, S may lift the agreement, and the service finds nothing: one request. A conjunct holding
+a parameter is the translator's, since S owns none (`RenderingFamily.Owns`). Routing reads the Kept node, which pins
+nothing where it is contradictory, so such a statement fans out.
+
+*The never-read arm, and a projection's conditions.* `NeverWithin` asks under `OracleLicence.NeverRead`, a gated node
+of what `Arm` assumes of the statement as written, each gated on `W`: an arm is written `FALSE` only where those
+contradict and the WHERE as written raises on no admitted document, so the `FALSE` removes no failure with the
+evaluation it removes, nor with a conjunct a deletion beside it stops evaluating (*A never-read arm is asked of the
+statement as written*). A projected `CASE` condition reaches `IsContradictory` and `NeverWithin` through
+`RewriteConditions`, its own statement, gated on `G`: the predicates of the projected expression as one conjunction
+written as it is, each boolean node whose parent is not one, the expression's own where it is boolean, so that every
+predicate Calcite evaluates in it is one of them or inside one (`PredicatesOf`). A condition is answered only where
+nothing in any of them may raise
+(`CosmosDeclaredFactPlanningTests.AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises`).
+
+*Rendered, never planned.* A projection node holds the expressions the query wrote. `CosmosProjectRule.Rendered`
+rewrites their conditions only in the text `CosmosProject` sends and in the test each projection rule asks of that
+text, whether it renders; `CosmosProjectSplitRule` and `CosmosProjectResidualRule` build both halves from what was
+written too. A rewritten condition once reached the plan, and Calcite's simplifier carried its `FALSE` past any gate:
+a `CASE` whose two conditions were folded became `NULL`, a comparison of it with `CAST(body AS INTEGER)` in a filter
+above became `FALSE`, and the plan an empty relation, with no request where Calcite fails on a body that is no number
+(`CosmosDeclaredFactPlanningTests.AProjectedConditionTheDeclarationContradictsEmptiesNoFilterAbove`). No gate over the
+expression covers that, since the simplifier reaches a sibling column, a value operand such as the cast in
+`CAST(body AS INTEGER) + CASE …`, and every filter, aggregate and sort above that reads the column. In the text the
+service evaluates the `CASE` as written, so a condition answered there is answered nowhere else; `G` was drawn against
+the simplifier, and is wider than the text needs (`TODO.md`, *A finer gate on a never-read arm*). A cast outside `G`, in an arm's value or in the part a split leaves in process, is evaluated wherever
+Calcite reaches it, an answered condition keeping the `CASE`'s value on every admitted document. The text keeps an arm
+it answers `FALSE` with its value, which the plan's simplifier used to drop, so a value the service is never sent, a
+cast of text to `INTEGER` among them, keeps the column in Calcite. A conjunct of a projected condition that the
+declaration makes true is still deleted in the text as redundant, whatever it may raise (`TODO.md`, *A deletion stops
+evaluating a conjunct that may raise*).
+
+*Not covered: the split.* `CosmosFilterSplitRule` writes the residual over the pushed filter, so the residual reads
+only the rows the pushed conjuncts keep. Where those contradict the declaration alone, no row reaches a residual that
+may raise, whether the pushed filter's request is left out or sent (the service finds nothing); one that fails before
+it reads a row, a type test of anything but a document accessor, fails as Calcite does. Leaving it out saves only the
+request: gating it on the whole condition would send the request and answer
+the same. Failing as Calcite does means keeping such a filter whole in Calcite, a full read, which is a planning
+choice and not this gate's (`TODO.md`, *A residual beside a contradicted split loses its raise*). It is no regression:
+before the gate the whole filter was reduced too.
 
 **What the evaluation fills is held to one value a key.** `partition`, which cuts at the reader's edges, `svc` and
 `outcomes` have no lattice: each is computed once for each match of its rule, and a key two matches reach — a part two
@@ -6763,9 +7089,12 @@ did not import, and one that admits more than the import.
 be in the check, and read by the text accessor, typed `BOOLEAN`, a cast of the accessor to an integer type, a raw value
 beside no number, or a presence test (`RenderingCheckRun.ReadExactly`), whose coarse readings leave out no truth Calcite
 gives, which `CellAnswersStayInsideTheCoarseAnswer` holds them to. A stratum resting on a coarser reading can be wrong
-where the translator relied on it: the facts graph reads typed `INTEGER` `= 5` as the integer 5 alone, where a column
-reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would be
-proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+where the translator relied on it: the facts graph read typed `INTEGER` `= 5` as the integer 5 alone, where a column
+reads 5.0000000000000001 as 5 too, so beside a label the declaration ties to kind 5, a bare `c.label = "7"` would have
+been proven where a column keeps a row the service drops. There the label is read from the root, and is not proven.
+`Kept` now keeps that equality as every number whose double is 5 (*Which stratum a later round may rest on is a row*),
+so this statement's stratum no longer narrows the label; the gate stays, and retiring it is `TODO.md`'s (*A stratum
+resting on a coarse reading is not read beside a later round*).
 
 **A cell the stratum admits nothing of is set aside.** It is found by cutting the stratum's value where the import was
 cut (`PathCell.SetAside`): each of its cells lies within one of the import's, and a cell their inhabitants miss holds
@@ -7114,8 +7443,8 @@ answer.
    NULL`'s spelling, and a double `NOT` collapses.
 5. *Weakenings.* A leaf takes its best where that best is one of its implied forms (`best-is-implied`), and otherwise
    the fold of its implied set, under both connectives' licences (`best-is-not-implied`). A junction joins its arms'
-   weakenings. A negation negates its operand's at the opposite position. `weakening` has no lattice, so a primitive
-   that answers one node two ways faults the bundle.
+   weakenings. A negation negates its operand's at the opposite position. `weakening` keeps the cheapest candidate
+   (`Priced.Cheapest`), so a primitive that answers one node two ways keeps the cheaper, whichever rule fires first.
 
 The writer states what the strictness rules read beside the terms, as it states `point`: through a second callback of
 `PredicateWriter` it writes `leaf` for every predicate that is no junction or negation, `over` the value that predicate
@@ -7233,7 +7562,36 @@ atoms the facts graph makes and asks the rows of each. A reading the row does no
 the same rows. What makes a reading exact is what a stratum needs: the coarse answer on a cell's state holds every truth the cell gives, and `Kept` of each truth admits every
 value Calcite gives that truth on, through every reader the reading stands for, so a stratum assuming such an atom
 leaves out no document Calcite keeps. `PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell` pins the row: every
-reading it names answers as its cell, and every reading the grid reads is named.
+reading it names answers as its cell, and every reading the grid reads is named. A reading the row does not name is
+still read soundly by `Kept`: it keeps the window such a reading may find equal — the literal's rounding interval for
+one that compares a double, an integer type's column's whole-valued fractions, and for a cast of a raw value to text
+what its column's answer keeps, read from `rawunion` — so a stratum or a reduce resting on it says nothing of the
+documents that is not so (`PredicateAtomTests.WhatARowKeepsCoversEveryValueOnWhichItTakesThatTruthValue`, and
+`PredicateAtomCellTests`' audit of what every reading keeps).
+
+**A number's text is the service's.** The service holds an int64 as itself and any other number as its double
+(`Service.NumbersBeyondLongCompareAsDoubles`), and returns a whole number within a long as its digits however it was
+written: `30`, `30.0`, `3e1` and `300e-1` all come back `30` on both targets, and a pointed integer past 2^53, which the
+emulator holds as its double, as that double's digits (`Service.IntegralNumbersReadBackAsHeld`). Calcite renders what
+it returns, so the text accessor's preimage of `'6'` is the string and every number whose double is 6,
+`6.0000000000000001` among them, and of `'0.1'` every number whose double is 0.1 (`Renderings.MayRenderAs`,
+`Reading.RenderedAs`), and the text reader's cells cut at a number's double (`ReaderEdgesTable`). That preimage reads a
+number by its double and by no spelling, so it is loose, `'30.0'` admitting a stored 30, which comes back `'30'`
+(`TODO.md`, *The text reading reads a number by its double*). The typed readings' cells read the returned text: under
+`RETURNING INTEGER`, `BIGINT` and the integer parses a cell reads an integer within the type however it was written and
+raises on no spelling of it (`Renderings.ServedAsDigits`, `NumberCast.ParsesWhole`), and under `RETURNING DOUBLE` a cell
+raises on every number that may come back as digits (`Renderings.MayServeAsDigits`). The coarse answers the verdicts
+read (`Over`, from `On`) read no spelling yet: the integer parses put their raise beside every number, and the typed
+reading its raise of another class's spelling, so the reduce, which reads the cells (`RaisesOver`), sees that nothing
+raises where a deletion, which reads a verdict, does not, and a range through an integer parse that the declared bounds
+satisfy is still sent (`TODO.md`, *A conjunct through an integer parse its declared bounds satisfy is still sent*;
+`PredicateAtomTests.AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber`). Only how Azure spells a fraction whose double
+is whole within a long was not measured, so that one is read both ways, as its digits and with a point, and population
+D reads each document as each target returns it (`Documents.Returned`). A preimage's
+cases are met with the types the path may hold before they are joined (`PredicateAtom.Kept(truth, readings, columns,
+types)`): a window names no domain, and joined with the string's value it would leave any string. So one rule states
+the domain among the types the path may hold and another the characters among its strings, and a declared string keeps
+the text's value (`PredicateRulesTests.ADeclaredStringLeavesTheStringMemberOfThePreimage`).
 
 **The run reads what production asked.** For each statement the check run plans, riding its pass, generate mode's run
 reads the bundles of §4.4 production's sites opened (*The production path*): each imported from the statement's root,
@@ -7259,8 +7617,9 @@ assumes hold in any mode Calcite may read them in, `RETURNING` or a column, and 
 set-aside cells' promise. **The judge never rests on the stratum it judges.** A document is ruled out only where the
 container's declaration rejects it, each rule's body and head read by an evaluator of the declaration's own over the
 paths the document sets; never by what the facts graph says a stratum admits, which a coarse reading may narrow. So a
-stratum fault — G12's coarse reading, G11's own facts — shows as a witness of line 1 itself. The check run's source A
-reads its strata the same way, and the pairwise check judges the same documents by the same definition. The sampler
+stratum fault that drops a row — G11's own facts, and G12's coarse reading until `Kept` kept a typed number's rounding
+window (*G12*, below) — shows as a witness of line 1 itself. The check run's source A reads its strata the same way,
+and the pairwise check judges the same documents by the same definition. The sampler
 draws the values an import names, so a declared enum is in the documents, and beneath a stratum draws 512, so its
 conjuncts hold on some. No form S would send — a root's best or a residual root's weakening — may rest on documents
 nothing measured; a raw ordering, or a raw comparison with a number or a boolean, is judged through each column
@@ -7333,16 +7692,23 @@ generations and the Rex builder, and come with them.
   which an unplanted run adds nothing to, and finds the null; the pairwise check parts it from the guarded candidate the
   gate agreed exact beside it.
 - *G7* writes presence at `Neg` as at `Pos`, which source A's Implies at `Neg` refutes. The fold's own dual is not
-  planted: a weakening is lattice-free, so a second fold beside the right one faults the bundle, which is the
-  tripwire; and a conjunction of implied members at `Neg` is looser, never wrong, but over none, where it is `TRUE`.
+  planted: a weakening keeps the cheapest candidate (`Priced.Cheapest`), so a second fold beside the right one faults
+  nothing and is kept where it is the cheaper, where source A, which judges each weakening at its position, finds it
+  if it is wrong; and a conjunction of implied members at `Neg` is looser, never wrong, but over none, where it is
+  `TRUE`.
 - *G8* builds a negation's best from its operand's best at `Pos` where both stand; source A at the root finds it.
 - *G11* hands a conjunct its own stratum. Planted in the oracle (`CosmosOracle.RenderedFrom`) it never reaches S, the
   importer reading the licence table's node, which renders no conjunct from its own facts; so it is planted where it
   acts, admission stating a round's conjunct beneath its own facts with the licence table's assumptions kept. S then
   proves the bare form, and line 1 itself finds the null label it keeps.
-- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7:
-  beneath it the bare label is exact and drops that document, which what S sends as built keeps, and line 1 itself
-  finds a document whose label is the number 7 beside a kind a column reads as 5.
+- *G12* reads a stratum resting on a coarse reading as exact, the TODO's kind 5.0000000000000001 beside the label 7.
+  While the facts graph read the kind's typed equality as the integer 5, beneath it the bare label was exact and
+  dropped that document, which what S sends as built keeps, and line 1 found a document whose label is the number 7.
+  `Kept` now keeps that equality as its rounding window, every number whose double is 5, which meets no condition of
+  the declaration, so the planted run keeps the document too and source A finds no witness: for this statement the
+  exactness gate is redundant beside `Kept`. The gate is held only structurally now, by
+  `G16b_ACoarseAffixLicensesNoArmUnlessPlanted` and `G16b_AnAffixOverACoarseReaderIsNotReadExactly`; whether to retire
+  it is `TODO.md`'s (*A stratum resting on a coarse reading is not read beside a later round*).
 - *G14* fails a later round's arm on the cells its stratum sets aside; a set-aside cell tolerates anything but a
   failure, so neither the arm nor the round's junction has an exact form, and nothing is admitted.
 
@@ -9154,6 +9520,7 @@ under `Production` twice more, over a search that may be absent and one of every
 **The owner's decision** (2026-11-08, *Vacuity is a table*): a filter Calcite fails on every row fails as Calcite fails
 it. The vacuity rule stands as written, S lifts no agreement whose every cell is a raise alone, and a statement holding
 one stays in Calcite where the translator pushed it whole. This step builds what S needs to read such a filter so.
+Since 2026-11-10 the reduce does not answer such a filter with no rows either (*The reduce asks every row false*).
 
 **The atom is of the reading it is asked over, read as its body reads it.** A one-place test's in-process body takes
 apart the `JSON_VALUE` it is handed and asks the document (`CosmosTypeTestImplementor`, *A one-place test is of the
@@ -9245,7 +9612,10 @@ STARTSWITH(c.category, '')`, the order differential's, is proved so.
 column is vacuous, which S lifts not (*Vacuity is a table*). Eight `Production` type-test pushes at the gate are so
 (partitions 42, 440, 1569, 1570, 2392, 2548, 2549, 2863), the gate proving the text and S lifting no form. The vacuity
 policy is the owner's, so the column reads as the row says; the owner decided on 2026-11-08 that such a filter fails as
-Calcite fails it, and the raises step names the eight (*Vacuity is a table*).
+Calcite fails it, and the raises step names the eight (*Vacuity is a table*). Since 2026-11-10 the reduce does not
+answer such a filter with no rows either, beside a literal: the column's compile failure is a raise `RaisesOver`
+counts. Against a parameter the ordering is the translator's, which sends it under `Production` (`TODO.md`, *A raw
+ordering against a parameter is sent where Calcite fails*).
 
 **Population D through each column.** Each raw atom is drawn again through one column, bare and negated, after the rest
 so the stream before moves not, a `VARCHAR` beside a literal that is no string read as `ANY`, since the loader casts a
@@ -9480,8 +9850,10 @@ beneath an arm (`RenderingBundle.ArmsOf`) and states it beneath the stratum the 
 two conjuncts open, which a bundle opens once for both, is stated beneath neither. The licence assumes only what F reads
 exactly, so a coarse condition never narrows what a row may hold: the label of
 `AStratumAConjunctReadCoarselyRestsOnIsNotRead` is sent as its text alternatives and its presence, the arm beneath
-`IS_NUMBER(label)` sending the number 7, which keeps a number label, and G16b's plant, every condition read exactly, is
-caught by source A the G12 way (`G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven`). This is P6
+`IS_NUMBER(label)` sending the number 7, which keeps a number label. G16b's plant, every condition read exactly, was
+caught by source A the G12 way until `Kept` kept the kind's typed equality as its rounding window; its planted run now
+keeps the document too (`G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven`), and only
+`G16b_ACoarseAffixLicensesNoArmUnlessPlanted` shows the licence the plant opens (*G12*, *Faults planted in S*). This is P6
 (line 19), delivered and listed: its pushes reach the service through the arm's licence.
 
 **Site W pushes S's weakening, with no translator.** The split rule pushes each residual's weakening as the Rex

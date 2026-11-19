@@ -356,6 +356,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.SpellStored(_ => 7d)("x").Should().Be(7d, "a key another spelling writes as no string is that spelling");
         }
 
+        // ── A probe that sends nothing ─────────────────────────────────────────────
+
+        /// <summary>
+        /// A probe whose <c>WHERE</c> the facts graph proved keeps no document and fails on none fetches nothing: every key
+        /// is answered absent, as the service would answer it, while the build side is read to its end, every batch, so
+        /// what it fails on fails as it would. An inner join keeps no row and a left join every build row unmatched.
+        /// </summary>
+        [Fact]
+        public async Task AProbeThatSendsNothingFetchesNothingAndReadsTheBuildSide()
+        {
+            var executor = new RecordingExecutor("""{"category":"bikes"}""");
+            var build = Async("bikes", "shoes", "hats", "bikes");
+
+            (await Join(build, executor, batchSize: 2, query: Query() with { SendsNothing = true })).Should().BeEmpty();
+            build.Read().Should().BeFalse("every build row was read");
+
+            var left = await ListCursor.CollectAsync(CosmosLookup.Join<string?, string, string>(
+                new ListCursor<string?>(["bikes", null]), executor, null!, Query() with { SendsNothing = true }, "@k", 3,
+                b => b, element => element.GetProperty("category").GetString()!, p => p, (b, p) => b + "/" + p, unmatched: b => (b ?? "null") + "/null"),
+                TestContext.Current.CancellationToken);
+            left.Should().Equal("bikes/null", "null/null");
+
+            executor.Executed.Should().BeEmpty("no batch is fetched");
+        }
+
         // ── A left join ───────────────────────────────────────────────────────────
 
         static Task<List<string>> LeftJoin(IClrCursor<string?> build, RecordingExecutor executor, int batchSize = 3, int cacheSize = 0) =>

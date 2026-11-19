@@ -14,13 +14,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
     /// <summary>
     /// The facts graph's readings table (G7): what the readings vocabulary settles at the root from the registry's rows,
-    /// which the atom rules bind beside an atom, so a test that asks an atom directly reads it as the graph does; the JSON
+    /// the raw columns' union among it, which the atom rules bind beside an atom, so a test that asks an atom directly reads it as the graph does; the JSON
     /// kinds it keys each type test by; and whether the graph reads a conjunct exactly, which it answers itself.
     /// </summary>
     internal static class FactsReadings
     {
 
-        static readonly Lazy<(ReadingTable Rows, IReadOnlyList<(string Test, ValueSet<string> Kinds)> TestKinds, JsonFactDeclaration Declaration)> Root = new(() =>
+        static readonly Lazy<(ReadingTable Rows, RawTruths Columns, IReadOnlyList<(string Test, ValueSet<string> Kinds)> TestKinds, JsonFactDeclaration Declaration)> Root = new(() =>
         {
             // A declaration stating nothing, whose generation's root holds the rows: a statement's strata are its children.
             var declaration = OracleFixture.Theory().In(new JsonFactGenerations(CosmosReasoning.Rows)).Declaration()!;
@@ -30,11 +30,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                          let name = ServiceForm.SpellingOf(test)
                          where name is not null && root.TryGet(contexts.Rules.TestKinds.Of(name), out _)
                          select (name, root.Get(contexts.Rules.TestKinds.Of(name)))).ToList();
-            return (root.Get(contexts.Rules.Readings.ReaderRows.Of()), kinds, declaration);
+            return (root.Get(contexts.Rules.Readings.ReaderRows.Of()), root.Get(contexts.Rules.Readings.RawUnion.Of()), kinds, declaration);
         });
 
         /// <summary>Every reading's rows at the facts graph's root.</summary>
         public static ReadingTable Rows => Root.Value.Rows;
+
+        /// <summary>
+        /// What the raw columns answer on each key at the facts graph's root, their union (<c>rawunion</c>), which Establish's
+        /// <c>Kept</c> rules and the raise evaluator read beside the rows.
+        /// </summary>
+        public static RawTruths Columns => Root.Value.Columns;
 
         /// <summary>Each type test's name beside the JSON kinds the facts graph's root holds it TRUE of.</summary>
         public static IReadOnlyList<(string Test, ValueSet<string> Kinds)> TestKinds => Root.Value.TestKinds;

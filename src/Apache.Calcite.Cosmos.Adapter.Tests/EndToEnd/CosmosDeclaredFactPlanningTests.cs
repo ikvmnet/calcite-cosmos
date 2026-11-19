@@ -58,12 +58,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Ref = """CAST(JSON_VALUE(c."DOC", '$.ref') AS UUID)""";
         const string Kind = """JSON_VALUE(c."DOC", '$.kind')""";
 
-        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table)
+        /// <summary>
+        /// Plans a statement over one container to the CLR convention; with <paramref name="windows"/>, with the rule every
+        /// host adds to lift an <c>OVER</c> out of its projection, without which no window plans (Chapter 21.3); with
+        /// <paramref name="subqueries"/>, after the pass that makes each sub-query a correlate, as that host runs it; with
+        /// <paramref name="listener"/>, told of every rule the planner fires.
+        /// </summary>
+        static RelNode PlanToCosmos(string sql, CosmosContainerMetadata container, out CosmosTable table, bool windows = false, bool subqueries = false, RelOptListener? listener = null)
         {
-            var typeFactory = new JavaTypeFactoryImpl();
             table = new CosmosTable(container);
+            return PlanOver(sql, table, new JavaTypeFactoryImpl(), out _, windows, subqueries, listener);
+        }
 
-            var rootSchema = CalciteSchema.createRootSchema(false);
+        /// <summary>
+        /// Plans a statement over a table as <see cref="PlanToCosmos"/> does, and gives the schema it is planned in.
+        /// </summary>
+        static RelNode PlanOver(string sql, CosmosTable table, JavaTypeFactoryImpl typeFactory, out CalciteSchema rootSchema, bool windows = false, bool subqueries = false, RelOptListener? listener = null)
+        {
+            rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("items", table);
 
             var properties = new java.util.Properties();
@@ -79,10 +91,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var planner = new VolcanoPlanner();
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+            if (listener is not null)
+                planner.addListener(listener);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
             var converter = new SqlToRelConverter(null, validator, catalogReader, cluster, StandardConvertletTable.INSTANCE, SqlToRelConverter.config());
             var logical = converter.convertQuery(validator.validate(parsed), false, true).project();
+
+            if (subqueries)
+            {
+                var pass = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder()
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.FILTER_SUB_QUERY_TO_CORRELATE)
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.PROJECT_SUB_QUERY_TO_CORRELATE)
+                    .addRuleInstance(org.apache.calcite.rel.rules.CoreRules.JOIN_SUB_QUERY_TO_CORRELATE)
+                    .build());
+                pass.setRoot(logical);
+                logical = pass.findBestExp();
+            }
 
             foreach (var rule in CosmosRules.GetRules(table.Convention))
                 planner.addRule(rule);
@@ -92,6 +117,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             // plannable rather than a failure.
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
+
+            if (windows)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.PROJECT_TO_LOGICAL_PROJECT_AND_WINDOW);
 
             var desired = logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
@@ -125,12 +153,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
         /// <summary>
-        /// What a plan for a filter no document satisfies is: the empty relation, sent nowhere. The rewrite answers
-        /// <c>FALSE</c> where the conjuncts contradict the declaration, and <c>CosmosFilterReduceRule</c> puts an empty <c>Values</c>
-        /// beside the filter, which the CLR convention answers with no request; a converted <c>CosmosFilter</c> carrying
-        /// the constant was a round trip for no rows (<c>TODO.md</c>, <em>A contradiction should send nothing</em>).
+        /// What an explained plan says of a statement that is pushed as any other and not sent: its <c>WHERE</c> keeps no
+        /// document the declaration admits and fails on none, which the facts graph decides once, when the plan is
+        /// implemented (<see cref="CosmosQuery.SendsNothing"/>), so the service would answer no document. The plan is
+        /// plain pushdown's; only the request is left out.
         /// </summary>
-        const string KeepsNothing = "Values(tuples=[[]])";
+        const string KeepsNothing = "sends=[nothing]";
 
         [Fact]
         public void WithNothingDeclaredTheComparisonStaysInProcess()
@@ -1370,16 +1398,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         const string Status = """SELECT c."DOC" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.status') = '{0}'""";
 
         /// <summary>
-        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is the empty
-        /// relation, and sends no request.
+        /// A predicate the declaration contradicts keeps nothing, and the plan says so: it is pushed, and
+        /// sends nothing.
         /// </summary>
         /// <remarks>
         /// <para>
         /// The container declares a domain and the query asks for a value outside it. A document
         /// satisfying the predicate would have to hold a value the declaration says it does not, so
-        /// there is none — and the equivalent predicate is the constant. It used to be pushed as one,
-        /// <c>WHERE @p0</c> bound to <c>false</c>: a round trip for no rows. The split rule now puts the
-        /// empty relation beside the filter, which the CLR convention answers itself.
+        /// there is none — and the text sent is the constant. It used to be pushed as one, <c>WHERE @p0</c>
+        /// bound to <c>false</c>: a round trip for no rows. The statement is now pushed as any other and not
+        /// sent, nothing in its <c>WHERE</c> raising (<see cref="CosmosQuery.SendsNothing"/>).
         /// </para>
         /// <para>
         /// This is the first thing a declared <c>enum</c> or <c>const</c> has ever changed about a
@@ -1402,7 +1430,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 PlanText(best).Should().Contain(KeepsNothing,
                     "no document satisfies it, for " + schema + ": " + PlanText(best));
 
-                FindCosmos(best).Should().BeNull("so nothing is sent at all, for " + schema);
+                var query = Query(FindCosmos(best), container);
+                query.SendsNothing.Should().BeTrue("so nothing is sent at all, for " + schema);
+                query.Sql.Should().EndWith("WHERE false", "and the text it stands for is the constant, for " + schema);
             }
         }
 

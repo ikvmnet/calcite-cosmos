@@ -117,11 +117,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         {
             // The statement the implementor rendered the filter from, remembered against the condition and the binding it
             // holds once the filter's input is implemented. A binding walked off the plan instead leaves an array's element
-            // unbound, which the implementor binds to its alias, and reads another statement.
+            // unbound, which the implementor binds to its alias, and reads another statement. The condition as it is sent,
+            // the rendering form of the one the node holds.
             var implementor = new CosmosImplementor(rexBuilder, container);
             implementor.Visit(filter.getInput());
 
-            var statement = CosmosFilterStatement.Of(filter.getCondition(), implementor.Fields, implementor.Readings, container, rexBuilder, implementor.RootAlias);
+            var statement = CosmosFilterStatement.Of(filter.Sent(implementor), implementor.Fields, implementor.Readings, container, rexBuilder, implementor.RootAlias);
             var lines = Enumerable.Range(0, statement.Conjuncts.Count)
                 .Select(i => $"{index}.{i} {statement.StratumOf(i)} {(statement.IsAdmitted(i) ? "admitted" : "residual")} {statement.Statement.Conjuncts[i].Digest}")
                 .ToList();
@@ -156,11 +157,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
 
         /// <summary>
         /// A built statement: its text, its parameters in order, and where it is sent, a stored 30 and a stored "30"
-        /// being two partitions.
+        /// being two partitions; or that it is not sent at all.
         /// </summary>
         static string Spell(CosmosQuery query)
         {
             var text = query.Sql + " | " + string.Join(", ", query.Parameters.Select(p => p.Name + " = " + Spell(p.Value)));
+
+            if (query.SendsNothing)
+                text += " | sends nothing";
 
             if (query.PartitionKeyValues is { } key)
                 text += " | routes " + string.Join(", ", key.Select(Spell)) + (query.PartitionKeyIsComplete ? "" : " (a prefix)");

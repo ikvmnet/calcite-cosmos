@@ -107,25 +107,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         const string N = """CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER)""";
 
+        const string D = """CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE)""";
+
         static string Where(string condition) => $"""SELECT c."DOC" FROM items AS c WHERE {condition}""";
 
         /// <summary>
         /// Gap 4: a range beyond a declared bound keeps no number, so over a path declared an integer it keeps
-        /// no document.
+        /// no document: through the cast to <c>DOUBLE</c>, which raises on no number, the plan says so. Through the
+        /// cast to <c>INTEGER</c> it is sent, since that cast fails on a number past an <c>INTEGER</c>, which an integer
+        /// declaration with no lower bound admits, and Calcite would fail there; it reads <c>30.0</c>, which the service
+        /// returns as <c>30</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         /// <remarks>
         /// The cast puts the raw value above 499, the declaration below 100. Bounds bind numbers, so crossing them
         /// says the path holds no number — and with nothing but an integer declared, nothing at all, which the
         /// comparison's own presence contradicts. Declared without a type it says less: a stored <c>"600"</c>
-        /// passes the cast, and is no number for a bound to refuse.
+        /// passes the cast, and is no number for a bound to refuse. Through the integer cast an integer answers FALSE
+        /// beside the cast's failure, and a document without <c>n</c> UNKNOWN, so not every document fails: the
+        /// comparison is sent as any is, and the service finds nothing.
         /// </remarks>
         [Fact]
         public void ARangeBeyondADeclaredBoundKeepsNoNumber()
         {
             var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
 
-            var beyond = PlanToCosmos(Where($"{N} > 500"), integer, out _);
-            PlanText(beyond).Should().Contain(KeepsNothing, "no integer is above 499 and at most 100: " + PlanText(beyond));
+            var beyond = PlanToCosmos(Where($"{D} > 500"), integer, out _);
+            PlanText(beyond).Should().Contain(KeepsNothing, "no number is above 500 and at most 100, and the cast to DOUBLE fails on none: " + PlanText(beyond));
+
+            var cast = PlanToCosmos(Where($"{N} > 500"), integer, out _);
+            PlanText(cast).Should().NotContain(KeepsNothing, "the integer cast fails on numbers past an INTEGER: " + PlanText(cast));
+            Query(FindCosmos(cast), integer).Sql.Should().EndWith("WHERE (c.n > @p0)", "and the service finds nothing");
 
             var within = PlanToCosmos(Where($"{N} > 50"), integer, out _);
             PlanText(within).Should().NotContain(KeepsNothing, "an integer of 60 is both: " + PlanText(within));
@@ -137,17 +148,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, where a closure rechecked it over
-        /// every document in process.
+        /// every document in process: through the cast to <c>DOUBLE</c> and to <c>INTEGER</c> the plan says so, since the
+        /// service returns a stored <c>1.0</c> as <c>1</c>, which the integer cast parses
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>).
         /// </summary>
         [Fact]
         public void ARangeOutsideAnEnumKeepsNothing()
         {
             var enumerated = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
 
-            foreach (var outside in new[] { $"{N} > 499 AND {N} < 501", $"{N} = 30" })
+            foreach (var outside in new[] { $"{D} > 499 AND {D} < 501", $"{D} = 30", $"{N} > 499 AND {N} < 501", $"{N} = 30" })
             {
                 var best = PlanToCosmos(Where(outside), enumerated, out _);
-                PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}: " + PlanText(best));
+                PlanText(best).Should().Contain(KeepsNothing, $"no member of the enum satisfies {outside}, and the cast fails on none as returned: " + PlanText(best));
             }
 
             foreach (var inside in new[] { $"{N} = 2", $"{N} > 1" })
@@ -159,6 +172,77 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var mixed = Declaring("""{ "type": "object", "properties": { "n": { "enum": ["600", 1] } } }""");
             var string600 = PlanToCosmos(Where($"{N} > 500"), mixed, out _);
             PlanText(string600).Should().NotContain(KeepsNothing, "the string \"600\" passes the cast: " + PlanText(string600));
+        }
+
+        /// <summary>
+        /// Which comparisons through the cast to <c>DOUBLE</c> that the declaration rules out send nothing and which are sent,
+        /// as measured (<c>TODO.md</c>, <em>A cast to <c>DOUBLE</c> is read more loosely than a double rounds</em>, and <em>A
+        /// cast to <c>DOUBLE</c> compared with a literal whose double no decimal holds is read as nothing</em>), over an
+        /// integer at most 100, below 100, at least 0, a list of integers and a list of strings; and that <c>&gt; 200.1</c>
+        /// stays in Calcite beside the path's presence.
+        /// </summary>
+        [Fact]
+        public void ACastToDoubleIsReadAsKeepingEveryNumberLessThanAUnitFromWhatItKeeps()
+        {
+            const string Converter = "CosmosToClrCursorConverter";
+
+            var integer = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""");
+            var exclusive = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "exclusiveMaximum": 100 } } }""");
+            var listed = Declaring("""{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""");
+            var natural = Declaring("""{ "type": "object", "properties": { "n": { "type": "integer", "minimum": 0 } } }""");
+            var strings = Declaring("""{ "type": "object", "properties": { "n": { "enum": ["1", "2"] } } }""");
+
+            foreach (var (container, label, condition) in new[]
+            {
+                (integer, "at most 100", "> 101"), (integer, "at most 100", "> 200.25"), (exclusive, "below 100", "> 100"),
+                (natural, "at least 0", "< -101"), (natural, "at least 0", "< -4503599627370495"),
+            })
+            {
+                var plan = PlanText(PlanToCosmos(Where($"{D} {condition}"), container, out _));
+                plan.Should().Contain(KeepsNothing, $"{condition} over an integer {label} sends nothing: " + plan);
+            }
+
+            foreach (var (container, label, condition, sent) in new[]
+            {
+                (integer, "at most 100", "> 100", "WHERE (c.n > @p0)"),
+                (integer, "at most 100", "> 100000000000000000", "WHERE (c.n > @p0)"),
+                (exclusive, "below 100", "> 99.5", "WHERE (c.n > @p0)"),
+                (listed, "listed [1, 2, 3]", "= 3.5", "WHERE (c.n = @p0)"),
+                (natural, "at least 0", "< -100000000000000000", "WHERE (c.n < @p0)"),
+                (strings, "listed [\"1\", \"2\"]", "> 500", "WHERE (c.n > @p0)"),
+            })
+            {
+                var plan = PlanToCosmos(Where($"{D} {condition}"), container, out _);
+                PlanText(plan).Should().NotContain(KeepsNothing, $"{condition} over {label} is sent: " + PlanText(plan));
+                Query(FindCosmos(plan), container).Sql.Should().EndWith(sent, PlanText(plan));
+            }
+
+            var unread = PlanToCosmos(Where($"{D} > 200.1"), integer, out _);
+            var text = PlanText(unread);
+            text.Should().NotContain(KeepsNothing, "200.1's double is no decimal's, so the comparison is not read: " + text);
+            text[..text.IndexOf(Converter, System.StringComparison.Ordinal)].Should().Contain("CAST(", "the comparison is Calcite's: " + text);
+            Query(FindCosmos(unread), integer).Sql.Should().EndWith("WHERE IS_DEFINED(c.n)", text);
+        }
+
+        /// <summary>
+        /// A range through an integer parse that the declared bounds satisfy is still sent, where the same range through the
+        /// cast to <c>DOUBLE</c> is dropped. The parse's cells read the service's spelling and raise on no integer the bounds
+        /// admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the coarse reading, and
+        /// that puts the parse's raise beside every number (<c>TODO.md</c>, <em>A conjunct through an integer parse its
+        /// declared bounds satisfy is still sent</em>). Its fix flips this test.
+        /// </summary>
+        [Fact]
+        public void ARangeAnIntegerParseItsBoundsSatisfyIsStillSent()
+        {
+            foreach (var declared in new[] { """{ "type": "integer", "minimum": 0, "maximum": 100 }""", """{ "enum": [1, 2, 3] }""" })
+            {
+                var container = Declaring($$"""{ "type": "object", "required": ["n"], "properties": { "n": {{declared}} } }""");
+
+                foreach (var parsed in new[] { $"{N} >= 0", """JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) >= 0""" })
+                    Query(FindCosmos(PlanToCosmos(Where(parsed), container, out _)), container).Sql.Should().EndWith("WHERE (c.n >= @p0)", $"{parsed} is sent over {declared}");
+
+                Query(FindCosmos(PlanToCosmos(Where($"{D} >= 0"), container, out _)), container).Sql.Should().NotContain("WHERE", $"the cast to DOUBLE is dropped over {declared}");
+            }
         }
 
         /// <summary>

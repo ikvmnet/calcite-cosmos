@@ -262,7 +262,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Knows(loaded.Statement.FactsFor(0), Label, String).Should().BeFalse();
             loaded.Statement.IsAdmitted(0).Should().BeFalse("so the translator does not render it exactly");
             loaded.Statement.Kept.TryGetConstant(Label, out _).Should().BeFalse("a stored 30 renders as '30' too");
-            Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeTrue("the preimage, and nothing narrower");
+            Knows(loaded.Statement.Kept, Label, new JsonClaim.LowerBound(29m, Exclusive: true)).Should().BeTrue("the preimage is the string or a number whose double is 30's, every one above 29");
+            Knows(loaded.Statement.Kept, Label, new JsonClaim.UpperBound(31m, Exclusive: true)).Should().BeTrue("and below 31");
+            Knows(loaded.Statement.Kept, Label, Enum("30", 30L)).Should().BeFalse("30.000000000000001 is held as the double 30, and returned as '30' too");
         }
 
         /// <summary>
@@ -327,11 +329,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             loaded.Statement.IsContradictory.Should().BeFalse();
         }
 
+        /// <summary>
+        /// A number through a <c>RETURNING</c> the declaration refuses keeps no row, so what the statement keeps is a
+        /// contradiction, as before; but <c>RETURNING INTEGER</c> raises on a stored string, which the declaration admits,
+        /// so the filter is not reduced. Over a <c>rate</c> that may be missing, as here, the planner sends it and the
+        /// service finds nothing; over a required one it stays in Calcite, which fails
+        /// (<c>CosmosDeclaredFactPlanningTests.AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>).
+        /// </summary>
         [Fact]
-        public void ANumberTheDeclarationRefusesIsOne()
+        public void ANumberTheDeclarationRefusesKeepsNoRowYetIsNotReduced()
         {
-            Where("""{ "properties": { "rate": { "type": "string" } } }""", """JSON_VALUE(c."DOC", '$.rate' RETURNING INTEGER) = 2""")
-                .Statement.IsContradictory.Should().BeTrue("a string is never an integer RETURNING keeps");
+            var loaded = Where("""{ "properties": { "rate": { "type": "string" } } }""", """JSON_VALUE(c."DOC", '$.rate' RETURNING INTEGER) = 2""");
+
+            loaded.Statement.IsContradictory.Should().BeFalse("RETURNING INTEGER raises on the string rate may hold");
+            loaded.Statement.Kept.IsContradictory.Should().BeTrue("a string is never an integer RETURNING keeps");
         }
 
         // ── F2, F3, F4 ───────────────────────────────────────────────────────────────────────────────────────────
@@ -396,24 +407,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Where(Status, """JSON_VALUE(c."DOC", '$.status') = 'archived'""").Statement.IsContradictory.Should().BeFalse();
         }
 
+        /// <summary>
+        /// Gap 4: a range beyond a declared bound keeps no number. Through the cast to <c>DOUBLE</c>, which raises on no
+        /// number, the filter keeps nothing and is reduced; through the cast to <c>INTEGER</c> what it keeps is still a
+        /// contradiction, but the cast raises on a number past an <c>INTEGER</c>, which an integer declaration with no lower
+        /// bound admits, so it is not reduced. A whole number is returned as its digits however it was written, so the cast
+        /// reads <c>30.0</c> (<c>Service.IntegralNumbersReadBackAsHeld</c>).
+        /// </summary>
         [Fact]
         public void Gap4ARangeBeyondADeclaredBoundKeepsNoNumber()
         {
             const string Integer = """{ "type": "object", "properties": { "n": { "type": "integer", "maximum": 100 } } }""";
             const string Untyped = """{ "type": "object", "properties": { "n": { "maximum": 100 } } }""";
 
-            Where(Integer, $"{NCast} > 500").Statement.IsContradictory.Should().BeTrue();
+            Where(Integer, $"{NDouble} > 500").Statement.IsContradictory.Should().BeTrue();
+            var integer = Where(Integer, $"{NCast} > 500");
+            integer.Statement.IsContradictory.Should().BeFalse("the integer cast raises on numbers past an INTEGER");
+            integer.Statement.Kept.IsContradictory.Should().BeTrue("and keeps no number above 499 and at most 100");
             Where(Integer, $"{NCast} > 50").Statement.IsContradictory.Should().BeFalse();
             Where(Untyped, $"{NCast} > 500").Statement.IsContradictory.Should().BeFalse("a stored \"600\" passes the cast");
         }
 
+        /// <summary>
+        /// Gap 5: a range none of a declared enum's numbers lies in keeps nothing, and is reduced through the cast to
+        /// <c>DOUBLE</c> and to <c>INTEGER</c> alike: the service returns a stored <c>1.0</c> as <c>1</c>, which the integer
+        /// cast parses (<c>Service.IntegralNumbersReadBackAsHeld</c>), so neither raises on a number the enum admits.
+        /// </summary>
         [Fact]
         public void Gap5ARangeOutsideAnEnumKeepsNothing()
         {
             const string Enumerated = """{ "type": "object", "properties": { "n": { "enum": [1, 2, 3] } } }""";
 
-            Where(Enumerated, $"{NCast} > 499 AND {NCast} < 501").Statement.IsContradictory.Should().BeTrue();
-            Where(Enumerated, $"{NCast} = 30").Statement.IsContradictory.Should().BeTrue();
+            foreach (var outside in new[] { "> 499 AND {0} < 501", "= 30" })
+            {
+                Where(Enumerated, $"{NDouble} " + string.Format(outside, NDouble)).Statement.IsContradictory.Should().BeTrue(outside);
+                var integer = Where(Enumerated, $"{NCast} " + string.Format(outside, NCast));
+                integer.Statement.IsContradictory.Should().BeTrue("the integer cast parses every member of the enum as it is returned, and none satisfies {0}", outside);
+                integer.Statement.Kept.IsContradictory.Should().BeTrue("no member of the enum satisfies {0}", outside);
+            }
+
             Where(Enumerated, $"{NCast} = 2").Statement.IsContradictory.Should().BeFalse();
             Where(Enumerated, $"{NCast} > 1").Statement.IsContradictory.Should().BeFalse();
             Where("""{ "type": "object", "properties": { "n": { "enum": ["600", 1] } } }""", $"{NCast} > 500").Statement.IsContradictory.Should().BeFalse();
@@ -447,9 +479,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// over a declared integer of at least 1, and <c>… BETWEEN 1 AND 9</c> under a maximum of 9, were tautologies,
         /// resting on an integer-cast row the population-D checker then proved wrong: over the accessor the cast is Java's
         /// integer parse of the rendering, which raises on <c>1e30</c> and <c>3000000000</c> (both integers JSON Schema
-        /// admits) and on any rendering with a point. Deleting either would answer where the query raises. Under the
-        /// maximum only a <c>5.0</c>-style spelling could raise, which the emulator renders as <c>5</c>; it stays
-        /// undecided, soundly.
+        /// admits) and on any rendering with a point. Deleting the first would answer where the query raises. Under the
+        /// maximum nothing raises, since both targets return <c>5.0</c> as <c>5</c>
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>), but a deletion is a verdict, which reads the coarse reading, and
+        /// that puts the parse's raise beside every number; it stays undecided, soundly (<c>TODO.md</c>, <em>A conjunct
+        /// through an integer parse its declared bounds satisfy is still sent</em>).
         /// </para>
         /// <para>
         /// The same ranges through a cast to <c>DOUBLE</c>, whose parse raises on no number, are the tautologies; and
@@ -466,8 +500,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NCast + " > 1", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NDouble + " > 0", true)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", NDouble + " > 1", false)]
-        // A declared integer may be stored 30.0, which RETURNING INTEGER raises on: deleting the comparison would answer
-        // where the query raises, so it is not deleted, though every value satisfies it.
+        // A declared integer of at least 1 may be 3000000000, past an INTEGER, which RETURNING INTEGER raises on: deleting
+        // the comparison would answer where the query raises, so it is not deleted, though every value satisfies it.
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1 } } }""", """JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) > 0""", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1, "maximum": 9 } } }""", NCast + " BETWEEN 1 AND 9", false)]
         [InlineData("""{ "required": ["n"], "properties": { "n": { "type": "integer", "minimum": 1, "maximum": 9 } } }""", NDouble + " BETWEEN 1 AND 9", true)]

@@ -37,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>
         /// The JSON type of each class of value, which says two classes are of one type: <c>true</c> and <c>false</c> are
-        /// both booleans. S's <c>classtype</c>, which the raw rules compare (G5).
+        /// both booleans. The readings vocabulary's <c>classtype</c>, in both graphs, which the raw rules compare (G5).
         /// </summary>
         public static IReadOnlyList<(CosmosValueClass Class, string Type)> Types { get; } =
         [

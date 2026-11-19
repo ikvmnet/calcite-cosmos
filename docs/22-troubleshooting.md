@@ -51,6 +51,24 @@ That is what the adapter can prove of a text comparison, a `LIKE` or a cast to a
 the property is always a string, declare `"type": "string"` for it (Chapter 14) and the comparison is sent
 as written; if it is always a number, read it with `RETURNING` rather than a cast.
 
+**A query the schema rules out still makes a request.**
+A request is left out only where the `WHERE` it would send keeps no document the schema admits and
+nothing in it can fail on one, which the adapter can show; `EXPLAIN` then marks its converter
+`sends=[nothing]`. A cast to `INTEGER` over numbers an `INTEGER` may not hold, a `RETURNING` of a type
+the declaration does not name, a comparison of two properties, a function's result, or a weaker form
+the adapter sends beside a part the service cannot take exactly keeps the request where the service
+can take the whole `WHERE`, or fails where every document would (*A query the schema rules out
+fails*, below). Over a property declared `"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over
+integers within an `INTEGER`'s range, are sent even where the property is required (Chapter 23). A
+comparison through a cast to `DOUBLE` may keep the request too (Chapter 23). Where the part the schema
+rules out stays in process, one request goes out, reading the documents Calcite reads. A pushed `COUNT` or
+`SUM` with no `GROUP BY` is sent, its `WHERE` written `false` where one filter alone keeps nothing,
+since it answers one row over no document; the sum goes beside a count and reads `NULL` where the count
+is 0, as in Calcite. Where a part
+that can fail on a row stays in process beside a part sent that keeps nothing, there is no request and
+no row for it to fail on; a type test of anything but a path still fails, before any row (Chapter
+14.2's last case). Chapters 14.2 and 7.
+
 **A filter that pushed before reads the whole container.**
 Watch `cosmos.rendering.declines` (Chapter 20). Its `unavailable` reason on a schema's first plans means
 the plan arrived before the schema's reasoning was built and waited five seconds for it — reuse schemas
@@ -109,6 +127,14 @@ statements from nothing (Chapter 19). Keep connection strings identical so pooli
 data source. Chapter 6.
 
 ## Queries that fail
+
+**A query the schema rules out fails.**
+Calcite fails on every document the schema admits — `RETURNING INTEGER` or `RETURNING DOUBLE` over a
+required string, a cast to `BOOLEAN` over a required integer — so the filter stays in Calcite and fails
+as it does there, rather than be answered with no rows. What the query asks of the property is not
+what the schema says it holds; ask it as the schema does. Chapters 14.2 and 7. Over a property declared
+`"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over integers within an `INTEGER`'s range, do
+not fail: they are sent and answer what the service finds, where Calcite fails (Chapter 23).
 
 **`CosmosMaterializationException: Expected a JSON string, got Number` (or similar).**
 A document holds something the query's type cannot hold — `RETURNING INTEGER` over a property that is

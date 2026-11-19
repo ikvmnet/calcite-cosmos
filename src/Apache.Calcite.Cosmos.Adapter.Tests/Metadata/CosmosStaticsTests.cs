@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Adapter.Metadata.CosmosConstraintSet", ["Empty"], StaticFact, "the empty set"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["DefaultIncludedPatterns", "DefaultStatisticsTimeToLive", "ServiceExcludedPatterns"], StaticFact, "the service's indexing defaults, and a default lifetime"),
             ("Adapter.Metadata.CosmosContainerMetadata", ["ServiceFacts"], StaticFact, "the service's guarantees, unbound: rules and their encoding, which compile nothing until a schema binds a copy"),
-            ("Adapter.Metadata.CosmosFactRewriter", ["Rewrites"], PlanScoped, "keyed weakly on a statement, which Read keeps only while its container lives"),
+            ("Adapter.Metadata.CosmosFactRewriter", ["PlannedForms", "Plans", "Rewrites"], PlanScoped, "keyed weakly on a statement, which Read keeps only while its container lives"),
             ("Adapter.Metadata.CosmosFilterStatement", ["Read"], PlanScoped, "keyed weakly on the condition, then on the container, so it keeps neither whatever condition a caller passes"),
             ("Adapter.Metadata.CosmosNumericForms", ["Digits", "IntegerUnpadded", "Unpadded"], StaticFact, "numeric spellings"),
             ("Adapter.Metadata.CosmosPartitionKeyExtractor", ["IdPolicy"], StaticFact, "the id's path"),
@@ -134,8 +134,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             ("Adapter.Rel.Convert.CosmosConverters", ["Announced"], PlanScoped, "keyed weakly on one implementation's implementor, which dies with the implementation"),
             ("Adapter.Rel.Convert.CosmosConverters", ["GetExecutorMethod", "GetJsonPropertyMethod", "GetJsonTextPropertyMethod", "GetLookupCacheMethod", "GetPartitionCounterMethod", "GetPathMethod", "GetPropertyMethod", "GetTextPropertyMethod", "GetWriterMethod"], Infra, Reflection),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule", ["Instance"], Infra, "a rule with no fields"),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule", ["Statements"], PlanScoped, "keyed weakly on the planner that plans one statement, which dies with the statement"),
             ("Adapter.Rel.Convert.CosmosSelfJoinRule", ["Instances"], Infra, "the rule's instances, whose fields are their configuration"),
             ("Adapter.Rel.Convert.CosmosSortProjectTransposeRule", ["Instance"], Infra, "a rule with no fields"),
+            ("Adapter.Rel.Convert.CosmosUncorrelatedProjectMergeRule", ["Instance"], Infra, "a rule with no fields"),
             ("Adapter.Rel.Convert.CosmosToClrCursorConverter", ["OpenAsyncMethod", "OpenMethod"], Infra, Reflection),
             ("Adapter.Rel.CosmosConstraintCompiler", ["Cache"], PlanScoped, "keyed weakly on the type factory, then on the table, so it keeps neither whatever factory a caller passes"),
             ("Adapter.Rel.CosmosLookupJoin", ["JoinAsyncMethod", "JoinMethod"], Infra, Reflection),
@@ -143,7 +146,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
             ("Adapter.Sql.CosmosAxiomRows", ["Declared", "Owed", "Targets"], StaticFact, "the registry's rows owed a target, the functions declared beside the measured, and the targets"),
             ("Adapter.Sql.CosmosAxioms", ["All", "Bands", "Cases", "CastOfRaw", "Edges", "Family", "NoTruth", "Orders", "Pairs", "Spelling", "Stored", "Strings", "Today"], StaticFact, "the measured registry, the bands its string rows are keyed by, a reader its rows name and the dates it was measured on"),
-            ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
+            ("Adapter.Sql.CosmosOperators", ["FullTextContains", "FullTextContainsAll", "FullTextContainsAny", "FullTextScore", "Instance", "IsArray", "IsBool", "IsDefined", "IsNull", "IsNumber", "IsObject", "IsPrimitive", "IsString", "ObjectToArray", "Own", "RegexMatch", "Rrf", "ServiceOnly", "StringToArray", "StringToBoolean", "StringToNumber", "StringToObject", "ToStringFunction", "VectorDistance"], StaticFact, "the adapter's operators and their table"),
             ("Adapter.Sql.CosmosFunctionSpellings", ["ConcatenatedStored", "DirectFunctions", "PatternedStored", "RepeatedStored", "ReplacedStored", "Searched", "SearchedFor", "Spellings"], StaticFact, "the functions spelled as they are, the spellings S chooses among, and the legality the rows do not carry"),
             ("Adapter.Sql.CosmosRawColumn", ["Literals"], StaticFact, "the classes a literal is of, beside which a raw column may be compared"),
             ("Adapter.Sql.CosmosRexTranslator", ["ArrayReading", "FragmentReading", "GeographyFunctions", "ScalarReading"], StaticFact, "the functions the translator writes as they are"),
@@ -160,7 +163,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.JsonSchemaRecognisers", ["None"], StaticFact, "no recognisers"),
             ("Facts.JsonSchemaResolver", ["Data", "DefaultBase"], StaticFact, "JSON Schema's own keywords and base"),
             ("Facts.JsonScopeTables", ["Asking"], Infra, "the engine's limits for asking a context"),
-            ("Facts.OracleLicence", ["Declaration", "GroupBy", "Kept", "Key", "OrderBy", "Select"], StaticFact, "licences, immutable"),
+            ("Facts.OracleLicence", ["Declaration", "GroupBy", "Kept", "Key", "OrderBy", "Reduce", "Select"], StaticFact, "licences, immutable"),
             ("Facts.OracleVerdict", ["Always", "Contradicted", "Unknown"], StaticFact, "verdicts, immutable"),
             ("Facts.StatementTerms", ["Default"], Infra, "the engine's limits for a statement's runs"),
             ("Facts.StatementTerms.Contradiction", ["Tables"], StaticFact, "a singleton with no fields"),
@@ -212,6 +215,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             ("Facts.Saturation.PredicateAtom.Reading.Typed", ["Rows"], StaticFact, "a reader's rows"),
             ("Facts.Saturation.PredicateAtom.State", ["AbsentState", "NullState"], StaticFact, "singletons with no fields"),
             ("Facts.Saturation.PredicateRules", ["Defined"], PlanScoped, "keyed weakly on a graph's rules (its process-wide lock is TODO.md's)"),
+            ("Facts.Saturation.PredicateRules", ["Strings"], StaticFact, "the one type a string is, which a path's characters are read among"),
             ("Facts.Saturation.Renderings", ["JavaTrims"], StaticFact, "what Java's trim removes"),
             ("Facts.Saturation.StringCalls", ["Cut", "Rows", "TextCasts", "Upper"], StaticFact, "the rows of which operands each string function draws characters from and what it makes of them, and of which casts write which kinds as text, the root's data"),
         ];
@@ -243,9 +247,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         static readonly (string Key, string Test)[] Released =
         [
             ("Adapter.Metadata.CosmosFactRewriter.Rewrites", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
+            ("Adapter.Metadata.CosmosFactRewriter.PlannedForms", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
+            ("Adapter.Metadata.CosmosFactRewriter.Plans", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
             ("Adapter.Metadata.CosmosFilterStatement.Read", nameof(AStatementRememberedUnderALongLivedConditionKeepsNoTable)),
             ("Adapter.Metadata.CosmosRowFacts.Decided", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.Convert.CosmosConverters.Announced", nameof(NoStaticReachesWhatASchemaLearned)),
+            ("Adapter.Rel.Convert.CosmosFilterCorrelateRule.Statements", nameof(NoStaticReachesWhatASchemaLearned)),
             ("Adapter.Rel.CosmosConstraintCompiler.Cache", nameof(AConstraintRememberedUnderALongLivedFactoryKeepsNoTable)),
             ("Facts.Rendering.RenderingAnswerMemo.Digests", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
             ("Facts.Saturation.PredicateRules.Defined", nameof(CosmosReasoningTests.ASchemaLetGoTakesItsGraphsWithIt)),
@@ -406,6 +413,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var reference = LongLived.makeInputRef(LongLived.getTypeFactory().createSqlType(SqlTypeName.VARCHAR), 0);
 
             CosmosFactRewriter.Rewrite(condition, fields, container, "c", LongLived);
+            CosmosFactRewriter.Planned(condition, fields, container, "c", LongLived);
+            CosmosFactRewriter.PlannedConjuncts(condition, fields, container, "c", LongLived);
             CosmosPartitionKeyExtractor.TryExtract(condition, fields, null, container, "c", out _);
             CosmosFilterStatement.Declares(LongLived.makeCall(SqlStdOperatorTable.IS_NOT_NULL, reference), fields, null, container, LongLived);
             reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");
@@ -462,8 +471,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var table = (CosmosTable)schema.tables().get("c")!;
             var reasoning = table.Container.Reasoning!;
 
+            var planners = new Infrastructure.PlannersSeen();
             using (var dataSource = new CalciteDataSourceBuilder(new CalciteConnectionStringBuilder { CaseSensitive = true }.ConnectionString).AddSchema("COSMOS", schema).Build())
             using (var connection = dataSource.OpenConnection())
+            using (org.apache.calcite.runtime.Hook.PLANNER.addThread(planners))
                 foreach (var sql in new[]
                 {
                     """SELECT c."id" FROM "COSMOS"."c" AS c WHERE c."id" = 'x' AND JSON_VALUE(c."DOC", '$.pk') = 'p'""",
@@ -471,6 +482,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     """SELECT COUNT(*) FROM "COSMOS"."c" AS c WHERE JSON_VALUE(c."DOC", '$.ref') > 'a'""",
                     """SELECT c."id" FROM "COSMOS"."c" AS c ORDER BY JSON_VALUE(c."DOC", '$.ref') FETCH NEXT 5 ROWS ONLY""",
                     """SELECT a."id" FROM "COSMOS"."c" AS a JOIN "COSMOS"."c" AS b ON a."id" = b."id" WHERE JSON_VALUE(a."DOC", '$.pk') = 'p'""",
+                    EndToEnd.CosmosDeclaredFactPlanningTests.Stacked("dn", 4, "\"COSMOS\".\"c\""),
                 })
                 {
                     using var command = connection.CreateCommand();
@@ -481,6 +493,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 }
 
             reasoning.Facts.Started.Should().BePositive("the statements were reasoned about");
+            planners.Planners.Should().Contain(p => Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(p).Times > 0, "a statement over traversals was worked out by the correlate rule, and its answer kept with its planner");
 
             return
             [

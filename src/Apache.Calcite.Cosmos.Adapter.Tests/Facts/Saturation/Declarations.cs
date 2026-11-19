@@ -39,6 +39,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// the trial's stream is the one it was.
     /// </para>
     /// <para>
+    /// <b>And numbers no double holds exactly</b> (<see cref="Near"/>), held to documents of a stream of their own that hold
+    /// one wherever the rules let it stand, so that a reading comparing doubles is checked where its literal and the stored
+    /// value differ and their doubles do not.
+    /// </para>
+    /// <para>
     /// <b>Some declare no conditional rule</b>, what every container that declares no schema has: drawn as any other,
     /// and the claims under a kind taken back before a document is drawn (<see cref="Random"/>). Nothing a guard reads is
     /// then a discriminator, so no stratum splits, and the strata are the ones a schema-less container's filters open.
@@ -88,6 +93,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         };
 
         static readonly J[] Banded = BandedStrings.Select(text => (J)new J.Str(text)).ToArray();
+
+        /// <summary>
+        /// Numbers no double holds exactly, which a reading that compares doubles finds equal to their neighbours: a
+        /// fraction whose double is whole, and a tenth spelled two ways and a ten-millionth, as a document stores them.
+        /// </summary>
+        public static readonly J[] Near = [new J.Num(6.0000000000000001m), new J.Num(0.1m), new J.Num(0.10000000000000001m), new J.Num(0.0000001m)];
 
         /// <summary>The paths a domain of banded strings may be declared of: those a document holds a scalar at.</summary>
         static readonly JsonDocumentPath[] Scalars = { A, B, N };
@@ -308,10 +319,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// One kind a document may be — a value of the discriminator, or none — with what each path may hold under it,
-        /// and which of the banded strings.
+        /// Draws a document the declaration admits from a stream of its own, holding a number no double holds exactly
+        /// (<see cref="Near"/>) at a path wherever the rules its kind fires let one stand there.
         /// </summary>
-        sealed record Branch(J? Kind, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J?>> Choices, IReadOnlyList<(J? V, IReadOnlyList<J?> Holders)> Objects, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J>> Banded);
+        public J.Obj GenerateNear(Random near)
+        {
+            if (TryGenerate(near, out var document, near: true) == false)
+                throw new InvalidOperationException("The declaration admits no document it once did.");
+
+            return document;
+        }
+
+        /// <summary>
+        /// One kind a document may be — a value of the discriminator, or none — with what each path may hold under it,
+        /// and which of the banded strings and of the numbers no double holds exactly.
+        /// </summary>
+        sealed record Branch(J? Kind, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J?>> Choices, IReadOnlyList<(J? V, IReadOnlyList<J?> Holders)> Objects,
+            IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J>> Banded, IReadOnlyDictionary<JsonDocumentPath, IReadOnlyList<J>> Near);
 
         IReadOnlyList<Branch>? _branches;
 
@@ -344,10 +368,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                 var choices = new Dictionary<JsonDocumentPath, IReadOnlyList<J?>>();
                 var banded = new Dictionary<JsonDocumentPath, IReadOnlyList<J>>();
+                var near = new Dictionary<JsonDocumentPath, IReadOnlyList<J>>();
                 foreach (var path in new[] { A, B, N })
                 {
                     choices[path] = Candidates.Where(c => Fits(path, c)).ToList();
                     banded[path] = Banded.Where(b => Fits(path, b)).ToList();
+                    near[path] = Near.Where(n => Fits(path, n)).ToList();
                 }
 
                 // o.v first, then an o that holds it: an object with it where it is there, anything without it where not.
@@ -357,7 +383,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     .ToList();
 
                 if (choices.Values.All(c => c.Count > 0) && objects.Count > 0)
-                    branches.Add(new Branch(kind, choices, objects, banded));
+                    branches.Add(new Branch(kind, choices, objects, banded, near));
             }
 
             return _branches = branches;
@@ -367,7 +393,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             ? Values.Append(null)
             : new J?[] { new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["v"] = v }), new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["v"] = v, ["x"] = new J.Num(1m) }) };
 
-        bool TryGenerate(Random random, out J.Obj document, bool banded = false)
+        bool TryGenerate(Random random, out J.Obj document, bool banded = false, bool near = false)
         {
             var branches = Branches();
             if (branches.Count == 0)
@@ -388,6 +414,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                 if (banded && branch.Banded[path] is { Count: > 0 } strings && random.Next(2) == 0)
                     properties[path.Names[^1]] = strings[random.Next(strings.Count)];
+
+                if (near && branch.Near[path] is { Count: > 0 } numbers && random.Next(2) == 0)
+                    properties[path.Names[^1]] = numbers[random.Next(numbers.Count)];
             }
 
             var (_, holders) = branch.Objects[random.Next(branch.Objects.Count)];

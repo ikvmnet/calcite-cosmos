@@ -61,8 +61,25 @@ A partition key value is a scalar — a string, a number or a boolean — but *w
 each document, not about the container. `VARIANT` is the SQL type for exactly that: a value whose
 concrete type is learned per row. In practice:
 
-- **Filtering on it pushes down**, and an equality pins the partition: `WHERE c."$.category" = 'bikes'`
-  runs against one partition, and with `c."id" = …` beside it becomes a point read (Chapter 8).
+- **Filtering on it pushes down**, and an equality with a string or a boolean pins the partition:
+  `WHERE c."$.category" = 'bikes'` runs against one partition, and with `c."id" = …` beside it becomes
+  a point read (Chapter 8). A boolean is written `CAST(TRUE AS VARIANT)`, since Calcite compares a
+  `VARIANT` with no bare number or boolean. A number is not written so: `CAST(5 AS VARIANT)` matches no
+  stored `5` in Calcite, which holds a stored integer as a `BIGINT`, and pins nothing of its own. A
+  number pins the partition only where the container's schema leaves the key one value the comparison
+  may keep. A key declared an integer is pinned through `RETURNING INTEGER`, for example
+  `JSON_VALUE(c."DOC", '$.category' RETURNING INTEGER) = 5`, or through `RETURNING BIGINT` for keys
+  beyond an `INTEGER`'s range. Calcite fails on `RETURNING BIGINT` over a stored `5`, and on
+  `RETURNING DOUBLE` over any whole number within 64 bits, so through either of those the partition is
+  pinned only by answering where Calcite fails (Chapter 23). A key whose `enum` or `const` leaves one
+  value whose double is the number's, a fraction among them, is pinned through `RETURNING DOUBLE`:
+  `= 5.5` where the schema lists `[5.5, 7.25]`. A comparison through a cast to `DOUBLE` may be routed
+  to a partition where the request then finds nothing, and may fail to plan through a connection that
+  runs Calcite's default rules, as the README's does (Chapter 23). Where the schema fixes the key to one
+  value, a comparison the schema shows true may be dropped from the request, which may then read every
+  partition (Chapter 23). Without such a declaration Calcite compares the number by its double, so
+  `= 5` also keeps a stored number written with more digits than a double holds, and the adapter does
+  not yet route on that.
 - **Sorting on it does not.** Calcite cannot order `VARIANT` values in process and the SQL standard
   defines no order across types, so a sort keyed directly on the column is declined and runs in
   process. Sort on the path instead: `ORDER BY JSON_VALUE(c."DOC", '$.category')`, which sorts at the
@@ -72,6 +89,8 @@ concrete type is learned per row. In practice:
   body over a column (Appendix B.5). Calcite fails either on every row, and a filter holding one fails
   as it fails in Calcite: the adapter does not send it for the service to answer instead. Compare or test
   the path: `JSON_VALUE(c."DOC", '$.category') > 'a'`, `IS_DEFINED(JSON_VALUE(c."DOC", '$.category'))`.
+  One ordering is still sent: on Azure, the column against a parameter, `c."$.category" < ?`, is
+  answered by the service (Chapter 23).
 - **It cannot be a lookup-join key** (Chapter 12) — there is no parameter type to bind a `VARIANT` as.
   Join on `JSON_VALUE(c."DOC", '$.category')` instead.
 - **A string function over it does not push.** `UPPER(CAST(c."$.category" AS VARCHAR))` reads the column
@@ -123,8 +142,13 @@ that is not known until the row is read, and is declined.
 ### What `JSON_VALUE` means
 
 `JSON_VALUE` returns text — `VARCHAR` — whatever the property holds. The number `30` comes back as
-`'30'`, `true` as `'true'`, `1e30` as `'1.0E30'` (Calcite renders numbers the Java way). An object, an
-array, a JSON `null` and a missing property all come back as SQL `NULL`.
+`'30'`, `true` as `'true'`, `1e30` as `'1.0E30'` (Calcite renders numbers the Java way). The number is
+the one Cosmos holds: any number but a whole one a 64-bit integer holds is kept as a double, so a
+document written with `0.10000000000000001` reads `'0.1'`. A whole number within 64 bits comes back as
+its digits however it was written, `30.0` as `'30'`. A double that is whole within that range, as
+`6.0000000000000001`'s is, comes back as its digits on the emulator, reading `'6'`; how Azure returns
+one was not measured, and the adapter allows for either spelling. An object, an array, a JSON `null`
+and a missing property all come back as SQL `NULL`.
 
 That has a consequence worth knowing for comparisons. In SQL, `JSON_VALUE(c."DOC", '$.code') = '30'`
 is true of a document storing the *string* `"30"` **and** of one storing the *number* `30`, because
@@ -146,14 +170,15 @@ compares and returns the stored value directly. `DECIMAL` is the exception, belo
 
 Know what it does and does not do. **`RETURNING` asserts the type; it does not convert.** In Calcite,
 `RETURNING INTEGER` over a stored `30` gives 30, but over `"30"`, `30.7` or `true` it fails rather
-than converting. The type it checks for is the one the JSON reader builds, which is narrower than it
-looks:
+than converting. The type it checks for is the one the JSON reader builds from what the service
+returns, which is narrower than it looks. The service returns a whole number within 64 bits as its
+digits however it was written, so a stored `30.0` reaches Calcite as `30`:
 
 | `RETURNING` | answers for a stored | fails for |
 | --- | --- | --- |
-| `INTEGER` | whole number in an `INTEGER`'s range | anything else — a string, a fraction, a larger number |
-| `BIGINT` | whole number *beyond* that range | anything else — including `30` |
-| `DOUBLE`, `FLOAT` | number written with a point or an exponent, `30.0` | anything else — including `30` |
+| `INTEGER` | whole number in an `INTEGER`'s range, `30` or `30.0` | anything else — a string, a fraction, a larger number |
+| `BIGINT` | whole number *beyond* that range, within 64 bits | anything else — including `30` |
+| `DOUBLE`, `FLOAT` | fraction, `30.5`, or whole number past 64 bits, which Azure returns with an exponent | anything else — including `30` and `30.0`, and on the emulator a whole number below 10^20, which it returns as its digits |
 | `SMALLINT`, `TINYINT`, `REAL` | nothing | every value |
 | `BOOLEAN` | `true`, `false` | anything else — including the string `"true"` |
 | `DECIMAL` | any number, **and a string that spells one** — `"30"`, `" 30 "` | a string that does not, a boolean |
@@ -167,6 +192,18 @@ a missing property give `NULL` under every one. So:
   the type's own test — `IS_NUMBER`, `IS_BOOL` — so an object or an array reads null as it does in
   Calcite, and so does a string or a boolean under `RETURNING INTEGER`, which is what SQL says
   (`NULL ON ERROR` is the default) where Calcite fails instead (Chapter 23).
+- A schema does not turn such a failure into an empty answer. `RETURNING INTEGER` over a property
+  declared a string can match no document, but Calcite fails on every one that holds the string, so
+  the adapter does not answer it with no rows on its own. The same holds of `RETURNING DOUBLE` over a
+  property declared a string. Where the property is required, the statement fails as in Calcite; where
+  it may be missing, the statement is sent and answers what the service finds (Chapter 14.2). Over a
+  property declared `"integer"`, `RETURNING DOUBLE` is sent whether it is required or not, and however
+  the schema bounds or lists the integers: Calcite fails on every whole number within 64 bits, which
+  the service returns as its digits, but the adapter reads `RETURNING DOUBLE` as it reads a column
+  typed `DOUBLE`, which reads every number, so `= 1.5` finds nothing, and `= 2` finds the documents
+  holding 2, where Calcite fails (Chapter 23). So is `RETURNING BIGINT` over integers within an
+  `INTEGER`'s range. Over a declared fraction whose double is whole, `6.0000000000000001`, which the
+  service may return as `6`, `RETURNING DOUBLE` is not answered with no rows either.
 - A number the type cannot hold — `30.7` or `3000000000` under `INTEGER` — fails to read with a
   `CosmosMaterializationException` rather than coming back rounded. That is deliberate: a row type
   that bends to the data would be a suggestion, not a type. So does an integer written outside the

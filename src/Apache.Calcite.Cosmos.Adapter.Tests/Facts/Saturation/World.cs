@@ -71,17 +71,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>
         /// Returns the value a parameter holds in this world: a SQL null a fifth of the time, and otherwise a value of its
-        /// type.
+        /// type, as the driver binds one (<c>Calcite.AParameterComparesAsItsComparand</c>): a <c>VARIANT</c> null alone,
+        /// since the driver refuses any other value before the statement runs; an <c>ANY</c> a value of any class a caller
+        /// binds, a string, a boolean, an integer or a fraction, as it is.
         /// </summary>
         public SqlDatum Parameter(SqlValue.Parameter parameter)
         {
             var roll = Hash("?" + parameter.Ordinal + ":" + parameter.Type);
-            if (roll % 5 == 0)
+            if (roll % 5 == 0 || parameter.Type == "VARIANT")
                 return SqlDatum.Null;
 
             var pick = (int)(roll / 5 % 1000);
+            var number = Numbers[pick / 4 % Numbers.Length];
             return parameter.Type switch
             {
+                "ANY" => (pick % 4) switch
+                {
+                    0 => new SqlDatum.Text(Strings[pick / 4 % Strings.Length]),
+                    1 => new SqlDatum.Boolean(pick / 4 % 2 == 0),
+                    _ => number == decimal.Truncate(number) ? new SqlDatum.Exact(number) : new SqlDatum.Double((double)number),
+                },
                 "VARCHAR" or "CHAR" => new SqlDatum.Text(Strings[pick % Strings.Length]),
                 "BOOLEAN" => new SqlDatum.Boolean(pick % 2 == 0),
                 "DOUBLE" or "FLOAT" or "REAL" => new SqlDatum.Double((double)Numbers[pick % Numbers.Length]),

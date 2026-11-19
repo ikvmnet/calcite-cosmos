@@ -49,9 +49,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// it keep, and a conjunct the oracle calls redundant drops no row.</item>
     /// </list>
     /// <para>
+    /// The licences include every conjunct kept, the reduce over every conjunct, an arm of one conjunct under one of the
+    /// questions, and the same arm never read, whose assumptions must lie among the conjuncts beside it.
+    /// </para>
+    /// <para>
+    /// <b>Each document is read as each target returns it.</b> Both return an integer a long holds as its digits however
+    /// it was written, 30.0 as 30, and the emulator a fraction whose double is whole as that double's digits, which Azure
+    /// may return with a point (<see cref="Documents.Returned"/>), so Calcite reads 6.0000000000000001 as 6 or 6.0 and
+    /// never as written: every truth is checked over each form, and every fact, being of what was written, over the
+    /// written one.
+    /// </para>
+    /// <para>
     /// <b>A verdict may stand over a row Calcite raises on.</b> The connectives do not model a raise, and whether an
     /// answer may stand where Calcite fails is the refinement order still to settle; a raise is held to the table that
     /// says whether one happens, by the atom check, which is where it is decided.
+    /// </para>
+    /// <para>
+    /// <b>Except where a statement is made FALSE.</b> That answer stands in for Calcite's on every row, so it is held to
+    /// more than a contradiction admitting nothing: where the reduce's node is contradictory, no conjunct raises on any
+    /// document drawn, none fails to compile, and no document makes every conjunct true; where the never-read arm's node
+    /// is, no conjunct raises or fails to compile, and no document that makes true everything the arm assumes makes its
+    /// question true.
     /// </para>
     /// </remarks>
     sealed class PopulationD
@@ -65,6 +83,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// their own: what the characters a string is said to hold are checked on (<see cref="Declaration"/>).
         /// </summary>
         public const int BandedPerTrial = 16;
+
+        /// <summary>
+        /// How many more it draws holding a number no double holds exactly where the declaration lets one stand, from a
+        /// stream of their own: what a reading comparing doubles keeps is checked on (<see cref="Declaration.Near"/>).
+        /// </summary>
+        public const int NearPerTrial = 8;
+
+        /// <summary>Every document a trial draws.</summary>
+        public const int Drawn = DocumentsPerTrial + BandedPerTrial + NearPerTrial;
 
         readonly Func<JsonFactTheory, CosmosOracle> _oracle;
 
@@ -92,10 +119,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         internal static (Random Random, Random Bands, World World, Declaration Declaration, J.Obj[] Documents) Trial(int seed)
         {
-            var (random, bands) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)));
+            var (random, bands, near) = (new Random(seed), new Random(unchecked(seed * 7919 + 17)), new Random(unchecked(seed * 6151 + 29)));
             var declaration = Declaration.Random(random, bands, DeclaresNothingConditional(seed));
             return (random, bands, new World(seed), declaration, [.. Enumerable.Range(0, DocumentsPerTrial).Select(_ => declaration.Generate(random))
-                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))]);
+                .Concat(Enumerable.Range(0, BandedPerTrial).Select(_ => declaration.GenerateBanded(bands)))
+                .Concat(Enumerable.Range(0, NearPerTrial).Select(_ => declaration.GenerateNear(near)))]);
         }
 
         /// <summary>
@@ -114,6 +142,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             foreach (var document in documents)
                 if (declaration.Admits(document) == false)
                     report.Fail("generator", $"drew {Documents.Json(document)}, which the declaration does not admit");
+
+            // Each document as each target returns it, which is what Calcite reads: the documents truths are read over.
+            var written = new Dictionary<J.Obj, J.Obj>(ReferenceEqualityComparer.Instance);
+            var drawn = documents;
+            documents = [.. drawn.SelectMany(d => Documents.Returned(d).Cast<J.Obj>())];
+            foreach (var d in drawn)
+                foreach (var returned in Documents.Returned(d).Cast<J.Obj>().Where(r => ReferenceEquals(r, d) == false))
+                    written[returned] = d;
 
             var statement = new PredicateStatement(conjuncts);
             var oracle = _oracle(new JsonFactTheory(declaration.Rules));
@@ -145,7 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             // The questions: every term of every conjunct, and two predicates the statement does not hold.
             var questions = conjuncts.SelectMany(c => c.Subterms).Concat(Enumerable.Range(0, 2).Select(_ => Statements.Predicate(random, declaration, 0, new List<SqlPredicate>())))
                 .GroupBy(p => p.ToString(), StringComparer.Ordinal).Select(g => g.First()).ToArray();
-            var check = new Check(report, world, documents, questions, computed);
+            var check = new Check(report, world, documents, questions, computed, written);
 
             // The licence table, read from the strata the oracle admitted in, and never from what it says it assumed.
             var stratum = Enumerable.Range(0, conjuncts.Count).Select(scope.StratumOf).ToArray();
@@ -165,15 +201,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 licences.Add(($"rewriting inside conjunct {i}", OracleLicence.Siblings(i), others));
             }
 
-            // Every conjunct, for a strengthening; and an arm of a CASE inside one, read under a condition the trial
-            // draws, which holds of the documents its siblings keep and the condition does.
-            licences.Add(("every conjunct", OracleLicence.Kept, Enumerable.Range(0, conjuncts.Count).ToArray()));
+            // Every conjunct, for a strengthening, and the WHERE assumed where it raises nowhere, for the reduce; and an arm
+            // of a CASE inside one, read under a condition the trial draws, which holds of the documents its siblings keep
+            // and the condition does, and the same arm's question gated on the WHERE, for the arm never read.
+            var every = Enumerable.Range(0, conjuncts.Count).ToArray();
+            licences.Add(("every conjunct", OracleLicence.Kept, every));
+            licences.Add(("the reduce", OracleLicence.Reduce, every));
 
             var arm = random.Next(conjuncts.Count);
             var condition = questions[random.Next(questions.Length)];
             var siblings = Enumerable.Range(0, conjuncts.Count).Where(j => j != arm).ToArray();
-            check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }),
-                Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray(), siblings);
+            var underArm = Keeping(siblings).Where(d => IrEval.Truth(condition, d, world) == Truths.True).ToArray();
+            check.Scope($"an arm in conjunct {arm} under {condition}", scope, OracleLicence.Arm(arm, new[] { condition }), underArm, siblings);
+
+            var neverRead = OracleLicence.NeverRead(arm, new[] { condition });
+            if (scope.AssumedIn(neverRead).Except(siblings).Any())
+                report.Fail("licence", $"the arm never read in conjunct {arm} assumes conjuncts {string.Join(", ", scope.AssumedIn(neverRead))}, beyond its siblings");
+
+            check.Scope($"the arm never read in conjunct {arm} under {condition}", scope, neverRead, underArm, siblings);
+
+            // What a request left out and an arm's FALSE stand in for: Calcite keeps no row there and fails on none, so
+            // on every document drawn nothing in the WHERE raises or fails to compile, the WHERE is not TRUE, and the arm's
+            // condition is not TRUE where what its question assumes is.
+            void FailsOnNone(string name)
+            {
+                foreach (var c in every.Where(c => IrEval.FailsToCompile(conjuncts[c])))
+                    report.Fail("reduce", $"{name} is contradictory, and conjunct {c} fails to compile");
+
+                foreach (var document in documents)
+                    foreach (var c in every.Where(c => IrEval.Raises(conjuncts[c], document, world)))
+                    {
+                        report.Fail("reduce", $"{name} is contradictory, and conjunct {c} raises on {Documents.Json(document)}");
+                        break;
+                    }
+            }
+
+            report.Kept = scope.IsContradictory(OracleLicence.Kept);
+            report.Reduced = scope.IsContradictory(OracleLicence.Reduce);
+            report.NeverRead = scope.IsContradictory(neverRead);
+            if (report.Reduced)
+            {
+                FailsOnNone("the reduce");
+                for (var d = 0; d < documents.Length; d++)
+                    if (every.All(c => truths[c][d] == Truths.True))
+                    {
+                        report.Fail("reduce", $"the reduce is contradictory, and every conjunct is TRUE of {Documents.Json(documents[d])}");
+                        break;
+                    }
+            }
+
+            if (report.NeverRead)
+            {
+                FailsOnNone($"the arm never read in conjunct {arm} under {condition}");
+                var assumed = scope.AssumedIn(neverRead);
+                for (var d = 0; d < documents.Length; d++)
+                    if (assumed.All(c => truths[c][d] == Truths.True) && IrEval.Truth(condition, documents[d], world) == Truths.True)
+                    {
+                        report.Fail("reduce", $"the arm never read in conjunct {arm} is contradictory, and {condition} is TRUE of {Documents.Json(documents[d])}, "
+                            + $"where conjuncts {string.Join(", ", assumed)} are");
+                        break;
+                    }
+            }
 
             // And a weakening beside the statement, read beside what a filter beneath applies, drawn the same way.
             var beneath = questions[random.Next(questions.Length)];
@@ -252,17 +340,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             readonly IReadOnlyList<SqlValue> _computed;
             readonly HashSet<(Scope, string)> _read = new();
             readonly HashSet<Scope> _validated = new();
+            readonly IReadOnlyDictionary<J.Obj, J.Obj> _written;
 
-            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions, IReadOnlyList<SqlValue> computed)
+            public Check(PopulationReport report, World world, IReadOnlyList<J.Obj> documents, IReadOnlyList<SqlPredicate> questions, IReadOnlyList<SqlValue> computed,
+                IReadOnlyDictionary<J.Obj, J.Obj> written)
             {
                 _report = report;
                 _world = world;
                 _documents = documents;
                 _questions = questions;
                 _computed = computed;
+                _written = written;
             }
 
             Truths Truth(SqlPredicate predicate, J.Obj document) => IrEval.Truth(predicate, document, _world);
+
+            /// <summary>The document as written, which a fact is of: itself, or the one the service returned this from.</summary>
+            J.Obj Written(J.Obj document) => _written.GetValueOrDefault(document, document);
 
             /// <summary>
             /// Checks everything a scope says on the documents its licence admits.
@@ -313,9 +407,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             _report.Characters++;
 
                         foreach (var document in keeping)
-                            if (Declaration.Holds(IrEval.At(document, path), claim) == false)
+                            if (Declaration.Holds(IrEval.At(Written(document), path), claim) == false)
                             {
-                                _report.Fail(kind, $"{name} claims {SqlValue.Spell(path)} {claim}, false of {Documents.Json(document)}, which the conjuncts {which} ({string.Join(", ", assumed)}) keep");
+                                _report.Fail(kind, $"{name} claims {SqlValue.Spell(path)} {claim}, false of {Documents.Json(Written(document))}, which the conjuncts {which} ({string.Join(", ", assumed)}) keep");
                                 break;
                             }
                     }
@@ -327,9 +421,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
                         _report.Facts++;
                         foreach (var document in keeping)
-                            if (Declaration.Holds(IrEval.At(document, path), new JsonClaim.NotEqualTo(scalar)) == false)
+                            if (Declaration.Holds(IrEval.At(Written(document), path), new JsonClaim.NotEqualTo(scalar)) == false)
                             {
-                                _report.Fail(kind, $"{name} knows {SqlValue.Spell(path)} is not {value}, false of {Documents.Json(document)}");
+                                _report.Fail(kind, $"{name} knows {SqlValue.Spell(path)} is not {value}, false of {Documents.Json(Written(document))}");
                                 break;
                             }
                     }
@@ -421,9 +515,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                         _report.Characters++;
 
                     foreach (var document in keeping)
-                        if (Documents.IsTrue(document, fact) == false)
+                        if (Documents.IsTrue(Written(document), fact) == false)
                         {
-                            _report.Fail("fact", $"{name} holds {fact}, false of {Documents.Json(document)}");
+                            _report.Fail("fact", $"{name} holds {fact}, false of {Documents.Json(Written(document))}");
                             break;
                         }
                 }
@@ -463,14 +557,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     var possible = (PathValues)row.Output!;
                     _report.Rows++;
                     foreach (var document in keeping)
-                        if (Admits(possible, IrEval.At(document, path)) == false)
+                        if (Admits(possible, IrEval.At(Written(document), path)) == false)
                         {
-                            _report.Fail("possible", $"{name} says {SqlValue.Spell(path)} may hold {possible}, and {Documents.Json(document)} holds {Show(IrEval.At(document, path))}");
+                            _report.Fail("possible", $"{name} says {SqlValue.Spell(path)} may hold {possible}, and {Documents.Json(Written(document))} holds {Show(IrEval.At(Written(document), path))}");
                             break;
                         }
                 }
 
-                // What an atom means is a property of the term, so it holds of every declared document.
+                // What an atom means is a property of the term, so it holds of every declared document, the truth read
+                // over it as each target returns it, and the atom read over the value written.
                 foreach (var row in context.Rows(rules.Atom))
                 {
                     if (graph.Predicate((ClassId)row.Keys[0]) is not SqlPredicate term || graph.DocumentPath((ClassId)row.Keys[1]) is not JsonDocumentPath path)
@@ -480,7 +575,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     _report.Atoms++;
                     foreach (var document in _documents)
                     {
-                        var value = IrEval.At(document, path);
+                        var value = IrEval.At(Written(document), path);
                         var truth = Truth(term, document);
                         var over = atom.On(State(value), FactsReadings.Rows);
                         if ((over & truth) == 0)
@@ -489,9 +584,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                             break;
                         }
 
-                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows), value) == false)
+                        if (truth is Truths.True or Truths.False && Admits(atom.Kept(truth == Truths.True, FactsReadings.Rows, FactsReadings.Columns), value) == false)
                         {
-                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True, FactsReadings.Rows)}");
+                            _report.Fail("atom", $"{term} is {truth} of {Show(value)} at {SqlValue.Spell(path)}, which its atom {atom} keeps out of {atom.Kept(truth == Truths.True, FactsReadings.Rows, FactsReadings.Columns)}");
                             break;
                         }
                     }

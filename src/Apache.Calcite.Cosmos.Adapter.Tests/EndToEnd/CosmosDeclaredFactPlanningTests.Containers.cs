@@ -74,7 +74,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A filter Calcite reads as never true, a null test of a predicate that is never null, keeps nothing over a
-        /// container that declares nothing too, and reads it not at all: it is reduced as the oracle's contradiction is.
+        /// container that declares nothing too, and reads it not at all: it is pushed, and sends nothing, as the oracle's
+        /// contradiction does.
         /// </summary>
         [Theory]
         [InlineData("(c.\"$.category\" IS NULL) IS NULL")]
@@ -90,7 +91,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// And the other way round: a filter over the declared container plans by its declaration beside one that declares
-        /// nothing, the empty relation where the declaration admits no such document.
+        /// nothing, pushed and sending nothing where the declaration admits no such document.
         /// </summary>
         [Fact]
         public void ADeclaredContainersFilterIsReadByItsDeclarationBesideAnother()

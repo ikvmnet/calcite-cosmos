@@ -7,8 +7,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
     /// <summary>
     /// The key of a raw column's answer (h12): a raw reading, the union's or one column's (rawtyped), the class of value a
-    /// cell holds, the test, and the class of the literal beside it (<see cref="CosmosValueClass.None"/> for the null test).
-    /// Which columns answer a key, and how, are S's rules over the columns' rows (G5).
+    /// cell holds, the test, and the class of the literal beside it (<see cref="CosmosValueClass.None"/> for the null test,
+    /// and for a comparison with a parameter, which reads its column's answer beside every class). Which columns answer a
+    /// key, and how, are the readings vocabulary's rules over the columns' rows, in both graphs (G5).
     /// </summary>
     internal readonly record struct RawKey(string Reader, CosmosValueClass Kind, CosmosServiceTest Test, CosmosValueClass Operand) : IComparable<RawKey>
     {
@@ -18,6 +19,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>The key as the reading through one column asks it: its own column's truths, no other's (rawtyped).</summary>
         public RawKey In(string column) => this with { Reader = PredicateAtom.InColumn(Reader, column) };
+
+        /// <summary>The key the comparison asks beside a parameter: no literal's class, so it holds what every class's key holds, joined.</summary>
+        public RawKey Parameter => this with { Operand = CosmosValueClass.None };
 
         /// <summary>
         /// The key a raw reading's test reads on a cell beside a literal, the cell's class as every reader of the rows spells

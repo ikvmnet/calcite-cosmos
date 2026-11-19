@@ -22,8 +22,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public static readonly string[] Keys = { "a", "b", "c", "dd" };
 
         /// <summary>
-        /// Numbers a document holds. <c>30</c> and <c>30.0</c> are one value to the theory and two renderings to the text
-        /// accessor, which is the collision a predicate over the rendering has to keep apart.
+        /// Numbers a document holds. <c>30</c> and <c>30.0</c> are one value to the theory and two spellings as written,
+        /// which both targets return as <c>30</c> (<see cref="Returned"/>), so a reading of the rendering must answer for
+        /// both as for one.
         /// </summary>
         static readonly decimal[] NumbersSeen = { -1m, 0m, 1m, 2m, 2.5m, 10m, 499.5m, 500m, 30m, 30.0m };
 
@@ -211,6 +212,87 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             J.Arr a => "[" + string.Join(",", a.Elements.Select(Json)) + "]",
             _ => throw new NotSupportedException(value.GetType().Name),
         };
+
+        /// <summary>
+        /// What Calcite reads a value as through the service, the forms each target returns it in
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>): the emulator's (<see cref="Served"/>) and Azure's
+        /// (<see cref="OnAzure"/>), one where they agree; absence as itself.
+        /// </summary>
+        public static IEnumerable<J?> Returned(J? value)
+        {
+            if (value is null)
+                return [null];
+
+            return new[] { OnAzure(value), Served(value) }.DistinctBy(Json);
+        }
+
+        /// <summary>
+        /// A document as Azure returns it (<c>Service.IntegralNumbersReadBackAsHeld</c>): an integer an int64 holds as its
+        /// digits however it was written, 30.0 and 9007199254740993.0 as 30 and 9007199254740993; a fraction whose double is
+        /// whole within a long with a point, as a double may be returned, which was not measured (the emulator returns its
+        /// digits); any other number as <see cref="Served"/> does.
+        /// </summary>
+        public static J OnAzure(J value)
+        {
+            switch (value)
+            {
+                case J.Num n when n.Value == decimal.Truncate(n.Value) && n.Value >= long.MinValue && n.Value <= long.MaxValue:
+                    return n.Value.Scale == 0 ? value : new J.Num(decimal.Truncate(n.Value));
+                case J.Num n when DoubleBound.Of(n.Value) is var d && Math.Floor(d) == d && d >= long.MinValue && d < Renderings.LongCeiling:
+                    return new J.Num((long)d + 0.0m);
+                case J.Num:
+                    return Served(value);
+                case J.Obj o:
+                {
+                    var returned = o.Properties.ToDictionary(kv => kv.Key, kv => OnAzure(kv.Value), StringComparer.Ordinal);
+                    return returned.All(kv => ReferenceEquals(kv.Value, o.Properties[kv.Key])) ? value : new J.Obj(new SortedDictionary<string, J>(returned, StringComparer.Ordinal));
+                }
+                case J.Arr a:
+                {
+                    var returned = a.Elements.Select(OnAzure).ToList();
+                    return returned.Select((e, i) => ReferenceEquals(e, a.Elements[i])).All(same => same) ? value : new J.Arr(returned);
+                }
+                default:
+                    return value;
+            }
+        }
+
+        /// <summary>
+        /// A document as the emulator returns it (<c>Service.IntegralNumbersReadBackAsHeld</c>): a number written as an
+        /// integer within a long as itself, and any other as its double, a whole one within a long as its digits and the
+        /// rest as their shortest digits, 6.0000000000000001 and 30.0 as 6 and 30, 9007199254740993.0 as 9007199254740992,
+        /// 0.10000000000000001 as 0.1; the double rounded correctly, as the service rounds it, and not by .NET's cast. The
+        /// same reference where nothing changes, so a caller can tell the two apart cheaply.
+        /// </summary>
+        public static J Served(J value)
+        {
+            switch (value)
+            {
+                case J.Num n when n.Value == decimal.Truncate(n.Value) && n.Value.Scale == 0 && n.Value >= long.MinValue && n.Value <= long.MaxValue:
+                    return value;
+                case J.Num n:
+                {
+                    var d = DoubleBound.Of(n.Value);
+                    if (Math.Floor(d) == d && d >= long.MinValue && d < Renderings.LongCeiling)
+                        return new J.Num((long)d);
+                    return Renderings.TryExactNumber(d.ToString("R", CultureInfo.InvariantCulture), out var shortest) && shortest != decimal.Truncate(shortest)
+                        ? shortest == n.Value && shortest.Scale == n.Value.Scale ? value : new J.Num(shortest)
+                        : new J.Huge(d);
+                }
+                case J.Obj o:
+                {
+                    var served = o.Properties.ToDictionary(kv => kv.Key, kv => Served(kv.Value), StringComparer.Ordinal);
+                    return served.All(kv => ReferenceEquals(kv.Value, o.Properties[kv.Key])) ? value : new J.Obj(new SortedDictionary<string, J>(served, StringComparer.Ordinal));
+                }
+                case J.Arr a:
+                {
+                    var served = a.Elements.Select(Served).ToList();
+                    return served.Select((e, i) => ReferenceEquals(e, a.Elements[i])).All(same => same) ? value : new J.Arr(served);
+                }
+                default:
+                    return value;
+            }
+        }
 
         /// <summary>Whether a conditional rule is true of a document: its body false of it, or its head true.</summary>
         public static bool IsTrue(J document, JsonGuardedRule rule) =>

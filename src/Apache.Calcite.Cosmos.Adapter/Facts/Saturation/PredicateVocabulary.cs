@@ -32,6 +32,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             graph.DefineSort<Args>("Args");
             graph.Values.Register<PredicateAtom>("predicate atom");
             graph.Values.Register<PathValues>("path values");
+            graph.Values.Register<(ReadingTable, RawTruths)>("readings and raw truths");
 
             // Nothing here is ever extracted for execution: the host reads values back, never a term.
             var term = new TableOptions { Extractable = false };

@@ -22,7 +22,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <para>
     /// <b>A number renders as Java spells it</b>, which parses back to the number: <c>30</c>, <c>30.0</c>,
     /// <c>1.0E30</c>, and from a <c>BigDecimal</c> <c>1E+30</c>. So only text in that grammar can be a number's
-    /// rendering, and only the number with the text's value can render as it — in some spellings and not others.
+    /// rendering — in some spellings and not others.
+    /// </para>
+    /// <para>
+    /// <b>And as the service holds it</b>: an int64 as itself, any other number as its double
+    /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>), returned as its digits where it is whole within a long, as every
+    /// integer a long holds is however it was written (<c>Service.IntegralNumbersReadBackAsHeld</c>): 30.0 renders as
+    /// <c>30</c>, 0.10000000000000001 as <c>0.1</c>, and 6.0000000000000001 as <c>6</c> on the emulator, Azure's spelling
+    /// of that one unmeasured. So a number may render as every text whose double its double is, and as no other.
     /// </para>
     /// <para>
     /// <b>A domain names the number only where a decimal holds the text exactly</b>, at most 28 significant digits. Text
@@ -109,35 +116,35 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public static string BooleanText(string value) => value == Of(true) ? "true" : "false";
 
         /// <summary>
-        /// Determines whether a stored number may render as the text: whether the text is a number's rendering with the
-        /// value of this one.
+        /// Determines whether a stored number may render as the text: whether the text is a number's rendering whose double
+        /// is this one's, which an equal value's is.
         /// </summary>
-        public static bool MayRenderAs(string value, string text)
-        {
-            if (MayBeNumberText(text) == false)
-                return false;
-
-            if (TryNumberOf(value, out var exact) && TryExactNumber(text, out var number))
-                return exact == number;
-
-            var stored = TryNumberOf(value, out exact) ? (double)exact : ApproximateOf(value);
-            return stored is double d && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && d == parsed;
-        }
+        public static bool MayRenderAs(string value, string text) =>
+            MayBeNumberText(text) && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) && DoubleBound.Of(value) == parsed;
 
         /// <summary>
-        /// Determines whether some number of the kind within the bounds may render as the text.
+        /// Determines whether some number of the kind within the bounds may render as the text: one whose double is the
+        /// text's.
         /// </summary>
-        public static bool MayRenderWithin(string text, bool integral, Bound? lower, Bound? upper)
+        public static bool MayRenderWithin(string text, bool integral, Bound? lower, Bound? upper) =>
+            MayBeNumberText(text) && (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) == false || MayHoldDouble(d, integral, lower, upper));
+
+        /// <summary>
+        /// Determines whether some number of the kind within the bounds has the double: its rounding interval
+        /// (<see cref="DoubleBound.Rounding"/>) meets the bounds, at an integer where the kind is integral.
+        /// </summary>
+        public static bool MayHoldDouble(double d, bool integral, Bound? lower, Bound? upper)
         {
-            if (MayBeNumberText(text) == false)
+            if (double.IsNaN(d))
                 return false;
 
-            if (TryExactNumber(text, out var x) == false)
+            var (low, high) = DoubleBound.Rounding(d);
+            var l = low is decimal a ? lower is Bound x ? Bound.StricterLower(x, Bound.AtLeast(a)) : Bound.AtLeast(a) : lower;
+            var u = high is decimal b ? upper is Bound y ? Bound.StricterUpper(y, Bound.AtMost(b)) : Bound.AtMost(b) : upper;
+            if (l is not Bound least || u is not Bound most)
                 return true;
 
-            return (integral == false || x == decimal.Truncate(x))
-                && (lower is not Bound l || l.AdmitsAbove(x))
-                && (upper is not Bound u || u.AdmitsBelow(x));
+            return (integral ? Bound.NoIntegerBetween(least, most) : Bound.NoNumberBetween(least, most)) == false;
         }
 
         /// <summary>
@@ -164,25 +171,79 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>Determines whether two scalars may be one value: numbers by their value, anything else by its spelling.</summary>
         public static bool SameValue(string a, string b) => IsNumber(a) && IsNumber(b) ? SameNumber(a, b) : a == b;
 
-        /// <summary>Determines whether two numbers may be one value.</summary>
-        public static bool SameNumber(string a, string b)
-        {
-            if (TryNumberOf(a, out var x) && TryNumberOf(b, out var y))
-                return x == y;
+        /// <summary>
+        /// Determines whether two numbers may be one value as the service holds them: of one double, which two equal
+        /// values are (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
+        /// </summary>
+        public static bool SameNumber(string a, string b) => DoubleBound.Of(a) == DoubleBound.Of(b);
 
-            return DoubleOf(a) == DoubleOf(b);
+        /// <summary>Determines whether a number of the kind within bounds may be the value as the service holds it: of its double.</summary>
+        public static bool NumberWithin(string value, bool integral, Bound? lower, Bound? upper) => MayHoldDouble(DoubleBound.Of(value), integral, lower, upper);
+
+        /// <summary>
+        /// The number as Azure returns it, where a decimal holds that: an integer within a long as itself, and any other
+        /// number as its double's shortest digits (<c>Service.NumbersBeyondLongCompareAsDoubles</c> holds it so,
+        /// <c>Service.IntegralNumbersReadBackAsHeld</c> returns it so), 0.10000000000000001 as 0.1; <c>null</c> where no
+        /// decimal holds them. The emulator holds an integer written with a point as its double (<see cref="PointedSide"/>).
+        /// </summary>
+        public static decimal? AsServed(string value)
+        {
+            if (TryNumberOf(value, out var x) && TypeOf(value) == IntegerType && x >= long.MinValue && x <= long.MaxValue)
+                return x;
+
+            var d = DoubleBound.Of(value);
+            return double.IsFinite(d) && TryExactNumber(d.ToString("R", CultureInfo.InvariantCulture), out var shortest) ? shortest : null;
         }
 
-        /// <summary>Determines whether a number may lie within bounds and be of the kind.</summary>
-        public static bool NumberWithin(string value, bool integral, Bound? lower, Bound? upper)
-        {
-            if (TryNumberOf(value, out var x) == false)
-                return true;
+        /// <summary>2^63, the least double past a long.</summary>
+        public const double LongCeiling = 9.2233720368547758E18;
 
-            return (integral == false || x == decimal.Truncate(x))
-                && (lower is not Bound l || l.AdmitsAbove(x))
-                && (upper is not Bound u || u.AdmitsBelow(x));
-        }
+        /// <summary>1e20, from which a whole double was measured coming back with an exponent (<c>Service.IntegralNumbersReadBackAsHeld</c>).</summary>
+        public const double DigitsBelow = 1e20;
+
+        /// <summary>
+        /// Whether both targets return the number as digits (<c>Service.IntegralNumbersReadBackAsHeld</c>): an integer a long
+        /// holds, however written, since Azure holds one written with a point as an int64 and the emulator as its double, whose
+        /// digits it returns, so one whose double is below 2^63 too; 30.0 and 3e1 come back <c>30</c>.
+        /// </summary>
+        public static bool ServedAsDigits(string value) =>
+            TypeOf(value) == IntegerType && TryNumberOf(value, out var x) && x >= long.MinValue && x <= long.MaxValue && DoubleBound.Of(x) is var d && d >= -LongCeiling && d < LongCeiling;
+
+        /// <summary>
+        /// Whether the service may return a number as digits: an integer, and a fraction whose double is whole below 1e20, which
+        /// the emulator returns as that double's digits, as it does a whole number it holds as a double, and Azure was not
+        /// measured returning.
+        /// </summary>
+        public static bool MayServeAsDigits(string value) =>
+            TypeOf(value) == IntegerType || TypeOf(value) == FractionType && DoubleBound.Of(value) is var d && Math.Floor(d) == d && Math.Abs(d) < DigitsBelow;
+
+        /// <summary>
+        /// The side of a literal an integer lies on as the emulator may return it, which holds one written with a point as its
+        /// double from 2^53 on (<c>Service.IntegralNumbersReadBackAsHeld</c>, 9007199254740993.0 as 9007199254740992): the
+        /// double's side of the literal's, <c>null</c> where the two are one double, since digits whose double that is lie on
+        /// either side; none for a number no double moves.
+        /// </summary>
+        public static int?[] PointedSide(string value, decimal c) =>
+            TypeOf(value) == IntegerType && TryNumberOf(value, out var x) && Math.Abs(x) >= DoubleUnitFrom
+                ? [DoubleBound.Of(x).CompareTo(DoubleBound.Of(c)) is var side && side != 0 ? Math.Sign(side) : null] : [];
+
+        /// <summary>
+        /// Whether a decimal is its double's shortest digits, as every bound or literal written short enough is: then a number
+        /// above it is above it as the service returns it too, since its double's shortest digits lie above the midpoint below
+        /// that double.
+        /// </summary>
+        public static bool IsShortestDouble(decimal x) =>
+            TryExactNumber(DoubleBound.Of(x).ToString("R", CultureInfo.InvariantCulture), out var shortest) && shortest == x;
+
+        /// <summary>
+        /// The least a number at or above a bound may be as written or as the service returns it: the bound, where it is its
+        /// double's shortest digits (<see cref="IsShortestDouble"/>), and the least of that double's rounding interval
+        /// otherwise; <c>null</c> where no decimal holds that.
+        /// </summary>
+        public static decimal? ServedFloor(decimal x) => IsShortestDouble(x) ? x : DoubleBound.Rounding(DoubleBound.Of(x)).Low;
+
+        /// <summary>The most a number at or below a bound may be as written or as the service returns it (<see cref="ServedFloor"/>).</summary>
+        public static decimal? ServedCeiling(decimal x) => IsShortestDouble(x) ? x : DoubleBound.Rounding(DoubleBound.Of(x)).High;
 
         /// <summary>A number's value as a double, exact or approximate.</summary>
         public static double DoubleOf(string value) =>

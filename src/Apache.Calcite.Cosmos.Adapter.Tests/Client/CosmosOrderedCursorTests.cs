@@ -91,6 +91,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// The program's statements share their statement's flag: one whose <c>WHERE</c> keeps nothing and fails on nothing
+        /// reads no page, no fallback and no extreme, and answers no row.
+        /// </summary>
+        [Fact]
+        public async Task AProgramWhoseStatementSendsNothingReadsNothing()
+        {
+            var executor = new StubExecutor(_ => [Row("a"), Row("b")]);
+
+            (await Read(executor, new CosmosQuery(Statement + " OFFSET 0 LIMIT 1", [], Order: Sort(fetch: 1), SendsNothing: true))).Should().BeEmpty();
+            executor.Executed.Should().BeEmpty();
+        }
+
+        /// <summary>
         /// Listens to the adapter's activities for the length of a test, keeping the reader's that belong to it.
         /// </summary>
         sealed class Recording : IDisposable

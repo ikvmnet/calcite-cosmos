@@ -108,6 +108,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         string Rewrite(RexNode condition, string? schema) =>
             CosmosFactRewriter.Rewrite(condition, _fields, Container(schema), "c", _rex).ToString();
 
+        /// <summary>The condition as the oracle reads it over a container declaring the schema.</summary>
+        CosmosFilterStatement Statement(RexNode condition, string schema) =>
+            CosmosFilterStatement.Of(condition, _fields, null, Container(schema), _rex, "c");
+
         const string Millis = """
         { "properties": { "ref": { "type": "string",
                                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" } } }
@@ -695,18 +699,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// The lattice still excludes what it should: a fraction on a path declared an integer, and a
-        /// number on a path declared a string, keep nothing.
+        /// number on a path declared a string, keep nothing. But <c>RETURNING DOUBLE</c> fails on an
+        /// integer written so, <c>30</c>, and on a string, each of which the declaration admits, so the
+        /// filter is not written <c>FALSE</c>. What follows is the planner's: over a property that may be
+        /// missing, as here, or is declared an integer, it is sent and the service finds nothing
+        /// (<c>CosmosDeclaredFactPlanningTests.AReturningDoubleOverARequiredIntegerIsSent</c>,
+        /// <c>AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>); over a required string it
+        /// stays in Calcite, which fails.
         /// </summary>
         [Theory]
         [InlineData("""{ "properties": { "body": { "type": "integer" } } }""", "1.5")]
         [InlineData("""{ "properties": { "body": { "type": "string" } } }""", "2")]
-        public void AValueOutsideTheDeclaredTypeIsAContradiction(string schema, string value)
+        public void AValueOutsideTheDeclaredTypeKeepsNothingYetIsNotReduced(string schema, string value)
         {
             var equality = _rex.makeCall(SqlStdOperatorTable.EQUALS,
                 Number(),
                 _rex.makeExactLiteral(new java.math.BigDecimal(value)));
 
-            Rewrite(equality, schema).Should().Be("false", "no document holds the value and satisfies the declaration");
+            Statement(equality, schema).Kept.IsContradictory.Should().BeTrue("no document holds the value and satisfies the declaration");
+            Rewrite(equality, schema).Should().Be(equality.ToString(), "RETURNING DOUBLE fails on 30 and on a string, which the declaration admits");
         }
 
         /// <summary>
@@ -722,8 +733,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </para>
         /// <para>
         /// What it establishes is what a cast to a number does: the path is there, and a number there is within one of
-        /// the literal. Neither is a contradiction with a string. The control is <c>RETURNING DOUBLE</c>, which asserts,
-        /// and over a declared string keeps nothing Calcite would answer for.
+        /// the literal. Neither is a contradiction with a string. Beside it, <c>RETURNING DOUBLE</c> asserts, and over a
+        /// declared string keeps no row; but it fails on every string, so it is not written <c>FALSE</c> either. Over a
+        /// <c>body</c> that may be missing, as here, the planner sends it and the service finds nothing; over a required
+        /// one it stays in Calcite, which fails
+        /// (<c>CosmosDeclaredFactPlanningTests.AnAssertingReturningOverADeclaredStringFailsAsCalciteDoes</c>).
         /// </para>
         /// </remarks>
         [Fact]
@@ -742,8 +756,137 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 Rewrite(parsed, Strings).Should().Be(parsed.ToString(), "a stored \"2\" is 2 to it, and nothing is rewritten");
             }
 
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2))), Strings)
-                .Should().Be("false", "an asserted type is a claim, and the declaration contradicts it");
+            var asserted = _rex.makeCall(SqlStdOperatorTable.EQUALS, Accessor(SqlTypeName.DOUBLE), _rex.makeExactLiteral(new java.math.BigDecimal(2)));
+            Statement(asserted, Strings).Kept.IsContradictory.Should().BeTrue("an asserted type is a claim, and the declaration contradicts it");
+            Rewrite(asserted, Strings).Should().Be(asserted.ToString(), "but RETURNING DOUBLE fails on the string body may hold, so it is not reduced");
+        }
+
+        /// <summary>Kinds each document declares, and a string <c>body</c>; <c>ref</c>, the partition key, is declared nothing.</summary>
+        const string Kinds = """{ "required": ["kind", "body"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" } } }""";
+
+        RexNode Eq(RexNode left, RexNode right) => _rex.makeCall(SqlStdOperatorTable.EQUALS, left, right);
+
+        /// <summary>
+        /// An arm whose condition contradicts what the conjunct's siblings prove is never read, and is written
+        /// <c>FALSE</c> where nothing in the WHERE raises on a document the declaration admits: <c>kind</c> and
+        /// <c>body</c> read as stored strings raise nowhere. Beside <c>ref = 'x'</c>, a raw value in a <c>VARCHAR</c> over a
+        /// path that may hold a number, the WHERE may raise, and the <c>FALSE</c> would stop Calcite reading it; so the arm
+        /// is lowered as any other, and taken apart, since it raises nowhere itself.
+        /// </summary>
+        [Fact]
+        public void AnArmNeverReadIsWrittenFalseOnlyWhereTheWhereRaisesNowhere()
+        {
+            var either = _rex.makeCall(SqlStdOperatorTable.OR,
+                Case(KindIs("B"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()),
+                Eq(Ref(2, SqlTypeName.VARCHAR), Str("y")));
+
+            Rewrite(And(KindIs("A"), either), Kinds).Should().Be("AND(=($1, 'A'), =($2, 'y'))",
+                "kind cannot be both A and B, and nothing in the WHERE raises, so the arm is FALSE");
+
+            var keyed = And(KindIs("A"), either, Eq(Ref(0, SqlTypeName.VARCHAR), Str("x")));
+            Statement(keyed, Kinds).IsContradictory.Should().BeFalse();
+            Rewrite(keyed, Kinds).Should().Be("AND(=($1, 'A'), OR(AND(=($1, 'B'), =($2, 'z')), =($2, 'y')), =($0, 'x'))",
+                "ref may hold a number, which its VARCHAR field raises on, so the arm is taken apart as any other");
+        }
+
+        /// <summary>
+        /// A projected <c>CASE</c> whose condition contradicts the declaration has that condition folded to <c>FALSE</c>
+        /// where nothing in it raises on a document the declaration admits (<see cref="CosmosFactRewriter.RewriteConditions"/>
+        /// asks as the WHERE's reduce does): the cast of the text to <c>DOUBLE</c> over an integer of at most 100 is never
+        /// more than 500. Through <c>INTEGER</c> the condition keeps no row either, but with no minimum the declaration
+        /// admits integers below an <c>INTEGER</c>, which the cast raises on, so it stays and Calcite fails as it would; with
+        /// a minimum of 0 it raises on none, the service returning a whole number as its digits however it was written
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>), and is folded.
+        /// </summary>
+        [Fact]
+        public void AProjectedConditionTheDeclarationContradictsIsFalseOnlyWhereNothingInItRaises()
+        {
+            const string Bounded = """{ "properties": { "body": { "type": "integer", "maximum": 100 } } }""";
+            const string Within = """{ "properties": { "body": { "type": "integer", "minimum": 0, "maximum": 100 } } }""";
+
+            RexNode Sized(SqlTypeName type) => Case(
+                _rex.makeCall(SqlStdOperatorTable.GREATER_THAN,
+                    _rex.makeCast(_types.createTypeWithNullability(_types.createSqlType(type), true), _rex.makeCall(
+                        _types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARCHAR), true),
+                        SqlStdOperatorTable.JSON_VALUE,
+                        new java.util.ArrayList { Ref(3, SqlTypeName.VARCHAR), Str("$.body") })),
+                    _rex.makeExactLiteral(new java.math.BigDecimal(500))),
+                Str("big"),
+                Str("small"));
+
+            string Conditions(RexNode expression, string declared = Bounded) =>
+                CosmosFactRewriter.RewriteConditions(expression, _fields, Container(declared), "c", _rex).ToString();
+
+            Conditions(Sized(SqlTypeName.DOUBLE)).Should().Be("CASE(false, 'big', 'small')");
+
+            var integer = Sized(SqlTypeName.INTEGER);
+            Statement((RexNode)((RexCall)integer).getOperands().get(0), Bounded).Kept.IsContradictory.Should().BeTrue("no integer of at most 100 is more than 500");
+            Conditions(integer).Should().Be(integer.ToString(), "the cast to INTEGER raises on an integer below an INTEGER, which no minimum rules out");
+            Conditions(integer, Within).Should().Be("CASE(false, 'big', 'small')", "an integer from 0 to 100 parses, however it was written");
+        }
+
+        /// <summary><c>CAST(body AS INTEGER) = 1</c>, which raises on a declared string that is no number.</summary>
+        RexNode BodyIsOne() => _rex.makeCall(SqlStdOperatorTable.EQUALS,
+            _rex.makeCast(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.INTEGER), true), Ref(2, SqlTypeName.VARCHAR)),
+            _rex.makeExactLiteral(java.math.BigDecimal.ONE));
+
+        RexNode Not(RexNode operand) => _rex.makeCall(SqlStdOperatorTable.NOT, operand);
+
+        /// <summary>
+        /// The never-read arm is asked of the WHERE as written. <c>NOT (… AND kind = 'C')</c> is true wherever it does not
+        /// raise, so it is deleted as redundant, and the arm beside it reads <c>kind = 'C'</c>, which no document holds. Where
+        /// the deleted conjunct casts <c>body</c> to <c>INTEGER</c>, which raises on a string that is no number, the arm is
+        /// not written <c>FALSE</c>, so what is left is not the constant, and is sent; where it compares the text, nothing
+        /// raises, and the arm and the filter are <c>FALSE</c>.
+        /// </summary>
+        [Fact]
+        public void AnArmNeverReadIsGatedOnTheWhereAsWrittenADeletedConjunctAmongIt()
+        {
+            var arm = _rex.makeCall(SqlStdOperatorTable.OR, Eq(Ref(2, SqlTypeName.VARCHAR), Str("y")), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()));
+
+            var raising = And(Not(And(BodyIsOne(), KindIs("C"))), arm);
+            Statement(raising, Kinds).Redundant.Should().Equal(0);
+            Rewrite(raising, Kinds).Should().Be("OR(=($2, 'y'), AND(=($1, 'C'), =($2, 'z')))",
+                "the deleted cast raises, so the arm is taken apart as any other");
+
+            var safe = And(Not(And(Eq(Ref(2, SqlTypeName.VARCHAR), Str("q")), KindIs("C"))), arm);
+            Statement(safe, Kinds).Redundant.Should().Equal(0);
+            Rewrite(safe, Kinds).Should().Be("=($2, 'y')", "nothing in the WHERE raises, so the arm is FALSE");
+        }
+
+        /// <summary>
+        /// A projected condition is folded only where no predicate of its expression raises, since a <c>FALSE</c> in one
+        /// lets the simplifier drop a sibling condition, the condition around it, or a predicate beside it: beside
+        /// <c>CAST(body AS INTEGER) = 1</c>, which raises on a declared string that is no number, <c>kind = 'C'</c> is left
+        /// as it is, and so is the arm inside a condition holding the cast. Alone it folds.
+        /// </summary>
+        [Fact]
+        public void AProjectedConditionIsFoldedOnlyWhereNoPredicateOfItsExpressionRaises()
+        {
+            string Conditions(RexNode expression) => CosmosFactRewriter.RewriteConditions(expression, _fields, Container(Kinds), "c", _rex).ToString();
+            RexNode Many(params RexNode[] operands)
+            {
+                var list = new java.util.ArrayList();
+                foreach (var operand in operands)
+                    list.add(operand);
+
+                return _rex.makeCall(SqlStdOperatorTable.CASE, list);
+            }
+
+            Conditions(Case(KindIs("C"), Str("c"), Str("one"))).Should().Be("CASE(false, 'c', 'one')", "nothing in it raises");
+
+            var sibling = Many(BodyIsOne(), Str("one"), KindIs("C"), Str("c"), Str("one"));
+            Conditions(sibling).Should().Be(sibling.ToString(), "folded, the arm would merge with the ELSE, the cast with it");
+
+            var around = Many(BodyIsOne(), Case(KindIs("C"), Str("c"), Str("one")), Str("one"));
+            Conditions(around).Should().Be(around.ToString(), "folded, the inner CASE would merge into the outer, the cast with it");
+
+            var conjoined = And(BodyIsOne(), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False()));
+            Conditions(conjoined).Should().Be(conjoined.ToString(), "folded, the CASE would be FALSE, and the cast beside it dropped");
+
+            var enclosing = Case(And(Not(And(BodyIsOne(), KindIs("A"))), Case(KindIs("C"), Eq(Ref(2, SqlTypeName.VARCHAR), Str("z")), False())), Str("one"), Str("none"));
+            Conditions(enclosing).Should().Be("CASE(AND(NOT(AND(=(CAST($2):INTEGER, 1), =($1, 'A'))), =($1, 'C'), =($2, 'z')), 'one', 'none')",
+                "the arm inside is taken apart as any other, never FALSE");
         }
 
 

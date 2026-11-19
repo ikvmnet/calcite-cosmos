@@ -41,12 +41,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A text equality's weakening is implied by the conjunct, and not exact over the same import. Since the switch (h15)
         /// it keeps the string and the number the text renders as, as the translator's did (8d57df0), which is no exact
-        /// form, since a stored 30.0 is kept by the number and rendered otherwise by Calcite; the filter it is pushed in
+        /// form, since the number keeps a fraction whose double is 30, which Azure was not measured returning as <c>30</c>,
+        /// and the text reading reads no spelling the service returns of any number; the filter it is pushed in
         /// admits what of it S proves there and weakens the rest again (site W), each weakening a record of its own: the
         /// first implied, and the one given again over the Rex's cast of the text to <c>DOUBLE</c>, which the facts graph
         /// reads coarsely, implied or unproven by the check, which proves no further there, and never refuted. Claimed
-        /// <c>Equal</c>, the weakening is never proven: a stored 30.0 is kept by the number and rendered otherwise, which the
-        /// check refutes no junction of two atoms of one path by (<c>TODO.md</c>), so it leaves the claim unproven.
+        /// <c>Equal</c>, the weakening is never proven: a number whose double is 30 is kept by the number and may render
+        /// otherwise as the reading reads it, which the check refutes no junction of two atoms of one path by
+        /// (<c>TODO.md</c>), so it leaves the claim unproven.
         /// </summary>
         [Fact]
         public void ATextEqualitysWeakeningIsImpliedAndNotExact()
@@ -57,7 +59,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             run.Conjuncts.Where(c => c.Site == 3).Should().OnlyContain(c => Read(c) == "Implied" || Read(c) == "Unproven", "none is refuted");
 
             var form = weakening.Entry!.What!.Form;
-            run.Recheck(weakening.Entry.What, form, [form]).Asserted.Kind.Should().NotBe(RenderingVerdictKind.Proven, "Equal is what a weakening does not claim: the number keeps a stored 30.0");
+            run.Recheck(weakening.Entry.What, form, [form]).Asserted.Kind.Should().NotBe(RenderingVerdictKind.Proven, "Equal is what a weakening does not claim: the number keeps a fraction whose double is 30");
         }
 
         /// <summary>

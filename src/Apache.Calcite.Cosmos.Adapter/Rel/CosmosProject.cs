@@ -125,7 +125,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             for (var i = 0; i < projects.size(); i++)
             {
-                var node = (RexNode)projects.get(i);
+                // As the rule rendered it, over the same bindings: the node holds the expression as written, and the
+                // service is sent its CASE conditions lowered (Convert.CosmosProjectRule.Rendered).
+                var node = Convert.CosmosProjectRule.Rendered(implementor.Container, (RexNode)projects.get(i), implementor.Fields, getCluster().getRexBuilder());
 
                 // A cast to text over a document value is dropped and put back by the reader, which is
                 // the one expression the statement carries without. See

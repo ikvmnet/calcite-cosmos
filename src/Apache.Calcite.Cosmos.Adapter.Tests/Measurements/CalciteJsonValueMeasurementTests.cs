@@ -317,7 +317,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             foreach (var json in new[] { "30", "30.0", "2.5", "\"2.5\"" })
                 Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().BeNull($"{json} parses");
 
-            foreach (var json in new[] { "true", "\"x\"", "\"\"" })
+            // Nor do Arabic-Indic or fullwidth digits, which Java's Character.digit reads: the parse is of ASCII digits, as the
+            // planner's is (Renderings.DecimalSide).
+            foreach (var json in new[] { "true", "\"x\"", "\"\"", "\"\\u0661\\u0662\"", "\"\\uFF11\"" })
                 Ask($"JSON_VALUE({Document(json)}, '$.v' RETURNING DECIMAL)").Threw.Should().NotBeNull($"{json} does not");
 
             Ask($"JSON_VALUE({Document("{\"a\":1}")}, '$.v' RETURNING DECIMAL)").Should().Match<(string? Value, string Declared, string? Runtime, string? Threw)>(
@@ -492,10 +494,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         /// <remarks>
         /// <para>
-        /// So the integer casts raise on every rendering with a point or an exponent — a stored <c>30.0</c>, <c>2.5</c>,
-        /// <c>1e30</c> — and on a whole number beyond the type, where a cast of the number would have truncated or held it
-        /// at the limit. A double's parse reads every rendering of a
-        /// number. A string spelling a number is parsed as one, and anything else raises.
+        /// So the integer casts raise on every rendering with a point or an exponent — of <c>30.0</c>, <c>2.5</c> or
+        /// <c>1e30</c> handed to Calcite as written, where the service returns a stored <c>30.0</c> as <c>30</c>
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>) — and on a whole number beyond the type, where a cast of the
+        /// number would have truncated or held it at the limit. A double's parse reads every rendering of a number. A
+        /// string spelling a number in ASCII digits is parsed as one, and anything else raises.
         /// </para>
         /// <para>
         /// Taken from <c>feature/predicate-oracle-checker</c> (0d9f109, "Read an integer cast of the accessor as Calcite
@@ -528,6 +531,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     $"an integer's parse refuses the rendering of {json}, where a cast of the number would not");
 
             Ask($"CAST(JSON_VALUE({Document("30.0")}, '$.v') AS BIGINT)").Threw.Should().NotBeNull("and so does a long's");
+
+            // Java's Character.digit reads every Unicode decimal digit; the casts read ASCII digits alone, as the planner's
+            // parses do (Renderings.ParseInteger, ParseDouble): Arabic-Indic and fullwidth digits raise.
+            foreach (var json in new[] { "\"\\u0661\\u0662\"", "\"\\u0663\"", "\"\\uFF11\"" })
+                foreach (var type in new[] { "INTEGER", "BIGINT", "DOUBLE" })
+                    Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS {type})").Threw.Should().NotBeNull($"{type} reads ASCII digits alone, and {json} holds none");
 
             foreach (var json in new[] { "30", "30.0", "2.5", "1e30", "\"1e30\"" })
                 Ask($"CAST(JSON_VALUE({Document(json)}, '$.v') AS DOUBLE)").Threw.Should().BeNull($"a double's parse reads {json}");

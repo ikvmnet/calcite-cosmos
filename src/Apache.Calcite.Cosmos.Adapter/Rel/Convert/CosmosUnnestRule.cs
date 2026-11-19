@@ -127,7 +127,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether the correlate is an array traversal whose array resolves to a path on
         /// the left input.
         /// </summary>
-        static bool IsTranslatable(CosmosConvention convention, Correlate correlate)
+        internal static bool IsTranslatable(CosmosConvention convention, Correlate correlate)
         {
             var array = GetArrayExpression(correlate);
             if (array is null)

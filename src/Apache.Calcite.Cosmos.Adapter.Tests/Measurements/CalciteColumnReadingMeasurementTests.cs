@@ -14,8 +14,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 {
 
     /// <summary>
-    /// What a column typed <c>BIGINT</c>, <c>INTEGER</c>, <c>DOUBLE</c>, <c>DECIMAL</c> or <c>BOOLEAN</c> holds, from the
-    /// JSON the service returns to the comparison Calcite makes of it.
+    /// What a column typed <c>TINYINT</c>, <c>SMALLINT</c>, <c>INTEGER</c>, <c>BIGINT</c>, <c>FLOAT</c>, <c>REAL</c>,
+    /// <c>DOUBLE</c>, <c>DECIMAL</c> or <c>BOOLEAN</c> holds, from the JSON the service returns to the comparison Calcite
+    /// makes of it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -84,6 +85,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Reads(SqlTypeName.DECIMAL, doubled).Should().Equal("9007199254740992.5", "9007199254740993.0", "5.0000000000000001", "10000000000000000000.0", "raises", "raises");
             MaterialisedTable.Of(SqlTypeName.BIGINT, ["9007199254740993.0"]).Ask(connection, "\"v\" = 9007199254740992", "\"v\" = 9007199254740993").Should().Equal("T", "F");
             MaterialisedTable.Of(SqlTypeName.DECIMAL, ["2.0000000000000001", "2", "null"]).Ask(connection, "\"v\" = 2", "\"v\" > 2", "\"v\" IS NULL").Should().Equal("FTU", "TFU", "FFT");
+
+            // TINYINT and SMALLINT read as INTEGER does, within their own ranges, and FLOAT as DOUBLE does; REAL reads a
+            // number's double as the float nearest it.
+            Reads(SqlTypeName.TINYINT).Should().Equal("42", "-7", "42", "raises", "raises", "raises", "raises", "raises", "raises", "raises", "null", "null");
+            Reads(SqlTypeName.SMALLINT).Should().Equal("42", "-7", "42", "raises", "raises", "raises", "raises", "raises", "raises", "raises", "null", "null");
+            Reads(SqlTypeName.FLOAT).Should().Equal("42.0", "-7.0", "42.0", "42.5", "2.147483648E9", "9.007199254740992E15", "1.0E19", "raises", "raises", "raises", "null", "null");
+            Reads(SqlTypeName.REAL).Should().Equal("42.0", "-7.0", "42.0", "42.5", "2.14748365E9", "9.0071993E15", "1.0E19", "raises", "raises", "raises", "null", "null");
+            string?[] ranged = ["127", "128", "-128", "-129", "32767", "32768", "6.0000000000000001"];
+            Reads(SqlTypeName.TINYINT, ranged).Should().Equal("127", "raises", "-128", "raises", "raises", "raises", "6");
+            Reads(SqlTypeName.SMALLINT, ranged).Should().Equal("127", "128", "-128", "-129", "32767", "raises", "6");
+
+            // Over 42, -7, 42.0, a null and an absent path; and over the DOUBLE's values.
+            foreach (var type in new[] { SqlTypeName.TINYINT, SqlTypeName.SMALLINT })
+                Readable(type).Ask(connection, numbers).Should().Equal("TFTUU", "FTFUU", "FTFUU", "TTTUU", "FFFUU", "TFTUU", "FFFUU", "TTTUU", "FFFTT");
+            foreach (var type in new[] { SqlTypeName.FLOAT, SqlTypeName.REAL })
+                Readable(type).Ask(connection, numbers).Should().Equal(
+                    "TFTFFFFUU", "FTFTTTTUU", "FTFFFFFUU", "TTTFFFFUU", "FFFTTTTUU", "TFTTTTTUU", "FFFTFFFUU", "TTTFFFFUU", "FFFFFFFTT");
+
+            // Beside a literal no double or float holds exactly: FLOAT compares doubles, as DOUBLE does, and REAL floats, the
+            // literal cast to REAL, so 0.1, 0.10000000149011612 and 0.1000000001 are one float, and 16777216 is 2^24 + 1's.
+            string?[] near = ["0.1", "0.10000000149011612", "0.1000000001", "16777217"];
+            string[] beside = ["\"v\" = 0.1", "\"v\" = 0.10000000149011612", "\"v\" = 16777216", "\"v\" > 0.1"];
+            MaterialisedTable.Of(SqlTypeName.FLOAT, near).Ask(connection, beside).Should().Equal("TFFF", "FTFF", "FFFF", "FTTT");
+            MaterialisedTable.Of(SqlTypeName.REAL, near).Ask(connection, beside).Should().Equal("TTTF", "TTTF", "FFFT", "FFFT");
+
+            // An integer type compares beside a decimal literal as the literal's DECIMAL, which a value of more whole digits
+            // than its precision leaves overflows: the statement fails.
+            MaterialisedTable.Of(SqlTypeName.TINYINT, ["127"]).Failure(connection, "\"v\" = 0.10000000149011612").Should().BeOfType<java.lang.ArithmeticException>("127 is no DECIMAL(19, 17)");
+            MaterialisedTable.Of(SqlTypeName.TINYINT, ["6.0000000000000001"]).Ask(connection, "\"v\" = 6", "\"v\" = 0.10000000149011612").Should().Equal("T", "F");
 
             // Where RETURNING raises over what the column reads.
             MaterialisedTable.Of(new[] { "{\"v\":42.0}" }).Failure(connection, "JSON_VALUE(\"d\", '$.v' RETURNING INTEGER) = 42").Should().BeOfType<InvalidCastException>("Jackson reads 42.0 as a Double");

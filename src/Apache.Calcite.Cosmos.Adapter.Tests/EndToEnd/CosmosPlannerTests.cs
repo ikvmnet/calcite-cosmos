@@ -204,16 +204,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// number and boolean to null (<c>Calcite.CastOfARawValueToText</c>), so the cast's text is the stored string
         /// alone, and since the switch (h15) S writes the comparison exact, where the translator refused it, reading the
         /// cast as an accessor's text, which renders the number too
-        /// (<see cref="ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor"/>). The routing is not taken: the
-        /// facts graph reads the cast as the value's rendering, so the key may hold a stored 30 too and pins nothing
-        /// (TODO.md, <i>The facts graph reads a text cast of a raw value as its rendering</i>). RU, never rows.
+        /// (<see cref="ACastAgainstTextANumberRendersAsIsNotTakenOverAJsonAccessor"/>). The routing is taken: the facts
+        /// graph keeps by what the cast's column answers, so the key holds the stored string "30" alone, and the query is
+        /// sent to its partition.
         /// </remarks>
         [Fact]
         public void ACastAgainstTextANumberRendersAsIsTakenOverAVariant()
         {
             var query = Query(PlanToCosmos("SELECT c.\"id\" FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'"));
 
-            query.PartitionKeyValues.Should().BeNull();
+            query.PartitionKeyValues.Should().Equal("30");
             query.Sql.Should().Contain("WHERE (c.category = @p0)");
             query.Parameters.Select(p => p.Value).Should().Equal("30");
         }
@@ -601,7 +601,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Cosmos evaluates <c>WHERE</c> after <c>JOIN</c>, so a predicate over the element is an
         /// ordinary <c>WHERE</c> over the traversal alias. Reaching it takes two steps: a query writes
-        /// the predicate above the correlate, <c>FILTER_CORRELATE</c> pushes it inside, and
+        /// the predicate above the correlate, <c>CosmosFilterCorrelateRule</c> pushes it inside, and
         /// <c>CosmosUnnestRule</c> reads it back out as a <c>CosmosFilter</c> over the traversal.
         /// </para>
         /// <para>
@@ -1587,21 +1587,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         //
         // `= '30'` is declined as a translation because Calcite keeps the document storing the number
         // 30, having rendered it, and the service would not. The translator pushed the string or the
-        // number as its weakening, which S does not prove (a stored 30.0 renders otherwise), so S sends
+        // number as its weakening, which S does not prove exact (the number keeps a fraction whose double
+        // is 30, which Azure was not measured returning as 30, and S reads no spelling the service
+        // returns of any number), so S sends
         // the path's presence: O7's listed loss 1, until a spelling S proves. RU, never rows. Where the
         // text is what a boolean renders as, the two alternatives are exact, and S sends them whole.
 
         /// <summary>
-        /// A text equality against text an integer renders as sends the alternatives, the string or a number equal to it,
-        /// beside the path's presence (the text-equality alternatives, h09), and is rechecked above: a stored 30.0 renders
-        /// otherwise.
+        /// A text equality against text an integer renders as sends the alternatives, the string or a number equal to it
+        /// (the text-equality alternatives, h09), and is rechecked above: the number keeps a fraction whose double is 30,
+        /// which Azure was not measured returning as <c>30</c>. The path's presence S writes beside them is deleted from the
+        /// text sent, the alternatives implying it, each arm holding the path (a <c>CASE</c> taking no truth value its
+        /// <c>ELSE</c> does has its condition true).
         /// </summary>
         [Fact]
         public void ATextEqualityAgainstTextAnIntegerRendersAsSendsTheAlternatives()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'")));
 
-            query.Sql.Should().EndWith("WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", query.Sql);
+            query.Sql.Should().EndWith("WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", query.Sql);
             query.Parameters.Select(p => p.Value).Should().Equal("30", 30m);
         }
 
@@ -1665,8 +1669,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <remarks>
-        /// The alternatives are not the comparison, a stored 30.0 rendering otherwise, so the comparison is still made
-        /// above them.
+        /// The alternatives are not the comparison, the number keeping a fraction whose double is 30, which Azure was not
+        /// measured returning as <c>30</c>, so the comparison is still made above them.
         /// </remarks>
         [Fact]
         public void TheComparisonStaysAboveTheAlternatives()
@@ -1697,19 +1701,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Since the switch S writes the family: where the text is what a boolean renders as, the string or the boolean
         /// is exact and sent whole, the host's fold of the equality with <c>TRUE</c> never reached; where an integer
-        /// renders as it, the string or a number equal to it beside the path's presence, the text-equality alternatives
-        /// (h09), rechecked above; where a double does, the presence alone; and over a raw column cast to text, whose
+        /// renders as it, the string or a number equal to it, the text-equality alternatives (h09), rechecked above, the
+        /// path's presence S writes beside them deleted from the text as they imply it; where a double does, the presence alone; and over a raw column cast to text, whose
         /// number and boolean Calcite casts to null (<c>Calcite.CastOfARawValueToText</c>), the string alone, exact, where
         /// the translator sent the presence. A number binds as the decimal it is, which an attribute cannot hold, so it is
         /// compared as a double.
         /// </para>
         /// </remarks>
         [Theory]
-        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", new object[] { "30", 30d })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'", "WHERE IS_DEFINED(c.label)", new object[0])]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "true", true })]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'false'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "false", false })]
-        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
+        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", new object[] { "30", 30d })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE (c.category = @p0)", new object[] { "30" })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE (c.category = @p0)", new object[] { "true" })]
         public void TheAlternativesPlanUnderAHostThatReducesExpressions(string sql, string where, object[] parameters)
@@ -3244,15 +3248,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// And an equality against text a number renders as sends what the accessor's spelling sends: the alternatives
-        /// beside the path's presence (h09, since the switch, h15).
+        /// And an equality against text a number renders as sends what the accessor's spelling sends: the alternatives, the
+        /// path's presence beside them deleted as they imply it (h09, since the switch, h15).
         /// </summary>
         [Fact]
         public void AnAmbiguousEqualityOverAViewsTextColumnSendsTheAlternatives()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = '30'");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND (((c.name = @p1) OR (IS_NUMBER(c.name) AND (c.name = @p2))) AND IS_DEFINED(c.name)))");
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND ((c.name = @p1) OR (IS_NUMBER(c.name) AND (c.name = @p2))))");
             Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
         }
 
@@ -3625,18 +3629,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// on every row fails as Calcite fails it: the test stays Calcite's, and the statement fails as Calcite's does.
         /// </para>
         /// <para>
-        /// Beside an <c>AND</c> sibling the sibling is sent, a conjunct the conjunction implies, and the test stays
-        /// Calcite's, which fails the statement as it is implemented, before a request is made. Negated over a path declared
-        /// required, the facts graph reads the conjunction as keeping no row and the filter is reduced to the empty
-        /// relation, F's reading of a raise, which is <c>TODO.md</c>'s (<i>A filter that raises is reduced as one that keeps
-        /// nothing</i>), not this test's.
+        /// Beside an <c>AND</c> sibling nothing is sent either: what a split keeps above the half sent is Calcite's, and
+        /// the service's test has no body there, so the filter is not split and stays Calcite's whole, which fails the
+        /// statement as it is implemented, before a request is made. Negated over a path declared
+        /// required, the conjunction keeps no row, but the test raises on every document, so the request is not left out
+        /// and the statement fails as Calcite's does
+        /// (<c>CosmosDeclaredFactPlanningTests.APresenceTestOverATextCastToVarcharFailsAsCalciteDoes</c>).
         /// </para>
         /// </remarks>
         [Theory]
         [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("NOT IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("c.\"$.category\" = 'bikes' OR IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
-        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c WHERE (c.category = @p0)")]
+        [InlineData("c.\"$.category\" = 'bikes' AND IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.v') AS VARCHAR))", false, "SELECT VALUE c FROM products c")]
         [InlineData("IS_DEFINED(CAST(JSON_VALUE(c.\"DOC\", '$.category') AS VARCHAR))", true, "SELECT VALUE c FROM products c")]
         public void ADefinednessTestOverACastOfTheTextIsNotPushed(string condition, bool declared, string sent)
         {

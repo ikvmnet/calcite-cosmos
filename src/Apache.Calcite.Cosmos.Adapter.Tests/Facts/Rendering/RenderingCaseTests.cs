@@ -80,8 +80,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// An absorbing else: <c>CASE WHEN c THEN a ELSE FALSE</c> at <c>Pos</c>, and with no <c>ELSE</c> at <c>Pos</c> and
-        /// beneath a <c>NOT</c>, over a nullable condition, are Proven under <c>Production</c>, which licenses no ternary:
-        /// <c>c AND a</c> and <c>NOT c OR a</c> leave the rows the else does wherever <c>c</c> is not TRUE.
+        /// beneath a <c>NOT</c>, over a nullable condition, are Proven under <c>Production</c> with no ternary, though Azure
+        /// has measured one (<c>Service.TernaryTakesThenOnTrueAlone</c>): <c>c AND a</c> and <c>NOT c OR a</c> leave the
+        /// rows the else does wherever <c>c</c> is not TRUE, so none is needed.
         /// </summary>
         [Fact]
         public void AnAbsorbingElseIsItsConditionJoinedWithItsThenArm()

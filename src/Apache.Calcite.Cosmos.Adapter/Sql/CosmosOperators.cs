@@ -225,6 +225,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression holds a call on one of the operators <see cref="Instance"/> carries, the very
+        /// instance: the service's form, as the adapter writes a weakening or a lowering, which Calcite cannot implement.
+        /// </summary>
+        /// <remarks>
+        /// By reference, not by name. A connection names these through <see cref="CosmosSchemaFunctions"/>, whose
+        /// operators are Calcite's wrappings and carry the type tests' in-process bodies; these instances carry none, and a
+        /// node Calcite evaluates holding one fails with "cannot translate call".
+        /// </remarks>
+        /// <param name="node">The expression to examine.</param>
+        /// <returns><c>true</c> where a call anywhere within it is on one of these operators.</returns>
+        internal static bool HoldsServiceForm(RexNode node)
+        {
+            if (node is not RexCall call)
+                return false;
+
+            if (Own.Contains(call.getOperator()))
+                return true;
+
+            var operands = call.getOperands();
+            for (var i = 0; i < operands.size(); i++)
+                if (HoldsServiceForm((RexNode)operands.get(i)))
+                    return true;
+
+            return false;
+        }
+
+        /// <summary>The operators <see cref="Instance"/> carries, by reference.</summary>
+        static readonly System.Collections.Generic.HashSet<SqlOperator> Own = new(OwnOperators(), System.Collections.Generic.ReferenceEqualityComparer.Instance);
+
+        static System.Collections.Generic.IEnumerable<SqlOperator> OwnOperators()
+        {
+            var operators = Instance.getOperatorList();
+            for (var i = 0; i < operators.size(); i++)
+                yield return (SqlOperator)operators.get(i);
+        }
+
+        /// <summary>
         /// The names in <see cref="Instance"/> that have no in-process body, which is what a rendered
         /// call is matched by.
         /// </summary>

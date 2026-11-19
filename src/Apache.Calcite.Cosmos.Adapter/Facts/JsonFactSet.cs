@@ -258,8 +258,9 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <b>Which means the predicate keeps nothing.</b> This set is what the container declares
         /// closed under what the query's own conjuncts established, so a contradiction in it is a
         /// contradiction between the two: a document satisfying the predicate would have to hold a
-        /// value the declaration says it does not. There is no such document, and the plan need not
-        /// ask the service for one.
+        /// value the declaration says it does not. There is no such document; whether the plan may
+        /// skip asking the service is the reduce's, which also needs nothing in the WHERE to raise
+        /// (<see cref="OracleLicence.Reduce"/>).
         /// </para>
         /// <para>
         /// <b>Absence is not a contradiction.</b> Two claims that no one value satisfies — a string and an object, an

@@ -405,6 +405,18 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// </param>
         internal static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
         {
+            return TryBindOutput(node, out fields, out readings, out ordering, out written, out container, resolved: null);
+        }
+
+        /// <param name="node">The node whose output binding is wanted.</param>
+        /// <param name="fields">On success, the binding indexed by field ordinal.</param>
+        /// <param name="readings">On success, how each output field is read back.</param>
+        /// <param name="ordering">On success, per ordinal, the path a sort may order by where the ordinal binds to none.</param>
+        /// <param name="written">On success, the clauses the subtree has already written into the statement.</param>
+        /// <param name="container">On success, the container the subtree reads.</param>
+        /// <param name="resolved">The members this walk has resolved a set to, or <c>null</c> before it has resolved one.</param>
+        static bool TryBindOutput(RelNode? node, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
+        {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
@@ -413,9 +425,15 @@ namespace Apache.Calcite.Cosmos.Adapter
 
             // In a Volcano plan an input is a set of equivalent expressions rather than one node. Any
             // member binds the same way — they are equivalent — so the one the set was built from will
-            // do, and a set with none is not something to guess about.
+            // do, and a set with none is not something to guess about. Once two sets merge, as a filter that
+            // keeps everything merges with its input, the member a set was built from can read the set
+            // itself: a member met twice on one walk is that cycle, and binds nothing rather than recursing.
             if (node is org.apache.calcite.plan.volcano.RelSubset subset)
+            {
                 node = subset.getOriginal() ?? subset.getBest();
+                if (node is not null && (resolved ??= new HashSet<RelNode>(ReferenceEqualityComparer.Instance)).Add(node) == false)
+                    return false;
+            }
 
             switch (node)
             {
@@ -434,7 +452,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // Calcite sort carrying only a fetch is a page taken in no particular order.
                 case Filter filter:
                 {
-                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container) == false)
+                    if (TryBindOutput(filter.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
                         return false;
 
                     // A filter onto it is conjoined with it: see CosmosClauses.Where.
@@ -450,7 +468,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                 case Sort sort:
                 {
-                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container) == false)
+                    if (TryBindOutput(sort.getInput(), out fields, out readings, out ordering, out written, out container, resolved) == false)
                         return false;
 
                     if (sort.getCollation().getFieldCollations().size() > 0)
@@ -472,7 +490,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // calls binds nothing at all: its output is computed and Cosmos can name none of it.
                 case Aggregate aggregate when aggregate.getAggCallList().size() == 0 && aggregate.getGroupType() == Aggregate.Group.SIMPLE:
                 {
-                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
+                    if (TryBindOutput(aggregate.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
                         return false;
 
                     // A distinct projects its own keys, and it is a DISTINCT over them: nothing may be
@@ -496,9 +514,15 @@ namespace Apache.Calcite.Cosmos.Adapter
                     return true;
                 }
 
+                // A window is computed over every row beneath it before anything above it reads one, and no statement can
+                // hold it, Cosmos having no window: so nothing above it is a clause of the statement beneath, and a filter
+                // over it is no WHERE, to push or to reduce. CosmosProjectRule refuses it for the same reason.
+                case Project project when project.containsOver():
+                    return false;
+
                 case Project project:
                 {
-                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container) == false)
+                    if (TryBindOutput(project.getInput(), out var input, out var inputReadings, out _, out written, out container, resolved) == false)
                         return false;
 
                     written |= CosmosClauses.Projection;
@@ -557,7 +581,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // alias, and the walk knowing less declines and never fails (TODO.md, section 5).
                 default:
                     if (TraversedInput(node) is RelNode traversed)
-                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container);
+                        return TryBindTraversal(traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container, resolved);
 
                     return false;
             }
@@ -603,13 +627,13 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// traversal writes no clause of its own: it completes a projection beneath it rather than
         /// starting one.
         /// </remarks>
-        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container)
+        static bool TryBindTraversal(RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved)
         {
             fields = Array.Empty<CosmosPath?>();
             readings = Array.Empty<CosmosReading>();
             ordering = Array.Empty<CosmosOrdering>();
 
-            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container) == false)
+            if (TryBindOutput(input, out var left, out var leftReadings, out _, out written, out container, resolved) == false)
                 return false;
 
             var paths = new CosmosPath?[fieldCount];
@@ -658,6 +682,11 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// Gets the container being queried.
         /// </summary>
         public CosmosContainerMetadata Container => _container;
+
+        /// <summary>
+        /// Gets the builder expressions are translated with.
+        /// </summary>
+        internal RexBuilder RexBuilder => _rexBuilder;
 
         /// <summary>
         /// Gets the statement under construction.
@@ -970,7 +999,45 @@ namespace Apache.Calcite.Cosmos.Adapter
         {
             var program = OrderProgram();
             return new(_query.Build(), _parameters.Parameters, PartitionKeyValues, MaxItemCount(), PointReadId(), PartitionKeyIsComplete, PointReadIds(), program,
-                _parameters.Stored.Count > 0 ? new List<string>(_parameters.Stored) : null);
+                _parameters.Stored.Count > 0 ? new List<string>(_parameters.Stored) : null, SendsNothing());
+        }
+
+        readonly List<(RexNode Condition, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings)> _filtered = new();
+
+        /// <summary>
+        /// Records a condition a filter conjoins into the statement's <c>WHERE</c>, as it is sent, read through the binding
+        /// current where it is written.
+        /// </summary>
+        /// <param name="condition">The condition the filter sends.</param>
+        internal void Filtered(RexNode condition) =>
+            _filtered.Add((condition ?? throw new ArgumentNullException(nameof(condition)), _fields, _readings));
+
+        /// <summary>
+        /// Determines whether the statement need not be sent: its <c>WHERE</c> keeps no document the declaration admits and
+        /// fails on none, so the service would answer it with no document, and over no document it answers no row.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Asked once, of the WHERE as sent.</b> Each filter's condition as it is written into the statement, the
+        /// conjuncts of several joined as one statement, each over its own binding
+        /// (<see cref="CosmosRowFacts.KeepsNothing"/>). The facts graph answers it under
+        /// <see cref="OracleLicence.Reduce"/>: no document the declaration admits makes the WHERE true, and none makes
+        /// anything in it raise. Calcite's own reading of a condition as never true is not asked: on a cell where Calcite
+        /// raises the service may answer anything, so only a WHERE that also raises nowhere is one the service answers with
+        /// no document. A parameter is read as any value of its type, so the answer holds of every binding.
+        /// </para>
+        /// <para>
+        /// <b>Not of a scalar aggregate.</b> One with no grouping answers one row over no document, the count's 0, so it is
+        /// sent; what the service answers it with is not measured per aggregate (<c>TODO.md</c>).
+        /// </para>
+        /// </remarks>
+        bool SendsNothing()
+        {
+            if (_filtered.Count == 0 || _query.FlatProjection && _query.HasGroupBy == false)
+                return false;
+
+            var statements = _filtered.ConvertAll(f => Metadata.CosmosFilterStatement.Of(f.Condition, f.Fields, f.Readings, _container, _rexBuilder, RootAlias));
+            return statements.Count == 1 ? statements[0].IsContradictory : CosmosRowFacts.KeepsNothing(statements, _container);
         }
 
         readonly List<(string Expression, CosmosOrderedKey Key)> _anchoredKeys = new();

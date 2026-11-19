@@ -152,6 +152,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         static readonly Func<JsonElement, int> Number = element => element.GetInt32();
 
+        // ── A statement that sends nothing ─────────────────────────────────────────
+
+        /// <summary>
+        /// A statement whose <c>WHERE</c> the facts graph proved keeps no document and fails on none is answered with no row
+        /// and not sent, by either open; nothing is bound, so a value a prepared statement left open is never read.
+        /// </summary>
+        [Fact]
+        public async Task AStatementThatSendsNothingOpensNoRequest()
+        {
+            var executor = new StubExecutor("1", "2");
+            var query = new CosmosQuery("SELECT VALUE c.n FROM c WHERE (c.n = @p0)", [new CosmosParameter("@p0", new CosmosDynamicValue(0))], SendsNothing: true);
+
+            (await ListCursor.CollectAsync(await CosmosCursors.OpenAsync(executor, null!, query, Number, CancellationToken.None), TestContext.Current.CancellationToken)).Should().BeEmpty();
+
+            using (var cursor = CosmosCursors.Open(executor, null!, query, Number))
+                cursor.Read().Should().BeFalse();
+
+            executor.Executed.Should().BeEmpty("nothing is sent, and no context is asked for the value left open");
+        }
+
         // ── Reading ───────────────────────────────────────────────────────────────
 
         [Fact]

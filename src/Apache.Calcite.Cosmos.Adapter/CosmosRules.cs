@@ -98,6 +98,11 @@ namespace Apache.Calcite.Cosmos.Adapter
             // no HAVING.
             yield return org.apache.calcite.rel.rules.CoreRules.FILTER_AGGREGATE_TRANSPOSE;
 
+            // A projection Calcite's field trimmer left declaring a correlation variable no expression reads, over the
+            // projection it trimmed: the two merged, declaring none, which no other rule merges or converts. A scalar
+            // sub-query in a select list that nothing reads leaves one where a host trims before it removes sub-queries.
+            yield return CosmosUncorrelatedProjectMergeRule.Instance;
+
             // And the transpose that decides whether a filtered query projects anything at all.
             //
             // A Cosmos scan presents five columns and a query reading paths out of the document reads
@@ -118,10 +123,6 @@ namespace Apache.Calcite.Cosmos.Adapter
             yield return org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE;
 
             yield return CosmosFilterRule.Create(convention);
-
-            // A filter no document satisfies is the empty relation, and one every document satisfies is its
-            // input: what the rewrite reaches, made a plan that sends nothing, or no WHERE.
-            yield return CosmosFilterReduceRule.Create(convention);
 
             // Partial pushdown: where only some of a predicate renders, the service still evaluates
             // that part rather than the plan declining the whole thing and scanning the container.
@@ -197,11 +198,16 @@ namespace Apache.Calcite.Cosmos.Adapter
             // uncollect, which is the shape the rule recognises and renders as a WHERE over the
             // traversal alias, evaluated after the JOIN.
             //
-            // A host on Calcite's standard rule set already has this, which is why the shape the
-            // rule reads is the shape a host produces. Registered here for the reason the rewrites
-            // above are: a bare Volcano planner has none of them, and the pushdown must not depend
-            // on which rules a caller happened to add.
-            yield return org.apache.calcite.rel.rules.CoreRules.FILTER_CORRELATE;
+            // A host on Calcite's standard rule set already has Calcite's FILTER_CORRELATE, which is why
+            // the shape the rule reads is the shape a host produces. Registered here for the reason the
+            // rewrites above are: a bare Volcano planner has none of them, and the pushdown must not
+            // depend on which rules a caller happened to add. The adapter's own: Calcite's transposition,
+            // written as Calcite's rule writes it, taken only in a statement where at each correlate the
+            // conjuncts it would move take no part in what Calcite's simplification of the whole condition
+            // reads of the rest; a condition holding the service's form moves as Calcite's rule moves it.
+            // The rule's remarks, and DESIGN.md under "The correlate rule takes Calcite's transposition at
+            // every correlate of a statement, or at none", give the whole condition.
+            yield return CosmosFilterCorrelateRule.Instance;
 
             // The way out. Without it a pushed-down subtree is a statement nothing can read the rows of,
             // and the planner has no complete plan to choose.

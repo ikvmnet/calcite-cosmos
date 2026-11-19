@@ -219,7 +219,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
-                Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms));
+                Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms), ReadColumns(axioms), CosmosValueClasses.Types, ReadParametersAs(axioms));
 
         /// <summary>
         /// One row per reading a <c>Calcite</c> row says an index reads as of a path holding the element, a test's body over it
@@ -227,6 +227,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<string> ReadAsOfAPath(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from reader in axiom.AsOfAPath ?? [] select reader).Distinct()];
+
+        /// <summary>
+        /// One row per raw column a <c>Calcite</c> row says compares with a parameter as another column does, by its class, both
+        /// graphs' <c>parameteras</c>: what a column no literal's row measured answers beside a parameter.
+        /// </summary>
+        public static IReadOnlyList<(string Column, string As)> ReadParametersAs(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from pair in axiom.ParametersAs ?? [] select pair).Distinct()];
 
         /// <summary>
         /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'
@@ -341,7 +348,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>
         /// What each raw column a <c>Calcite</c> row states, one fact a field (G5): what its reading reads each class as, the
         /// literals it is beside, the comparisons that compile, whether it compares as the type or as text, and what it
-        /// answers across types. Which key each answers, and how, are S's rules (<c>raw</c>); it merges nothing.
+        /// answers across types. Which key each answers, and how, are the readings vocabulary's rules, in both graphs; it merges nothing.
         /// </summary>
         public static RawColumnRows ReadColumns(IEnumerable<CosmosAxiom> axioms)
         {

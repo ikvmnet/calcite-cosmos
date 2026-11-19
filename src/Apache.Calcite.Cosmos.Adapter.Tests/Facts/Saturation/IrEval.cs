@@ -46,10 +46,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// (<c>Calcite.CastOfARawValueToText</c>).</item>
     /// </list>
     /// <para>
-    /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter, a raw number
+    /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter through no named
+    /// column (through one, the parameter is typed as the column, <c>Calcite.AParameterComparesAsItsComparand</c>), a raw number
     /// in a <c>VARIANT</c> compared with a number whose SQL type the IR does not keep, an <c>ANY</c>'s structure cast to
-    /// text, the cast to text over a raw value read through no named column, which is the facts graph's rendering, and a
-    /// numeric cast over one where it is not a number.
+    /// text, and a numeric cast over one where it is not a number. The cast to text over a raw value read through no named
+    /// column is of the accessor typed <c>ANY</c>, which the loader reads a raw value as: it is read as an <c>ANY</c> renders
+    /// a null or a scalar, and only a structure's cast is a coin, as an <c>ANY</c>'s is.
     /// </para>
     /// </remarks>
     static class IrEval
@@ -173,8 +175,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     };
 
                 // The in-process body takes apart no reading written apart, a field's, an item's, a cast's to ANY, and raises
-                // over each, whatever it holds (Calcite.TypeTestsAreTheirBodies, h15b).
+                // over each, whatever it holds (Calcite.TypeTestsAreTheirBodies, h15b); nor a raw value in a column the loader
+                // names, each its own testreads row.
                 case SqlPredicate.IsDefined { Value.Form: not null } or SqlPredicate.TypeTest { Value.Form: not null }:
+                case SqlPredicate.IsDefined { Value: SqlValue.Raw { Column: not null } } or SqlPredicate.TypeTest { Value: SqlValue.Raw { Column: not null } }:
+                    return R;
+
+                // A test of a RETURNING asks of the value at the path, the statement raising where the RETURNING does
+                // (Calcite.TypeTestsAreTheirBodies), as RETURNING INTEGER does over true.
+                case SqlPredicate.IsDefined { Value: SqlValue.Typed returned } when typed == TypedAs.Returning && Read(returned, document, world, typed) is SqlDatum.Raised:
+                case SqlPredicate.TypeTest { Value: SqlValue.Typed tested } when typed == TypedAs.Returning && Read(tested, document, world, typed) is SqlDatum.Raised:
                     return R;
 
                 // The service's test of the document, which the in-process body reads too: a null is defined.
@@ -322,10 +332,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// The value a literal is compared as: itself, but beside <c>RETURNING DECIMAL</c>, which Calcite types
         /// <c>DECIMAL(19, 0)</c>, cast to that scale — <c>2.5</c> is compared as <c>2</c>, and the value read keeps its
-        /// fraction.
+        /// fraction; and beside a <c>REAL</c>, cast to the float nearest its double.
         /// </summary>
-        static SqlDatum Operand(SqlValue reading, SqlDatum operand) =>
-            reading is SqlValue.Typed { Type: "DECIMAL" } && operand is SqlDatum.Exact e ? new SqlDatum.Exact(decimal.Truncate(e.Value)) : operand;
+        static SqlDatum Operand(SqlValue reading, SqlDatum operand) => (reading, operand) switch
+        {
+            (SqlValue.Typed { Type: "DECIMAL" }, SqlDatum.Exact e) => new SqlDatum.Exact(decimal.Truncate(e.Value)),
+
+            // A REAL compares floats, what it is compared with cast to REAL (Calcite.ColumnReadsWholeNumbersAsItsType).
+            (SqlValue.Typed { Type: "REAL" }, SqlDatum.Exact e) => new SqlDatum.Double((float)DoubleBound.Of(e.Value)),
+            (SqlValue.Typed { Type: "REAL" }, SqlDatum.Double d) => new SqlDatum.Double((float)d.Value),
+            _ => operand,
+        };
 
         /// <summary>
         /// Returns the value at a path of a document, or <c>null</c> where it is absent.
@@ -692,8 +709,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// A column typed <c>type</c>: what <c>CosmosJson.GetInteger</c>, <c>GetDouble</c>, <c>GetDecimal</c> and
         /// <c>GetBoolean</c> read, and a failed read, which fails the statement, where they refuse. An integer type holds a
-        /// whole number in its range, a stored <c>42.0</c> among them; a floating type any number; <c>DECIMAL</c> a number's
-        /// text exactly; <c>BOOLEAN</c> a boolean.
+        /// whole number in its range, a stored <c>42.0</c> among them; <c>FLOAT</c> and <c>DOUBLE</c> any number's double,
+        /// and <c>REAL</c> the float nearest that; <c>DECIMAL</c> a number's text exactly; <c>BOOLEAN</c> a boolean
+        /// (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>).
         /// </summary>
         static SqlDatum Column(J? value, string type)
         {
@@ -728,6 +746,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     {
                         J.Num n => new SqlDatum.Double(DoubleBound.Of(n.Value)),
                         J.Huge h => new SqlDatum.Double(h.Value),
+                        _ => SqlDatum.Raise,
+                    };
+
+                // The float nearest the number's double, which compares as a float (Operand casts what it is compared with).
+                case "REAL":
+                    return value switch
+                    {
+                        J.Num n => new SqlDatum.Double((float)DoubleBound.Of(n.Value)),
+                        J.Huge h => new SqlDatum.Double((float)h.Value),
                         _ => SqlDatum.Raise,
                     };
 
@@ -847,6 +874,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             raw = Own(reading, raw);
             var stored = At(document, PathOf(reading));
 
+            // A CHAR column beside a parameter answers class by class as a VARCHAR column (Calcite.AParameterComparesAsItsComparand):
+            // it fails over anything but a string, null bound or not, and a string, read against a CHAR of the column's length, is a coin.
+            if (reading is SqlValue.Raw { Column: "CHAR" } && operand is SqlValue.Parameter)
+                return stored is null or J.Null ? U : stored is J.Str ? world.Choose(T | F | U, reading + " " + op + " " + operand + " @ " + Documents.Json(stored)) : R;
+
             // A number Calcite wrote cast (G8) is the value the cast makes, a cast that raises raising on every row; beside the
             // raw value itself, whose box a column compares by, what it compares as is not modelled.
             if (operand is SqlValue.Cast { PathRead: null } or SqlValue.DecimalCast)
@@ -878,6 +910,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var truth = world.Choose(answers, reading + " " + asked + " " + operand + " @ " + (stored is null ? "absent" : Documents.Json(stored)));
                 return op == PredicateAtom.NotEqual ? Swap(truth) : truth;
             }
+
+            if (operand is SqlValue.Parameter parameter && raw is RawAs named)
+            {
+                if (reading is SqlValue.Raw)
+                    return RawParameter(op, stored, parameter, named, world);
+
+                if (reading is SqlValue.Cast { Target: "VARCHAR" or "CHAR" } && (stored is null ? SqlDatum.Null : CastText(stored, named)) is SqlDatum text)
+                    return Compare(op, text, world.Parameter(parameter with { Type = "VARCHAR" }));
+            }
+
+            // The cast to text of a raw value through no named column is of the accessor typed ANY, which the loader reads a
+            // raw value as: it casts a null to null and a scalar as an ANY renders one, as the facts graph's coarse reading of
+            // it reads, within its columns' union (rawunion). A structure, which an ANY renders unmeasured, is read below.
+            if (reading is SqlValue.Cast { Target: "VARCHAR" or "CHAR" } && raw is null && stored is not null && Unnamed(stored) is SqlDatum unnamed)
+                return Compare(op, unnamed, operand is SqlValue.Parameter bound ? world.Parameter(bound with { Type = "VARCHAR" }) : Datum(((SqlValue.Literal)operand).Value));
 
             if (stored is null)
                 return U;
@@ -913,6 +960,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 default:
                     throw new NotSupportedException(reading.ToString());
             }
+        }
+
+        /// <summary>
+        /// What a raw value in one column compared with a parameter answers, as measured
+        /// (<c>Calcite.AParameterComparesAsItsComparand</c>): the parameter is typed as the column, so a <c>VARIANT</c>'s is
+        /// bound to null alone (the driver refuses any other value before the statement runs, whatever is planned) and its
+        /// ordering fails to compile whatever is bound; an <c>ANY</c>'s holds the value bound and compares as against a
+        /// literal of it, raising on an ordering across types; and a <c>VARCHAR</c> column's is text, the column failing the
+        /// statement over any other value, null bound or not.
+        /// </summary>
+        static Truths RawParameter(string op, J? stored, SqlValue.Parameter parameter, RawAs raw, World world)
+        {
+            if (raw == RawAs.Variant && op is not (PredicateAtom.Equal or PredicateAtom.NotEqual))
+                return R;
+
+            if (raw == RawAs.Varchar && stored is not (null or J.Null or J.Str))
+                return R;
+
+            var bound = world.Parameter(parameter with { Type = raw switch { RawAs.Variant => "VARIANT", RawAs.Varchar => "VARCHAR", _ => "ANY" } });
+            if (bound is SqlDatum.NullDatum || stored is null or J.Null)
+                return U;
+
+            // <> is = swapped.
+            var literal = bound switch
+            {
+                SqlDatum.Text t => Of(t.Value),
+                SqlDatum.Boolean b => Of(b.Value),
+                SqlDatum.Exact e => Of(e.Value),
+                SqlDatum.Double d => Of(d.Value),
+                _ => throw new NotSupportedException(bound.ToString()),
+            };
+            var truth = RawLiteral(op == PredicateAtom.NotEqual ? PredicateAtom.Equal : op, stored, literal, raw);
+            return op == PredicateAtom.NotEqual ? Swap(truth) : truth;
         }
 
         /// <summary>
@@ -997,6 +1077,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
+        /// The text a scalar or a null is cast to through no named column, as an <c>ANY</c> renders it; <c>null</c> for a
+        /// structure, which it renders unmeasured.
+        /// </summary>
+        static SqlDatum? Unnamed(J stored) => CastText(stored, RawAs.Any);
+
+        /// <summary>
         /// The cast to text of a stored value through one column (<c>Calcite.CastOfARawValueToText</c>): a string is itself
         /// and a null null; a <c>VARIANT</c> casts a number or a boolean to null and raises over a structure, a
         /// <c>VARCHAR</c> column reads nothing else, and an <c>ANY</c> renders a scalar as Java renders the reader's box, a
@@ -1045,6 +1131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
         }
 
+        static Truths IsNullOf(SqlDatum text) => text switch { SqlDatum.NullDatum => T, SqlDatum.Raised => R, _ => F };
+
         /// <summary>
         /// <c>IS NULL</c> over a raw reading: of a null alone, through every column, where the reader reads the value
         /// (<c>Calcite.RawNullIsSqlNull</c>).
@@ -1058,6 +1146,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             {
                 (_, null) => T,
                 (SqlValue.Cast { Target: "VARCHAR" or "CHAR" }, _) when raw is RawAs column => CastText(stored, column) switch { SqlDatum.NullDatum => T, SqlDatum.Raised => R, _ => F },
+
+                // Through no named column, as an ANY renders it, as the comparisons read it.
+                (SqlValue.Cast { Target: "VARCHAR" or "CHAR" }, _) when raw is null && Unnamed(stored) is SqlDatum unnamed => IsNullOf(unnamed),
                 (SqlValue.Raw, J.Null) => T,
                 (SqlValue.Raw, J.Str) => F,
                 (SqlValue.Raw, _) => raw == RawAs.Varchar ? R : F,

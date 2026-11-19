@@ -321,24 +321,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Determines whether a call is the cast that names the raw value at a path over its rendering.
-        /// </summary>
-        /// <remarks>
-        /// The cast to <c>ANY</c> over a rendering, which the translator writes as the path, asked as a question so that what
-        /// reads a path through one knows it is reading the value the service holds. See DESIGN.md, <i>Casts over document
-        /// values</i>.
-        /// </remarks>
-        internal bool IsRawValueMarker(RexCall call)
-        {
-            var kind = KindOf(call);
-
-            return (kind == nameof(SqlKind.__Enum.CAST) || kind == nameof(SqlKind.__Enum.SAFE_CAST))
-                && call.getOperands().size() == 1
-                && call.getType()?.getSqlTypeName() == SqlTypeName.ANY
-                && IsTextRendering(Operand(call, 0));
-        }
-
-        /// <summary>
         /// Returns the document path a statement's path reads, where it reads the container's document.
         /// </summary>
         /// <remarks>

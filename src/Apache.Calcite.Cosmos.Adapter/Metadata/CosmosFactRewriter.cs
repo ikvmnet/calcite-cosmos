@@ -66,11 +66,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>What is true is the oracle's; what is written is this.</b> Every fact a rewrite reads is
     /// asked of <see cref="CosmosFilterStatement"/> under the licence the rewrite has: the filter is
-    /// <c>FALSE</c> where every conjunct together contradicts the declaration, a strengthening; a
-    /// conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered on what
-    /// its siblings establish, never what it does; and inside the arm of a <c>CASE</c>, on that and the
-    /// conditions the arm is read under. What is left here is the shapes, the stored spellings and the
+    /// <c>FALSE</c> where no document the declaration admits makes the WHERE true, and none makes it
+    /// raise; a conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered
+    /// on what its siblings establish, never what it does; inside the arm of a <c>CASE</c>, on that and
+    /// the conditions the arm is read under; and an arm is written <c>FALSE</c> where those contradict
+    /// and the WHERE raises nowhere. What is left here is the shapes, the stored spellings and the
     /// licence a form gives an operator.
+    /// </para>
+    /// <para>
+    /// <b>Two forms: one planned, one sent.</b> What a node holds is read by Calcite: its filters merge it, its
+    /// prune-empty rules and maximum row count read a <c>FALSE</c> in it, and a filter above reads it as a
+    /// predicate pulled up. So a node holds the planning form (<see cref="Planned"/>): the lowerings and the safe
+    /// <c>CASE</c> flattening, each true on the rows the condition is, and nothing the declaration alone decides.
+    /// The deletions, the arms never read and the whole <c>FALSE</c> are the rendering form's
+    /// (<see cref="Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>),
+    /// written only into the text sent; and whether that text is sent at all is asked once of the statement
+    /// (<see cref="CosmosImplementor.Build"/>).
     /// </para>
     /// </remarks>
     public static class CosmosFactRewriter
@@ -78,14 +89,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Each statement's rewrite, so that every rule asking of one condition gets one node back, and the statement read
-        /// off that node is remembered too; released with the statement.
+        /// off that node is remembered too; released with the statement. The planning form's apart.
         /// </summary>
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode> Rewrites = new();
 
+        /// <summary>Each statement's planning form, as <see cref="Rewrites"/>.</summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode> Plans = new();
+
+        /// <summary>Each statement's planning form conjunct by conjunct, which <see cref="Plans"/> composes.</summary>
+        static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CosmosFilterStatement, RexNode?[]> PlannedForms = new();
 
         /// <summary>
-        /// Returns the predicate with every comparison the declared facts license lowered, or the
-        /// predicate unchanged.
+        /// Returns the planning form of a predicate: every comparison the declared facts license lowered and every safe
+        /// <c>CASE</c> taken apart, and nothing the declaration alone decides, no conjunct deleted, no arm or WHERE made
+        /// <c>FALSE</c>. It is what a node holds, and what Calcite may read.
+        /// </summary>
+        /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="rexBuilder">Builds the replacement nodes.</param>
+        /// <param name="readings">How each field is read back, where the caller knows.</param>
+        /// <returns>The planning form, or <paramref name="condition"/> where nothing applied.</returns>
+        public static RexNode Planned(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null) =>
+            Rewrite(condition, fields, container, rootAlias, rexBuilder, readings, gate: null, rendered: false);
+
+        /// <summary>
+        /// Returns the planning form of each conjunct of a predicate, in the order
+        /// <see cref="CosmosFilterStatement.ConjunctsOf"/> reads them: what <see cref="Planned"/> composes.
+        /// </summary>
+        /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
+        /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
+        /// <param name="container">The container, carrying whatever the model declared.</param>
+        /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="rexBuilder">Builds the replacement nodes.</param>
+        /// <param name="readings">How each field is read back, where the caller knows.</param>
+        internal static IReadOnlyList<RexNode> PlannedConjuncts(RexNode condition, IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null)
+        {
+            // The planning form deletes nothing, so every conjunct has a form.
+            if (container is null)
+                return ContainsCase(condition) ? Forms(condition, null, fields, rootAlias, rexBuilder, rendered: false).Select(f => f!).ToList() : CosmosFilterStatement.ConjunctsOf(condition);
+
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
+            return PlannedForms.GetValue(statement, s => Forms(condition, s, fields, rootAlias, rexBuilder, rendered: false)).Select(f => f!).ToList();
+        }
+
+
+        /// <summary>
+        /// Returns the rendering form of a predicate, the text sent: the planning form (<see cref="Planned"/>), each
+        /// conjunct the rest imply deleted, each arm never read written <c>FALSE</c>, and the whole <c>FALSE</c> where the
+        /// WHERE keeps nothing and fails on nothing; or the predicate unchanged.
         /// </summary>
         /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
@@ -95,7 +148,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="readings">How each field is read back, where the caller knows: a field read as text compares
         /// its rendering, and establishes what a rendering does.</param>
         /// <returns>The rewritten predicate, or <paramref name="condition"/> where nothing applied.</returns>
-        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null)
+        public static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings = null) =>
+            Rewrite(condition, fields, container, rootAlias, rexBuilder, readings, gate: null, rendered: true);
+
+        /// <summary>
+        /// Returns the predicate rewritten as <see cref="Rewrite(RexNode?, IReadOnlyList{CosmosPath?}?, CosmosContainerMetadata?, string, RexBuilder, IReadOnlyList{CosmosReading}?)"/>
+        /// does, or in its planning form, each <c>FALSE</c> written only where nothing in <paramref name="gate"/> raises,
+        /// or the predicate itself where it is <c>null</c>: a projected condition's every predicate of its expression.
+        /// </summary>
+        internal static RexNode Rewrite(RexNode? condition, IReadOnlyList<CosmosPath?>? fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, IReadOnlyList<CosmosReading>? readings, RexNode? gate, bool rendered = true)
         {
             if (condition is null || fields is null || rexBuilder is null)
                 return condition!;
@@ -103,35 +164,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             // A CASE is the one shape rewritten without a fact -- see TryFlattenCase -- and where
             // there is no container it is all there is to look for.
             if (container is null)
-                return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder) : condition;
+                return ContainsCase(condition) ? Rewritten(condition, null, fields, rootAlias, rexBuilder, rendered) : condition;
 
-            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias);
-            return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder));
+            var statement = CosmosFilterStatement.Of(condition, fields, readings, container, rexBuilder, rootAlias, gate);
+            if (rendered)
+                return Rewrites.GetValue(statement, s => Rewritten(condition, s, fields, rootAlias, rexBuilder, rendered: true));
+
+            return Plans.GetValue(statement, s => Composed(condition, s.Conjuncts, PlannedForms.GetValue(s, t => Forms(condition, t, fields, rootAlias, rexBuilder, rendered: false)), rexBuilder));
         }
 
         /// <summary>
-        /// Rewrites a condition conjunct by conjunct, each under the licence its rewrite has.
+        /// Rewrites a condition conjunct by conjunct, each under the licence its rewrite has; in the planning form, nothing
+        /// the declaration alone decides.
         /// </summary>
-        static RexNode Rewritten(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder)
+        static RexNode Rewritten(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder, bool rendered)
         {
-            // Where the conjuncts and the container's declaration cannot all hold, no document
-            // satisfies the predicate -- so the equivalent predicate is the constant, and every rule
-            // that reduces one takes it from there. A strengthening, which every conjunct's own facts
-            // may justify.
-            if (statement is { IsContradictory: true })
+            // Where no document the container's declaration admits makes the predicate true, and
+            // none makes anything in it or in the statement's gate raise (a projected expression's
+            // predicates), the service answers no document -- so the text sent is the constant. Where
+            // something may raise, the text stays as it is: the rewriter removes no failure.
+            if (rendered && statement is { IsContradictory: true })
                 return rexBuilder.makeLiteral(false);
 
+            return Composed(condition, statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition), Forms(condition, statement, fields, rootAlias, rexBuilder, rendered), rexBuilder);
+        }
+
+        /// <summary>
+        /// Returns each conjunct of a condition rewritten under the licence its rewrite has, or as it is where nothing
+        /// applied, and <c>null</c> where the rendering form deletes it.
+        /// </summary>
+        static RexNode?[] Forms(RexNode condition, CosmosFilterStatement? statement, IReadOnlyList<CosmosPath?> fields, string rootAlias, RexBuilder rexBuilder, bool rendered)
+        {
             var conjuncts = statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition);
 
-            // A conjunct the rest of the filter implies decides nothing, so the equivalent predicate is
-            // the one without it -- asked of its siblings and never of itself, and one at a time, so
-            // that two conjuncts implying each other do not both go.
-            var redundant = statement?.Redundant ?? Array.Empty<int>();
+            // A conjunct the rest of the filter implies decides nothing, so the text sent is the one
+            // without it -- asked of its siblings and never of itself, and one at a time, so that two
+            // conjuncts implying each other do not both go.
+            var redundant = rendered ? statement?.Redundant ?? Array.Empty<int>() : Array.Empty<int>();
             var paths = new CosmosRexPaths(fields, spelled: false);
 
-            var operands = new java.util.ArrayList();
-            var changed = redundant.Count > 0;
-
+            var forms = new RexNode?[conjuncts.Count];
             for (var i = 0; i < conjuncts.Count; i++)
             {
                 if (redundant.Contains(i))
@@ -142,10 +214,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // disjunction translation would have rendered anyway -- and the expansion is kept only
                 // if something was actually lowered, so a conjunct this has no opinion about reaches
                 // the planner in the shape it arrived.
-                var rewritten = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), paths, rexBuilder, fields, rootAlias));
+                forms[i] = Apply(Expand(conjuncts[i], rexBuilder), new Rewriting(statement, i, Array.Empty<RexNode>(), paths, rexBuilder, fields, rootAlias, rendered)) ?? conjuncts[i];
+            }
 
-                operands.add(rewritten ?? conjuncts[i]);
-                changed |= rewritten is not null;
+            return forms;
+        }
+
+        /// <summary>
+        /// Returns the conjunction of a condition's rewritten conjuncts, or the condition itself where each is as it was.
+        /// </summary>
+        static RexNode Composed(RexNode condition, IReadOnlyList<RexNode> conjuncts, RexNode?[] forms, RexBuilder rexBuilder)
+        {
+            var operands = new java.util.ArrayList();
+            var changed = false;
+
+            for (var i = 0; i < forms.Length; i++)
+            {
+                if (forms[i] is not RexNode form)
+                {
+                    changed = true;
+                    continue;
+                }
+
+                operands.add(form);
+                changed |= ReferenceEquals(form, conjuncts[i]) == false;
             }
 
             return changed ? RexUtil.composeConjunction(rexBuilder, operands) : condition;
@@ -177,13 +269,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosFilterStatement? _statement;
             readonly int _conjunct;
             readonly IReadOnlyList<RexNode> _conditions;
+            readonly bool _rendered;
             JsonFactSet? _known;
 
-            public Rewriting(CosmosFilterStatement? statement, int conjunct, IReadOnlyList<RexNode> conditions, CosmosRexPaths paths, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, string rootAlias)
+            public Rewriting(CosmosFilterStatement? statement, int conjunct, IReadOnlyList<RexNode> conditions, CosmosRexPaths paths, RexBuilder rexBuilder, IReadOnlyList<CosmosPath?> fields, string rootAlias, bool rendered)
             {
                 _statement = statement;
                 _conjunct = conjunct;
                 _conditions = conditions;
+                _rendered = rendered;
                 Paths = paths;
                 RexBuilder = rexBuilder;
                 Fields = fields;
@@ -207,28 +301,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 : _statement.Within(_conjunct, _conditions);
 
             /// <summary>
-            /// Gets whether the arm the rewrite is inside is never read: its conditions contradict
-            /// what its siblings establish.
+            /// Gets whether the arm the rewrite is inside is never read, and may be written <c>FALSE</c>:
+            /// its conditions contradict what every sibling establishes, a deleted one among them, and
+            /// nothing in the WHERE as written raises, so neither the evaluation the <c>FALSE</c> removes
+            /// nor a deletion beside it removes a failure. The rendering form's alone: the <c>FALSE</c> is written only
+            /// into the text sent.
             /// </summary>
-            public bool NeverRead => _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
+            public bool NeverRead => _rendered && _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
 
             /// <summary>
             /// Returns where a rewrite stands inside the arm a condition guards.
             /// </summary>
             public Rewriting Within(RexNode condition) =>
-                new(_statement, _conjunct, _conditions.Append(condition).ToArray(), Paths, RexBuilder, Fields, RootAlias);
+                new(_statement, _conjunct, _conditions.Append(condition).ToArray(), Paths, RexBuilder, Fields, RootAlias, _rendered);
 
         }
 
         /// <summary>
         /// Returns a projected expression with the condition of every <c>CASE</c> in it rewritten as
-        /// <see cref="Rewrite"/> rewrites a predicate, or the expression unchanged.
+        /// <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> rewrites a predicate, or the expression unchanged.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>A condition is a predicate wherever it is written.</b> A <c>CASE</c> takes an arm where
         /// its condition is true and passes over it where the condition is false or unknown — the
-        /// distinction a filter draws, and the only one <see cref="Rewrite"/> preserves. So a rewrite
+        /// distinction a filter draws, and the only one <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> preserves. So a rewrite
         /// that keeps the rows a filter keeps keeps the arm a <c>CASE</c> takes.
         /// </para>
         /// <para>
@@ -237,6 +334,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>CAST(k AS UUID) IS NOT NULL</c>, which the service cannot evaluate until it is lowered onto
         /// the text. Unlowered, the whole projection stayed in process — and with it a sort or a page
         /// above it (#192).
+        /// </para>
+        /// <para>
+        /// <b>A <c>FALSE</c> is gated on every predicate of the expression.</b> Each condition is its
+        /// own statement, and the reduce and a never-read arm inside it assume only where nothing in
+        /// any predicate of the expression raises: each boolean node whose parent is not one
+        /// (<see cref="PredicatesOf"/>).
+        /// </para>
+        /// <para>
+        /// <b>What it returns is rendered, never planned</b> (<c>Rel.Convert.CosmosProjectRule.Rendered</c>).
+        /// A <c>FALSE</c> held in the plan let Calcite's simplifier carry it where no gate reaches: an
+        /// arm merged into its sibling's, a <c>CASE</c> folded to a null making a comparison with a cast
+        /// above it never true, the filter over that the empty relation. In the text it is what the
+        /// service computes for the expression, and nothing else.
         /// </para>
         /// </remarks>
         /// <param name="expression">The projected expression, over <paramref name="fields"/>.</param>
@@ -250,11 +360,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (expression is null || fields is null || rexBuilder is null || ContainsCase(expression) == false)
                 return expression!;
 
-            return (RexNode)expression.accept(new Conditions(fields, container, rootAlias, rexBuilder));
+            return (RexNode)expression.accept(new Conditions(fields, container, rootAlias, rexBuilder, PredicatesOf(expression, rexBuilder)));
         }
 
         /// <summary>
-        /// Rewrites the conditions of every <c>CASE</c> beneath a node, innermost first.
+        /// Returns the predicates of a projected expression as one conjunction, written as it is and
+        /// never simplified: each boolean node whose parent is not one, the expression's own where it is
+        /// boolean, so that every predicate Calcite evaluates in it is one of them or inside one.
+        /// </summary>
+        static RexNode PredicatesOf(RexNode expression, RexBuilder rexBuilder)
+        {
+            var predicates = new java.util.ArrayList();
+            Collect(expression, within: false);
+
+            return predicates.size() switch
+            {
+                0 => rexBuilder.makeLiteral(true),
+                1 => (RexNode)predicates.get(0),
+                _ => rexBuilder.makeCall(SqlStdOperatorTable.AND, predicates),
+            };
+
+            void Collect(RexNode node, bool within)
+            {
+                var predicate = node.getType().getSqlTypeName() == SqlTypeName.BOOLEAN;
+                if (predicate && within == false)
+                    predicates.add(node);
+
+                if (node is RexCall call)
+                    for (var i = 0; i < call.getOperands().size(); i++)
+                        Collect((RexNode)call.getOperands().get(i), predicate);
+            }
+        }
+
+        /// <summary>
+        /// Rewrites the conditions of every <c>CASE</c> beneath a node, innermost first, each gated
+        /// on the expression's predicates.
         /// </summary>
         sealed class Conditions : RexShuttle
         {
@@ -263,13 +403,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             readonly CosmosContainerMetadata? _container;
             readonly string _rootAlias;
             readonly RexBuilder _rexBuilder;
+            readonly RexNode _gate;
 
-            public Conditions(IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder)
+            public Conditions(IReadOnlyList<CosmosPath?> fields, CosmosContainerMetadata? container, string rootAlias, RexBuilder rexBuilder, RexNode gate)
             {
                 _fields = fields;
                 _container = container;
                 _rootAlias = rootAlias;
                 _rexBuilder = rexBuilder;
+                _gate = gate;
             }
 
             public override RexNode visitCall(RexCall call)
@@ -289,7 +431,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
                     if (i % 2 == 0 && i < @case.getOperands().size() - 1)
                     {
-                        var rewritten = Rewrite(operand, _fields, _container, _rootAlias, _rexBuilder);
+                        var rewritten = Rewrite(operand, _fields, _container, _rootAlias, _rexBuilder, readings: null, _gate);
                         changed |= ReferenceEquals(rewritten, operand) == false;
                         operand = rewritten;
                     }
@@ -418,10 +560,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// A merged view's filter is exactly the discriminator that makes its columns mean what they
         /// do, so <c>q</c> is lowered against the facts <c>p</c> establishes beside the ones the
         /// conjunct's siblings do — the sibling-conjunct argument, one level down: over a row where
-        /// <c>p</c> is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. And where
-        /// those facts cannot hold together <c>p</c> is never true, so the <c>CASE</c> is the constant.
-        /// That is <see cref="OracleLicence.Arm"/>: the siblings and the arm's conditions, never the
-        /// conjunct the <c>CASE</c> is part of.
+        /// <c>p</c> is not true the <c>CASE</c> answers its <c>ELSE</c> however <c>q</c> reads. That is
+        /// <see cref="OracleLicence.Arm"/>: the siblings and the arm's conditions, never the conjunct
+        /// the <c>CASE</c> is part of. And where those facts cannot hold together <c>p</c> is never
+        /// true, so the <c>CASE</c> is the constant; but the constant stops Calcite evaluating <c>p</c>,
+        /// <c>q</c> and, where it decides the filter, every conjunct, so it is written only where nothing
+        /// in the WHERE as written raises, a conjunct the deletions drop among it, or in a projected
+        /// condition nothing in any predicate of the expression (<see cref="OracleLicence.NeverRead"/>).
+        /// Where something there may raise, the arm
+        /// is lowered under the contradiction's view, which licenses nothing, and taken apart or rebuilt
+        /// as any other.
         /// </para>
         /// <para>
         /// <b>Only where <c>q</c> cannot raise, which is the condition Calcite's own simplifier keeps
@@ -435,7 +583,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>And it needs no fact.</b> The equivalence holds of any <c>CASE</c> of this shape, so a
         /// container that declares nothing has one taken apart too — the one thing
-        /// <see cref="Rewrite"/> walks a predicate for when nothing is declared. A <c>CASE</c> with
+        /// <see cref="Rewrite(RexNode, IReadOnlyList{CosmosPath}, CosmosContainerMetadata, string, RexBuilder, IReadOnlyList{CosmosReading})"/> walks a predicate for when nothing is declared. A <c>CASE</c> with
         /// more than one arm, or an <c>ELSE</c> that may be true, is not this shape and is left as the
         /// ternary it already rendered as.
         /// </para>

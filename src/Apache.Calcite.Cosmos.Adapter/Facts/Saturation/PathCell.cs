@@ -81,6 +81,30 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             /// <summary>Which side of a number every value's double lies on, by value: below the number's double is below it.</summary>
             internal int? RoundedSide(decimal c) => DoubleSide(DoubleBound.Of(c)) is 0 ? DoubleBound.Compare(DoubleBound.Of(c), c) : DoubleSide(DoubleBound.Of(c));
 
+            /// <summary>
+            /// The side of a literal integers of the cell lie on as the emulator may return them, holding one written with a
+            /// point as its double from 2^53 on (<see cref="Renderings.PointedSide"/>): by their doubles, <c>null</c> where not
+            /// one way; none for a cell no double moves.
+            /// </summary>
+            internal int?[] PointedSide(decimal c) => Integral && (Side(-Renderings.DoubleUnitFrom) != 1 || Side(Renderings.DoubleUnitFrom) != -1)
+                ? [DoubleSide(DoubleBound.Of(c)) is int side and not 0 ? side : null] : [];
+
+            /// <summary>
+            /// The least and the greatest whole double from <paramref name="least"/> to <paramref name="most"/> a value's double
+            /// may be, <c>null</c> where none may: a cell of fractions whose doubles reach a whole double, or of integers past a
+            /// limit whose doubles round back onto it.
+            /// </summary>
+            internal (double Low, double High)? WholeDoubles(double least, double most)
+            {
+                var (lower, upper) = Held;
+                var low = Math.Ceiling(Math.Max(lower is Bound l ? Math.Max(DoubleBound.Of(l.Value), DoubleLow ?? double.NegativeInfinity) : DoubleLow ?? double.NegativeInfinity, least));
+                var high = Math.Floor(Math.Min(upper is Bound u ? Math.Min(DoubleBound.Of(u.Value), DoubleHigh ?? double.PositiveInfinity) : DoubleHigh ?? double.PositiveInfinity, most));
+                return low <= high ? (low, high) : null;
+            }
+
+            /// <summary>Whether some value's double may be whole from <paramref name="least"/> to <paramref name="most"/> (<see cref="WholeDoubles"/>).</summary>
+            internal bool MayRoundToWhole(double least, double most) => WholeDoubles(least, most) is not null;
+
             /// <summary>Whether a number's double lies within the double bounds.</summary>
             internal bool Rounds(string value) => DoubleBound.Of(value) is var d && d >= (DoubleLow ?? d) && d <= (DoubleHigh ?? d);
 
@@ -95,6 +119,23 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// a comparison of the two turns. <c>null</c> where the two are not parted so.
         /// </summary>
         public sealed record Pair(PathCell Left, PathCell Right, int? Order = null) : PathCell;
+
+        /// <summary>
+        /// The cell that is a state whole, every value it stands for: a string of every character class, cut by no affix, and
+        /// a number of no double bound, so its <see cref="Coarse"/> state is the state. What the raise evaluator reads a
+        /// state a path may hold through (<see cref="PredicateAtom.RaisesOver"/>), the cell methods carrying the raises the
+        /// coarse readings leave out.
+        /// </summary>
+        public static PathCell Of(PredicateAtom.State state) => state switch
+        {
+            PredicateAtom.State.Absent => new Absent(),
+            PredicateAtom.State.Null => new Null(),
+            PredicateAtom.State.Structure s => new Structure(s.Type),
+            PredicateAtom.State.Scalar s => new Point(s.Value),
+            PredicateAtom.State.AnyString s => new Strings(null, null, s.Except, AllBands),
+            PredicateAtom.State.AnyNumber n => new Numbers(n.Integral, n.Lower, n.Upper, ValueSet<string>.Empty),
+            _ => new Unknown(),
+        };
 
         /// <summary>The state the cell lies in, which the coarse reading answers on.</summary>
         public PredicateAtom.State Coarse => this switch
@@ -130,7 +171,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         static string But(ValueSet<string> except) => except.Count == 0 ? "" : " but " + string.Join(", ", except.Select(SqlValue.Quote));
 
-        static string Number(decimal value) => Of(value).Substring(Of(value).IndexOf('|') + 1);
+        static string Number(decimal value) => JsonValues.Of(value).Substring(JsonValues.Of(value).IndexOf('|') + 1);
 
         /// <inheritdoc />
         public int CompareTo(PathCell? other) => other is null ? 1 : string.CompareOrdinal(Text, other.Text);
@@ -256,7 +297,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                         break;
 
                     case BooleanType:
-                        cells.AddRange(new[] { Of(true), Of(false) }.Where(Admits).Select(v => new Point(v)));
+                        cells.AddRange(new[] { JsonValues.Of(true), JsonValues.Of(false) }.Where(Admits).Select(v => new Point(v)));
                         break;
 
                     case StringType or IntegerType or FractionType when x.Values is not null:
@@ -292,8 +333,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                             if (cut is not decimal point)
                                 break;
 
-                            if (TypeOf(Of(point)) == kind && Admits(Of(point)))
-                                cells.Add(new Point(Of(point)));
+                            if (TypeOf(JsonValues.Of(point)) == kind && Admits(JsonValues.Of(point)))
+                                cells.Add(new Point(JsonValues.Of(point)));
                             lower = x.Lower is Bound l ? Bound.StricterLower(Bound.Above(point), l) : Bound.Above(point);
                         }
 
@@ -463,7 +504,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 foreach (var seed in seeds.Distinct())
                     foreach (var before in fillers)
                         foreach (var after in fillers)
-                            if (Of(start + before + seed + after) is var candidate && s.Contains(candidate))
+                            if (JsonValues.Of(start + before + seed + after) is var candidate && s.Contains(candidate))
                                 return candidate;
 
             return null;
@@ -493,8 +534,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 if (s.High is not null && string.CompareOrdinal(text, StringOf(s.High)) >= 0)
                     return null;
 
-                if (s.Except.Contains(Of(text)) == false)
-                    return Of(text);
+                if (s.Except.Contains(JsonValues.Of(text)) == false)
+                    return JsonValues.Of(text);
             }
 
             return null;
@@ -535,18 +576,18 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
                 for (var x = from; ; x += step)
                 {
-                    if (n.Contains(Of(x)))
-                        return Of(x);
+                    if (n.Contains(JsonValues.Of(x)))
+                        return JsonValues.Of(x);
 
                     // Out of the interval, and not for being excepted: past its far end.
-                    if (n.Except.Contains(Of(x)) == false)
+                    if (n.Except.Contains(JsonValues.Of(x)) == false)
                         return null;
                 }
             }
             catch (OverflowException)
             {
                 // Past a decimal's range: a number the theory holds approximately, as a document may.
-                var beyond = Of(n.Lower is null ? -1e30 : 1e30);
+                var beyond = JsonValues.Of(n.Lower is null ? -1e30 : 1e30);
                 return n.Contains(beyond) ? beyond : null;
             }
         }
@@ -614,34 +655,53 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 // Past a decimal's range, where only a number held approximately lies.
             }
 
-            return candidates.Select(Of).Concat(new[] { 1e30, -1e30, 1e-30, -1e-30 }.Select(Of)).FirstOrDefault(n.Contains);
+            return candidates.Select(JsonValues.Of).Concat(new[] { 1e30, -1e30, 1e-30, -1e-30 }.Select(JsonValues.Of)).FirstOrDefault(n.Contains);
         }
 
         /// <summary>
         /// A fraction of an interval that is not excepted: halfway from its lower end to the least excepted value above it
-        /// or its upper end, halved toward the lower until it is no integer.
+        /// or its upper end, halved toward the lower until it is no integer, or until no decimal lies between; and else an
+        /// end the interval holds.
         /// </summary>
+        /// <remarks>
+        /// Each candidate lies below the last, so the halving ends. Past a decimal's last digit, <c>low / 2 + x / 2</c> may
+        /// round back onto <c>x</c>: the fractions whose double is zero, from -0.0000000000000000000000000001 to
+        /// 0.0000000000000000000000000001 both held as the rounding interval's decimals (<see cref="DoubleBound.Rounding"/>),
+        /// halve to 0, an integer, and stood still there forever. Two ends that close are subtracted without overflow, and
+        /// half their difference is the decimal between them where one is. The halving tries neither end, so an end the
+        /// interval holds is tried last: that interval's only fractions are its two ends.
+        /// </remarks>
         static string? SomeFraction(Numbers n)
         {
             // An interval of one value, or of none.
             if (n.Lower is Bound l && n.Upper is Bound h && (Bound.NoNumberBetween(l, h) || l.Value == h.Value))
-                return n.Contains(Of(l.Value)) ? Of(l.Value) : null;
+                return n.Contains(JsonValues.Of(l.Value)) ? JsonValues.Of(l.Value) : null;
 
             try
             {
                 var excepted = n.Except.AsEnumerable().Where(IsExactNumber).Select(NumberOf).ToList();
                 var low = n.Lower?.Value ?? excepted.Append(n.Upper?.Value ?? 1m).Min() - 1;
                 var high = excepted.Where(e => e > low).Append(n.Upper?.Value ?? low + 1).Min();
-                for (var x = low / 2 + high / 2; x > low; x = low / 2 + x / 2)
-                    if (n.Contains(Of(x)))
-                        return Of(x);
+                for (var x = low / 2 + high / 2; x > low;)
+                {
+                    if (n.Contains(JsonValues.Of(x)))
+                        return JsonValues.Of(x);
+
+                    var next = low / 2 + x / 2;
+                    if (next >= x)
+                        next = low + (x - low) / 2;
+                    if (next >= x)
+                        break;
+
+                    x = next;
+                }
             }
             catch (OverflowException)
             {
                 // No decimal lies there, and no double past 2^53 is a fraction.
             }
 
-            return null;
+            return new[] { n.Lower?.Value, n.Upper?.Value }.OfType<decimal>().Select(JsonValues.Of).FirstOrDefault(n.Contains);
         }
 
     }

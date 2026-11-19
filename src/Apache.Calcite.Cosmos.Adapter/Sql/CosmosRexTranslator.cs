@@ -455,8 +455,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <b>Where a rendering may be read, it is read as one.</b> A comparison reasons about which
         /// documents a rendering matches — see <see cref="WriteComparand"/> — and a null test asks only
         /// whether there is one — see <see cref="WriteIsNull"/>. <c>LIKE</c> refuses its rendering
-        /// subject on its own terms. A cast that names the raw value, or that a stored boolean proves,
-        /// says what it reads. The geography, full text, vector and type-test functions take the path
+        /// subject on its own terms. A cast a stored boolean proves says what it reads. The geography, full text, vector and type-test functions take the path
         /// as an address. Nothing else is told it is reading a rendering, so nothing else may, and a
         /// new operator is refused until it is.
         /// </para>
@@ -722,14 +721,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 case nameof(SqlKind.__Enum.CAST):
                 case nameof(SqlKind.__Enum.SAFE_CAST):
-                    // A marker says what it reads, and so does a cast a stored boolean proves. Any other
-                    // cast hands its operand on to whatever encloses it, to be judged there: one that
+                    // A cast a stored boolean proves says what it reads. Any other cast hands its
+                    // operand on to whatever encloses it, to be judged there: one that
                     // converts is refused by WriteCast, and one that boxes, asserts or renders hands
                     // the value through. That includes the box Calcite's coercion puts around a side
                     // of a comparison with a VARIANT, which the comparison sees through to the
                     // rendering underneath (WriteComparand), and the cast to text an equality drops,
                     // which is the rendering itself and declares no width (TryTextCastValue).
-                    if (_paths.IsRawValueMarker(call) || TryStoredBoolean(call) is not null)
+                    if (TryStoredBoolean(call) is not null)
                         return true;
 
                     return permitted;
@@ -3127,18 +3126,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         void WriteCast(StringBuilder builder, RexCall call)
         {
-            // The raw value at a path, named over its rendering. CosmosFilterSplitRule writes the
-            // comparison it pushes against the value the service holds rather than the text Calcite
-            // renders, and says so by typing the accessor ANY -- see IsTextRendering for why the type is
-            // what decides it. A field bound to an accessor is cast to ANY instead of re-typed: a host
-            // transposing the filter through the projection replaces the reference with the
-            // projection's expression and the type that said it goes with it, where a cast is a call
-            // of its own and survives. Rendered as the path, which is what the cast names.
-            if (_paths.IsRawValueMarker(call))
-            {
-                Write(builder, Operand(call, 0));
-                return;
-            }
+            // No cast to ANY names the raw value: the split rule re-types the accessor instead
+            // (RenderingRexBuilder.RawValue), and a query's own cast of the text to ANY is the text
+            // Calcite holds, so '6' is equal to a stored 6 through it where c.q = "6" is not. It
+            // converts, and is refused below.
 
             // The cast Calcite's type coercion adds to the other side of a comparison with a VARIANT
             // column -- a promoted declared-path key; see CosmosTable.getRowType. The box carries the
@@ -3763,22 +3754,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// with the tests its reading answers a value under.
         /// </summary>
         /// <remarks>
-        /// The reading is the one the expression names, so a text rendering cast to <c>ANY</c> — the
-        /// raw value, named on purpose; see <see cref="WriteCast"/> — collects its path with none.
+        /// The reading is the one the expression names.
         /// </remarks>
         void CollectGuardPaths(RexNode node, List<(string Path, IReadOnlyList<SqlFunction>? Tests)> paths)
         {
-            var raw = false;
-
-            if (node is RexCall marker && _paths.IsRawValueMarker(marker))
-            {
-                node = Operand(marker, 0);
-                raw = true;
-            }
-
             if (_paths.TryResolvePath(node, out var path) && path is not null)
             {
-                var entry = (path.ToString(), raw ? null : ReadingTests(node));
+                var entry = (path.ToString(), ReadingTests(node));
                 if (paths.Contains(entry) == false)
                     paths.Add(entry);
 

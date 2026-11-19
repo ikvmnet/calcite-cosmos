@@ -29,10 +29,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// The union S holds is, key by key, every measured column's answer joined, and beside it each column's own under the
-        /// key of the reading through that column alone (rawtyped), each S's rules' answer for that column, and nothing else:
-        /// every class a column states, an absent path its own (F3), beside each literal it is compared beside. A column no
-        /// row measured (<see cref="PredicateAtom.UnionColumns"/>, a <c>CHAR</c>'s) answers each key as the union does. Both
-        /// lattices keep their laws over the answers and unions S gives.
+        /// key of the reading through that column alone (rawtyped), each the rules' answer for that column, and nothing else:
+        /// every class a column states, an absent path its own (F3), beside each literal it is compared beside, and beside a
+        /// parameter, a comparison's key with no literal's class, the column's answers beside every class it is beside
+        /// joined. A column no row measured (<see cref="PredicateAtom.UnionColumns"/>, a <c>CHAR</c>'s) answers a literal's
+        /// key as the union does and a parameter's as the column a row says it answers one as (parameteras, a
+        /// <c>VARCHAR</c>'s). Both lattices keep their laws over the answers and unions S gives.
         /// </summary>
         [Fact]
         public void TheUnionIsEveryKeysColumnsJoined()
@@ -43,25 +45,88 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var measured = columns.Where(e => PredicateAtom.RawColumns.Contains(PredicateAtom.ColumnOf(e.Key.Reader)!)).ToList();
             var joined = union.Entries.Where(e => PredicateAtom.ColumnOf(e.Key.Reader) is null).ToList();
             static RawKey Columnless(RawKey key) => key with { Reader = PredicateAtom.Columnless(key.Reader) };
+            static bool Parameter(RawKey key) => key.Test != CosmosServiceTest.IsNull && key.Operand == CosmosValueClass.None;
 
-            // Each column's reading: 8 classes, its null test and five comparisons beside each literal it is beside.
+            // Each column's reading: 8 classes, its null test and five comparisons beside each literal it is beside, and
+            // the five beside a parameter.
             columns.GroupBy(e => e.Key.Reader).ToDictionary(g => g.Key, g => g.Count()).Should().Equal(new System.Collections.Generic.Dictionary<string, int>
             {
-                ["raw:VARIANT"] = 288, ["raw:ANY"] = 288, ["raw:VARCHAR"] = 48,
-                ["cast:VARCHAR:raw:VARIANT"] = 48, ["cast:VARCHAR:raw:ANY"] = 48, ["cast:VARCHAR:raw:VARCHAR"] = 48,
-                ["raw:CHAR"] = 288, ["cast:VARCHAR:raw:CHAR"] = 48,
+                ["raw:VARIANT"] = 328, ["raw:ANY"] = 328, ["raw:VARCHAR"] = 88,
+                ["cast:VARCHAR:raw:VARIANT"] = 88, ["cast:VARCHAR:raw:ANY"] = 88, ["cast:VARCHAR:raw:VARCHAR"] = 88,
+                ["raw:CHAR"] = 328, ["cast:VARCHAR:raw:CHAR"] = 88,
             });
-            joined.Should().HaveCount(288 + 48);
+            joined.Should().HaveCount(328 + 88);
             foreach (var (key, answer) in joined)
                 answer.Should().Be(measured.Where(e => Columnless(e.Key) == key).Aggregate(new RawAnswer(), (a, e) => RawAnswer.Join(a, e.Value)), key.ToString());
-            foreach (var (key, answer) in measured)
+            foreach (var (key, answer) in measured.Where(e => Parameter(e.Key) == false))
                 s.Theory.Get(s.RawColumn.Of(Columnless(key), PredicateAtom.ColumnOf(key.Reader)!)).Should().Be(answer, key.ToString());
+            // A parameter's key holds no rawcolumn row: it is the join of the column's answer beside each class it is beside.
+            foreach (var (key, answer) in measured.Where(e => Parameter(e.Key)))
+            {
+                var column = PredicateAtom.ColumnOf(key.Reader)!;
+                var beside = ProbeRows.Measured.Columns.Beside.Where(b => b.Reading == PredicateAtom.Columnless(key.Reader) && b.Column == column).Select(b => b.Operand).ToList();
+                beside.Should().NotBeEmpty(key.ToString());
+                answer.Should().Be(beside.Aggregate(new RawAnswer(), (a, o) => RawAnswer.Join(a, s.Theory.Get(s.RawColumn.Of(Columnless(key) with { Operand = o }, column)))), key + " beside a parameter");
+            }
+            var parameterAs = ProbeRows.Measured.ParametersAs.ToDictionary(p => p.Column, p => p.As);
             foreach (var (key, answer) in columns.Except(measured))
-                answer.Should().Be(joined.Single(e => e.Key == Columnless(key)).Value, key + " reads as the union");
+                answer.Should().Be(Parameter(key) ? union[Columnless(key).In(parameterAs[PredicateAtom.ColumnOf(key.Reader)!])] : joined.Single(e => e.Key == Columnless(key)).Value,
+                    key + (Parameter(key) ? " answers a parameter as its row's column" : " reads as the union"));
 
             RawTruths.AnswerUnion.Verify([.. union.Entries.Select(e => e.Value).Distinct(), RawAnswer.Unanswered]);
             RawTruths.Union.Verify([RawTruths.Empty, union, .. union.Entries.Take(40).Select(e => RawTruths.Of(e.Key, e.Value))]);
             GC.KeepAlive(s);
+        }
+
+        /// <summary>
+        /// Beside a parameter a raw reading answers what its column answers beside every class it is compared beside: a
+        /// <c>VARIANT</c>'s ordering fails to compile over every class, an absent path among them; an <c>ANY</c>'s raises
+        /// over every value, across types, and is unknown over a null; a <c>VARCHAR</c> column's equality raises over
+        /// anything but a string, which the cell decides; and a <c>VARIANT</c>'s and an <c>ANY</c>'s equality raise nowhere.
+        /// </summary>
+        [Fact]
+        public void AComparisonWithAParameterReadsItsColumnBesideEveryClass()
+        {
+            var columns = ProbeRows.Columns;
+            Truths On(string column, CosmosValueClass kind, CosmosServiceTest test) =>
+                columns[RawKey.Of(PredicateAtom.RawIn(column), kind, test, CosmosValueClass.None)].On(() => T | F);
+            var nulls = new[] { CosmosValueClass.Absent, CosmosValueClass.Null };
+
+            foreach (var kind in CosmosValueClasses.Kinds.AsEnumerable())
+            {
+                On("VARIANT", kind, CosmosServiceTest.Less).Should().Be(R, $"a VARIANT's ordering over {kind}");
+                (On("VARIANT", kind, CosmosServiceTest.Equal) & R).Should().Be(Truths.None, $"a VARIANT's equality over {kind}");
+                (On("ANY", kind, CosmosServiceTest.Equal) & R).Should().Be(Truths.None, $"an ANY's equality over {kind}");
+                if (nulls.Contains(kind))
+                {
+                    On("ANY", kind, CosmosServiceTest.Greater).Should().Be(U, $"an ANY's ordering over {kind}");
+                    On("VARCHAR", kind, CosmosServiceTest.Equal).Should().Be(U, $"a VARCHAR column's equality over {kind}");
+                }
+                else
+                {
+                    (On("ANY", kind, CosmosServiceTest.Greater) & R).Should().Be(R, $"an ANY's ordering over {kind}");
+                    On("VARCHAR", kind, CosmosServiceTest.Equal).Should().Be(kind == CosmosValueClass.String ? T | F : R, $"a VARCHAR column's equality over {kind}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The facts graph's root derives the union S's does, the keys beside a parameter among it, both from one set of
+        /// rows: the columns' rows and rules are the readings vocabulary's, which both graphs define. And the rows the
+        /// adapter's facts graph reads (<see cref="CosmosAxiomRows.ReadCalcite"/>) name the columns S's definition does.
+        /// </summary>
+        [Fact]
+        public void TheFactsGraphsRootJoinsTheUnionSDoes()
+        {
+            var shared = new JsonContexts(Adapter.Metadata.CosmosReasoning.Rows with { Calcite = ProbeRows.Measured.Calcite() });
+            var production = new JsonContexts(Adapter.Metadata.CosmosReasoning.Rows);
+            var union = shared.Json.Get(shared.Rules.Readings.RawUnion.Of());
+
+            union.Should().Be(ProbeRows.Columns);
+            union.Entries.Should().Contain(e => e.Key.Test != CosmosServiceTest.IsNull && e.Key.Operand == CosmosValueClass.None, "a comparison beside a parameter has its key");
+            production.Json.Get(production.Rules.Readings.RawUnion.Of()).Should().Be(ProbeRows.Columns, "the registry's rows the adapter reads");
+            GC.KeepAlive(shared);
+            GC.KeepAlive(production);
         }
 
         /// <summary>

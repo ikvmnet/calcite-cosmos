@@ -157,13 +157,26 @@ disjunction one of whose branches another conjunct asserts: `kind = 'shipment' A
 OR …)` sends the first conjunct alone. Where every conjunct goes, the statement has no `WHERE` at all.
 `required` matters: without it a document may lack the path, and a comparison over an absent path keeps
 no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
-Calcite's integer cast of the text raises on `30.0` and on numbers past an `INTEGER`, which an
-`"integer"` declaration admits, and dropping the conjunct would answer where the query fails.
+Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an `"integer"`
+declaration with no bounds admits, and dropping the conjunct would answer where the query fails. The
+service returns a whole number within 64 bits as its digits however it was written, so the cast reads a
+stored `30.0` as `30`; a range the declared bounds keep within an `INTEGER` is still sent, since the
+adapter does not yet drop a conjunct through that cast. The plan deletes no conjunct; only the request's
+text does, so one Calcite evaluates fails where Calcite does: `NOT (CAST(JSON_VALUE(c."DOC", '$.body') AS
+INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, is not sent, and the
+query fails on a `body` that is no number. One the service takes, and one in a projected `CASE`
+condition or beside a `DELETE` of a whole partition (Chapter 13), may answer where Calcite fails
+(Chapter 23).
 
 ### A predicate no document can satisfy
 
-A value the schema rules out keeps no row, and the plan says so: the query is the empty result, and
-nothing is sent.
+A value the schema rules out keeps no row, and the request that would ask for one is not sent. What
+the schema rules out or makes redundant never reaches a condition Calcite evaluates: a statement it
+rules out is planned as one it does not, but for what the adapter pushes only on what it knows of the
+rows the `WHERE` keeps (below), and once the plan is made, each statement it would send is asked
+whether its `WHERE` keeps any document the schema admits. Where it
+keeps none, and nothing in it can fail on a document the schema admits, the statement is not sent,
+and whatever Calcite computes above it reads no rows, as it would read the service's empty answer.
 
 ```sql
 -- "status": { "enum": ["active", "archived"] }
@@ -172,28 +185,150 @@ SELECT c."id" FROM "shipments" AS c WHERE JSON_VALUE(c."DOC", '$.status') = 'del
 
 ```
 without a schema   WHERE c.status = @p0, which the service evaluates to find nothing
-with one           no request: the plan is an empty Values
+with one           the same plan, and no request: EXPLAIN shows CosmosToClrCursorConverter(sends=[nothing])
 ```
 
-That takes a rule in the host for an empty `Values`, which Calcite's own and the CLR convention's
-rule sets both have. A planner without one sends `WHERE @p0` bound to `false`: one round trip that
-reads no document.
+The answer is the one sending the query would give, whatever plan Calcite picked: what the schema
+rules out changes whether a request goes out, and where such a clause is computed, not the answer.
+The same holds for an `anyOf` of enums, whose values are the members of them all, for a `const`, for a
+`WHERE` the service answers whole and one a filter adds to, and for a join that reads a side by the
+other's keys, which then reads no batch. A pushed statement that counts or sums with no `GROUP BY` is
+still sent, its `WHERE` written `false` where one filter alone keeps nothing, and as the filters wrote
+it where only their conditions together keep nothing: over no document it answers one row, a count of
+0. A sum is sent beside a count and read as `NULL` where the count is 0, as SQL sums no rows; the
+service's own sum of no document is 0 on the emulators, and Azure's is not measured. Skipping the
+request skips what the service could have reported for it too: a lost key, a deleted container,
+throttling.
 
-The same holds for an `anyOf` of enums, whose values are the members of them all, and for a `const`.
+What the schema says of the values a query reads still shapes the plan, as the rest of this chapter
+describes. The adapter pushes some of a query only on what it knows of the rows a `WHERE` keeps, which
+it reads from the `WHERE` and the schema together, and of a `WHERE` the schema rules out that reading
+holds nothing. So above such a `WHERE`, a clause pushed only on that knowledge is computed in Calcite,
+over the empty answer, where without a schema, or beside a `WHERE` the schema admits, it is pushed: for
+example `UPPER(JSON_VALUE(c."DOC", '$.body'))` in the select list beside
+`JSON_VALUE(c."DOC", '$.body') = 'abc'`, which says what `body` holds, a `GROUP BY` of `kind` with its
+`COUNT(*)`, a `DISTINCT` of `kind`, a `MIN`, a `MAX` or an `ORDER BY`. A part of such a `WHERE` that
+the adapter sends only on what another part says stays in Calcite the same way:
+`UPPER(JSON_VALUE(c."DOC", '$.body')) = 'ABC'` beside `JSON_VALUE(c."DOC", '$.body') = 'abc'` is sent
+beside a `kind` the schema admits, and kept in Calcite beside one it rules out, over a statement that
+sends nothing. The answers are the same; the plan is another (Chapter 23).
 
-A range does the same against a bound or an enum, read through a numeric cast:
+A comparison read through a cast to `DOUBLE` is ruled out against a bound or an enum the same way:
 
 ```sql
 -- "n": { "type": "integer", "maximum": 100 }
-SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500
 
 -- "n": { "enum": [1, 2, 3] }
-SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) = 30
+SELECT c."id" FROM "shipments" AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) = 30
 ```
 
-Both keep nothing. A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast
-converts a stored string too — `> 500` keeps a document storing `"600"`. So without `"type": "integer"`
-the first query is left as it is: a string there is not ruled out.
+Both keep nothing, and the cast fails on no number, so neither is sent. A comparison through a cast to
+`DOUBLE` that the schema rules out may still be sent, one request that finds nothing: over the integer
+at most 100, `> 100` is (Chapter 23).
+
+A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast converts a stored
+string too — `> 500` keeps a document storing `"600"`. So with the bound alone a range on `n` is not
+ruled out: written `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500`, it is sent, one request that
+reads what the service finds. A comparison through a cast to `DOUBLE` may fail to plan through a
+connection that runs Calcite's default rules, as the README's does (Chapter 23). An enum that lists a
+number beside a string the cast cannot read may be sent whole, and the service then answers where
+Calcite fails on that string (Chapter 23).
+
+A test of a truth value Calcite reads as never true is asked the same way, and needs nothing declared
+but what the service guarantees: `(c."id" = 'b') IS NULL` sends nothing, since every document holds an
+`id` and the test is never unknown. One over something that can fail is sent, or kept in Calcite:
+`CAST(c."id" AS INTEGER) IS NULL` reads every document and fails on an `id` that is no number, as
+Calcite does.
+
+Some of what a `WHERE` can hold the adapter cannot show never fails: a comparison of two properties, a
+function's result, and a cast it holds no measurement of. A `WHERE` the service can take whole is sent
+where it holds one, one request that finds nothing; so is a `WHERE` beside which the adapter sends a
+weaker form of a part the service cannot take exactly, the weaker form being read as one that may
+fail (Chapter 23). Where the part the schema rules out stays in process instead, as a comparison of two
+properties, `UPPER` and a cast to `INTEGER` mostly do, one request goes out, reading the documents
+Calcite reads, and Calcite answers what it computes over them. So does a part the service's own
+guarantee rules out, that every document holds an `id`: a null test of a `LIKE` over `id` the target
+sends no form of, of an ordering of `id` the emulator keeps, or of a `COALESCE` over it. The request
+reads every document the rest of the `WHERE` keeps, the whole container where that part is all of
+it, to find nothing (Chapter 23).
+
+A `CASE` condition in a projection follows the same rule, in the request alone: the plan keeps the
+condition as the query wrote it, so nothing the schema says of it reaches a column beside it or a filter
+above it. In the request, one the schema rules out is answered by the `CASE`'s other arms, without
+evaluating it, only where nothing in any condition, comparison or test of the projected expression can
+fail: through a cast to `DOUBLE` the first range above is, and through a cast to `INTEGER` it is
+evaluated on every row. So beside a test that casts a string property to `INTEGER`, every condition is
+evaluated as written, except where the cast sits in a conjunct the schema makes true, which is dropped
+from the request, so the column answers where Calcite fails (above). A cast in an arm's value is
+evaluated wherever Calcite would reach it, and one in the part of the select list that runs in process
+wherever Calcite's plan puts it.
+
+**A query is answered as the request would answer it.** Where Calcite in process would fail but the
+query, pushed down, answers no rows, it still does, with or without a schema; the schema only saves
+the request. These answer no rows where Calcite in process fails (Chapter 23):
+
+- a part of a `WHERE` kept in process beside a part sent that keeps nothing, the case at the end of
+  this section; a `COUNT` over it answers 0;
+- through a connection that runs Calcite's default rules, as the README's does, a part kept in process
+  that those rules read beside what the part sent holds: `JSON_VALUE(c."DOC", '$.flag' RETURNING
+  BOOLEAN) AND ((JSON_VALUE(c."DOC", '$.flag' RETURNING BOOLEAN) IS NOT NULL OR
+  CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1) IS NOT TRUE)` makes no request (Chapter 23);
+- a semi-join over a subquery that keeps nothing, which the adapter may answer by fetching the outer
+  documents by the subquery's keys, of which there are none, so the condition beside the `IN` is never
+  evaluated (Chapter 12.1); and a filter above such a join, which reads only the documents fetched;
+- a cast in the select list beneath a sort or a limit, which the plan computes above the filters over
+  it, so a filter that keeps nothing leaves it unevaluated;
+- a filter on a `DISTINCT`'s keys over a cast the `DISTINCT` computes, which the plan moves beneath the
+  `DISTINCT` into the request.
+
+Through that connection, the second case's `WHERE` without the `IS NOT TRUE` answers the rows the part
+sent keeps, where Calcite fails (Chapter 23).
+
+And the other way: where Calcite in process answers no rows, these fail pushed down, with a schema or
+without (Chapter 23):
+
+- a semi-join, a correlated `EXISTS` or an `IN` over a subquery that can fail, whose outer side keeps
+  nothing: Calcite's own semi-join reads the empty outer side first and never evaluates the subquery,
+  where the adapter's lookup join reads the subquery first (Chapter 12.1); and an `EXISTS` whose
+  subquery keeps nothing, beside a condition that can fail, which the plan evaluates first;
+- a part kept in process beside a part sent, which Calcite would have simplified together with a filter
+  above them: under `JSON_VALUE(x."DOC", '$.kind') = 'C'`, a subquery's
+  `CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') IN ('A', 'B')`
+  sends the `IN`, and the cast, evaluated in process
+  beside `kind = 'C'` alone, fails on a `body` that is no number, where Calcite reads the three together
+  as false and evaluates none of them;
+- a filter on a grouping's key over a subquery that computes a cast for each group: `SELECT x.k, x.m
+  FROM (SELECT JSON_VALUE(c."DOC", '$.kind') AS k, MAX(CAST(JSON_VALUE(c."DOC", '$.body') AS INTEGER))
+  AS m FROM … AS c WHERE JSON_VALUE(c."DOC", '$.n') = '1' GROUP BY JSON_VALUE(c."DOC", '$.kind')) AS x
+  WHERE x.k = 'B'` keeps the filter above the grouping and computes the cast for every group, failing
+  on a `body` that is no number in the group of `A`, where Calcite moves the filter beneath the grouping
+  and computes the cast for `B` alone.
+
+Of the ranges above, and of other casts:
+
+- Through `CAST(… AS INTEGER)` the first range is sent: Calcite's integer cast of the text fails on
+  numbers past an `INTEGER`, which an `"integer"` declaration with no `minimum` admits. The second
+  keeps nothing, as through `DOUBLE`: the service returns each member of the enum as its digits,
+  which the cast parses (Chapter 7.4).
+- The same holds of a `RETURNING` of one type over a property declared another (Chapter 7), and of a
+  type test Calcite cannot implement (Appendix B.5).
+- Where every document the schema admits fails, because the property is required, the filter stays in
+  Calcite and the statement fails as it does there: `RETURNING INTEGER` or `RETURNING DOUBLE` over a
+  required string. Where a document may lack the property, the filter may be sent, and the service
+  finds nothing.
+- Over a property declared `"integer"`, `RETURNING DOUBLE`, and `RETURNING BIGINT` over integers
+  within an `INTEGER`'s range, are sent whether the property is required or not, and answer what the
+  service finds, though Calcite fails on every such document (Chapters 7.4 and 23).
+
+The first case of the list of answers above, where Calcite fails, is the split. Where part of a `WHERE`
+cannot be sent, the adapter sends the rest and keeps that part in process (Chapter 8.1), and the part
+kept reads only the rows the part sent returns. When the part sent keeps nothing, no row reaches the
+part kept, and since the service would find nothing, no request is made either. Beside the `status`
+above, `JSON_VALUE(c."DOC", '$.body' RETURNING INTEGER) = 2` over a `body` declared a required string
+answers no rows, where Calcite fails (Chapter 23). Failing as Calcite does here would mean reading the
+whole container in process. A part kept that fails before it reads a row, such as a type test of
+anything but `JSON_VALUE` or `JSON_QUERY` of a path (Appendix B.5), still fails as Calcite does.
 
 **What a schema rules out is a value, not a document.** A `status` declared both `"type": "integer"`
 and a string `enum` can hold nothing, so the schema says documents have no `status`. A query that does
@@ -361,9 +496,9 @@ push over the path:
 `UPPER(x) LIKE '%A%'` asks both its columns: the service's `UPPER` folds the service's way, so the
 string has to be ASCII, and its `CONTAINS` stops at a U+0000, so it has to hold none. The first two rows
 prove both, and it is sent as `CONTAINS(UPPER(c.x), @p0)`; a `LIKE` of any other shape —
-`'a%'`, `'%a%b%'` — pushes over any declared string. One holding `_` — `'a_b'` — pushes only over a string
-proved to hold no line terminator, as the first row's are: the service's `_` matches one, which Calcite's
-never does (Chapter 8.2). On the
+`'a%'`, `'%a%b%'` — pushes over any declared string. One holding `_` — `'a_b'` — pushes in a filter only
+over a string proved to hold no line terminator, as the first row's are: the service's `_` matches one,
+which Calcite's never does (Chapter 8.2); in a select list it is sent regardless (Chapter 23). On the
 emulator, which stores U+0000 and U+FDD0 as two units each, a count, a window, a `LIKE` holding `_`, `0`
 or `1` beyond a prefix, and the other functions Appendix B.2 names push only over strings holding neither,
 and U+FDD0 lies above U+E000, so the rows proving nothing beyond U+FFFF do not prove it (Appendix B.2).

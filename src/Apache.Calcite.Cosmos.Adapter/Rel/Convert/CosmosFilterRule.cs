@@ -29,13 +29,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// declares already lowered into it.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A comparison against a type Cosmos has no equivalent for renders as nothing and takes the
         /// whole predicate with it. Where the container's declared facts say the stored form makes a
         /// string comparison mean the same thing, the lowered form is what both the legality test and
         /// the conversion see, so the rest of the rule needs no knowledge of any of it.
+        /// </para>
+        /// <para>
+        /// <b>The planning form</b> (<see cref="CosmosFactRewriter.Planned"/>): nothing the declaration alone decides
+        /// reaches the node, where Calcite reads it. A conjunct the rest imply is deleted, an arm never read and a WHERE
+        /// that keeps nothing are made <c>FALSE</c>, only in the text sent (<see cref="CosmosFilter.Implement"/>).
+        /// </para>
         /// </remarks>
         static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings) =>
-            CosmosFactRewriter.Rewrite(
+            CosmosFactRewriter.Planned(
                 filter.getCondition(), fields, convention.Container, CosmosImplementor.DefaultRootAlias, filter.getCluster().getRexBuilder(), readings);
 
         /// <summary>
@@ -50,7 +57,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// without it a comparison over the column pushed as the raw comparison the accessor's own
         /// spelling is declined for (#83).
         /// </remarks>
-        static bool IsTranslatable(CosmosConvention convention, Filter filter)
+        internal static bool IsTranslatable(CosmosConvention convention, Filter filter)
         {
             // Only a filter over this convention's own container, which is the declaration its condition is
             // rewritten and rendered under (CosmosConvention.Owns).
@@ -75,11 +82,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // what its siblings applied beside it establish, and never what it does itself. So a
             // conjunct may lean on another that reaches the service with it, to any depth, and no
             // conjunct certifies itself (#117). The same strata render it at implementation.
-            var statement = CosmosFilterStatement.Of(Pushed(convention, filter, fields, readings), fields, readings, convention.Container, filter.getCluster().getRexBuilder());
+            var rexBuilder = filter.getCluster().getRexBuilder();
+            var pushed = Pushed(convention, filter, fields, readings);
+            var statement = CosmosFilterStatement.Of(pushed, fields, readings, convention.Container, rexBuilder);
 
             // Onto a WHERE it is conjoined with it, and the service reads its form of the documents that WHERE excludes as
             // well: folded only where that form never fails there (CosmosClauses.Where).
-            return statement.Renders && ((written & CosmosClauses.Where) == 0 || statement.FailureFree);
+            var onto = (written & CosmosClauses.Where) != 0;
+            if (statement.Renders == false || onto && statement.FailureFree == false)
+                return false;
+
+            // What is sent is admitted here as well, so that implementation renders strata a rule admitted: the rendering
+            // form, the same node each time it is asked, which CosmosFilter.Sent asks the same of.
+            var sent = CosmosFactRewriter.Rewrite(pushed, fields, convention.Container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings);
+            if (ReferenceEquals(sent, pushed) == false && (sent is RexLiteral literal && literal.isAlwaysTrue()) == false)
+            {
+                var rendered = CosmosFilterStatement.Of(sent, fields, readings, convention.Container, rexBuilder);
+                _ = rendered.Renders && (onto == false || rendered.FailureFree);
+            }
+
+            return true;
         }
 
         /// <summary>

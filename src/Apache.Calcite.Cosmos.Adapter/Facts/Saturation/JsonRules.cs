@@ -88,7 +88,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             Json = graph.DefineRuleset("json");
             JsonSchema = graph.DefineRuleset("json schema");
 
-            // What Calcite makes of each reading, S's vocabulary too, settled once at the root (G7), over the values S registers.
+            // What Calcite makes of each reading, S's vocabulary too, settled once at the root (G7), over the values S registers;
+            // the vocabulary registers the raw columns' own.
             graph.Values.RegisterEnum<CosmosValueClass>();
             graph.Values.RegisterEnum<CosmosServiceTest>();
             graph.Values.RegisterEnum<Truths>();

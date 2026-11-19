@@ -14,12 +14,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// a row measured (<c>measuredcast</c>, h15b), its edges its target type's.
     /// </summary>
     /// <remarks>
-    /// Text and the cast of a raw value to text answer at the literals alone, the last as each of its columns does
-    /// (<c>Calcite.CastOfARawValueToText</c>); raw at a number's double too, which the box of a number not written as a
-    /// long compares (<c>Calcite.RawNullIsSqlNull</c>). An integer type raises past its limits, and a cast to one
+    /// Text and the cast of a raw value to text answer at the literals and at a number's double, the last as each of its
+    /// columns does (<c>Calcite.CastOfARawValueToText</c>), since the service holds a number as its double
+    /// (<c>Service.NumbersBeyondLongCompareAsDoubles</c>) and returns a whole one within a long as its digits
+    /// (<c>Service.IntegralNumbersReadBackAsHeld</c>); raw at a number's double too, which the box
+    /// of a number not written as a long compares (<c>Calcite.RawNullIsSqlNull</c>). An integer type raises past its limits, and a cast to one
     /// truncates within one of a literal and saturates at them. A double compares doubles, and so does the service a
     /// number it holds as one, an integer type's column a number not written as an integer (<c>CosmosJson.GetInteger</c>),
-    /// and <c>DECIMAL</c> one it renders; and a parse of the rendering reads the literal's text as the literal. A numeric
+    /// and <c>DECIMAL</c> one it renders; and a parse of the rendering reads the literal's text as the literal, an integer
+    /// type's a fraction whose double is whole as that double's digits too, so it is cut at the literal's double. A numeric
     /// cast of the raw value has no key, since no <c>Calcite.*</c> row measures one: over a <c>VARIANT</c> Calcite raises
     /// on a number beyond the type, and over an <c>ANY</c> wraps a long beyond an int.
     /// </remarks>
@@ -34,7 +37,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>Each reading's edges but a cast's, in no column.</summary>
         public static IReadOnlyDictionary<string, ReaderEdges> Readings { get; } = new Dictionary<string, ReaderEdges>
         {
-            [PredicateAtom.TextReader] = Row(),
+            [PredicateAtom.TextReader] = Row(CutKind.Double),
             [PredicateAtom.RawReader] = Row(CutKind.Double),
             [PredicateAtom.TypedReader("BOOLEAN")] = Row(),
             // A computed text place's (h10), read as text.
@@ -58,10 +61,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static IReadOnlyDictionary<string, ReaderEdges> CastTargets { get; } = new Dictionary<string, ReaderEdges>
         {
-            ["VARCHAR"] = Row(),
+            ["VARCHAR"] = Row(CutKind.Double),
             ["BOOLEAN"] = Row(),
-            ["INTEGER"] = Limits("INTEGER", CutKind.Rendering),
-            ["BIGINT"] = Limits("BIGINT", CutKind.Rendering),
+            ["INTEGER"] = Limits("INTEGER", CutKind.Double, CutKind.Rendering),
+            ["BIGINT"] = Limits("BIGINT", CutKind.Double, CutKind.Rendering),
             ["DOUBLE"] = Row(CutKind.Double, CutKind.Rendering),
         };
 

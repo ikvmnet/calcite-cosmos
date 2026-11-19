@@ -30,7 +30,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
     /// <c>Pos</c>, a negation's best from its operand's at <c>Pos</c>, the production key without a value the import reads,
     /// an answer that may not be read sent, the importer reading a conjunct's own stratum, a later round read beneath a
     /// stratum resting on a coarse reading, a Rex builder that drops a disjunct, and a composite whose later arm fails where
-    /// its stratum sets cells aside. Every one is caught.
+    /// its stratum sets cells aside. Every one is caught but the stratum resting on a coarse reading, which drops no row
+    /// since what the facts graph keeps holds every row its reading may keep (G12, G16b).
     /// </summary>
     public sealed class RenderingGateFaultTests
     {
@@ -131,11 +132,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G4, over templates (critic-check §3.2): the second disjunct's form offered by a planted template to the first,
-        /// inside a disjunction of one path. It is never the first's best nor within the root's, and under <c>DOUBLE</c> it is
-        /// refuted where the service drops a number Calcite keeps; the second disjunct's own form is exact on its own cells.
+        /// inside a disjunction of one path. It is never the first's best nor within the root's, and it is refuted where the
+        /// service drops a number Calcite keeps: under <c>DOUBLE</c> a fraction, and under <c>INTEGER</c> an integer the cast
+        /// parses, which the service returns as its digits however it was written
+        /// (<c>Service.IntegralNumbersReadBackAsHeld</c>). The second disjunct's own form is exact on its own cells.
         /// </summary>
         [Theory]
-        [InlineData("INTEGER", null)]
+        [InlineData("INTEGER", "$[\"price\"]=integers > 5 < 2147483647 double >= 5.000000000000001 (T,f)")]
         [InlineData("DOUBLE", "$[\"price\"]=fractions > 5 double >= 5.000000000000001 (T,f)")]
         public void G4_AContaminatedCandidateIsNeverBest(string type, string? refuted)
         {
@@ -481,13 +484,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G12 (critic finding 1; <c>TODO.md</c>, a stratum resting on a coarse reading): the TODO's statement, whose second
-        /// round reads the label beside kind's stratum, which the facts graph reads as the integer 5 where a column reads
-        /// 5.0000000000000001 as 5 too, beside a label the declaration leaves free. S states nothing beneath that stratum, so
-        /// what it sends for the statement under each set — admitted forms and weakenings — keeps the document of kind
-        /// 5.0000000000000001 and label 7, as Calcite does. The plant, a stratum read as exact whatever it rests on, sends
-        /// the bare label and drops it, and line 1 itself finds a document with a number as its label: since the switch
-        /// S writes the label's string-or-number form beneath the planted stratum, which is wrong of a label 7.0.
+        /// round reads the label beside kind's stratum, where a column reads 5.0000000000000001 as 5, beside a label the
+        /// declaration leaves free. What the statement sends under each set — admitted forms and weakenings — keeps the
+        /// document of kind 5.0000000000000001 and label 7, as Calcite does, as built and planted alike.
         /// </summary>
+        /// <remarks>
+        /// The plant, a stratum read as exact whatever it rests on, once sent the bare label and dropped the document, since
+        /// the facts graph read the kind's typed equality as the integer 5, which meets the declaration's condition and makes
+        /// the label a string. What it keeps of that equality is now every number whose double is 5
+        /// (<see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/>), which states no value of the kind, so the condition is not met
+        /// beneath the stratum either way, and a stratum whose facts hold of every row it keeps drops none read exactly: the
+        /// plant has nothing to break here, and source A finds no document with a number as its label. So the planted run
+        /// shows the exactness gate redundant beside <see cref="PredicateAtom.Kept(bool, ReadingTable, RawTruths)"/> for this statement; the gate stays
+        /// (<c>TODO.md</c>, a stratum resting on a coarse reading), and this run holds <c>Kept</c> to keeping the row alone.
+        /// </remarks>
         [Fact]
         public void G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven()
         {
@@ -499,7 +509,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var calcite = RenderingSoundnessTests.Tally.Calcite(And(Cmp(Typed(KindPath, "INTEGER"), "=", Lit(5m)), Eq(Text(LabelPath), "7")), document, new World(12));
             calcite.Should().Contain(Truths.True, "Calcite keeps the document");
 
-            foreach (var (planted, keeps) in new[] { (false, true), (true, false) })
+            foreach (var planted in new[] { false, true })
             {
                 var generated = new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, readExactly: planted ? _ => true : null);
                 RenderingCheckRun.Over(RenderingInputs.Differential("stratum", [Sql], generated.Bind([container])), generated: generated);
@@ -508,10 +518,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var sent = generated.Sends.Where(c => c.Set == set).Select(c => c.Form).Concat(generated.Weakenings.Where(w => w.Set == set && w.Residual).Select(w => w.Mine)).OfType<ServiceForm>().ToList();
                     var kept = Measured.Serves[set].All(target => sent.All(f => CosmosEval.On(f, document, target) == ServiceOutcomes.True));
                     TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")} {set}: {string.Join(" AND ", sent.Select(f => f.Text))}: keeps {kept}");
-                    kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
+                    kept.Should().BeTrue($"{set}, {(planted ? "planted" : "as built")}");
                 }
 
-                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().Be(planted, planted ? "planted" : "as built");
+                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().BeFalse(planted ? "planted" : "as built");
             }
         }
 
@@ -650,12 +660,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// G16b, its S half held to source A the G12 way (h15): G12's statement written as a <c>CASE</c>, the label compared
-        /// in the arm beneath the kind's column reading, which the facts graph reads as the integer 5 where a column reads
-        /// 5.0000000000000001 as 5 too. As built the arm's licence keeps no condition, the arm is read where its case is, and
-        /// what is sent under each set keeps the document of kind 5.0000000000000001 and label 7, as Calcite does. The plant,
-        /// every condition read exactly, states the arm beneath the kind's stratum, where the label is a string: S sends the
-        /// bare label, which drops it, and source A finds a document with a number as its label.
+        /// in the arm beneath the kind's column reading, where a column reads 5.0000000000000001 as 5. As built the arm's
+        /// licence keeps no condition, the arm is read where its case is, and what is sent under each set keeps the document
+        /// of kind 5.0000000000000001 and label 7, as Calcite does; planted, every condition read exactly, it keeps it too.
         /// </summary>
+        /// <remarks>
+        /// The plant states the arm beneath the kind's stratum, where the label was a string while the facts graph read the
+        /// kind's typed equality as the integer 5: S sent the bare label, which dropped the document. What it keeps of that
+        /// equality is now every number whose double is 5, which meets no condition of the declaration, so the arm's stratum
+        /// states nothing of the label read exactly or not, as <see cref="G12_WhatIsSentBeneathAStratumACoarseReadingRestsOnKeepsTheLabelSeven"/>
+        /// finds of the stratum: the planted run holds <c>Kept</c> to keeping the row with the gate open.
+        /// </remarks>
         [Fact]
         public void G16b_WhatIsSentBeneathAnArmACoarseConditionLicensesKeepsTheLabelSeven()
         {
@@ -664,7 +679,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             const string Sql = "SELECT c.\"id\" FROM t AS c WHERE CASE WHEN JSON_VALUE(c.\"DOC\", '$.kind' RETURNING INTEGER) = 5 THEN JSON_VALUE(c.\"DOC\", '$.label') = '7' ELSE FALSE END";
             var document = new J.Obj(new(StringComparer.Ordinal) { ["kind"] = new J.Num(5.0000000000000001m), ["label"] = new J.Num(7m) });
 
-            foreach (var (planted, keeps) in new[] { (false, true), (true, false) })
+            foreach (var planted in new[] { false, true })
             {
                 var generated = new RenderingGenerateRun(sets: RenderingGenerateRun.AssertedSets, readExactly: planted ? _ => true : null);
                 RenderingCheckRun.Over(RenderingInputs.Differential("arm", [Sql], generated.Bind([container])), generated: generated);
@@ -674,10 +689,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     var sent = generated.Sends.Where(c => c.Set == set).Select(c => c.Form).Concat(generated.Weakenings.Where(w => w.Set == set && w.Residual).Select(w => w.Mine)).OfType<ServiceForm>().ToList();
                     var kept = Measured.Serves[set].All(target => sent.All(f => CosmosEval.On(f, document, target) == ServiceOutcomes.True));
                     TestContext.Current.TestOutputHelper?.WriteLine($"{(planted ? "planted" : "as built")} {set}: {string.Join(" AND ", sent.Select(f => f.Text))}: keeps {kept}");
-                    kept.Should().Be(keeps, $"{set}, {(planted ? "planted" : "as built")}");
+                    kept.Should().BeTrue($"{set}, {(planted ? "planted" : "as built")}");
                 }
 
-                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().Be(planted, planted ? "planted" : "as built");
+                SourceA(generated).Witnesses.Any(w => Regex.IsMatch(w, "\"label\":[0-9]")).Should().BeFalse(planted ? "planted" : "as built");
             }
         }
 

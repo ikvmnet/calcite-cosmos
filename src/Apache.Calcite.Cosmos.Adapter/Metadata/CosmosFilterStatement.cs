@@ -28,8 +28,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <item><term>whether a conjunct renders, and how (<see cref="Renders"/>, <see cref="IsAdmitted"/>,
     /// <see cref="FactsFor"/>, <see cref="Translate"/>)</term><description>the stratum before the one that admitted it, or
     /// for one no stratum admitted, the last: what its siblings applied beside it establish, never what it does</description></item>
-    /// <item><term>a contradiction, the filter made <c>FALSE</c> (<see cref="IsContradictory"/>)</term><description>every
-    /// conjunct: a strengthening, which the conjuncts' own facts may justify</description></item>
+    /// <item><term>a contradiction, the text sent made <c>FALSE</c> and the request not sent
+    /// (<see cref="IsContradictory"/>)</term><description>the WHERE as one conjunction, assumed only where the WHERE raises
+    /// on no document the declaration admits: so that the statement keeps nothing and fails on nothing</description></item>
     /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
     /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
     /// too</description></item>
@@ -37,6 +38,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// deletions keep, never the conjunct itself</description></item>
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
     /// deletions keep, and the conditions the arm is read under</description></item>
+    /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
+    /// the arm's question assumes of the statement as written, a sibling the deletions drop among them, each assumed only
+    /// where the WHERE as written raises on no document the declaration admits, or for a projected <c>CASE</c> condition no
+    /// predicate of the projected expression</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
     /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
@@ -80,6 +85,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         readonly RexBuilder _rexBuilder;
         readonly string _rootAlias;
         readonly CosmosPredicateLoader.Loading _loading;
+        readonly RexNode? _gate;
         readonly object _lock = new();
         bool[]? _owned;
 
@@ -91,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         JsonFactSet?[]? _siblings;
         (CosmosStatementScope Scope, int[] Index)? _remaining;
 
-        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias)
+        CosmosFilterStatement(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias, RexNode? gate)
         {
             Condition = condition;
             _fields = fields;
@@ -99,6 +105,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             _container = container;
             _rexBuilder = rexBuilder;
             _rootAlias = rootAlias;
+            _gate = gate;
             _loading = new CosmosPredicateLoader.Loading(fields, readings, rootAlias);
 
             Conjuncts = ConjunctsOf(condition);
@@ -144,8 +151,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <param name="container">The container, whose declaration the oracle reasons from.</param>
         /// <param name="rexBuilder">A builder over the condition's types, for the translator.</param>
         /// <param name="rootAlias">The alias bound to the container.</param>
+        /// <param name="gate">What a <c>FALSE</c> written in the condition may stop Calcite evaluating, or <c>null</c> for
+        /// the condition itself: for a projected <c>CASE</c> condition, every predicate of its expression. The reduce and
+        /// a never-read arm assume only where nothing in it raises.</param>
         /// <returns>The statement.</returns>
-        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias)
+        public static CosmosFilterStatement Of(RexNode condition, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, CosmosContainerMetadata container, RexBuilder rexBuilder, string rootAlias = CosmosImplementor.DefaultRootAlias, RexNode? gate = null)
         {
             if (condition is null)
                 throw new ArgumentNullException(nameof(condition));
@@ -163,10 +173,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 // is no statement for a rule's translator to render.
                 foreach (var statement in read)
                     if (ReferenceEquals(statement._rexBuilder, rexBuilder) && statement._rootAlias == rootAlias
-                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings))
+                        && statement._fields.SequenceEqual(fields) && statement._readings.SequenceEqual(readings) && Equals(statement._gate, gate))
                         return statement;
 
-                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias);
+                var made = new CosmosFilterStatement(condition, fields, readings, container, rexBuilder, rootAlias, gate);
                 read.Add(made);
                 return made;
             }
@@ -204,7 +214,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             get
             {
                 lock (_lock)
-                    return _scope ??= Oracle.Admit(Statement, Render);
+                    return _scope ??= Oracle.Admit(Statement, Render, _gate is null ? null : _loading.Read(_gate));
             }
         }
 
@@ -475,17 +485,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 ? Scope.Facts(licence)
                 : throw new ArgumentException("Only a projection, a sort, a grouping or a key reads the rows a filter kept.", nameof(licence));
 
-        // ── Strengthening: every conjunct ────────────────────────────────────────────────────────────────────────────
+        // ── The reduce: the WHERE, where it raises nowhere; strengthening: every conjunct ─────────────────────────────
 
         /// <summary>
-        /// Gets whether the conjuncts and the declaration cannot all hold of one document, so that the filter keeps nothing.
+        /// Gets whether the WHERE keeps nothing and fails on nothing: no document the declaration admits makes it TRUE, and
+        /// none makes anything in it raise (<see cref="OracleLicence.Reduce"/>), so that the service answers it with no
+        /// document and the request need not be sent.
         /// </summary>
         public bool IsContradictory
         {
             get
             {
                 lock (_lock)
-                    return _contradictory ??= Scope.IsContradictory(OracleLicence.Kept);
+                    return _contradictory ??= Scope.IsContradictory(OracleLicence.Reduce);
             }
         }
 
@@ -602,15 +614,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// its facts — the conjunct certifying itself through a sibling it had made redundant, the shape #117 forbids one
         /// step removed — and the lowering would be an equivalence only where a conjunct no longer applied holds.
         /// </para>
+        /// <para>
+        /// <b>A conjunct the deletions drop is lowered in the planning form alone</b>
+        /// (<see cref="CosmosFactRewriter.Planned"/>), which deletes nothing: every sibling as written stands beside it there,
+        /// so it leans on every one.
+        /// </para>
         /// </remarks>
-        /// <exception cref="ArgumentOutOfRangeException">The rewrite deletes the conjunct, and lowers nothing in it.</exception>
         public JsonFactSet Siblings(int conjunct)
         {
             lock (_lock)
             {
                 var (scope, index) = Remaining;
                 _siblings ??= new JsonFactSet?[Conjuncts.Count];
-                return _siblings[conjunct] ??= scope.Facts(OracleLicence.Siblings(RemainingIndex(index, conjunct)));
+                return _siblings[conjunct] ??= index[conjunct] >= 0
+                    ? scope.Facts(OracleLicence.Siblings(index[conjunct]))
+                    : Scope.Facts(OracleLicence.Siblings(conjunct));
             }
         }
 
@@ -645,32 +663,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             }
         }
 
-        static int RemainingIndex(int[] index, int conjunct) =>
-            index[conjunct] >= 0 ? index[conjunct] : throw new ArgumentOutOfRangeException(nameof(conjunct), conjunct, "The rewrite deletes the conjunct, and lowers nothing in it.");
-
         // ── Inside a CASE: the kept siblings and the arm's conditions ────────────────────────────────────────────────
 
         /// <summary>
         /// Returns what holds where an arm of a <c>CASE</c> inside a conjunct is read: every sibling the rewrite keeps, and
         /// the conditions the arm is read under.
         /// </summary>
+        /// <remarks>A conjunct the deletions drop is read in the planning form alone, beside every sibling as written, as
+        /// <see cref="Siblings"/> reads it.</remarks>
         /// <param name="conjunct">The conjunct the <c>CASE</c> is part of.</param>
         /// <param name="conditions">The conditions of the arms it is nested in, outermost first.</param>
         public JsonFactSet Within(int conjunct, IReadOnlyList<RexNode> conditions)
         {
             var (scope, index) = Remaining;
-            return scope.Facts(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
+            var read = conditions.Select(_loading.Read).ToArray();
+            return index[conjunct] >= 0 ? scope.Facts(OracleLicence.Arm(index[conjunct], read)) : Scope.Facts(OracleLicence.Arm(conjunct, read));
         }
 
         /// <summary>
-        /// Determines whether an arm of a <c>CASE</c> is read under conditions its kept siblings contradict, so that it is
-        /// never read and the <c>CASE</c> answers its <c>ELSE</c>.
+        /// Determines whether an arm of a <c>CASE</c> is read under conditions its siblings contradict, so that it is never
+        /// read and the <c>CASE</c> answers its <c>ELSE</c>, and nothing in the WHERE as written raises, so that a
+        /// <c>FALSE</c> written for it in the text sent answers as the arm does (<see cref="OracleLicence.NeverRead"/>).
         /// </summary>
-        public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions)
-        {
-            var (scope, index) = Remaining;
-            return scope.IsContradictory(OracleLicence.Arm(RemainingIndex(index, conjunct), conditions.Select(_loading.Read).ToArray()));
-        }
+        /// <remarks>
+        /// Of the statement as written, not the one the deletions leave. A deleted conjunct is no longer evaluated, and
+        /// where the <c>FALSE</c> then decides the filter, a gate that never saw it answered no rows where it raises.
+        /// Assuming it is sound, as it is not for a lowering (<see cref="Siblings"/>): the <c>FALSE</c> stands only in a
+        /// positive position, so the rewritten conjunct is true only where the conjunct as written is, which with the kept
+        /// siblings implies every deleted one.
+        /// </remarks>
+        public bool NeverWithin(int conjunct, IReadOnlyList<RexNode> conditions) =>
+            Scope.IsContradictory(OracleLicence.NeverRead(conjunct, conditions.Select(_loading.Read).ToArray()));
 
         // ── A weakening beside what is applied ───────────────────────────────────────────────────────────────────────
 

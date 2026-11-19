@@ -207,7 +207,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // What the filters beneath the residual establish of the rows the moved projection reads
             // (L1): the residual is above it and applied in process, so it proves nothing here.
             var facts = CosmosRowFacts.Of(filter.getInput(), container, OracleLicence.Select);
-            var translator = new CosmosRexTranslator(project.getCluster().getRexBuilder(), fields, new CosmosParameterList(), facts, null, _convention.Container);
+            var rexBuilder = project.getCluster().getRexBuilder();
+            var translator = new CosmosRexTranslator(rexBuilder, fields, new CosmosParameterList(), facts, null, _convention.Container);
 
             // Only a filter that is wholly residual: one the filter split leaves nothing of to push. A
             // filter with a part that renders is split first, and the projection is moved past what
@@ -220,8 +221,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (pushable.Count > 0 || residual.Count == 0)
                 return false;
 
-            // The expressions the projection rules would push, so that the three agree on what renders.
-            var projects = split.Projects = CosmosProjectRule.Pushed(_convention, project, fields);
+            // The expressions as written, which the moved projection holds, each asked as the projection rules ask it:
+            // as the service is sent it, so that the three agree on what renders (CosmosProjectRule.Rendered).
+            var projects = split.Projects = project.getProjects();
 
             // The projection has to render whole, so that the residual is the only thing left in process.
             // A projection that does not is CosmosProjectSplitRule's to take apart, and taking it apart
@@ -231,7 +233,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             {
                 var expression = (RexNode)projects.get(i);
 
-                if (translator.TryTranslateProjection(expression, out _, out var reading) == false)
+                if (translator.TryTranslateProjection(CosmosProjectRule.Rendered(_convention.Container, expression, fields, rexBuilder), out _, out var reading) == false)
                     return false;
 
                 // Beneath the filter, a reading that can refuse a value would be asked of rows the filter

@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return rexBuilder.makeCall(comparison, raw, rexBuilder.makeCast(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.VARIANT), text));
 
                 if (accessor.Readers.GetValueOrDefault(PredicateAtom.TextReader) is { } read)
-                    return rexBuilder.makeCall(comparison, RawValue(rexBuilder, read), text);
+                    return (RawValue(rexBuilder, read) ?? accessor.Retyped) is { } named ? rexBuilder.makeCall(comparison, named, text) : null;
 
                 return rexBuilder.makeCall(comparison, accessor.Readers.OrderBy(r => r.Key, System.StringComparer.Ordinal).Select(r => r.Value)
                     .FirstOrDefault(n => n.getType() is { } type && org.apache.calcite.sql.type.SqlTypeUtil.inCharFamily(type)) ?? raw, text);
@@ -223,19 +223,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Typed <c>ANY</c>, which is what says "the raw value at this path" rather than "its
         /// rendering": written over the accessor as it stands the translator would decline the
         /// comparison, rightly, since that node means the rendering everywhere else. An accessor is
-        /// re-typed in place. A field bound to one is cast instead: a reference re-typed says the same
-        /// thing, but a host transposing the filter through the projection replaces the reference with
-        /// the projection's expression, and the type that said it goes with it. A cast is a call of
-        /// its own and survives, and the translator renders a cast to <c>ANY</c> over a rendering as the
-        /// path.
+        /// re-typed in place, which no query can write. A field bound to one has none: a reference
+        /// re-typed is lost to a host transposing the filter through the projection, and a cast to
+        /// <c>ANY</c> is a query's own, which Calcite evaluates as the text it holds, so <c>'6'</c> is
+        /// equal to a stored <c>6</c> through it where the raw value is not. Such a path is named by its
+        /// accessor over the document column (<see cref="Accessor.Retyped"/>), or not at all.
         /// </remarks>
-        internal static RexNode RawValue(RexBuilder rexBuilder, RexNode accessor)
+        internal static RexNode? RawValue(RexBuilder rexBuilder, RexNode accessor)
         {
             var any = rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.ANY);
 
-            return accessor is RexCall call
-                ? rexBuilder.makeCall(any, call.getOperator(), call.getOperands())
-                : rexBuilder.makeCast(any, accessor);
+            return accessor is RexCall call ? rexBuilder.makeCall(any, call.getOperator(), call.getOperands()) : null;
         }
 
     }

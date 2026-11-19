@@ -63,6 +63,12 @@ namespace Apache.Calcite.Cosmos.Adapter
     /// The parameters whose string value is sent in the stored spelling of the statement's target when it is bound, or
     /// <c>null</c> for none: <see cref="CosmosParameterList.Stored"/>, which only the emulator's statements name.
     /// </param>
-    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null, CosmosOrderProgram? Order = null, IReadOnlyList<string>? Stored = null);
+    /// <param name="SendsNothing">
+    /// Whether the statement is answered without being sent: its <c>WHERE</c> keeps no document the declaration admits and
+    /// fails on none, which the facts graph decided when the plan was implemented, for every value its parameters may be
+    /// bound to; so the service would answer no document, and the statement no row. Its reader, the ordered program and a
+    /// lookup's batches open nothing, and nothing is bound. See <see cref="CosmosImplementor.Build"/>.
+    /// </param>
+    public readonly record struct CosmosQuery(string Sql, IReadOnlyList<CosmosParameter> Parameters, IReadOnlyList<object?>? PartitionKeyValues = null, int? MaxItemCount = null, string? PointReadId = null, bool PartitionKeyIsComplete = false, IReadOnlyList<string>? PointReadIds = null, CosmosOrderProgram? Order = null, IReadOnlyList<string>? Stored = null, bool SendsNothing = false);
 
 }
