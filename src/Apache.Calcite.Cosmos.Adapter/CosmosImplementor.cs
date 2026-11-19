@@ -612,8 +612,10 @@ namespace Apache.Calcite.Cosmos.Adapter
                 // had no case here, so a rule that had fired on the logical form threw "The lookup key
                 // can no longer be restricted." after the planner had chosen the plan (soundness review,
                 // cause K). The element is left unbound in both: CosmosUnnest.Implement binds it to its
-                // alias, and the walk knowing less declines and never fails (TODO.md, section 5). Only the
-                // correlate rule's question binds it, and a lateral's columns, over the Correlate (TryBindElements).
+                // alias, and the walk knowing less declines and never fails (TODO.md, section 5). The one
+                // walk that binds it is the correlate rule's question (TryBindElements), over the Correlate:
+                // the element to its array's path and a step no request can spell, and a lateral's accessor
+                // columns to the paths they read.
                 default:
                     if (TraversedInput(node) is RelNode traversed)
                         return TryBindTraversal(node, traversed, node.getRowType().getFieldCount(), out fields, out readings, out ordering, out written, out container, resolved, elements);
@@ -654,15 +656,16 @@ namespace Apache.Calcite.Cosmos.Adapter
 
         /// <summary>
         /// Binds an array traversal's output: the input's fields as they were, then the element,
-        /// unbound.
+        /// unbound but in the correlate rule's question (<paramref name="elements"/>).
         /// </summary>
         /// <remarks>
         /// One method for the two forms a traversal takes — the <c>Correlate</c> a rule sees and the
-        /// <see cref="CosmosUnnest"/> implementation sees — so that every walk but one binds them alike. A
-        /// traversal writes no clause of its own: it completes a projection beneath it rather than
-        /// starting one. The one is the correlate rule's question (<paramref name="elements"/>), which over a
-        /// <c>Correlate</c> binds its right columns too (<see cref="CosmosTraversalColumns"/>), the element to
-        /// the array's path and a step no request can spell.
+        /// <see cref="CosmosUnnest"/> implementation sees — so that every walk but the correlate rule's
+        /// question binds them alike. A traversal writes no clause of its own: it completes a projection
+        /// beneath it rather than starting one. That question, which renders nothing, binds a
+        /// <c>Correlate</c>'s right columns too (<see cref="CosmosTraversalColumns"/>): the element to the
+        /// array's path and a step no request can spell, and a lateral's accessor columns to the paths they
+        /// read.
         /// </remarks>
         static bool TryBindTraversal(RelNode traversal, RelNode input, int fieldCount, out IReadOnlyList<CosmosPath?> fields, out IReadOnlyList<CosmosReading> readings, out IReadOnlyList<CosmosOrdering> ordering, out CosmosClauses written, out CosmosContainerMetadata? container, HashSet<RelNode>? resolved, CosmosTraversalColumns? elements)
         {

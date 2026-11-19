@@ -668,7 +668,8 @@ keyword states, or when it is the conditional-rule machinery. The split keeps th
 a context could one day hold JSON's rules without a schema's.
 
 **Paths are terms, and two equal paths are one class.** `Root`, `Prop`, `Index`, `Each` for every element
-of an array, and `Ghost` for a discriminator no document holds. Congruence makes the properties of equal
+of an array, `Yield` for the element one traversal of an array yields (*An element a traversal yields is a
+path of its own*), and `Ghost` for a discriminator no document holds. Congruence makes the properties of equal
 paths equal, which is what `CHECK (a = b)` will need.
 
 **A fact says what a path holds if it holds anything.** The facts are: a set of types over string, integer,
@@ -1184,6 +1185,7 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosProjectRule`, `CosmosProjectSplitRule`, `CosmosProjectResidualRule`, `CosmosProject` | a projection's rendering, a form the filter proves among it | the last stratum of the filters beneath (L1), carried on the node |
 | `CosmosRankRule`, `CosmosRank` | the projections a rank writes | L1, carried, as a projection's |
 | `CosmosUnnestRule`, the predicate over a traversed element | `Renders` of its statement | the strata, as the `CosmosFilter` it builds renders it |
+| `CosmosFilterCorrelateRule`, whether what a transposition newly evaluates can raise | `RaisesNothing` of the asked terms, read through the binding that names the element a traversal yields | nothing: `FALSE` gated on the statement's conjunction, held only where nothing in it raises on an admitted document (`Raises`) |
 | `CosmosSortRule`, `CosmosSort` | the null placement, a computed column's ordering licence, a key read as stored, a temporal key's order | L1, carried |
 | `CosmosAggregateRule`, `CosmosAggregate` | a grouping key normalised, a key read as stored | L1, carried; the key a `DISTINCT` binds, which another node asks, L0 |
 | `CosmosLookupJoinRule`, `CosmosLookupJoin`, the probe's key restricted as stored | a text key's path a string, a `UUID` key's one spelling | L1 of the probe side (`Key`), carried |
@@ -1327,17 +1329,53 @@ connection, a filter above the half sent is reduced with what that half holds*).
 **The correlate rule takes Calcite's transposition at every correlate of a statement, or at none.**
 `CosmosFilterCorrelateRule` writes Calcite's `FILTER_CORRELATE` as Calcite's rule writes it where, for every filter and
 join condition of the statement as registered, at every correlate the planner's own rules carry it onto where Calcite's
-rule would move a part of it into a side, the whole condition does not read as false and every conjunct of Calcite's
-simplification of what that rule leaves above after its last firing is a conjunct of Calcite's simplification of the
-whole, and otherwise moves nothing in the statement; a condition holding the service's form moves as Calcite's rule
-moves it. Through a connection whose Calcite decorrelates, its own `FilterCorrelateRule` may move a `WHERE` before this
-rule reads the plan (`TODO.md`, *A filter above a correlate answers where one of Calcite's plans fails*, records what
-was measured). The answer is kept with the planner for its root and the number of its rules, and worked out again where
+rule would move a part of it into a side, the facts graph answers that nothing the transposition newly evaluates can
+raise on a document the declaration admits, and otherwise moves nothing in the statement; a condition holding the
+service's form moves as Calcite's rule moves it. Through a connection whose Calcite decorrelates, its own
+`FilterCorrelateRule` may move a `WHERE` before this rule reads the plan (`TODO.md`, *A filter above a correlate answers
+where one of Calcite's plans fails*, records what was measured); through the README's, those rules have moved the
+document's conjuncts before this rule reads the plan, and it asks the facts graph nothing
+(`CosmosConnectionPlanningTests.AWhereOverATraversalSendsWhatItSentAndTheCorrelateRuleAsksNothing`). The answer, and how
+many questions it asked, is kept with the planner for its root and the number of its rules, and worked out again where
 the planner replaces its root or its rules change in number; each time, each question of it is asked once, so the work
 grows with the statement's members and the sets of conjuncts reaching each, not with the paths down to them. Where
 filters merge, conjuncts carried past a filter without it merge with no filter further down: they reach what is beneath
 only once that filter has gone into its correlate, whose sides then hold its parts, and those parts merged with them are
 asked as well.
+
+What a test asks is read off Calcite's own classification, simplifier and builder, compared as Calcite compares
+expressions, and the rule runs every firing of Calcite's rule to collect it. Call `calc` Calcite's simplification of the
+whole condition, unknown read as false. Asked: every conjunct of what each firing leaves above, as the builder writes it
+and read unknown as false, that `calc` lacks; and where Calcite reads the whole as false, as written or as its builder
+writes it, or the builder writes a rest as false, every part each firing moves into either side, a right part shifted
+onto the correlate's row. `calc` is what Calcite's Calc above the correlate evaluates without the transposition, every
+operand of it (`Calcite.ConnectivesAreKleene`, nullable or not): the Calc simplifies over its input's pulled-up
+predicates, and a correlate whose left is a Calc pulls up none
+(`CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates`), as the rule's simplifier reads none. A rest conjunct
+`calc` holds is evaluated above on rows that plan joins too, on the same values; one it lacks is new. The whole as the
+builder writes it is no baseline: the builder runs with predicate elimination off and rewrites an `OR`'s disjuncts
+first, so it can keep a conjunct `calc` drops, which no plan evaluates. `(NOT (CAST(u.t AS INTEGER) > 0 OR m = '2') OR
+kind IN ('A', 'B')) AND kind = 'A'` (fz2_320) leaves above an `OR` holding the element's cast, which `calc` reads as
+implied by `kind = 'A'` and the builder's whole keeps: read against that whole, it would take the transposition and fail
+on an element `"x"` where Calcite without it answers; read against `calc` it declines and answers as that plan does
+(`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). Where the whole is
+read as false, Calcite without the transposition evaluates none of it, so every part moved is new. Elsewhere a part
+moves as Calcite's rule moves it, evaluated on every row its side reads, those the correlate joins to nothing among
+them, as with `FILTER_CORRELATE`, and is not asked. Every firing's rest is asked, not only the last, since the planner
+may stop at any firing. A literal `TRUE` or `FALSE` is dropped, and the rest joined by an `AND` as given, never
+simplified: `RexUtil.composeConjunction` answers `FALSE` for a list holding one, which would read the question away
+without reading the rest (rf2, a cast of `body` beside `(kind = 'B' OR u.t = 'x') AND NOT (kind = 'B' OR u.t = 'x')`,
+declines). An empty set takes without asking. The question is `CosmosFilterStatement.RaisesNothing` (*The oracle in the
+planner*; its node is beside the reduce's, under *The reduce asks every row false*), over the correlate's row as
+`CosmosImplementor.TryBindElements` binds it: the element a traversal yields and a lateral's accessor columns named (*An
+element a traversal yields is a path of its own*), and a row that binds no container declining. The bounds on firings
+and depth, and a side's filter not transposed at a correlate it reaches, decline as before. Whether a term over a
+declared property can raise is the declaration's: `CAST(x.body AS INTEGER) = 7 AND n > 50 AND (n > 40 OR v.s = '1')`,
+`n` read `RETURNING INTEGER`, over a sub-query `x` of a traversal of `tags` whose own `WHERE` is `CAST(u.t AS INTEGER) =
+1 AND kind = 'A'` and a traversal of its `more`, asks the `OR` left above, which `calc` lacks; where `n` is declared an
+integer nothing in it raises, and the statement sends `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and where nothing is
+declared it reads every document
+(`AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`, ws1k).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
 sends, with the binding it is read through, and `CosmosImplementor.Build` asks the facts graph once whether the
@@ -2374,6 +2412,26 @@ which is always correct, and where it names a path implementation does not bind 
 implementation throws. `CosmosRelTests.TheWalkBindsNoMoreThanImplementation` holds every shape the
 walk knows to that.
 
+**One walk binds more, and what it names no request can spell.** The correlate rule's question binds a
+correlate's row with its elements on (`CosmosImplementor.TryBindElements`; the walk's `elements`, off
+for every other caller). Over a `Correlate`, `CosmosTraversalColumns` walks the right side as
+registered: the element of an `Uncollect` of a plain `JSON_QUERY … RETURNING <type> ARRAY` over the
+correlation variable, reached through projections of input references and the right's own filters, binds
+to the array's path with a yielded step naming the component's type and the traversal's number, read as
+the text; a lateral's accessor column, over its own filters and a one-tuple `VALUES`, binds to the path
+it reads with the reading the projection arm gives such a column. Implementation binds neither. What
+keeps that from reaching a request is the step: `CosmosPathSegment.Yielded` is a third kind beside a
+name and an index; everything that spells a path into a request, a policy or a document read
+(`CosmosPath.WriteTo` and `ToPolicyPath`, `RenderingPrinter`, `CosmosJson.GetPath`,
+`CosmosDocument.TryRead`, `CosmosConverters`' row builder) throws on one, and every reader that answers
+a question of one declines (the path readers where the target stores a name escaped, the translator's
+constant accessor, `CosmosDocumentPaths.From` asked without elements, the loader's `JsonPathOf`). While
+the elements bind, the filter arm asks no recheck, so no translator is built over such a path, and the
+projection arm passes the element on only as a direct reference: an accessor over it parses its text,
+which is no path. Without the elements the walk binds as before, which `CosmosImplementorTests` holds
+for each shape it binds with them, and the statement read through it is the raises question's alone
+(*The raises question*, under *The reduce asks every row false*).
+
 **The same holds of every walk a rule decides on and a node asks again, and the binding walk is not
 the only one.** A walk that knows the logical form of a node and not its converted form answers for
 the rule and declines for the node — and where the node asks at implementation, declining is a
@@ -2403,9 +2461,9 @@ A host on Calcite's standard rule set already carries `FILTER_CORRELATE`, which 
 rule reads is the shape a host produces. The adapter registers its own for the reason the other
 Calcite rewrites are registered — a bare Volcano planner has none of them, and a pushdown must not
 depend on which rules a caller happened to add — and it is Calcite's, taken, but for a condition holding the
-service's form, in a statement only where the conjuncts it would move at each correlate decide nothing of what
-Calcite reads of the rest (*The correlate rule takes Calcite's transposition at every correlate of a statement, or
-at none*).
+service's form, in a statement only where at each correlate nothing it would newly evaluate can raise on a document
+the declaration admits (*The correlate rule takes Calcite's transposition at every correlate of a statement, or at
+none*).
 Where the predicate does not render, the untransposed plan survives the transformation and the
 traversal still pushes with the predicate above it.
 
@@ -5820,7 +5878,9 @@ src/
       CosmosTableScan.cs              ✔
       CosmosFilter.cs                 ✔
       Convert/CosmosUncorrelatedProjectMergeRule.cs ✔ A projection declaring a correlation variable it never reads, merged
-      Convert/CosmosFilterCorrelateRule.cs ✔ Calcite's filter-correlate transposition, taken, but for the service's form, only in a statement where what each filter would move decides nothing of the rest
+      Convert/CosmosFilterCorrelateRule.cs ✔ Calcite's filter-correlate transposition, taken, but for the service's form, only in a statement where nothing it would newly evaluate can raise on what the schema admits
+      CosmosTraversalColumns.cs       ✔ A correlate's right columns bound for that rule's question alone: the element a
+                                        traversal yields, and a lateral's accessor columns
       CosmosProject.cs                ✔
       CosmosSort.cs                   ✔
       CosmosUnnest.cs                 ✔
@@ -6500,8 +6560,9 @@ keeps the facts graph's rendering, which population D holds F to (`TODO.md`).
 **Text orders by UTF-16 code unit** (`Calcite.TextOrderIsByCodeUnit`) and the service by code point, so the two part
 where one string holds U+E000 or above and another a supplementary character.
 
-**The connectives are Kleene's, and evaluate both operands** (`Calcite.ConnectivesAreKleene`). A nullable `AND` beside
-FALSE raises where its other operand raises, in either order. `IrEval` answers the deciding arm and `Raises` marks the
+**The connectives are Kleene's, and evaluate both operands** (`Calcite.ConnectivesAreKleene`). An `AND` beside FALSE,
+and an `OR` beside TRUE, raises where its other operand raises, either nullable or `NOT NULL`, in either order, projected
+and as a `WHERE`. `IrEval` answers the deciding arm and `Raises` marks the
 row, which is what the check against Calcite leaves out.
 
 ### Cells, and Calcite on one
@@ -6722,6 +6783,21 @@ contradiction of its own where a declaration rules out a stored string: `CAST(c.
 declared an integer keeps nothing, and its statement is not sent, since Calcite casts a `VARIANT`'s number to null
 (`Calcite.CastOfARawValueToText`), where before it was routed to `30`
 (`CosmosDeclaredFactPlanningTests.ACastToTextOfAKeyDeclaredANumberKeepsNothing`).
+
+*The raises question.* `CosmosFilterStatement.RaisesNothing` asks under `OracleLicence.Raises`, which opens the same
+gated node with `FALSE` in the WHERE's place, `gated(FALSE, W)`, and assumes no conjunct (`AssumedIn` is empty).
+`raises` runs before anything is assumed, as above, so `never raises(W)` holds only where no admitted document makes
+anything in `W` raise; the gate then holds `FALSE` true, and a truth value holding as nothing but itself makes the node
+contradictory. So it is contradictory exactly where nothing in `W` raises, whether `W` keeps a document or not, and
+where the declaration admits no document, where nothing raises either; a run stopped on a limit reads its parent, the
+declaration's context, so something may raise wherever the declaration admits a document. It opens no stratum and adds
+no rule. The correlate rule loads `W` from the terms its test asks, literals dropped and joined by an `AND` as given, so
+no conjunct is folded away before the graph reads it; read through a binding that names the element a traversal yields,
+which no request may spell, the statement is the question's alone, and nothing renders it.
+`CosmosOracleTests.TheRaisesQuestionIsContradictoryExactlyWhereNothingRaises` holds it to text comparisons, casts that
+may raise, an `OR` beside a deciding arm and a declared domain, and population D draws it for every trial's statement
+and for one beside a traversal, its element read over drawn arrays of strings and nulls (*An element a traversal yields
+is a path of its own*).
 
 *What still assumes every conjunct.* `Kept`, for a strengthening and for routing, which read what the rows the filter
 keeps satisfy and never stand in for an answer.
@@ -10808,6 +10884,78 @@ element against a string, alone or beside other tests, which 13fd800's S kept in
 element's type test, where `Production` sends it exactly: 50 more at the pull request's size, all but one under
 `Emulator` (differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. Line 1c at
 the gate's size judges 498 opaque weakenings over 26,067 documents and loses no row.
+
+### An element a traversal yields is a path of its own
+
+The correlate rule asks whether what a transposition newly evaluates can raise (*The correlate rule takes Calcite's
+transposition at every correlate of a statement, or at none*), and a term it would evaluate often reads the element an
+`UNNEST` yields, which the binding leaves unbound and the loader reads as opaque, so that such a term may raise whatever
+it is. So the question is given the element, as a path of its own.
+
+- **The measurement.** `CalciteUnnestMeasurementTests.AVarcharArrayYieldsItsStringsAndNullsAsTheText` runs in process
+  and calls no service, as `CalciteItemMeasurementTests` measures an index. `UNNEST(JSON_QUERY(… RETURNING VARCHAR
+  ARRAY))` yields each element of an array of strings and nulls, and `RETURNING VARCHAR(1) ARRAY` the same values uncut.
+  Sixteen readings of the element, itself, `=`, `<>`, `<`, `IN`, `IS NULL`, `LIKE` twice, the casts to `INTEGER`,
+  `BIGINT`, `DOUBLE` and `BOOLEAN`, `CHAR_LENGTH`, `UPPER`, `TRIM` and `||`, over eighteen values, each answer what the
+  same reading of the text accessor answers over a path holding the same value, a raise of the same type where it
+  raises: none of 576 cells a type differs. Over an array holding a number, a fraction, a boolean, an object or an array
+  anywhere in it, and over an object where the array is, the traversal raises `InvalidCastException` before any row is
+  read, `COUNT(*)` among them; over an empty, absent or null array, or a scalar where the array is, it yields no row.
+- **The row and its tables.** `Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText` names it and carries
+  `CosmosTraversalYield("VARCHAR", [String, Null], text)` (`CosmosAxiom.Yields`). `CosmosAxiomRows` reads it into
+  `CalciteRows`, the classes as JSON kinds, and both graphs assume it at the root beside `asofapath`, as two tables of
+  the readings vocabulary: `yieldkinds(t)`, the kinds a traversal of element type `t` yields, one set a type; and
+  `yieldreads(t, k)`, the reading its elements read as.
+- **The path.** `Yield(p, t, n)` (`PathVocabulary`) is the element traversal `n` of the array at `p` yields, of element
+  type `t`. The binding's yielded segment becomes `JsonDocumentPath`'s yielded step (`CosmosDocumentPaths.From`, asked
+  with elements), of which `HasElement` holds and which `Names` refuses, as of an index, and `JsonFactEncoding.Path`
+  writes that as `Yield`; it is spelled `$.tags[yield VARCHAR 0]`.
+- **Four rules.** In `json`: an element a traversal yields is an instance of every element of its array, so what is
+  declared of every element reaches it through the inheritance an index already has, and the rule makes no path; and it
+  holds only what its traversal yields, `types` narrowed to `yieldkinds(t)`, a string or a null for `VARCHAR`. In
+  `analyse`, in both graphs: an accessor of it reads it as its traversal's elements read, `yieldreads(t)`, the text
+  alone for `VARCHAR`; and a reading written apart of it, the field form the loader writes, reads what its reading reads
+  where the row names that reading. Neither `noelement` nor `haselement` holds of a `Yield`, so the element rules, and
+  the element reading that always raises, never read it. Comparisons, `IN`, `LIKE`, null tests and casts then read it
+  through the rules already there, and `PredicateAtom.RaisesOver` judges each atom over what `possible` holds of it.
+- **The loader.** A field bound to a yielded element is read as its text written apart as a field, the form a field read
+  as text takes, and as nothing else: read typed, or of a type that is no text, it is opaque. `Addressed` passes a
+  yielded path only as a field's own reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is
+  opaque.
+- **Why a path of its own.** The element a condition reads cannot be a number, while an element of the array can, so it
+  is not `Each(p)`; what is declared of every element must still reach it, which the instance rule carries; and two
+  traversals of one array yield elements apart. Read as one path, `u.t = '1' AND v.s = '2'` over two traversals of
+  `tags` would be one atom over one path: harmless to a question that assumes nothing, as this one does, and a
+  contradiction to any node that assumes the conjuncts. So the binding numbers each traversal in its walk's order, alike
+  for one plan shape, so that a repeated shape finds the oracle's memo, and one traversal is one path wherever its
+  column surfaces.
+- **Why narrowing is sound.** A term over the element is evaluated, in either of Calcite's plans, only on an element the
+  traversal yielded. On a document whose array holds anything else the traversal raises in both plans on every document
+  that reaches it, and a moved conjunct can only keep a document from reaching it. So the traversal's raise is never
+  newly evaluated, and a term judged over strings and nulls alone is judged exactly on what is evaluated. Nothing makes
+  a `Yield` present, so a narrowing to no kind makes it absent, never contradictory.
+- **A traversal the service runs.** The row is Calcite's in-process traversal. Through the README's connection, which
+  pushes the traversal, the rule asks nothing, and in the host Chapter 21 describes the statements the pins ask about
+  keep their traversal in Calcite (`CosmosDeclaredFactPlanningTests.ATraversalTheCorrelateRuleAsksAboutIsCalcites`).
+  Were a pushed traversal asked about, the narrowing would still be exact where it matters: over an array of strings and
+  nulls the service yields the same values, and over any other Calcite's plans fail at the traversal, a difference older
+  than this (`TODO.md`, *A traversal the README's connection pushes compares an element Calcite's traversal fails on*).
+- **The element type is data.** The binding names the `SqlTypeName` of the array's component, so `VARCHAR(1)` is
+  `VARCHAR`, and no C# reads the name: the rows decide. Only `VARCHAR` has a row. An element of another type, `RETURNING
+  INTEGER ARRAY`'s, binds, and gets no narrowing, no reading and no atom, so a term over it may raise
+  (`CosmosFilterStatementTests`); `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound. What `items`
+  declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a cast of an
+  element may raise under every declaration; once it is read, the instance rule carries it.
+- **Checked.** `JsonRulesTests` and `PredicateVocabularyTests` state facts by hand on `$.tags[*]`: a comparison, a
+  `LIKE` and a null test of the element never raise with nothing declared; a cast of it may raise with nothing declared
+  and with every element stated a string, and never raises with every element stated one of `"1"` and `"2"`; its kinds
+  narrow; an `INTEGER` element reads nothing; two traversals are two paths; a raw reading or an item of it gives no
+  atom; and a narrowing to no kind makes no node contradictory. `IrEval` reads the element over the rows a document
+  joins, and `IrEvalCalciteTests.TheElementATraversalYieldsAgreesWithCalcite` holds that to Calcite over twenty values
+  where the array is. Population D asks the raises question of a statement beside a traversal over drawn arrays of
+  strings and nulls, a document whose traversal raises first not counted against a conjunct over its element, and two
+  plants, `yieldkinds("VARCHAR")` a null alone and `VARCHAR`'s `yieldreads` naming the raw reading beside the text, are
+  each caught by it (`PlantedBugTests`).
 
 ## Differential testing
 

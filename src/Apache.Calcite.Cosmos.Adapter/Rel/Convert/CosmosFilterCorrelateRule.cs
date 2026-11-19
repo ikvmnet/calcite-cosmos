@@ -17,13 +17,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <summary>
     /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, wherever every filter of the statement the planner
     /// plans, at every correlate the planner's rules carry it onto where that rule would move a part of it, would be
-    /// transposed by its test; and nowhere in a statement where one would not.
+    /// transposed by its test; and nowhere in a statement where one would not. The test asks the facts graph whether what
+    /// the transposition newly evaluates can raise on a document the declaration admits, and takes it only where nothing
+    /// can (<see cref="Walk.Transposes"/>).
     /// </summary>
     /// <remarks>
     /// <para>
     /// A predicate over a traversed element is written above the traversal, where <see cref="CosmosUnnestRule"/> cannot see
     /// it; moved into the correlate it sits between the traversal and the uncollect, which that rule renders as a
     /// <c>WHERE</c> over the alias, and a conjunct of the document alone goes into the request.
+    /// </para>
+    /// <para>
+    /// What the transposition newly evaluates is read off Calcite's own classification, simplifier and builder; whether it
+    /// can raise is the facts graph's, over the correlate's row bound with the element a traversal yields and a lateral's
+    /// accessor columns (<see cref="CosmosImplementor.TryBindElements"/>). The bounds on firings and depth, a side's filter
+    /// not transposed at a correlate it reaches, and a row that binds no container decline.
     /// </para>
     /// <para>
     /// A condition holding the service's form (<see cref="Sql.CosmosOperators.HoldsServiceForm"/>) moves as Calcite's rule
@@ -220,8 +228,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// The test, over one statement: Calcite's simplification and the planner's own rules that carry a filter past a
-        /// member.
+        /// The test, over one statement: Calcite's simplification, the planner's own rules that carry a filter past a
+        /// member, and the facts graph's answer of whether what a transposition newly evaluates can raise.
         /// </summary>
         /// <remarks>
         /// Each question is asked once over a statement (<see cref="_reached"/>), and each member's carry once for one set of
@@ -281,10 +289,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             /// <remarks>
             /// <para>
             /// That simplification of the whole is what Calcite's Calc above the correlate evaluates without the transposition,
-            /// every operand of it; a conjunct of it evaluated above on the rows the transposed correlate joins is evaluated on
-            /// rows that plan joins too. Where the whole is read as false that plan evaluates none of it, so each part moved is
-            /// new; elsewhere a part moves as Calcite's rule moves it, on every row its side reads. A literal is no term to
-            /// ask, and the set is joined unsimplified, so a <c>FALSE</c> in it cannot read the rest away.
+            /// every operand of it (<c>Calcite.ConnectivesAreKleene</c>): the Calc simplifies over its input's pulled-up
+            /// predicates, and a correlate whose left is a Calc pulls up none, as this simplifier reads none
+            /// (<c>CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates</c>). A conjunct of it evaluated above on the
+            /// rows the transposed correlate joins is evaluated on rows that plan joins too. The whole as the builder writes
+            /// it is no baseline: the builder can keep a conjunct that simplification drops, which no plan evaluates. Where
+            /// the whole is read as false that plan evaluates none of it, so each part moved is new; elsewhere a part moves as
+            /// Calcite's rule moves it, on every row its side reads. A literal is no term to ask, and the set is joined
+            /// unsimplified, so a <c>FALSE</c> in it cannot read the rest away.
             /// </para>
             /// <para>
             /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
