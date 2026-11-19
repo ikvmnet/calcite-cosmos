@@ -135,6 +135,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Constructor<JPath, string, JPath> Prop => Paths.Prop;
         public Constructor<JPath, long, JPath> Index => Paths.Index;
         public Constructor<JPath, JPath> Each => Paths.Each;
+        public Constructor<JPath, string, long, JPath> Yield => Paths.Yield;
 
         /// <summary>The path is there.</summary>
         public Relation<JPath> Present { get; }
@@ -612,6 +613,25 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var i = r.Var<long>("i");
                 r.When(c.Is(Index.Of(p, i)), e.Is(Each.Of(p)));
                 r.Then(Instance.Of(c, e));
+            });
+            // The element a traversal yields (Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText): what is declared of every
+            // element reaches it, and it holds only the kinds its element type's row says the traversal yields (yieldkinds), a
+            // type no row names narrowing nothing. Nothing makes it present, so narrowed to no kind it is absent, and nothing is
+            // contradictory: Calcite's traversal raises first over an array holding a kind the row does not name, in either plan.
+            Rule("an element a traversal yields is an instance of every element of its array", r =>
+            {
+                var (y, e, p) = r.Vars<JPath, JPath, JPath>("y", "e", "p");
+                var (t, n) = r.Vars<string, long>("t", "n");
+                r.When(y.Is(Yield.Of(p, t, n)), e.Is(Each.Of(p)));
+                r.Then(Instance.Of(y, e));
+            });
+            Rule("an element a traversal yields holds only what its traversal yields", r =>
+            {
+                var (y, p) = r.Vars<JPath, JPath>("y", "p");
+                var (t, n) = r.Vars<string, long>("t", "n");
+                var k = r.Var<ValueSet<string>>("k");
+                r.When(y.Is(Yield.Of(p, t, n)), k.Is(Readings.YieldKinds.Of(t)));
+                r.Then(Types.Of(y).Is(k));
             });
             Rule("a property of an instance is an instance of the property", r =>
             {

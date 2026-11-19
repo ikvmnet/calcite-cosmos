@@ -251,6 +251,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// The element a traversal yields is a step of its own, by its element type and the traversal's number: an element,
+        /// which has no name, unequal to an index and to another traversal's, spelled after <c>yield</c> and encoded as the
+        /// spec's <c>Yield</c> segment.
+        /// </summary>
+        [Fact]
+        public void AYieldedStepIsAnElementOfItsOwn()
+        {
+            var tags = JsonDocumentPath.Root.Property("tags");
+            var element = tags.Yielded("VARCHAR", 0);
+
+            element.Segments.Should().Equal("tags", new JsonYieldedStep("VARCHAR", 0));
+            element.HasElement.Should().BeTrue();
+            FluentActions.Invoking(() => element.Names).Should().Throw<InvalidOperationException>("a path holding an element has no names alone");
+            element.Should().Be(tags.Yielded("VARCHAR", 0)).And.NotBe(tags.Element(0), "the element a traversal yields is no index");
+            element.Should().NotBe(tags.Yielded("VARCHAR", 1), "two traversals of one array yield two elements");
+            element.Should().NotBe(tags.Yielded("INTEGER", 0));
+            element.IsWithin(tags).Should().BeTrue();
+            element.ToString().Should().Be("$.tags[yield VARCHAR 0]");
+            SqlValue.Spell(element).Should().Be("$[\"tags\"][yield VARCHAR 0]");
+            JsonFactEncoding.Path(element).Should().Be(Cosmos.Facts.Saturation.JsonPathSpec.Root["tags"][new JsonYieldedStep("VARCHAR", 0)]);
+            JsonFactEncoding.Path(element).ToString().Should().Be("$.tags[yield VARCHAR 0]");
+            FluentActions.Invoking(() => tags.Yielded("VARCHAR", -1)).Should().Throw<ArgumentOutOfRangeException>();
+            FluentActions.Invoking(() => tags.Yielded(null!, 0)).Should().Throw<ArgumentNullException>();
+        }
+
+        /// <summary>
         /// An integer is a number: a whole value, a domain of them, and the narrower type all establish
         /// <c>number</c>, and none of them excludes it. #217.
         /// </summary>

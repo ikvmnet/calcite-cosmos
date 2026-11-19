@@ -20,7 +20,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <b>Property names, and an element by its index.</b> An element (<see cref="Element"/>) is the loader's alone, read
     /// through an accessor whose path names it (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>); the facts graph reads it
     /// as its own index segment, and what a fact declared for <c>items</c> says of <c>$.tags[0]</c> is the theory's
-    /// rules over <c>Index</c>, never a lookup here. <see cref="Names"/> refuses a path holding one.
+    /// rules over <c>Index</c>, never a lookup here. So is the element a traversal yields (<see cref="Yielded"/>), a step
+    /// of its own by its element type and the traversal's number, which the facts graph reads as <c>Yield</c> and no request
+    /// spells. <see cref="Names"/> refuses a path holding either.
     /// </para>
     /// <para>
     /// <b>A value, and a struct for that reason.</b> Two paths naming the same properties are the same
@@ -47,13 +49,16 @@ namespace Apache.Calcite.Cosmos.Facts
         sealed class Node
         {
 
-            public Node(Node? parent, string? name, long index = -1)
+            public Node(Node? parent, string? name, long index = -1, JsonYieldedStep? yielded = null)
             {
                 Parent = parent;
                 Name = name;
                 Index = index;
+                Yielded = yielded;
                 Depth = (parent?.Depth ?? 0) + 1;
-                Hash = name is null ? HashCode.Combine(parent?.Hash ?? 0, index) : HashCode.Combine(parent?.Hash ?? 0, StringComparer.Ordinal.GetHashCode(name));
+                Hash = name is not null ? HashCode.Combine(parent?.Hash ?? 0, StringComparer.Ordinal.GetHashCode(name))
+                    : yielded is not null ? HashCode.Combine(parent?.Hash ?? 0, yielded)
+                    : HashCode.Combine(parent?.Hash ?? 0, index);
             }
 
             public Node? Parent { get; }
@@ -61,8 +66,11 @@ namespace Apache.Calcite.Cosmos.Facts
             /// <summary>The property name, or <c>null</c> for an element.</summary>
             public string? Name { get; }
 
-            /// <summary>An element's index, from zero; -1 for a property.</summary>
+            /// <summary>An element's index, from zero; -1 for a property and for the element a traversal yields.</summary>
             public long Index { get; }
+
+            /// <summary>The element a traversal yields, or <c>null</c> for a property and an index.</summary>
+            public JsonYieldedStep? Yielded { get; }
 
             public int Depth { get; }
 
@@ -103,7 +111,8 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// Gets the steps, outermost first: a property's name as a <see cref="string"/>, an element's index as a <see cref="long"/>.
+        /// Gets the steps, outermost first: a property's name as a <see cref="string"/>, an element's index as a <see cref="long"/>,
+        /// and the element a traversal yields as its <c>JsonYieldedStep</c>.
         /// </summary>
         public IReadOnlyList<object> Segments
         {
@@ -111,14 +120,14 @@ namespace Apache.Calcite.Cosmos.Facts
             {
                 var segments = new object[Depth];
                 for (var node = _last; node is not null; node = node.Parent)
-                    segments[node.Depth - 1] = node.Name ?? (object)node.Index;
+                    segments[node.Depth - 1] = node.Name ?? (object?)node.Yielded ?? node.Index;
 
                 return segments;
             }
         }
 
         /// <summary>
-        /// Gets whether any step is an element.
+        /// Gets whether any step is an element: an index, or the element a traversal yields.
         /// </summary>
         public bool HasElement
         {
@@ -164,6 +173,16 @@ namespace Apache.Calcite.Cosmos.Facts
             index >= 0 ? new JsonDocumentPath(new Node(_last, null, index)) : throw new ArgumentOutOfRangeException(nameof(index));
 
         /// <summary>
+        /// Returns this path with the element a traversal of the array it holds yields appended: a step of its own, unequal to
+        /// every index and to every other traversal's element, which no request, policy or document read can spell.
+        /// </summary>
+        /// <param name="type">The element type the traversal reads it as, by its <c>SqlTypeName</c>'s name: <c>VARCHAR</c>.</param>
+        /// <param name="traversal">The traversal's number, from zero.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="traversal"/> is negative.</exception>
+        internal JsonDocumentPath Yielded(string type, long traversal) => new(new Node(_last, null, yielded: new JsonYieldedStep(type, traversal)));
+
+        /// <summary>
         /// Determines whether this path is <paramref name="ancestor"/> or lies beneath it.
         /// </summary>
         public bool IsWithin(JsonDocumentPath ancestor)
@@ -188,7 +207,8 @@ namespace Apache.Calcite.Cosmos.Facts
                     return true;
                 if (left is null || right is null)
                     return false;
-                if (left.Hash != right.Hash || left.Depth != right.Depth || left.Index != right.Index || string.Equals(left.Name, right.Name, StringComparison.Ordinal) == false)
+                if (left.Hash != right.Hash || left.Depth != right.Depth || left.Index != right.Index || string.Equals(left.Name, right.Name, StringComparison.Ordinal) == false
+                    || Equals(left.Yielded, right.Yielded) == false)
                     return false;
 
                 left = left.Parent;
@@ -221,7 +241,12 @@ namespace Apache.Calcite.Cosmos.Facts
             var builder = new StringBuilder("$");
 
             foreach (var segment in Segments)
-                _ = segment is string name ? builder.Append('.').Append(name) : builder.Append('[').Append((long)segment).Append(']');
+                _ = segment switch
+                {
+                    string name => builder.Append('.').Append(name),
+                    long index => builder.Append('[').Append(index).Append(']'),
+                    var yielded => builder.Append('[').Append(yielded).Append(']'),
+                };
 
             return builder.ToString();
         }

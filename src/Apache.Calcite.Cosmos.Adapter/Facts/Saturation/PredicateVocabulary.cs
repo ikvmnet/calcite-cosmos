@@ -226,7 +226,10 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <summary>A path holding no element, read off its term.</summary>
         public Relation<JPath> NoElement { get; }
 
-        /// <summary>A path holding an element, read off its term: one of its steps is an index.</summary>
+        /// <summary>
+        /// A path holding an element, read off its term: one of its steps is an index or every element. Neither this nor
+        /// <see cref="NoElement"/> holds of the element a traversal yields, which its own rules read.
+        /// </summary>
         public Relation<JPath> HasElement { get; }
 
         /// <summary>
@@ -319,6 +322,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var (f, k) = r.Vars<string, string>("f", "k");
                 r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, p, k), HasElement.Of(p));
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
+            });
+            // Neither noelement nor haselement holds of the element a traversal yields, so no rule above reads it: an accessor of it
+            // reads it as its element type's row says the traversal's elements read (yieldreads, the text alone for a VARCHAR),
+            // and a reading written apart of it, a field's, what its reading reads where the row names that. A type or a reading
+            // no row names, a raw value's or an item's, reads nothing, so no atom rests on it and a term over it may raise.
+            Analyse.DefineRule("an accessor of an element a traversal yields reads it as its traversal's elements read", r =>
+            {
+                var (v, y, q) = r.Vars<Val, JPath, JPath>("v", "y", "q");
+                var (k, m, t) = r.Vars<string, string, string>("k", "m", "t");
+                var n = r.Var<long>("n");
+                r.When(Accesses.Of(v, y, k, m), y.Is(Paths.Yield.Of(q, t, n)), Readings.YieldReads.Of(t, k));
+                r.Then(Reads.Of(v, y, k));
+            });
+            Analyse.DefineRule("a reading written apart of an element a traversal yields reads what its reading reads", r =>
+            {
+                var (v, w, y, q) = r.Vars<Val, Val, JPath, JPath>("v", "w", "y", "q");
+                var (f, k, t) = r.Vars<string, string, string>("f", "k", "t");
+                var n = r.Var<long>("n");
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, y, k), y.Is(Paths.Yield.Of(q, t, n)), Readings.YieldReads.Of(t, k));
+                r.Then(Reads.Of(v, y, k));
             });
             // A cast is a reading where a row measured it, keyed by the reading it converts, its column apart (h15b): what a
             // column's cast reads is the column's own rows. One no row names reads nothing, so no atom rests on it: over an ANY
@@ -448,6 +471,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
         // Whether a path holds an element, read off its term, which a raw value's reading of it reads (h15b): the document and a
         // property of a path holding none hold none, and an index, every element and a property of a path holding one, one.
+        // The element a traversal yields is neither.
         void DefineElements()
         {
             Analyse.DefineRule("the document holds no element", r =>

@@ -19,7 +19,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
     /// <summary>
     /// The predicate vocabulary in a graph that holds nothing of the theory's, as the rendering graph will: it writes and
-    /// analyses a conjunct with no rule of JSON beside it.
+    /// analyses a conjunct with no rule of JSON beside it. Where an atom it reads is the one a raise question rests on, the
+    /// facts graph's answer is asked beside it (<see cref="JsonRulesTests.NeverRaises"/>).
     /// </summary>
     public sealed class PredicateVocabularyTests
     {
@@ -50,7 +51,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             scope.Assume(facts.ToArray());
 
             scope.Run(Schedule.Saturate(ir.Analyse), cancellationToken: TestContext.Current.CancellationToken).StopReason.Should().Be(RunStopReason.Completed);
-            ir.Analyse.Rules.Should().HaveCount(41, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', ten h15b's, an element's and a form's, and each accessor's reading of an element as a path's or as the element reading, which this conjunct holds none of");
+            ir.Analyse.Rules.Should().HaveCount(43, "nine of them a JSON_QUERY's, the one-place tests' and the affix's, thirteen G8's, a column's, a call's test, a cast number's, SQL's null's and the boxes', ten h15b's, an element's and a form's, each accessor's reading of an element as a path's or as the element reading, and an accessor's and a form's reading of the element a traversal yields as its row says, which this conjunct holds none of");
             scope.CountRows(ir.Atom).Should().Be(4);
             scope.CountRows(ir.Point).Should().Be(4, "'bikes', 'x', 'y' and 3, beside their atoms");
             junctions.Should().Equal(new[] { (true, 2), (false, 2), (false, 3) }, "the disjunction is written as an arm, before the conjunction it nests in");
@@ -135,6 +136,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             AtomsIn(new SqlPredicate.IsNull(column)).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.ElementReader);
             AtomsIn(new SqlPredicate.IsNull(column), rows with { AsOfAPath = [.. rows.AsOfAPath, PredicateAtom.RawIn("VARIANT")] }).Should().ContainSingle()
                 .Which.Reader.Should().Be(PredicateAtom.RawIn("VARIANT"), "a column the cell names is read through it");
+        }
+
+        /// <summary>
+        /// The element a traversal yields is read as its element type's row says the traversal's elements read (<c>yieldreads</c>,
+        /// <c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): a <c>VARCHAR</c>'s as the text, by its accessor and by
+        /// the field the loader writes for a column bound to it, so a comparison, a <c>LIKE</c> and a null test of it are atoms
+        /// of the text, which the facts graph finds raise on nothing with nothing declared. A raw value, an item over one and a
+        /// <c>RETURNING</c> of it, which the row does not name, read nothing, and neither does any reading of an element of a
+        /// type no row names (<c>INTEGER</c>): no atom, and a comparison that may raise.
+        /// </summary>
+        [Fact]
+        public void AnElementATraversalYieldsReadsAsItsTraversalsElementsRead()
+        {
+            var element = P("tags").Yielded("VARCHAR", 0);
+            var field = new SqlValue.Text(element) { Form = PredicateAtom.FieldForm };
+            foreach (var read in new[] { Text(element), field })
+            {
+                var conjuncts = new SqlPredicate[]
+                {
+                    Eq(read, "1"), Ne(read, "1"), Cmp(read, "<", Lit("b")), In(read, "1", "2"), IsNull(read), IsNotNull(read),
+                    new SqlPredicate.Affix(PredicateAtom.LikeTest, read, "a%"),
+                };
+                foreach (var conjunct in conjuncts)
+                {
+                    AtomsIn(conjunct).Should().ContainSingle().Which.Reader.Should().Be(PredicateAtom.TextReader, conjunct.ToString());
+                    JsonRulesTests.NeverRaises(conjunct).Should().BeTrue("{0} raises nowhere with nothing declared", conjunct);
+                }
+            }
+            AtomsIn(new SqlPredicate.TypeTest("IS_STRING", field)).Should().ContainSingle().Which.Should().Match<PredicateAtom>(a => a.Reader == PredicateAtom.TextReader && a.Body == PredicateAtom.RaisesReader,
+                "a test of a field is asked over the field's reading, read as its form's row says the body reads it");
+
+            foreach (var unread in new SqlValue[] { Raw(element), new SqlValue.Raw(element) { Form = PredicateAtom.ItemForm }, Typed(element, "INTEGER"), Text(P("tags").Yielded("INTEGER", 0)) })
+            {
+                AtomsIn(Eq(unread, "1")).Should().BeEmpty(unread.ToString());
+                AtomsIn(IsNull(unread)).Should().BeEmpty(unread.ToString());
+                JsonRulesTests.NeverRaises(Eq(unread, "1")).Should().BeFalse("no atom reads {0}", unread);
+            }
         }
 
         /// <summary>The atoms the vocabulary reads a conjunct into, beside the registry's rows of readings.</summary>
