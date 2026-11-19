@@ -28,10 +28,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <c>WHERE</c> over the alias, and a conjunct of the document alone goes into the request.
     /// </para>
     /// <para>
-    /// What the transposition newly evaluates is read off Calcite's own classification, simplifier and builder; whether it
-    /// can raise is the facts graph's, over the correlate's row bound with the element a traversal yields and a lateral's
-    /// accessor columns (<see cref="CosmosImplementor.TryBindElements"/>). The bounds on firings and depth, a side's filter
-    /// not transposed at a correlate it reaches, and a row that binds no container decline.
+    /// What the transposition newly evaluates is read off Calcite's own classification, simplifier, builder and metadata;
+    /// whether it can raise is the facts graph's, over the correlate's row bound with the element a traversal yields and a
+    /// lateral's accessor columns (<see cref="CosmosImplementor.TryBindElements"/>). The bounds on firings and depth, a
+    /// side's filter not transposed at a correlate it reaches, and a row that binds no container decline.
     /// </para>
     /// <para>
     /// A condition holding the service's form (<see cref="Sql.CosmosOperators.HoldsServiceForm"/>) moves as Calcite's rule
@@ -281,22 +281,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             /// Determines whether Calcite's transposition is taken: where the filter a firing writes into a side reaches a
             /// correlate, the transposition of it there is taken too; and the facts graph answers that nothing the transposition
             /// newly evaluates raises on a document the declaration admits (<see cref="RaisesNothing"/>). That is every
-            /// conjunct of what each firing leaves above, as Calcite's builder writes it and read unknown as false, that
-            /// Calcite's simplification of the whole condition, unknown read as false, lacks, compared as Calcite compares
-            /// expressions; and where Calcite reads the whole as false, as written or as its builder writes it, or the
-            /// builder writes a rest as false, every part each firing moves into either side.
+            /// conjunct of what each firing leaves above, as Calcite's builder writes it and read unknown as false, that either
+            /// of Calcite's simplifications of the whole condition, unknown read as false, lacks, over no predicates and over
+            /// those the correlate pulls up, compared as Calcite compares expressions; and where Calcite reads the whole as
+            /// false, as written, as its builder writes it or over those predicates, or the builder writes a rest as false,
+            /// every part each firing moves into either side.
             /// </summary>
             /// <remarks>
             /// <para>
-            /// That simplification of the whole is what Calcite's Calc above the correlate evaluates without the transposition,
-            /// every operand of it (<c>Calcite.ConnectivesAreKleene</c>): the Calc simplifies over its input's pulled-up
-            /// predicates, and a correlate whose left is a Calc pulls up none, as this simplifier reads none
-            /// (<c>CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates</c>). A conjunct of it evaluated above on the
-            /// rows the transposed correlate joins is evaluated on rows that plan joins too. The whole as the builder writes
-            /// it is no baseline: the builder can keep a conjunct that simplification drops, which no plan evaluates. Where
-            /// the whole is read as false that plan evaluates none of it, so each part moved is new; elsewhere a part moves as
-            /// Calcite's rule moves it, on every row its side reads. A literal is no term to ask, and the set is joined
-            /// unsimplified, so a <c>FALSE</c> in it cannot read the rest away.
+            /// Calcite's Calc above the correlate evaluates, without the transposition, the whole simplified over its input's
+            /// pulled-up predicates, every operand of it (<c>Calcite.ConnectivesAreKleene</c>). A correlate pulls up its left's:
+            /// none where the left is a Calc (<c>CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates</c>), an inner
+            /// join's condition or a <c>VALUES</c>'s constants where it is one (<c>ACorrelatePullsUpWhatItsLeftPullsUp</c>).
+            /// Which that plan's left is, the rule cannot know, so a conjunct is read as that plan's only where both
+            /// simplifications hold it: evaluated above on the rows the transposed correlate joins, it is evaluated on rows
+            /// that plan joins too. The whole as the builder writes it is no baseline: the builder can keep a conjunct both
+            /// drop, which no plan evaluates. Where the whole is read as false that plan evaluates none of it, so each part
+            /// moved is new; elsewhere a part moves as Calcite's rule moves it, on every row its side reads. A literal is no
+            /// term to ask, and the set is joined unsimplified, so a <c>FALSE</c> in it cannot read the rest away.
             /// </para>
             /// <para>
             /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
@@ -310,8 +312,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 var calc = _simplify.simplifyUnknownAsFalse(condition);
+                var pulled = new RexSimplify(_rexBuilder, correlate.getCluster().getMetadataQuery().getPulledUpPredicates(correlate), RexUtil.EXECUTOR).simplifyUnknownAsFalse(condition);
                 var whole = _simplify.simplifyFilterPredicates(java.util.Collections.singletonList(condition));
-                var readFalse = calc.isAlwaysFalse() || whole is null || _simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse();
+                var readFalse = calc.isAlwaysFalse() || pulled.isAlwaysFalse() || whole is null || _simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse();
 
                 // Each firing's builder writes what is left above as Calcite's RelBuilder does, and the next firing moves what of
                 // that reads one side; a rest the builder writes as false moves nothing, and firings past the bound decline.
@@ -347,6 +350,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 }
 
                 var evaluated = new HashSet<RexNode>(Conjuncts(calc));
+                evaluated.IntersectWith(Conjuncts(pulled));
                 var asked = (readFalse ? parts : Enumerable.Empty<RexNode>()).Concat(rests.Where(r => evaluated.Contains(r) == false))
                     .Where(r => r is not RexLiteral || (r.isAlwaysTrue() == false && r.isAlwaysFalse() == false))
                     .Distinct()

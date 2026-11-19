@@ -1343,16 +1343,23 @@ filters merge, conjuncts carried past a filter without it merge with no filter f
 only once that filter has gone into its correlate, whose sides then hold its parts, and those parts merged with them are
 asked as well.
 
-What a test asks is read off Calcite's own classification, simplifier and builder, compared as Calcite compares
-expressions, and the rule runs every firing of Calcite's rule to collect it. Call `calc` Calcite's simplification of the
-whole condition, unknown read as false. Asked: every conjunct of what each firing leaves above, as the builder writes it
-and read unknown as false, that `calc` lacks; and where Calcite reads the whole as false, as written or as its builder
-writes it, or the builder writes a rest as false, every part each firing moves into either side, a right part shifted
-onto the correlate's row. `calc` is what Calcite's Calc above the correlate evaluates without the transposition, every
-operand of it (`Calcite.ConnectivesAreKleene`, nullable or not): the Calc simplifies over its input's pulled-up
-predicates, and a correlate whose left is a Calc pulls up none
-(`CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates`), as the rule's simplifier reads none. A rest conjunct
-`calc` holds is evaluated above on rows that plan joins too, on the same values; one it lacks is new. The whole as the
+What a test asks is read off Calcite's own classification, simplifier, builder and metadata, compared as Calcite
+compares expressions, and the rule runs every firing of Calcite's rule to collect it. Call `calc` Calcite's
+simplification of the whole condition, unknown read as false, and `pulled` the same over the predicates Calcite's
+metadata pulls up from the correlate, its left's. Asked: every conjunct of what each firing leaves above, as the builder
+writes it and read unknown as false, that `calc` or `pulled` lacks; and where Calcite reads the whole as false, as
+written, as its builder writes it or over those predicates, or the builder writes a rest as false, every part each
+firing moves into either side, a right part shifted onto the correlate's row. Calcite's Calc above the correlate
+evaluates, without the transposition, the whole simplified over its input's pulled-up predicates, every operand of it
+(`Calcite.ConnectivesAreKleene`, nullable or not). A correlate pulls up its left's: none where the left is a Calc
+(`CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates`), an inner join's condition or a `VALUES`'s constants
+where it is one (`ACorrelatePullsUpWhatItsLeftPullsUp`). Which that plan's left is the rule cannot know, so a rest
+conjunct both hold is evaluated above on rows that plan joins too, on the same values, and one either lacks is new. `m =
+'1' AND (c.id = '9' OR CAST(u.t AS INTEGER) > 0)` over a join on `c.id = '9'` (r3a) leaves the `OR` above, which `calc`
+holds and `pulled` reads as true: Calcite without the transposition, its correlate's left the join, never casts, and the
+transposed plan, its left a Calc, casts an element `"x"`; asked, the test declines, its row binding no container over
+the join, and the statement answers as that plan does
+(`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). The whole as the
 builder writes it is no baseline: the builder runs with predicate elimination off and rewrites an `OR`'s disjuncts
 first, so it can keep a conjunct `calc` drops, which no plan evaluates. `(NOT (CAST(u.t AS INTEGER) > 0 OR m = '2') OR
 kind IN ('A', 'B')) AND kind = 'A'` (fz2_320) leaves above an `OR` holding the element's cast, which `calc` reads as
@@ -1362,19 +1369,20 @@ on an element `"x"` where Calcite without it answers; read against `calc` it dec
 read as false, Calcite without the transposition evaluates none of it, so every part moved is new. Elsewhere a part
 moves as Calcite's rule moves it, evaluated on every row its side reads, those the correlate joins to nothing among
 them, as with `FILTER_CORRELATE`, and is not asked. Every firing's rest is asked, not only the last, since the planner
-may stop at any firing. A literal `TRUE` or `FALSE` is dropped, and the rest joined by an `AND` as given, never
-simplified: `RexUtil.composeConjunction` answers `FALSE` for a list holding one, which would read the question away
-without reading the rest (rf2, a cast of `body` beside `(kind = 'B' OR u.t = 'x') AND NOT (kind = 'B' OR u.t = 'x')`,
-declines). An empty set takes without asking. The question is `CosmosFilterStatement.RaisesNothing` (*The oracle in the
-planner*; its node is beside the reduce's, under *The reduce asks every row false*), over the correlate's row as
-`CosmosImplementor.TryBindElements` binds it: the element a traversal yields and a lateral's accessor columns named (*An
-element a traversal yields is a path of its own*), and a row that binds no container declining. The bounds on firings
-and depth, and a side's filter not transposed at a correlate it reaches, decline as before. Whether a term over a
-declared property can raise is the declaration's: `CAST(x.body AS INTEGER) = 7 AND n > 50 AND (n > 40 OR v.s = '1')`,
-`n` read `RETURNING INTEGER`, over a sub-query `x` of a traversal of `tags` whose own `WHERE` is `CAST(u.t AS INTEGER) =
-1 AND kind = 'A'` and a traversal of its `more`, asks the `OR` left above, which `calc` lacks; where `n` is declared an
-integer nothing in it raises, and the statement sends `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and where nothing is
-declared it reads every document
+may stop at any firing: `kind = 'A' AND NOT (u.t = 'x' OR (kind = 'B' AND CAST(body AS INTEGER) = 7))` (mf1) leaves at
+its first firing an `OR` holding the cast, which its second moves, and declines where `body` can fail. A literal `TRUE`
+or `FALSE` is dropped, and the rest joined by an `AND` as given, never simplified: `RexUtil.composeConjunction` answers
+`FALSE` for a list holding one, which would read the question away without reading the rest (rf2, a cast of `body`
+beside `(kind = 'B' OR u.t = 'x') AND NOT (kind = 'B' OR u.t = 'x')`, declines). An empty set takes without asking. The
+question is `CosmosFilterStatement.RaisesNothing` (*The oracle in the planner*; its node is beside the reduce's, under
+*The reduce asks every row false*), over the correlate's row as `CosmosImplementor.TryBindElements` binds it: the
+element a traversal yields and a lateral's accessor columns named (*An element a traversal yields is a path of its
+own*), and a row that binds no container declining. The bounds on firings and depth, and a side's filter not transposed
+at a correlate it reaches, decline as before. Whether a term over a declared property can raise is the declaration's:
+`CAST(x.body AS INTEGER) = 7 AND n > 50 AND (n > 40 OR v.s = '1')`, `n` read `RETURNING INTEGER`, over a sub-query `x`
+of a traversal of `tags` whose own `WHERE` is `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` and a traversal of its `more`,
+asks the `OR` left above, which `calc` lacks; where `n` is declared an integer nothing in it raises, and
+the statement sends `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and where nothing is declared it reads every document
 (`AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`, ws1k).
 
 **Whether a statement is sent is asked once, of the request.** `CosmosFilter.Implement` records each condition it
