@@ -33,9 +33,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <b>A lateral's column.</b> Through projections of input references and the lateral's own filters to its projection over
     /// a one-tuple <c>VALUES</c>: a column that reads the correlation variable alone and resolves over the left's binding, the
     /// text accessor, a <c>RETURNING</c>, a plain <c>JSON_QUERY</c> or a field of the left passed through, binds to that path
-    /// with the reading the walk's projection arm gives such a column. A field of the correlation variable is the left's field
-    /// of that ordinal, so it is read as one, and an accessor over a field the left reads as text is refused as it is over a
-    /// field reference. A computed column, and anything else, stays unbound.
+    /// as the walk's projection arm binds a projected column, through the one reader of both
+    /// (<see cref="CosmosImplementor.Projected"/>). A field of the correlation variable is the left's field of that ordinal,
+    /// so it is read as one, and an accessor over a field the left reads as text is refused. A computed column, and anything
+    /// else, stays unbound.
     /// </para>
     /// <para>
     /// <b>Numbered in the walk's order.</b> One instance numbers one binding's traversals as the walk meets them, the left's
@@ -89,7 +90,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     if (expression is RexInputRef reference)
                         return Column(correlate, project.getInput(), reference.getIndex(), left, leftReadings, seen);
 
-                    return OverOneTuple(project.getInput(), CosmosPlanMembers.NewSeen()) ? Lateral(correlate, expression, left, leftReadings) : Unbound;
+                    return OverOneTuple(project.getInput(), CosmosPlanMembers.NewSeen()) ? OverTheLeft(correlate, expression, left, leftReadings) : Unbound;
                 }
 
                 case Uncollect uncollect when field == 0:
@@ -113,7 +114,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var array = (RexNode)project.getProjects().get(0);
             if (CosmosRexShapes.IsPlainJsonQuery(array) == false || array.getType()?.getSqlTypeName() != SqlTypeName.ARRAY
                 || array.getType().getComponentType()?.getSqlTypeName()?.getName() is not string type
-                || Resolve(correlate, array, left, leftReadings) is not (CosmosPath at, _))
+                || OverTheLeft(correlate, array, left, leftReadings) is not (CosmosPath at, _))
                 return Unbound;
 
             if (_numbers.TryGetValue(uncollect, out var number) == false)
@@ -123,39 +124,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <summary>
-        /// A lateral's column: the document path an expression over the correlation variable alone resolves to, read as the
-        /// walk's projection arm reads such a column.
+        /// An expression over the correlation variable alone, each field of the correlate's own variable written as the left's
+        /// field it stands for, bound over the left's binding as the walk's projection arm binds a projected column
+        /// (<see cref="CosmosImplementor.Projected"/>); unbound where it reads the right's own row.
         /// </summary>
-        static (CosmosPath? Path, CosmosReading Reading) Lateral(Correlate correlate, RexNode expression, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
-        {
-            if (Resolve(correlate, expression, left, leftReadings) is not (CosmosPath path, RexNode own))
-                return Unbound;
-
-            // The element a traversal yields passes through as the field it is, and no further: an accessor over it reads its
-            // text parsed, which is no path.
-            if (path.HasYielded && own is not RexInputRef)
-                return Unbound;
-
-            return (path,
-                CosmosRexShapes.IsTextJsonValue(own) ? CosmosReading.Text
-                : CosmosRexShapes.IsPlainJsonQuery(own) ? CosmosReading.JsonText
-                : own is RexInputRef reference && reference.getIndex() < leftReadings.Count ? leftReadings[reference.getIndex()]
-                : CosmosReading.Typed);
-        }
-
-        /// <summary>
-        /// Resolves an expression over the correlation variable alone to the path it addresses over the left's binding, each
-        /// field of the correlate's own variable written as the left's field it stands for; <c>null</c> where it reads the right's
-        /// own row, another variable, or no path.
-        /// </summary>
-        static (CosmosPath Path, RexNode Own)? Resolve(Correlate correlate, RexNode expression, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
+        static (CosmosPath? Path, CosmosReading Reading) OverTheLeft(Correlate correlate, RexNode expression, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
         {
             // An input reference here reads the right's own row, the VALUES or the projected array, and not the document.
             if (RelOptUtil.InputFinder.bits(expression).isEmpty() == false)
-                return null;
+                return Unbound;
 
             var own = (RexNode)expression.accept(new OwnRow(correlate.getCorrelationId()));
-            return new CosmosRexPaths(left, spelled: false, leftReadings).TryResolvePath(own, out var path) && path is not null ? (path, own) : null;
+            return CosmosImplementor.Projected(own, new CosmosRexPaths(left, spelled: false, leftReadings), leftReadings);
         }
 
         /// <summary>

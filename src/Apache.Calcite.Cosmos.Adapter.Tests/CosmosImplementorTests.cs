@@ -378,6 +378,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <summary>
+        /// A projected accessor over a field its input reads as text, which Calcite parses before reading the path, binds
+        /// nothing, as a sub-query's column with the elements on and off and as a lateral's column alike: one reader binds a
+        /// projected column for both.
+        /// </summary>
+        [Fact]
+        public void AnAccessorOverATextFieldBindsNothingAsASubQuerysColumnAsALaterals()
+        {
+            var sub = Members<org.apache.calcite.rel.core.Correlate>($"""
+                SELECT y.j, u.t FROM (SELECT x."DOC", JSON_VALUE(x.k, '$') AS j FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.kind') AS k FROM products AS c) AS x WHERE x.k <> 'zz') AS y,
+                UNNEST(JSON_QUERY(y."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE y.j = 'A' AND u.t = '1'
+                """)[0];
+            Elements(sub, "c", null, null).Fields.Should().Equal("c", null, "c.tags[yield VARCHAR 0]");
+
+            var lateral = Members<org.apache.calcite.rel.core.Correlate>("""
+                SELECT x.k, l.j3 FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.kind') AS k FROM products AS c) AS x
+                CROSS JOIN LATERAL (SELECT JSON_VALUE(x.k, '$') AS j3 FROM (VALUES (1)) AS v(x0)) AS l WHERE l.j3 = 'A'
+                """)[0];
+            Elements(lateral, "c", "c.kind", null).Fields.Should().Equal("c", "c.kind", null);
+        }
+
+        /// <summary>
         /// An element surfaces through a sub-query on the left as the column it is, bound by the walk beneath, and the
         /// correlate above numbers its own traversal after it. The walk goes through the sub-query's filter, one that asks a
         /// recheck where the elements are off.

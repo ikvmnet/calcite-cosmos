@@ -2426,19 +2426,21 @@ for every other caller). Over a `Correlate`, `CosmosTraversalColumns` walks the 
 registered: the element of an `Uncollect` of a plain `JSON_QUERY … RETURNING <type> ARRAY` over the
 correlation variable, reached through projections of input references and the right's own filters, binds
 to the array's path with a yielded step naming the component's type and the traversal's number, read as
-the text; a lateral's accessor column, over its own filters and a one-tuple `VALUES`, binds to the path
-it reads with the reading the projection arm gives such a column. Implementation binds neither. What
-keeps that from reaching a request is the step: `CosmosPathSegment.Yielded` is a third kind beside a
-name and an index; everything that spells a path into a request, a policy or a document read
-(`CosmosPath.WriteTo` and `ToPolicyPath`, `RenderingPrinter`, `CosmosJson.GetPath`,
-`CosmosDocument.TryRead`, `CosmosConverters`' row builder) throws on one, and every reader that answers
-a question of one declines (the path readers where the target stores a name escaped, the translator's
-constant accessor, `CosmosDocumentPaths.From` asked without elements, the loader's `JsonPathOf`). While
-the elements bind, the filter arm asks no recheck, so no translator is built over such a path, and the
-projection arm passes the element on only as a direct reference: an accessor over it parses its text,
-which is no path. Without the elements the walk binds as before, which `CosmosImplementorTests` holds
-for each shape it binds with them, and the statement read through it is the raises question's alone
-(*The raises question*, under *The reduce asks every row false*).
+the text; a lateral's accessor column, over its own filters and a one-tuple `VALUES`, binds as the
+projection arm binds a projected column, through the one reader of both (`CosmosImplementor.Projected`),
+which resolves over the input's readings, so an accessor over a field read as text, which Calcite
+parses, binds nothing in either. Implementation binds neither. What keeps that from reaching a request
+is the step: `CosmosPathSegment.Yielded` is a third kind beside a name and an index; everything that
+spells a path into a request, a policy or a document read (`CosmosPath.WriteTo` and `ToPolicyPath`,
+`RenderingPrinter`, `CosmosJson.GetPath`, `CosmosDocument.TryRead`, `CosmosConverters`' row builder)
+throws on one, and every reader that answers a question of one declines (the path readers where the
+target stores a name escaped, the translator's constant accessor, `CosmosDocumentPaths.From` asked
+without elements, the loader's `JsonPathOf`). While the elements bind, the filter arm asks no recheck,
+so no translator is built over such a path, and the projection arm passes the element on only as a
+direct reference: an accessor over it parses its text, which is no path. Without the elements the walk
+binds as every other caller has it bound, which `CosmosImplementorTests` holds for each shape it binds
+with them, and the statement read through it is the raises question's alone (*The raises question*,
+under *The reduce asks every row false*).
 
 **The same holds of every walk a rule decides on and a node asks again, and the binding walk is not
 the only one.** A walk that knows the logical form of a node and not its converted form answers for

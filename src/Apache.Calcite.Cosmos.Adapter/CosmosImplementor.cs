@@ -558,7 +558,7 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     written |= CosmosClauses.Projection;
 
-                    var resolver = new CosmosRexPaths(input, spelled: false);
+                    var resolver = new CosmosRexPaths(input, spelled: false, inputReadings);
                     var projects = project.getProjects();
                     var paths = new CosmosPath?[projects.size()];
                     var reads = new CosmosReading[projects.size()];
@@ -567,10 +567,7 @@ namespace Apache.Calcite.Cosmos.Adapter
                     for (var i = 0; i < paths.Length; i++)
                     {
                         var expression = (RexNode)projects.get(i);
-
-                        // The element a traversal yields, which only the correlate rule's question binds, passes through as
-                        // the field it is and no further: an accessor over it reads its text parsed, which is no path.
-                        paths[i] = resolver.TryResolvePath(expression, out var path) && (elements is null || path!.HasYielded == false || expression is RexInputRef) ? path : null;
+                        (paths[i], reads[i]) = Projected(expression, resolver, inputReadings);
 
                         // Derived here because here is where the walk is -- both halves of it are
                         // questions about which expression sits at this ordinal. Whether the container
@@ -588,16 +585,6 @@ namespace Apache.Calcite.Cosmos.Adapter
                             CosmosProject.SortableOperandsOf(expression, resolver, DefaultRootAlias),
                             chain,
                             held);
-
-                        // What Rel.CosmosProject.Implement records for the same ordinal: an accessor
-                        // read as text is a rendering of the path it binds to, and a column passed
-                        // straight through keeps how it was read. Nothing else here is a rendering
-                        // that also binds -- a dropped cast binds to nothing, so what it is read as
-                        // can never be asked.
-                        reads[i] = paths[i] is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
-                            : paths[i] is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
-                            : expression is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < inputReadings.Count ? inputReadings[reference.getIndex()]
-                            : CosmosReading.Typed;
                     }
 
                     fields = paths;
@@ -622,6 +609,32 @@ namespace Apache.Calcite.Cosmos.Adapter
 
                     return false;
             }
+        }
+
+        /// <summary>
+        /// Binds one projected expression over its input's binding: the path it resolves to, and how it is read back. The one
+        /// reader of a projected column, for the walk's projection arm and a lateral's columns alike
+        /// (<see cref="CosmosTraversalColumns"/>).
+        /// </summary>
+        /// <remarks>
+        /// What <c>CosmosProject.Implement</c> records for the same ordinal: an accessor read as text is a rendering of the
+        /// path it binds to, and a column passed straight through keeps how it was read. Nothing else here is a rendering that
+        /// also binds: a dropped cast binds to nothing, so what it is read as can never be asked. The resolver reads the
+        /// input's readings, so an accessor over a field read as text, which Calcite parses, binds nothing, as the translator
+        /// refuses it. The element a traversal yields, which only the correlate rule's question binds, passes through as the
+        /// field it is and no further: an accessor over it reads its text parsed, which is no path.
+        /// </remarks>
+        /// <param name="expression">The projected expression, over the input's row.</param>
+        /// <param name="resolver">The input's binding, with its readings.</param>
+        /// <param name="inputReadings">How each of the input's fields is read.</param>
+        internal static (CosmosPath? Path, CosmosReading Reading) Projected(RexNode expression, CosmosRexPaths resolver, IReadOnlyList<CosmosReading> inputReadings)
+        {
+            var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef) ? resolved : null;
+            return (path,
+                path is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
+                : path is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
+                : expression is RexInputRef reference && reference.getIndex() >= 0 && reference.getIndex() < inputReadings.Count ? inputReadings[reference.getIndex()]
+                : CosmosReading.Typed);
         }
 
         /// <summary>
