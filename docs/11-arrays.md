@@ -42,9 +42,9 @@ In a planner you build (Chapter 21), the plan may evaluate a traversal in proces
 it to the service. There, a `WHERE` that reads the element and the document together is moved
 beside the traversal, as Calcite's own rule moves it, and its conditions on the document are sent,
 only where nothing the move would newly leave above the traversal can fail on a document the schema
-admits. Comparing the element of a `VARCHAR ARRAY` with a text constant, a `LIKE` over it and a
-null test of it never fail, so this `WHERE` sends its condition on the document with a schema or
-without one:
+admits. Comparing the element of a `VARCHAR ARRAY`, traversed as above without `WITH ORDINALITY`,
+with a text constant, a `LIKE` over it and a null test of it never fail, so this `WHERE` sends its
+condition on the document with a schema or without one:
 
 ```sql
 WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND (JSON_VALUE(c."DOC", '$.kind') = 'B' OR t."tag" = '1')

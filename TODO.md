@@ -3099,13 +3099,19 @@ across documents* and *A join of a container to itself* is the record.
   no path in the correlate rule's question, so a condition over it may raise. The fix inlines such a column, and reads a
   `CASE` of values compared with a literal. About 80 to 100 lines and 150 of tests.
 - **An element of a type no row measures reads nothing** — *small each, a cost: a request that reads every document.*
-  Only `UNNEST` of `JSON_QUERY … RETURNING VARCHAR ARRAY` has a row
+  Only `UNNEST` of `JSON_QUERY … RETURNING VARCHAR ARRAY`, written `AS u(t)` without ordinality, has a row
   (`Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText`): an element of `RETURNING INTEGER ARRAY` binds and reads
   nothing, so `u.t IS NULL` over it may raise (`CosmosFilterStatementTests`); `StringToArray`'s element, typed `ANY`,
   stays unbound; and so does an element of an element's own array, `StringToArray(CAST(u.e AS VARCHAR))`. Each wants a
   row measured as the `VARCHAR` one was, about 30 lines and 60 of tests a type, and about 60 for the nested element. An
   element that reads as something other than the text accessor reads it, as an `INTEGER`'s reads as `RETURNING INTEGER`
-  does, also wants the binding and the loader to write that reading.
+  does, also wants the binding and the loader to write that reading. The element of a traversal written `WITH
+  ORDINALITY AS u(t, o)` stays unbound too (`CosmosImplementorTests.AnElementOfATraversalWithOrdinalityBindsNothing`):
+  that form yields every element, a number, a boolean, an object or an array as the text of Java's rendering of it, and
+  raises only over an object where the array is
+  (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`), so the
+  `VARCHAR` row does not hold of it. It wants a row of its own, with its form carried in the yielded step as data beside
+  the type, about 30 lines and 60 of tests.
 - **The facts graph reads no call, and no comparison of two places** — *small, a cost: a request that reads every
   document.* `u.t = CAST(CAST(body AS INTEGER) AS VARCHAR)` (w13) and `CAST(u.t AS INTEGER) = CHAR_LENGTH(body)` (p1)
   give no atom, so a test that asks one may raise, w13's under every declaration. The reading is the one *A comparison

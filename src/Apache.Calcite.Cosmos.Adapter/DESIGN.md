@@ -10905,13 +10905,14 @@ it is. So the question is given the element, as a path of its own.
 
 - **The measurement.** `CalciteUnnestMeasurementTests.AVarcharArrayYieldsItsStringsAndNullsAsTheText` runs in process
   and calls no service, as `CalciteItemMeasurementTests` measures an index. `UNNEST(JSON_QUERY(… RETURNING VARCHAR
-  ARRAY))` yields each element of an array of strings and nulls, and `RETURNING VARCHAR(1) ARRAY` the same values uncut.
-  Sixteen readings of the element, itself, `=`, `<>`, `<`, `IN`, `IS NULL`, `LIKE` twice, the casts to `INTEGER`,
-  `BIGINT`, `DOUBLE` and `BOOLEAN`, `CHAR_LENGTH`, `UPPER`, `TRIM` and `||`, over eighteen values, each answer what the
-  same reading of the text accessor answers over a path holding the same value, a raise of the same type where it
-  raises: none of 288 cells a type differs. Over an array holding a number, a fraction, a boolean, an object or an array
-  anywhere in it, and over an object where the array is, the traversal raises `InvalidCastException` before any row is
-  read, `COUNT(*)` among them; over an empty, absent or null array, or a scalar where the array is, it yields no row.
+  ARRAY)) AS u(t)`, without ordinality, yields each element of an array of strings and nulls, and `RETURNING VARCHAR(1)
+  ARRAY` the same values uncut. Sixteen readings of the element, itself, `=`, `<>`, `<`, `IN`, `IS NULL`, `LIKE` twice,
+  the casts to `INTEGER`, `BIGINT`, `DOUBLE` and `BOOLEAN`, `CHAR_LENGTH`, `UPPER`, `TRIM` and `||`, over eighteen
+  values, each answer what the same reading of the text accessor answers over a path holding the same value, a raise of
+  the same type where it raises: none of 288 cells a type differs. Over an array holding a number, a fraction, a
+  boolean, an object or an array anywhere in it, and over an object where the array is, the traversal raises
+  `InvalidCastException` before any row is read, `COUNT(*)` among them; over an empty, absent or null array, or a
+  scalar where the array is, it yields no row.
 - **The row and its tables.** `Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText` names it and carries
   `CosmosTraversalYield("VARCHAR", [String, Null], text)` (`CosmosAxiom.Yields`). `CosmosAxiomRows` reads it into
   `CalciteRows`, the classes as JSON kinds, and both graphs assume it at the root beside `asofapath`, as two tables of
@@ -10956,7 +10957,12 @@ it is. So the question is given the element, as a path of its own.
   `VARCHAR`, and no C# reads the name: the rows decide what such an element holds, and whether it reads as its text,
   the one reading the binding gives it. Only `VARCHAR` has a row. An element of another type, `RETURNING
   INTEGER ARRAY`'s, binds, and gets no narrowing, no reading and no atom, so a term over it may raise
-  (`CosmosFilterStatementTests`); `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound. What `items`
+  (`CosmosFilterStatementTests`); `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound. So does the
+  element of a traversal written `WITH ORDINALITY AS u(t, o)`, until a row measures that form and the yielded step
+  carries it (`TODO.md`, *An element of a type no row measures reads nothing*): measured beside the row's form
+  (`ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`), it yields every element, a number, a
+  boolean, an object or an array as the text of Java's rendering of it, and raises only over an object where the array
+  is, so neither the row's narrowing nor the raise the narrowing's soundness rests on holds of it. What `items`
   declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a cast of an
   element may raise under every declaration; once it is read, the instance rule carries it.
 - **Checked.** `JsonRulesTests` and `PredicateVocabularyTests` state facts by hand on `$.tags[*]`: a comparison, a
