@@ -727,8 +727,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// cannot take apart; one typed as a raw value is its column's own reading. Of a path holding an element the shared
             /// vocabulary reads each as the element reading, which no row measured of a field. A field bound to the element a
             /// traversal yields, which only the correlate rule's question binds, is its text written apart as a field, whatever
-            /// its type, and nothing else: what that reads is its traversal's row's (<c>yieldreads</c>), and no row reads its raw
-            /// value or a <c>RETURNING</c> of it.
+            /// its type, and nothing else: whether that reads is its traversal's row's (<c>yieldreads</c>), and no row reads its
+            /// raw value or a <c>RETURNING</c> of it.
             /// </remarks>
             SqlValue? Field(RexInputRef reference)
             {
