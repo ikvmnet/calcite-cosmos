@@ -25,9 +25,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// whose input projects one expression: a plain <c>JSON_QUERY … RETURNING &lt;type&gt; ARRAY</c> over the correlation
     /// variable alone. Resolved over the left's binding, that is the array's path, and the element binds to it with a yielded
     /// step (<see cref="CosmosPathSegment.Yielded"/>) naming the array's component type and the traversal's number, read as
-    /// <see cref="CosmosReading.Text"/>. The type is data: what an element of it holds and reads as is the facts graph's rows',
-    /// and a type no row names reads nothing. <c>StringToArray</c>'s element is no plain <c>JSON_QUERY</c>'s, and stays
-    /// unbound.
+    /// <see cref="CosmosReading.Text"/>. The type is data: what an element of it holds, and whether its text reads, is the
+    /// facts graph's rows', and a type no row names reads nothing. <c>StringToArray</c>'s element is no plain
+    /// <c>JSON_QUERY</c>'s, and stays unbound.
     /// </para>
     /// <para>
     /// <b>A lateral's column.</b> Through projections of input references and the lateral's own filters to its projection over

@@ -12,8 +12,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// into a request, a policy or a document read.
     /// </summary>
     /// <param name="Type">The element type, by its <c>SqlTypeName</c>'s name, any length dropped: <c>VARCHAR</c>. Data: what an
-    /// element of it holds and reads as is its row's (<c>yieldkinds</c>, <c>yieldreads</c>), and a type no row names reads
-    /// nothing.</param>
+    /// element of it holds is its row's (<c>yieldkinds</c>), a reading of it reads only where its row names that reading
+    /// (<c>yieldreads</c>), and a type no row names reads nothing.</param>
     /// <param name="Traversal">The traversal's number, from zero, in the order the binding walks a statement's traversals.</param>
     internal sealed record JsonYieldedStep(string Type, long Traversal)
     {

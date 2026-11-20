@@ -10953,7 +10953,8 @@ it is. So the question is given the element, as a path of its own.
   difference older than this (`TODO.md`, *A traversal the README's connection pushes compares an element Calcite's
   traversal fails on*).
 - **The element type is data.** The binding names the `SqlTypeName` of the array's component, so `VARCHAR(1)` is
-  `VARCHAR`, and no C# reads the name: the rows decide. Only `VARCHAR` has a row. An element of another type, `RETURNING
+  `VARCHAR`, and no C# reads the name: the rows decide what such an element holds, and whether it reads as its text,
+  the one reading the binding gives it. Only `VARCHAR` has a row. An element of another type, `RETURNING
   INTEGER ARRAY`'s, binds, and gets no narrowing, no reading and no atom, so a term over it may raise
   (`CosmosFilterStatementTests`); `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound. What `items`
   declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a cast of an
