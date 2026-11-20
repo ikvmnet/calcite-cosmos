@@ -275,7 +275,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             container!.Name.Should().Be("products");
 
             CosmosImplementor.TryBindOutput(correlate, out var unbound, out var unboundReadings, out _).Should().BeTrue();
-            unbound.Select(f => f?.ToString()).Should().Equal(plain, "without the elements the row binds as it always has");
+            unbound.Select(f => f?.ToString()).Should().Equal(plain, "without the elements the row binds as every other caller has it bound");
             fields.Should().HaveCount(unbound.Count);
             for (var i = 0; i < unbound.Count; i++)
                 if (unbound[i] is not null)

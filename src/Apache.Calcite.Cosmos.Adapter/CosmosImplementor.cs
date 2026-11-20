@@ -417,8 +417,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <remarks>
         /// The only binding that names the element a traversal yields (<see cref="CosmosPathSegment.IsYielded"/>), which is read
         /// by the facts graph's question and never handed to a caller that translates, renders or reads a document: every
-        /// writer of a path refuses one. Every other caller binds with the elements off, as before. A filter on the way asks
-        /// no recheck, since the question reads fields and readings, never what the subtree writes.
+        /// writer of a path refuses one. Every other caller binds with the elements off. A filter on the way asks no
+        /// recheck, since the question reads fields and readings, never what the subtree writes.
         /// </remarks>
         /// <param name="correlate">The correlate, as registered.</param>
         /// <param name="fields">On success, the binding of the correlate's row, indexed by field ordinal.</param>

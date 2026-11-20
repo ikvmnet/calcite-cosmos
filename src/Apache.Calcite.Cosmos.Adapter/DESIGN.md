@@ -1354,17 +1354,18 @@ evaluates, without the transposition, the whole simplified over its input's pull
 (`Calcite.ConnectivesAreKleene`, nullable or not). A correlate pulls up its left's: none where the left is a Calc
 (`CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates`), an inner join's condition or a `VALUES`'s constants
 where it is one (`ACorrelatePullsUpWhatItsLeftPullsUp`). Which that plan's left is the rule cannot know, so a rest
-conjunct both hold is evaluated above on rows that plan joins too, on the same values, and one either lacks is new. `m =
-'1' AND (c.id = '9' OR CAST(u.t AS INTEGER) > 0)` over a join on `c.id = '9'` (r3a) leaves the `OR` above, which `calc`
-holds and `pulled` reads as true: Calcite without the transposition, its correlate's left the join, never casts, and the
-transposed plan, its left a Calc, casts an element `"x"`; asked, the test declines, its row binding no container over
-the join (`TODO.md`, *A correlate's left side that binds no container*), and the statement answers as that plan does
-(`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). The whole as the
-builder writes it is no baseline: the builder runs with predicate elimination off and rewrites an `OR`'s disjuncts
-first, so it can keep a conjunct `calc` drops, which no plan evaluates. `(NOT (CAST(u.t AS INTEGER) > 0 OR m = '2') OR
-kind IN ('A', 'B')) AND kind = 'A'` (fz2_320) leaves above an `OR` holding the element's cast, which `calc` reads as
-implied by `kind = 'A'` and the builder's whole keeps: read against that whole, it would take the transposition and fail
-on an element `"x"` where Calcite without it answers; read against `calc` it declines and answers as that plan does
+conjunct both hold is evaluated above on rows that plan joins too, on the same values, and one either lacks is asked.
+`m = '1' AND (c.id = '9' OR CAST(u.t AS INTEGER) > 0)` over a join on `c.id = '9'` (r3a) leaves the `OR` above, which
+`calc` holds and `pulled` reads as true: Calcite without the transposition, its correlate's left the join, never casts,
+and the transposed plan, its left a Calc, casts an element `"x"`; asked, the test declines, its row binding no container
+over the join (`TODO.md`, *A correlate's left side that binds no container*), and the statement answers as that plan
+does (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). The whole as
+the builder writes it is no baseline: the builder runs with predicate elimination off and rewrites an `OR`'s disjuncts
+first, so it can keep a conjunct `calc` drops, which no plan evaluates.
+`(NOT (CAST(u.t AS INTEGER) > 0 OR m = '2') OR kind IN ('A', 'B')) AND kind = 'A'` (fz2_320) leaves above an `OR`
+holding the element's cast, which `calc` reads as implied by `kind = 'A'` and the builder's whole keeps: read against
+that whole, it would take the transposition and fail on an element `"x"` where Calcite without it answers; read against
+`calc` it declines and answers as that plan does
 (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). Where the whole is
 read as false, Calcite without the transposition evaluates none of it, so every part moved is new. Elsewhere a part
 moves as Calcite's rule moves it, evaluated on every row its side reads, those the correlate joins to nothing among

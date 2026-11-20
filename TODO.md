@@ -3023,7 +3023,7 @@ across documents* and *A join of a container to itself* is the record.
   it would move a part and is not transposed: for example, where nothing declares `n`, so that the `RETURNING` of `n`
   the test above asks can fail, `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` in a sub-query beneath `CAST(body AS INTEGER)
   = 7 AND n > 50 AND (n > 40 OR v.s = '1')` over a traversal of its `more` (ws1k) fails on an element `"x"` of a
-  document of kind `B`, where Calcite with `FILTER_CORRELATE` and `main` answer. A `WHERE` over a traversal of which
+  document of kind `B`, where Calcite with `FILTER_CORRELATE` answers. A `WHERE` over a traversal of which
   that rule would move nothing, every conjunct reading both sides, keeps none from moving, so in a `UNION ALL` of
   `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` over `tags` and `u2.t || m = 'x1' AND u2.t || m <> 'x1'` over another
   traversal (fw4) the first moves, and the statement answers as Calcite with `FILTER_CORRELATE` does where Calcite
@@ -3067,17 +3067,16 @@ across documents* and *A join of a container to itself* is the record.
   row that binds no container (the entries that follow), or the statement reaches the rule's bound of sixteen firings
   over one filter or correlates within one another, each such condition stays above its traversal, and where Calcite
   evaluates that traversal, its request carries none of that `WHERE`'s conjuncts of the document. Measured offline in
-  the host Chapter 21 describes, for example: in ws1k (above), where nothing declares `n`, the sub-query's `CAST(u.t AS
-  INTEGER) = 1 AND kind = 'A'` reads every document where `main` sent `WHERE ((c.kind = @p0) AND (c.n > @p1))`; and
+  the host Chapter 21 describes, for example: in ws1k (above), where nothing declares `n`, the sub-query's
+  `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` reads every document; and
   `l.k2 = 'A' AND l.k2 = 'B' AND CAST(body AS INTEGER) = 7` over a lateral (wf3), which Calcite reads as false, reads
   every document where `body` is declared a string or nothing is declared, since the cast it would move can fail. Where
   something in the `WHERE` can fail, the answer is the one the correlate entry above gives where the transposition is
-  not taken: wf3 answers no rows over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does.
-  Where the facts graph answers that nothing a test asks can fail, the rule takes the transposition: `kind = 'A' AND
-  (kind = 'B' OR u.t = '1')` and `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A'
-  AND kind = 'B' AND u.t = '1'` sends no request, declared and not; so does ws1k with `n` declared an integer from 0 to
-  100, `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body =
-  @p0)`
+  not taken: wf3 answers no rows over a `body` of `"q"`. Where the facts graph answers that nothing a test asks can
+  fail, the rule takes the transposition: `kind = 'A' AND (kind = 'B' OR u.t = '1')` and
+  `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A' AND kind = 'B' AND u.t = '1'`
+  sends no request, declared and not; so does ws1k with `n` declared an integer from 0 to 100,
+  `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body = @p0)`
   (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`).
   The fix, sending such a `WHERE`'s conjuncts of the document while Calcite evaluates the whole above, over only the
   documents the request returns as a split's part kept in process is (Chapter 14.2), is a change of its own after "fail
