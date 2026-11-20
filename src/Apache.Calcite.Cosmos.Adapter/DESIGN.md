@@ -10945,12 +10945,13 @@ it is. So the question is given the element, as a path of its own.
   newly evaluated, and a term judged over strings and nulls alone is judged exactly on what is evaluated. Nothing makes
   a `Yield` present, so a narrowing to no kind makes it absent, never contradictory.
 - **A traversal the service runs.** The row is Calcite's in-process traversal. Through the README's connection, which
-  pushes the traversal, the rule asks nothing, and in the host Chapter 21 describes the statements whose requests the
-  pins hold keep their traversal in Calcite
-  (`CosmosDeclaredFactPlanningTests.ATraversalTheCorrelateRuleAsksAboutIsCalcites`). Were a pushed traversal asked
-  about, the narrowing would still be exact where it matters: over an array of strings and nulls the service yields the
-  same values, and over any other Calcite's plans fail at the traversal, a difference older than this (`TODO.md`, *A
-  traversal the README's connection pushes compares an element Calcite's traversal fails on*).
+  pushes the traversal, the rule asks nothing. In the host Chapter 21 describes, the statements whose requests the pins
+  hold keep their traversal in Calcite
+  (`CosmosDeclaredFactPlanningTests.TheTraversalsWhoseRequestsThePinsHoldAreCalcites`), and the rule asks about a
+  traversal the plan then pushes as about any other. There the narrowing is still exact where it matters: over an array
+  of strings and nulls the service yields the same values, and over any other Calcite's plans fail at the traversal, a
+  difference older than this (`TODO.md`, *A traversal the README's connection pushes compares an element Calcite's
+  traversal fails on*).
 - **The element type is data.** The binding names the `SqlTypeName` of the array's component, so `VARCHAR(1)` is
   `VARCHAR`, and no C# reads the name: the rows decide. Only `VARCHAR` has a row. An element of another type, `RETURNING
   INTEGER ARRAY`'s, binds, and gets no narrowing, no reading and no atom, so a term over it may raise

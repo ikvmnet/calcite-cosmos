@@ -914,7 +914,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("jn1", "Traversed")]
         [InlineData("mf1", "Traversed")]
         [InlineData("mf1", "TraversedFixed")]
-        public void ATraversalTheCorrelateRuleAsksAboutIsCalcites(string name, string schema)
+        public void TheTraversalsWhoseRequestsThePinsHoldAreCalcites(string name, string schema)
         {
             var declaration = schema switch { "TwoTraversals" => TwoTraversals, "TraversedFixed" => TraversedFixed, _ => Traversed };
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })

@@ -3124,7 +3124,7 @@ across documents* and *A join of a container to itself* is the record.
   transposition or not, so declining keeps the `WHERE` above the traversal and sends the same requests. r3a, the same
   with a cast of the element in the `OR`, declines too
   (`AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`,
-  `ATraversalTheCorrelateRuleAsksAboutIsCalcites`). The fixes: read a grouping-set key as its path's value or null,
+  `TheTraversalsWhoseRequestsThePinsHoldAreCalcites`). The fixes: read a grouping-set key as its path's value or null,
   about 60 lines and 100 of tests (gs1, gso and ag1 also wait on *Facts about array elements*); and bind the fields of
   the side of a join that holds the correlate's array, leaving the other side's opaque, an estimate no probe has
   measured of about 40 to 60 lines and 80 of tests. Neither adds a rule.
@@ -3144,8 +3144,8 @@ across documents* and *A join of a container to itself* is the record.
   @p1` and answers, where Calcite's traversal of `RETURNING VARCHAR ARRAY` in process fails on it with an
   `InvalidCastException`, with `FILTER_CORRELATE` or without: a1, fr0, px5, pz2, pz4, rd5 and ws7, over documents
   holding a number or an object in an array they traverse, measured offline in a probe. The correlate rule asks nothing
-  through that connection, so the facts graph's reading of the element, measured of Calcite's traversal, never meets the
-  service's (`DESIGN.md`, *An element a traversal yields is a path of its own*). Left for a change of its own.
+  through that connection (`DESIGN.md`, *An element a traversal yields is a path of its own*). Left for a change of its
+  own.
 - **Through a connection, a term the reduce derives from a condition of both sides is moved beneath a correlate** —
   *small, a failure where Calcite answers, and an empty answer where it fails; older, `main` the same but for one
   statement.* Through a connection that runs Calcite's default rules, as the README's does,
