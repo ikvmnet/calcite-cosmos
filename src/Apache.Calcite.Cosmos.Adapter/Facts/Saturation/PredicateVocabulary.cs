@@ -324,23 +324,26 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 r.Then(Reads.Of(v, p, PredicateAtom.ElementReader));
             });
             // Neither noelement nor haselement holds of the element a traversal yields, so no rule above reads it: an accessor of it
-            // reads it as its element type's row says the traversal's elements read (yieldreads, the text alone for a VARCHAR),
-            // and a reading written apart of it, a field's, what its reading reads where the row names that. A type or a reading
-            // no row names, a raw value's or an item's, reads nothing, so no atom rests on it and a term over it may raise.
+            // reads it as the row of its element type in its traversal's form says the traversal's elements read (yieldreads, the
+            // text alone for a VARCHAR ARRAY), and a reading written apart of it, a field's, what its reading reads where the row
+            // names that. A type, a form or a reading no row names, a raw value's or an item's, reads nothing, so no atom rests
+            // on it and a term over it may raise.
             Analyse.DefineRule("an accessor of an element a traversal yields reads it as its traversal's elements read", r =>
             {
                 var (v, y, q) = r.Vars<Val, JPath, JPath>("v", "y", "q");
                 var (k, m, t) = r.Vars<string, string, string>("k", "m", "t");
+                var o = r.Var<string>("o");
                 var n = r.Var<long>("n");
-                r.When(Accesses.Of(v, y, k, m), y.Is(Paths.Yield.Of(q, t, n)), Readings.YieldReads.Of(t, k));
+                r.When(Accesses.Of(v, y, k, m), y.Is(Paths.Yield.Of(q, t, o, n)), Readings.YieldReads.Of(t, o, k));
                 r.Then(Reads.Of(v, y, k));
             });
             Analyse.DefineRule("a reading written apart of an element a traversal yields reads what its reading reads", r =>
             {
                 var (v, w, y, q) = r.Vars<Val, Val, JPath, JPath>("v", "w", "y", "q");
                 var (f, k, t) = r.Vars<string, string, string>("f", "k", "t");
+                var o = r.Var<string>("o");
                 var n = r.Var<long>("n");
-                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, y, k), y.Is(Paths.Yield.Of(q, t, n)), Readings.YieldReads.Of(t, k));
+                r.When(v.Is(Apart.Of(f, w)), Reads.Of(w, y, k), y.Is(Paths.Yield.Of(q, t, o, n)), Readings.YieldReads.Of(t, o, k));
                 r.Then(Reads.Of(v, y, k));
             });
             // A cast is a reading where a row measured it, keyed by the reading it converts, its column apart (h15b): what a

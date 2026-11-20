@@ -856,7 +856,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public void APointReadRefusesTheElementATraversalYields()
         {
             var document = Bytes("""{"id":"1","tags":["a"]}""");
-            Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment[] path = [Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Property("tags"), Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 0)];
+            Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment[] path = [Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Property("tags"), Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0)];
 
             var act = () => CosmosJson.GetPath(document, path, SqlTypeName.VARCHAR);
 

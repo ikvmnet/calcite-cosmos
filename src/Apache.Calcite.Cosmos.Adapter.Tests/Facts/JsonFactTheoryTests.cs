@@ -251,29 +251,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
-        /// The element a traversal yields is a step of its own, by its element type and the traversal's number: an element,
-        /// which has no name, unequal to an index and to another traversal's, spelled after <c>yield</c> and encoded as the
-        /// spec's <c>Yield</c> segment.
+        /// The element a traversal yields is a step of its own, by its element type, the traversal's form and its number: an
+        /// element, which has no name, unequal to an index and to another traversal's, another type's or another form's,
+        /// spelled after <c>yield</c> and encoded as the spec's <c>Yield</c> segment.
         /// </summary>
         [Fact]
         public void AYieldedStepIsAnElementOfItsOwn()
         {
             var tags = JsonDocumentPath.Root.Property("tags");
-            var element = tags.Yielded("VARCHAR", 0);
+            var element = tags.Yielded("VARCHAR", "ARRAY", 0);
 
-            element.Segments.Should().Equal("tags", new JsonYieldedStep("VARCHAR", 0));
+            element.Segments.Should().Equal("tags", new JsonYieldedStep("VARCHAR", "ARRAY", 0));
             element.HasElement.Should().BeTrue();
             FluentActions.Invoking(() => element.Names).Should().Throw<InvalidOperationException>("a path holding an element has no names alone");
-            element.Should().Be(tags.Yielded("VARCHAR", 0)).And.NotBe(tags.Element(0), "the element a traversal yields is no index");
-            element.Should().NotBe(tags.Yielded("VARCHAR", 1), "two traversals of one array yield two elements");
-            element.Should().NotBe(tags.Yielded("INTEGER", 0));
+            element.Should().Be(tags.Yielded("VARCHAR", "ARRAY", 0)).And.NotBe(tags.Element(0), "the element a traversal yields is no index");
+            element.Should().NotBe(tags.Yielded("VARCHAR", "ARRAY", 1), "two traversals of one array yield two elements");
+            element.Should().NotBe(tags.Yielded("INTEGER", "ARRAY", 0));
+            element.Should().NotBe(tags.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 0), "a traversal's form is data beside its type");
+            tags.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 0).ToString().Should().Be("$.tags[yield VARCHAR ARRAY WITH ORDINALITY 0]");
             element.IsWithin(tags).Should().BeTrue();
-            element.ToString().Should().Be("$.tags[yield VARCHAR 0]");
-            SqlValue.Spell(element).Should().Be("$[\"tags\"][yield VARCHAR 0]");
-            JsonFactEncoding.Path(element).Should().Be(Cosmos.Facts.Saturation.JsonPathSpec.Root["tags"][new JsonYieldedStep("VARCHAR", 0)]);
-            JsonFactEncoding.Path(element).ToString().Should().Be("$.tags[yield VARCHAR 0]");
-            FluentActions.Invoking(() => tags.Yielded("VARCHAR", -1)).Should().Throw<ArgumentOutOfRangeException>();
-            FluentActions.Invoking(() => tags.Yielded(null!, 0)).Should().Throw<ArgumentNullException>();
+            element.ToString().Should().Be("$.tags[yield VARCHAR ARRAY 0]");
+            SqlValue.Spell(element).Should().Be("$[\"tags\"][yield VARCHAR ARRAY 0]");
+            JsonFactEncoding.Path(element).Should().Be(Cosmos.Facts.Saturation.JsonPathSpec.Root["tags"][new JsonYieldedStep("VARCHAR", "ARRAY", 0)]);
+            JsonFactEncoding.Path(element).ToString().Should().Be("$.tags[yield VARCHAR ARRAY 0]");
+            FluentActions.Invoking(() => tags.Yielded("VARCHAR", "ARRAY", -1)).Should().Throw<ArgumentOutOfRangeException>();
+            FluentActions.Invoking(() => tags.Yielded(null!, "ARRAY", 0)).Should().Throw<ArgumentNullException>();
+            FluentActions.Invoking(() => tags.Yielded("VARCHAR", null!, 0)).Should().Throw<ArgumentNullException>();
         }
 
         /// <summary>
@@ -284,15 +287,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         [Fact]
         public void AYieldedSegmentIsTheYieldedStepLastOnly()
         {
-            var yielded = StatementPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 3));
+            var yielded = StatementPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 3));
 
-            CosmosDocumentPaths.From(yielded, "c", elements: true).Should().Be(JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", 3));
+            CosmosDocumentPaths.From(yielded, "c", elements: true).Should().Be(JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", "ARRAY", 3));
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 3)), "c", elements: true)
+                .Should().Be(JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 3), "the form is carried as the type is");
             CosmosDocumentPaths.From(yielded, "c").Should().BeNull("a caller that reads no element reads none a traversal yields");
             CosmosDocumentPaths.From(yielded, "t", elements: true).Should().BeNull();
             CosmosDocumentPaths.From(yielded.Property("a"), "c", elements: true).Should().BeNull("what is beneath the element is read out of its text");
             CosmosDocumentPaths.From(yielded.Index(0), "c", elements: true).Should().BeNull();
-            CosmosDocumentPaths.From(StatementPath.Root("c").Property("items").Index(1).Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 0)), "c", elements: true)
-                .Should().Be(JsonDocumentPath.Root.Property("items").Element(1).Property("tags").Yielded("VARCHAR", 0));
+            CosmosDocumentPaths.From(StatementPath.Root("c").Property("items").Index(1).Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0)), "c", elements: true)
+                .Should().Be(JsonDocumentPath.Root.Property("items").Element(1).Property("tags").Yielded("VARCHAR", "ARRAY", 0));
         }
 
         /// <summary>

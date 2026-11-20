@@ -527,8 +527,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
-        /// What a traversal of each element type yields, and the reading its elements read as (<c>CosmosAxiomRows.ReadYieldKinds</c>,
-        /// <c>ReadYieldReads</c>), are facts of both graphs' roots, S's and the facts graph's, a type's kinds in one value.
+        /// What a traversal of each element type in each form yields, and the reading its elements read as
+        /// (<c>CosmosAxiomRows.ReadYieldKinds</c>, <c>ReadYieldReads</c>), are facts of both graphs' roots, S's and the facts
+        /// graph's, a pair's kinds in one value.
         /// </summary>
         [Fact]
         public void TheYieldRowsAreFactsOfBothGraphs()
@@ -537,16 +538,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var facts = new JsonContexts(Adapter.Metadata.CosmosReasoning.Rows);
             d.YieldReads.Should().NotBeEmpty();
             d.YieldKinds.Should().NotBeEmpty();
-            foreach (var (type, reader) in d.YieldReads)
+            foreach (var (type, form, reader) in d.YieldReads)
             {
-                s.Theory.Check(s.Calcite.YieldReads.Of(type, reader)).Should().BeTrue($"S reads {type}'s elements as {reader}");
-                facts.Json.Check(facts.Rules.Readings.YieldReads.Of(type, reader)).Should().BeTrue($"the facts graph reads {type}'s elements as {reader}");
+                s.Theory.Check(s.Calcite.YieldReads.Of(type, form, reader)).Should().BeTrue($"S reads {type} {form}'s elements as {reader}");
+                facts.Json.Check(facts.Rules.Readings.YieldReads.Of(type, form, reader)).Should().BeTrue($"the facts graph reads {type} {form}'s elements as {reader}");
             }
 
-            foreach (var g in d.YieldKinds.GroupBy(r => r.Type))
+            foreach (var g in d.YieldKinds.GroupBy(r => (r.Type, r.Form)))
             {
-                s.Theory.Get(s.Calcite.YieldKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"S's {g.Key}");
-                facts.Json.Get(facts.Rules.Readings.YieldKinds.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"the facts graph's {g.Key}");
+                s.Theory.Get(s.Calcite.YieldKinds.Of(g.Key.Type, g.Key.Form)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"S's {g.Key}");
+                facts.Json.Get(facts.Rules.Readings.YieldKinds.Of(g.Key.Type, g.Key.Form)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"the facts graph's {g.Key}");
             }
 
             GC.KeepAlive(facts);

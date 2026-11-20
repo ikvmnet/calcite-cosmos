@@ -45,8 +45,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// (<c>Calcite.RawStringEqualityIsOrdinal</c>, <c>Calcite.RawNullIsSqlNull</c>), and so was the cast of one to text
     /// (<c>Calcite.CastOfARawValueToText</c>);</item>
     /// <item>the element a traversal yields is read on each row a document joins (<see cref="Joined"/>) as its row measured
-    /// it, a <c>VARCHAR</c>'s as the text of a path holding the same value, and through no other reading
-    /// (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>).</item>
+    /// it, a <c>VARCHAR ARRAY</c>'s traversed without ordinality as the text of a path holding the same value, and through
+    /// no other reading (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>).</item>
     /// </list>
     /// <para>
     /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter through no named
@@ -380,11 +380,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public const string Yielded = "(yielded)";
 
         /// <summary>
-        /// The element type whose traversal was measured (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): it
-        /// yields each string and null its array holds, read as the text of a path holding the same value; and over an
-        /// array holding anything else, or an object where the array is, it raises before anything reads a row.
+        /// The element type and the form whose traversal was measured
+        /// (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): it yields each string and null its array holds,
+        /// read as the text of a path holding the same value; and over an array holding anything else, or an object where the
+        /// array is, it raises before anything reads a row.
         /// </summary>
-        const string MeasuredElement = "VARCHAR";
+        static readonly (string Type, string Form) MeasuredElement = ("VARCHAR", "ARRAY");
+
+        /// <summary>Whether a traversal's element is of the type and the form measured (<see cref="MeasuredElement"/>).</summary>
+        static bool IsMeasured(JsonYieldedStep step) => (step.Type, step.Form) == MeasuredElement;
 
         /// <summary>Whether a path is the element a traversal yields: its last step is one.</summary>
         public static bool IsElement(JsonDocumentPath path) => path.HasElement && path.Segments[^1] is JsonYieldedStep;
@@ -399,9 +403,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <c>null</c> where a traversal raises before anything reads a row, so that nothing over its element is evaluated.
         /// </summary>
         /// <remarks>
-        /// A <c>VARCHAR</c> traversal yields the strings and nulls of its array, raising over an array holding anything else
-        /// or an object where the array is (<see cref="MeasuredElement"/>). A traversal of a type no row names yields every
-        /// element its array holds, and nothing reads it (<see cref="ReadsAnElementUnmeasured(SqlValue)"/>).
+        /// A <c>VARCHAR ARRAY</c> traversal yields the strings and nulls of its array, raising over an array holding anything
+        /// else or an object where the array is (<see cref="MeasuredElement"/>). A traversal of a type or a form no row names,
+        /// <c>WITH ORDINALITY</c>'s among them, yields every element its array holds, raising over an object where the array
+        /// is, and nothing reads it (<see cref="ReadsAnElementUnmeasured(SqlValue)"/>).
         /// </remarks>
         public static IReadOnlyList<J.Obj>? Joined(J.Obj document, IReadOnlyList<JsonDocumentPath> elements)
         {
@@ -414,7 +419,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 var step = (JsonYieldedStep)element.Segments[^1];
                 IReadOnlyList<J>? yielded = At(document, ArrayOf(element)) switch
                 {
-                    J.Arr a when step.Type != MeasuredElement => a.Elements,
+                    J.Arr a when IsMeasured(step) == false => a.Elements,
                     J.Arr a => a.Elements.All(e => e is J.Str or J.Null) ? a.Elements : null,
                     J.Obj => null,
                     _ => [],
@@ -441,8 +446,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>
         /// Whether an atom reads the element a traversal yields through anything but its row's reading, the text: a raw
         /// value's, a <c>RETURNING</c>'s, a <c>JSON_QUERY</c>'s, a test of its kind or its presence, or any reading of an
-        /// element of a type no row names. The row measured the element as the text alone, so any other reading is none
-        /// Calcite was measured to give, and the loader leaves it opaque; it is read here as a raise, the world in which
+        /// element of a type or a form no row names. The row measured the element as the text alone, so any other reading is
+        /// none Calcite was measured to give, and the loader leaves it opaque; it is read here as a raise, the world in which
         /// nothing said never to raise over it holds.
         /// </summary>
         static bool ReadsAnElementUnmeasured(SqlPredicate predicate) => predicate switch
@@ -459,7 +464,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <inheritdoc cref="ReadsAnElementUnmeasured(SqlPredicate)"/>
         static bool ReadsAnElementUnmeasured(SqlValue value) => value switch
         {
-            SqlValue.Text t => IsElement(t.Path) && ((JsonYieldedStep)t.Path.Segments[^1]).Type != MeasuredElement,
+            SqlValue.Text t => IsElement(t.Path) && IsMeasured((JsonYieldedStep)t.Path.Segments[^1]) == false,
             SqlValue.Raw or SqlValue.Typed or SqlValue.Query => value.PathRead is { } p && IsElement(p),
             SqlValue.Cast c => ReadsAnElementUnmeasured(c.Value),
             SqlValue.DecimalCast d => ReadsAnElementUnmeasured(d.Value),

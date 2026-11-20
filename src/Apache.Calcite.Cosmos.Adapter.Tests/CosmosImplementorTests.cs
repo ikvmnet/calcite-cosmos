@@ -237,7 +237,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         public void TheElementATraversalYieldsIsNoPathTheServiceAddresses(CosmosServiceTarget target)
         {
             var implementor = Implementor(TestReasoning.Bind(new CosmosContainerMetadata("products")).WithServiceTarget(target));
-            implementor.Fields = new[] { CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0)) };
+            implementor.Fields = new[] { CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0)) };
 
             CosmosRexPaths.NamesAnEscape(implementor.Fields[0]).Should().BeTrue();
             if (target == CosmosServiceTarget.Emulator)
@@ -248,7 +248,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             }
 
             var act = () => implementor.CreateTranslator(null).TryTranslateValue(Ref(0, SqlTypeName.VARCHAR), out _);
-            act.Should().Throw<System.InvalidOperationException>().WithMessage("*c.tags[yield VARCHAR 0]*element a traversal yields*");
+            act.Should().Throw<System.InvalidOperationException>().WithMessage("*c.tags[yield VARCHAR ARRAY 0]*element a traversal yields*");
         }
 
         // ── Binding a correlate's row for the correlate rule's question ────────────
@@ -299,7 +299,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             var (fields, readings) = Elements(correlate, Products([null]));
 
-            fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]"));
             readings[5].Should().Be(CosmosReading.Text);
         }
 
@@ -316,11 +316,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var filtered = org.apache.calcite.rel.logical.LogicalFilter.create(right, _rex.makeCall(SqlStdOperatorTable.NOT_EQUALS, element, Str("z")));
             var moved = (org.apache.calcite.rel.core.Correlate)correlate.copy(correlate.getTraitSet(), com.google.common.collect.ImmutableList.of(correlate.getLeft(), filtered));
 
-            Elements(moved, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            Elements(moved, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]"));
 
             var left = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c LEFT JOIN UNNEST({Tags}) AS u(t) ON TRUE WHERE u.t = '1'""")[0];
             left.getJoinType().Should().Be(org.apache.calcite.rel.core.JoinRelType.LEFT);
-            Elements(left, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            Elements(left, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]"));
         }
 
         /// <summary>
@@ -333,35 +333,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         {
             var integers = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id", u.n FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.nums' RETURNING INTEGER ARRAY)) AS u(n) WHERE u.n = 1""")[0];
             var (fields, readings) = Elements(integers, Products([null]));
-            fields.Should().Equal(Products("c.nums[yield INTEGER 0]"));
+            fields.Should().Equal(Products("c.nums[yield INTEGER ARRAY 0]"));
             readings[5].Should().Be(CosmosReading.Text);
 
             var short1 = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR(1) ARRAY)) AS u(t) WHERE u.t = '1'""")[0];
-            Elements(short1, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            Elements(short1, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]"));
 
             var parsed = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c."DOC", '$.tags'))) AS t""")[0];
             Elements(parsed, Products([null])).Fields.Should().Equal(Products([null]));
         }
 
         /// <summary>
-        /// The element of a traversal written <c>WITH ORDINALITY</c> binds nothing, nor does its ordinal, where the same
-        /// traversal without it binds its yielded path: that form yields every element, a number or an object among them,
+        /// The traversal's form is data beside the type, as the type is: the element of a traversal written <c>WITH
+        /// ORDINALITY</c> binds to its array's path with a step naming that form, read as the text, and its ordinal binds
+        /// nothing; a <c>MULTISET</c>'s element binds with its form too. No row names either form, so neither reads
+        /// (<c>CosmosFilterStatementTests</c>): the ordinality form yields every element, an object's rendering among them,
         /// where the form the <c>VARCHAR</c> row measures raises
-        /// (<c>CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject</c>), and no
-        /// row measures it.
+        /// (<c>CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject</c>).
         /// </summary>
         [Fact]
-        public void AnElementOfATraversalWithOrdinalityBindsNothing()
+        public void AnElementBindsWithItsTraversalsFormAsData()
         {
             var plain = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c, UNNEST({Tags}) AS u(t) WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'""")[0];
-            Elements(plain, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+            Elements(plain, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]"));
 
             var members = RegisteredMembers.Of($"""SELECT c."id", u.t, u.o FROM products AS c, UNNEST({Tags}) WITH ORDINALITY AS u(t, o) WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'""");
             members.OfType<org.apache.calcite.rel.core.Uncollect>().Should().ContainSingle().Which.withOrdinality.Should().BeTrue();
 
             var (fields, readings) = Elements(members.OfType<org.apache.calcite.rel.core.Correlate>().First(), Products(null, null));
-            fields.Should().Equal(Products(null, null));
-            readings.Skip(5).Should().Equal(CosmosReading.Typed, CosmosReading.Typed);
+            fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY WITH ORDINALITY 0]", null));
+            readings.Skip(5).Should().Equal(CosmosReading.Text, CosmosReading.Typed);
+
+            var both = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t, v.s FROM products AS c, UNNEST({Tags}) WITH ORDINALITY AS u(t, o), UNNEST({Tags}) AS v(s) WHERE u.t = v.s""")[0];
+            Elements(both, Products(null, null, null)).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY WITH ORDINALITY 0]", null, "c.tags[yield VARCHAR ARRAY 1]"));
+
+            var multiset = Members<org.apache.calcite.rel.core.Correlate>("""SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR MULTISET)) AS u(t) WHERE u.t = '1'""")[0];
+            Elements(multiset, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR MULTISET 0]"));
         }
 
         /// <summary>
@@ -393,7 +400,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
             (fields, readings) = Elements(over, "c", "c.kind", null, null, null, null, null);
 
-            fields.Should().Equal("c", "c.kind", "c.tags[yield VARCHAR 0]", "c.kind", null, "c.tags[yield VARCHAR 0]", null);
+            fields.Should().Equal("c", "c.kind", "c.tags[yield VARCHAR ARRAY 0]", "c.kind", null, "c.tags[yield VARCHAR ARRAY 0]", null);
             readings[3].Should().Be(CosmosReading.Text);
             readings[5].Should().Be(CosmosReading.Text);
         }
@@ -410,7 +417,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 SELECT y.j, u.t FROM (SELECT x."DOC", JSON_VALUE(x.k, '$') AS j FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.kind') AS k FROM products AS c) AS x WHERE x.k <> 'zz') AS y,
                 UNNEST(JSON_QUERY(y."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE y.j = 'A' AND u.t = '1'
                 """)[0];
-            Elements(sub, "c", null, null).Fields.Should().Equal("c", null, "c.tags[yield VARCHAR 0]");
+            Elements(sub, "c", null, null).Fields.Should().Equal("c", null, "c.tags[yield VARCHAR ARRAY 0]");
 
             var lateral = Members<org.apache.calcite.rel.core.Correlate>("""
                 SELECT x.k, l.j3 FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.kind') AS k FROM products AS c) AS x
@@ -437,7 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             CosmosImplementor.TryBindOutput(recheck, out _, out var written).Should().BeTrue();
             written.HasFlag(CosmosClauses.Recheck).Should().BeTrue("the filter asks a recheck where the elements are off");
 
-            Elements(outer, "c.id", "c", null, null).Fields.Should().Equal("c.id", "c", "c.tags[yield VARCHAR 0]", "c.xs[yield VARCHAR 1]");
+            Elements(outer, "c.id", "c", null, null).Fields.Should().Equal("c.id", "c", "c.tags[yield VARCHAR ARRAY 0]", "c.xs[yield VARCHAR ARRAY 1]");
         }
 
         /// <summary>
@@ -450,14 +457,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
             var twice = Members<org.apache.calcite.rel.core.Correlate>($"""
                 SELECT c."id", u.t, v.s FROM products AS c, UNNEST({Tags}) AS u(t), UNNEST({Tags}) AS v(s) WHERE u.t = '1' AND v.s = '2'
                 """)[0];
-            Elements(twice, Products(null, null)).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]", "c.tags[yield VARCHAR 1]"));
+            Elements(twice, Products(null, null)).Fields.Should().Equal(Products("c.tags[yield VARCHAR ARRAY 0]", "c.tags[yield VARCHAR ARRAY 1]"));
 
             var surfaced = Members<org.apache.calcite.rel.core.Correlate>($"""
                 SELECT x.a, x.b, x.j, x.ja, v.s FROM (SELECT c."DOC", u.t AS a, u.t AS b, JSON_VALUE(u.t, '$') AS j, JSON_VALUE(u.t, '$.a') AS ja
                 FROM products AS c, UNNEST({Tags}) AS u(t)) AS x, UNNEST(JSON_QUERY(x."DOC", '$.xs' RETURNING VARCHAR ARRAY)) AS v(s) WHERE x.a = v.s
                 """)[0];
             Elements(surfaced, "c", null, null, null, null, null).Fields
-                .Should().Equal("c", "c.tags[yield VARCHAR 0]", "c.tags[yield VARCHAR 0]", null, null, "c.xs[yield VARCHAR 1]");
+                .Should().Equal("c", "c.tags[yield VARCHAR ARRAY 0]", "c.tags[yield VARCHAR ARRAY 0]", null, null, "c.xs[yield VARCHAR ARRAY 1]");
         }
 
         /// <summary>

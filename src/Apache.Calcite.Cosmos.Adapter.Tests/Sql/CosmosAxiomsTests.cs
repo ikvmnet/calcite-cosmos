@@ -243,8 +243,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosAxiomRows.ReadNullThrough(all).Should().BeEquivalentTo("VARCHAR", "BOOLEAN", "INTEGER", "BIGINT", "DOUBLE", "DECIMAL");
             CosmosAxiomRows.ReadAsOfAPath(all).Should().BeEquivalentTo(PredicateAtom.TextReader, PredicateAtom.TypedReaders, PredicateAtom.QueryReader, PredicateAtom.RawReader);
             CosmosAxiomRows.ReadCalcite(all).AsOfAPath.Should().Contain(PredicateAtom.RawReader, "an element's raw value, and a test's body over it, are as of a path holding it");
-            CosmosAxiomRows.ReadYieldKinds(all).Should().BeEquivalentTo(new[] { ("VARCHAR", JsonValues.StringType), ("VARCHAR", JsonValues.NullType) }, "a VARCHAR array yields its strings and nulls");
-            CosmosAxiomRows.ReadYieldReads(all).Should().Equal([("VARCHAR", PredicateAtom.TextReader)], "a VARCHAR array's elements read as the text");
+            CosmosAxiomRows.ReadYieldKinds(all).Should().BeEquivalentTo(new[] { ("VARCHAR", "ARRAY", JsonValues.StringType), ("VARCHAR", "ARRAY", JsonValues.NullType) }, "a VARCHAR array traversed without ordinality yields its strings and nulls");
+            CosmosAxiomRows.ReadYieldReads(all).Should().Equal([("VARCHAR", "ARRAY", PredicateAtom.TextReader)], "a VARCHAR array's elements, traversed without ordinality, read as the text");
             CosmosAxiomRows.ReadCalcite(all).YieldKinds.Should().Equal(CosmosAxiomRows.ReadYieldKinds(all));
             CosmosAxiomRows.ReadCalcite(all).YieldReads.Should().Equal(CosmosAxiomRows.ReadYieldReads(all));
             CosmosAxiomRows.ReadParametersAs(all).Should().Equal([("CHAR", "VARCHAR")], "a CHAR column's comparison with a parameter answers as a VARCHAR column's, class by class");

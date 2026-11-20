@@ -109,8 +109,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// a number, a fraction, a boolean, an object or an array as the text of Java's rendering of it: <c>u.t = '1'</c> is
         /// true over <c>[1]</c>, and an object reads <c>{a=1}</c> where the text accessor reads null. It raises only over an
         /// object where the array is, <c>COUNT(*)</c> among them, and over an empty, absent or null array, or a scalar where
-        /// the array is, yields no row. So the row the form above pins does not hold of it, and its element binds nothing
-        /// (<c>CosmosTraversalColumns</c>).
+        /// the array is, yields no row. So the row the form above pins does not hold of it, and no row names this form: its
+        /// element binds with its form as data and reads nothing
+        /// (<c>CosmosImplementorTests.AnElementBindsWithItsTraversalsFormAsData</c>).
         /// </summary>
         [Fact]
         public void ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject()

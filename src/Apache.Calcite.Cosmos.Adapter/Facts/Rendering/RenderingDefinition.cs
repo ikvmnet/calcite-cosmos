@@ -215,18 +215,18 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<string> AsOfAPath { get; init; } = [];
 
         /// <summary>
-        /// Each JSON kind a traversal of an array of an element type yields an element of, by the type's name
-        /// (<c>CosmosAxiomRows.ReadYieldKinds</c>): the readings vocabulary's <c>yieldkinds</c>. None in a definition that names
-        /// none, where a yielded element may hold anything.
+        /// Each JSON kind a traversal of an array of an element type yields an element of, by the type's name and the
+        /// traversal's form (<c>CosmosAxiomRows.ReadYieldKinds</c>): the readings vocabulary's <c>yieldkinds</c>. None in a
+        /// definition that names none, where a yielded element may hold anything.
         /// </summary>
-        public IReadOnlyList<(string Type, string Kind)> YieldKinds { get; init; } = [];
+        public IReadOnlyList<(string Type, string Form, string Kind)> YieldKinds { get; init; } = [];
 
         /// <summary>
-        /// The reading the elements a traversal of an array of an element type yields read as, by the type's name
-        /// (<c>CosmosAxiomRows.ReadYieldReads</c>): the readings vocabulary's <c>yieldreads</c>. None in a definition that names
-        /// none, where a yielded element reads as nothing.
+        /// The reading the elements a traversal of an array of an element type yields read as, by the type's name and the
+        /// traversal's form (<c>CosmosAxiomRows.ReadYieldReads</c>): the readings vocabulary's <c>yieldreads</c>. None in a
+        /// definition that names none, where a yielded element reads as nothing.
         /// </summary>
-        public IReadOnlyList<(string Type, string Reader)> YieldReads { get; init; } = [];
+        public IReadOnlyList<(string Type, string Form, string Reader)> YieldReads { get; init; } = [];
 
         /// <summary>
         /// Each raw column whose comparison with a parameter a row says answers as another column's (<c>CosmosAxiomRows.ReadParametersAs</c>):

@@ -6,26 +6,31 @@ namespace Apache.Calcite.Cosmos.Facts
 
     /// <summary>
     /// The element a traversal of an array yields, as a step of a path (<see cref="JsonDocumentPath.Yielded"/>) and a
-    /// segment of the theory's (<see cref="Saturation.JsonPathSpec"/>): the element type the traversal reads it as, and the
-    /// traversal's number. An element of its own, neither an index nor every element, so two traversals of one array are two
-    /// paths; the facts graph reads it as <c>Yield</c> (<see cref="Saturation.PathVocabulary.Yield"/>), and nothing spells it
-    /// into a request, a policy or a document read.
+    /// segment of the theory's (<see cref="Saturation.JsonPathSpec"/>): the element type the traversal reads it as, the
+    /// traversal's form, and the traversal's number. An element of its own, neither an index nor every element, so two
+    /// traversals of one array are two paths; the facts graph reads it as <c>Yield</c>
+    /// (<see cref="Saturation.PathVocabulary.Yield"/>), and nothing spells it into a request, a policy or a document read.
     /// </summary>
-    /// <param name="Type">The element type, by its <c>SqlTypeName</c>'s name, any length dropped: <c>VARCHAR</c>. Data: what an
-    /// element of it holds, and whether its text reads, is its row's (<c>yieldkinds</c>, <c>yieldreads</c>), and a type
-    /// no row names reads nothing.</param>
+    /// <param name="Type">The element type, by its <c>SqlTypeName</c>'s name, any length dropped: <c>VARCHAR</c>.</param>
+    /// <param name="Form">The traversal's form: the collection's <c>SqlTypeName</c>'s name, <c>ARRAY</c> or <c>MULTISET</c>,
+    /// and <c>WITH ORDINALITY</c> after it where the traversal is written so. Data beside the type: what an element of a
+    /// type in a form holds, and whether its text reads, is that pair's row's (<c>yieldkinds</c>, <c>yieldreads</c>), and a
+    /// pair no row names reads nothing.</param>
     /// <param name="Traversal">The traversal's number, from zero, in the order the binding walks a statement's traversals.</param>
-    internal sealed record JsonYieldedStep(string Type, long Traversal)
+    internal sealed record JsonYieldedStep(string Type, string Form, long Traversal)
     {
 
         /// <summary>The element type, by its <c>SqlTypeName</c>'s name.</summary>
         public string Type { get; } = Type ?? throw new ArgumentNullException(nameof(Type));
 
+        /// <summary>The traversal's form: <c>ARRAY</c>, <c>ARRAY WITH ORDINALITY</c>, <c>MULTISET</c>.</summary>
+        public string Form { get; } = Form ?? throw new ArgumentNullException(nameof(Form));
+
         /// <summary>The traversal's number, from zero.</summary>
         public long Traversal { get; } = Traversal >= 0 ? Traversal : throw new ArgumentOutOfRangeException(nameof(Traversal));
 
-        /// <summary>Spells the step as no name and no index is spelled: <c>yield VARCHAR 0</c>.</summary>
-        public override string ToString() => "yield " + Type + " " + Traversal.ToString(CultureInfo.InvariantCulture);
+        /// <summary>Spells the step as no name and no index is spelled: <c>yield VARCHAR ARRAY 0</c>.</summary>
+        public override string ToString() => "yield " + Type + " " + Form + " " + Traversal.ToString(CultureInfo.InvariantCulture);
 
     }
 

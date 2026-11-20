@@ -699,7 +699,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         // ── The element a traversal yields, and a lateral's columns ─────────────────
 
         /// <summary>The element the first traversal of <c>tags</c> yields, read as <c>VARCHAR</c>.</summary>
-        static readonly JsonDocumentPath Yielded = P("tags").Yielded("VARCHAR", 0);
+        static readonly JsonDocumentPath Yielded = P("tags").Yielded("VARCHAR", "ARRAY", 0);
 
         /// <summary>The element's text, written apart as a field.</summary>
         static SqlValue YieldedField => new SqlValue.Text(Yielded) { Form = PredicateAtom.FieldForm };
@@ -710,7 +710,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// </summary>
         CosmosPredicateLoader.Loading ElementLoading()
         {
-            var element = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0));
+            var element = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
             return new([.. _fields, element, element, element], [.. _readings, CosmosReading.Text, CosmosReading.Text, CosmosReading.Typed], "c");
         }
 
@@ -780,7 +780,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             AboveTheCorrelate("""
                 SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING INTEGER ARRAY)) AS u(t)
                 WHERE u.t IS NULL
-                """).Should().Equal(IsNull(new SqlValue.Text(P("tags").Yielded("INTEGER", 0)) { Form = PredicateAtom.FieldForm }));
+                """).Should().Equal(IsNull(new SqlValue.Text(P("tags").Yielded("INTEGER", "ARRAY", 0)) { Form = PredicateAtom.FieldForm }));
         }
 
         /// <summary>

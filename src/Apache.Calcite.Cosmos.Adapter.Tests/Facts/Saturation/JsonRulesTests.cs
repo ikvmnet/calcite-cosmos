@@ -23,9 +23,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// <summary>
     /// The rules of JSON over the element a traversal yields (<c>Yield</c>), its facts stated by hand on the theory's paths:
     /// it is an instance of every element of its array, so what is stated of <c>$.tags[*]</c> reaches it, and it holds only
-    /// the kinds its element type's row says the traversal yields (<c>yieldkinds</c>), a type no row names narrowing
-    /// nothing. Neither rule makes a path; two traversals of one array are two paths; and a narrowing to no kind makes the
-    /// element absent, never a node contradictory.
+    /// the kinds the row of its element type in its traversal's form says the traversal yields (<c>yieldkinds</c>), a type
+    /// or a form no row names narrowing nothing. Neither rule makes a path; two traversals of one array are two paths; and a
+    /// narrowing to no kind makes the element absent, never a node contradictory.
     /// </summary>
     public sealed class JsonRulesTests
     {
@@ -36,8 +36,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         static readonly JsonDocumentPath Tags = P("tags");
 
-        /// <summary>The element traversal <paramref name="traversal"/> of <c>tags</c> yields, read as <paramref name="type"/>.</summary>
-        static JsonDocumentPath Yielded(string type = "VARCHAR", long traversal = 0) => Tags.Yielded(type, traversal);
+        /// <summary>
+        /// The element traversal <paramref name="traversal"/> of <c>tags</c> yields, read as <paramref name="type"/> by a
+        /// traversal of form <paramref name="form"/>.
+        /// </summary>
+        static JsonDocumentPath Yielded(string type = "VARCHAR", long traversal = 0, string form = "ARRAY") => Tags.Yielded(type, form, traversal);
 
         static JsonPathSpec Spec(JsonDocumentPath path) => JsonFactEncoding.Path(path);
 
@@ -98,16 +101,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// A <c>VARCHAR</c> element holds a string or a null alone (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>),
-        /// whatever else its array's elements may be; an element of a type no row names (<c>INTEGER</c>) is narrowed by nothing.
+        /// A <c>VARCHAR ARRAY</c> element holds a string or a null alone
+        /// (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>), whatever else its array's elements may be; an
+        /// element of a type or a form no row names (<c>INTEGER ARRAY</c>, a <c>VARCHAR</c> one written <c>WITH
+        /// ORDINALITY</c>, a <c>VARCHAR MULTISET</c>) is narrowed by nothing.
         /// </summary>
         [Fact]
         public void AnElementATraversalYieldsHoldsOnlyWhatItsTraversalYields()
         {
-            using (var unstated = Open([Yielded(), Yielded("INTEGER", 1)]))
+            var (integer, ordinal, multiset) = (Yielded("INTEGER", 1), Yielded("VARCHAR", 2, "ARRAY WITH ORDINALITY"), Yielded("VARCHAR", 3, "MULTISET"));
+            using (var unstated = Open([Yielded(), integer, ordinal, multiset]))
             {
                 unstated.Get(Contexts.Rules.Types.Of(PathOf(Yielded()))).Should().BeEquivalentTo(new[] { StringType, NullType });
-                unstated.TryGet(Contexts.Rules.Types.Of(PathOf(Yielded("INTEGER", 1))), out _).Should().BeFalse("no row names what an INTEGER traversal yields");
+                unstated.TryGet(Contexts.Rules.Types.Of(PathOf(integer)), out _).Should().BeFalse("no row names what an INTEGER traversal yields");
+                unstated.TryGet(Contexts.Rules.Types.Of(PathOf(ordinal)), out _).Should().BeFalse("no row names what a traversal written WITH ORDINALITY yields");
+                unstated.TryGet(Contexts.Rules.Types.Of(PathOf(multiset)), out _).Should().BeFalse("no row names what a traversal of a MULTISET yields");
             }
 
             using var mixed = Open([Yielded()], OfTypes(Elements, StringType, IntegerType, ObjectType));

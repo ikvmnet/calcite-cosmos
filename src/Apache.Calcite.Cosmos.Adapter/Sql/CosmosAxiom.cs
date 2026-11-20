@@ -60,8 +60,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// test's body over each among it (<see cref="CosmosAxiomRows.ReadAsOfAPath"/>).</param>
     /// <param name="ParametersAs">Each raw column a <c>Calcite</c> row says compares with a parameter as another column does, by
     /// its class (<see cref="CosmosAxiomRows.ReadParametersAs"/>).</param>
-    /// <param name="Yields">What a <c>Calcite</c> row says a traversal of an array of an element type yields, and the reading
-    /// its elements read as (<see cref="CosmosAxiomRows.ReadYieldKinds"/>, <see cref="CosmosAxiomRows.ReadYieldReads"/>).</param>
+    /// <param name="Yields">What a <c>Calcite</c> row says a traversal of an array of an element type, written in a form, yields,
+    /// and the reading its elements read as (<see cref="CosmosAxiomRows.ReadYieldKinds"/>,
+    /// <see cref="CosmosAxiomRows.ReadYieldReads"/>).</param>
     internal sealed record CosmosAxiom(string Id, string Statement, CosmosAxiomTarget MeasuredOn, DateOnly Measured, string PinnedBy,
         IReadOnlyList<CosmosOutcome>? Outcomes = null, IReadOnlyList<string>? Subjects = null,
         IReadOnlyList<CosmosFunctionOutcome>? FunctionOutcomes = null, IReadOnlyList<CosmosRawColumn>? Columns = null, IReadOnlyList<string>? Readers = null,

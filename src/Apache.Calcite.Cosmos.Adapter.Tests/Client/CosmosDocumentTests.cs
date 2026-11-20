@@ -149,7 +149,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public void APathHoldingTheElementATraversalYieldsIsNotRead()
         {
             using var document = JsonDocument.Parse("""{"id":"1","tags":["a"]}""");
-            var path = Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", 0));
+            var path = Apache.Calcite.Cosmos.Adapter.Sql.CosmosPath.Root("c").Property("tags").Append(Apache.Calcite.Cosmos.Adapter.Sql.CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
 
             var act = () => CosmosDocument.TryRead(document.RootElement, path, out _);
             act.Should().Throw<InvalidOperationException>().WithMessage("*which a document read cannot address*");

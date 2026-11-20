@@ -205,7 +205,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Returns the rendered Cosmos SQL path; for diagnostics, the element a traversal yields spelled as no request spells
-        /// it, <c>c.tags[yield VARCHAR 0]</c>.
+        /// it, <c>c.tags[yield VARCHAR ARRAY 0]</c>.
         /// </summary>
         /// <returns>The path text.</returns>
         public override string ToString()
@@ -221,7 +221,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             foreach (var segment in _segments)
             {
                 if (segment.IsYielded)
-                    builder.Append("[yield ").Append(segment.ElementType).Append(' ').Append(segment.Traversal.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                    builder.Append("[yield ").Append(segment.ElementType).Append(' ').Append(segment.TraversalForm).Append(' ')
+                        .Append(segment.Traversal.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
                 else if (segment.IsIndex)
                     CosmosSql.WriteIndexAccess(builder, segment.ArrayIndex);
                 else

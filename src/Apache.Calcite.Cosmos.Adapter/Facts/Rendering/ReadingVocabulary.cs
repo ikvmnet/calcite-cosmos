@@ -20,8 +20,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// its row says; and a type test is TRUE, by the name the service spells it by, of the JSON kinds of each class its
     /// row says, which the predicate vocabulary's type-test rule reads. Beside them, what each raw column answers on a key,
     /// from its rows alone, and the columns' union (h12, G5), so both graphs read a raw reading's keys alike; a comparison
-    /// with a parameter reads its column's answer beside every class it is compared beside. And, by element type, the kinds
-    /// of the elements a traversal yields and the reading they read as.
+    /// with a parameter reads its column's answer beside every class it is compared beside. And, by element type and the
+    /// traversal's form, the kinds of the elements a traversal yields and the reading they read as.
     /// </summary>
     internal sealed class ReadingVocabulary
     {
@@ -61,9 +61,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             MeasuredCast = graph.DefineRelation<string, string, string>("measuredcast", analysis);
             // Read beside the terms by the predicate vocabulary's element rules: one set, so a rule reads a reading it lacks.
             AsOfAPath = graph.DefineFunction<ValueSet<string>>("asofapath", ValueLattice.Union<string>(), options: analysis);
-            // Read beside the terms by the rules of an element a traversal yields, by its element type.
-            YieldKinds = graph.DefineFunction<string, ValueSet<string>>("yieldkinds", ValueLattice.Union<string>(), options: analysis);
-            YieldReads = graph.DefineRelation<string, string>("yieldreads", analysis);
+            // Read beside the terms by the rules of an element a traversal yields, by its element type and form.
+            YieldKinds = graph.DefineFunction<string, string, ValueSet<string>>("yieldkinds", ValueLattice.Union<string>(), options: analysis);
+            YieldReads = graph.DefineRelation<string, string, string>("yieldreads", analysis);
             // The raw columns as their rows state them, one fact a field; each class's JSON type; each column's answer on a
             // key, the rules', and their union, which Eggnog's join takes (h12, G5). Their values registered here, once a
             // graph, since each graph has a store of its own.
@@ -165,17 +165,19 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public Function<ValueSet<string>> AsOfAPath { get; }
 
         /// <summary>
-        /// The JSON kinds a traversal of an array of an element type yields an element of, by the type's name, a <c>Calcite</c>
-        /// row's (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>). A type no row names has no value, so nothing
-        /// narrows what its elements hold.
+        /// The JSON kinds a traversal of an array of an element type yields an element of, by the type's name and the
+        /// traversal's form, a <c>Calcite</c> row's (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>, of
+        /// <c>VARCHAR</c> in the form <c>ARRAY</c>). A type or a form no row names has no value, so nothing narrows what its
+        /// elements hold.
         /// </summary>
-        public Function<string, ValueSet<string>> YieldKinds { get; }
+        public Function<string, string, ValueSet<string>> YieldKinds { get; }
 
         /// <summary>
-        /// The reading the elements a traversal of an array of an element type yields read as, by the type's name, a
-        /// <c>Calcite</c> row's. A type no row names has no row, so its elements read as nothing.
+        /// The reading the elements a traversal of an array of an element type yields read as, by the type's name and the
+        /// traversal's form, a <c>Calcite</c> row's. A type or a form no row names has no row, so its elements read as
+        /// nothing.
         /// </summary>
-        public Relation<string, string> YieldReads { get; }
+        public Relation<string, string, string> YieldReads { get; }
 
         /// <summary>What a raw column's reading reads a stored value of each class as (<c>CosmosAxiomRows.ReadColumns</c>, G5), raw.</summary>
         public Function<string, string, CosmosValueClass, string> RawReads { get; }
@@ -265,11 +267,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
             yield return AsOfAPath.Of().Is(ValueSet.From(rows.AsOfAPath));
 
-            foreach (var kinds in rows.YieldKinds.GroupBy(y => y.Type))
-                yield return YieldKinds.Of(kinds.Key).Is(ValueSet.From(kinds.Select(y => y.Kind)));
+            foreach (var kinds in rows.YieldKinds.GroupBy(y => (y.Type, y.Form)))
+                yield return YieldKinds.Of(kinds.Key.Type, kinds.Key.Form).Is(ValueSet.From(kinds.Select(y => y.Kind)));
 
-            foreach (var (type, reader) in rows.YieldReads)
-                yield return YieldReads.Of(type, reader);
+            foreach (var (type, form, reader) in rows.YieldReads)
+                yield return YieldReads.Of(type, form, reader);
 
             foreach (var test in Enum.GetValues<CosmosServiceTest>())
                 if (ServiceForm.SpellingOf(test) is { } name)

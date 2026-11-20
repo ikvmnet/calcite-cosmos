@@ -139,17 +139,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         }
 
         /// <summary>
-        /// The element a traversal yields is read as its element type's row says the traversal's elements read (<c>yieldreads</c>,
-        /// <c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): a <c>VARCHAR</c>'s as the text, by its accessor and by
-        /// the field the loader writes for a column bound to it, so a comparison, a <c>LIKE</c> and a null test of it are atoms
-        /// of the text, which the facts graph finds raise on nothing with nothing declared. A raw value, an item over one and a
-        /// <c>RETURNING</c> of it, which the row does not name, read nothing, and neither does any reading of an element of a
-        /// type no row names (<c>INTEGER</c>): no atom, and a comparison that may raise.
+        /// The element a traversal yields is read as the row of its element type in its traversal's form says the traversal's
+        /// elements read (<c>yieldreads</c>, <c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): a <c>VARCHAR
+        /// ARRAY</c>'s as the text, by its accessor and by the field the loader writes for a column bound to it, so a
+        /// comparison, a <c>LIKE</c> and a null test of it are atoms of the text, which the facts graph finds raise on nothing
+        /// with nothing declared. A raw value, an item over one and a <c>RETURNING</c> of it, which the row does not name, read
+        /// nothing, and neither does any reading of an element of a type or a form no row names (<c>INTEGER ARRAY</c>, a
+        /// <c>VARCHAR</c> one written <c>WITH ORDINALITY</c>, a <c>VARCHAR MULTISET</c>): no atom, and a comparison that may
+        /// raise.
         /// </summary>
         [Fact]
         public void AnElementATraversalYieldsReadsAsItsTraversalsElementsRead()
         {
-            var element = P("tags").Yielded("VARCHAR", 0);
+            var element = P("tags").Yielded("VARCHAR", "ARRAY", 0);
             var field = new SqlValue.Text(element) { Form = PredicateAtom.FieldForm };
             foreach (var read in new[] { Text(element), field })
             {
@@ -167,7 +169,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             AtomsIn(new SqlPredicate.TypeTest("IS_STRING", field)).Should().ContainSingle().Which.Should().Match<PredicateAtom>(a => a.Reader == PredicateAtom.TextReader && a.Body == PredicateAtom.RaisesReader,
                 "a test of a field is asked over the field's reading, read as its form's row says the body reads it");
 
-            foreach (var unread in new SqlValue[] { Raw(element), new SqlValue.Raw(element) { Form = PredicateAtom.ItemForm }, Typed(element, "INTEGER"), Text(P("tags").Yielded("INTEGER", 0)) })
+            var ordinal = P("tags").Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 0);
+            var multiset = P("tags").Yielded("VARCHAR", "MULTISET", 0);
+            foreach (var unread in new SqlValue[]
+            {
+                Raw(element), new SqlValue.Raw(element) { Form = PredicateAtom.ItemForm }, Typed(element, "INTEGER"), Text(P("tags").Yielded("INTEGER", "ARRAY", 0)),
+                Text(ordinal), new SqlValue.Text(ordinal) { Form = PredicateAtom.FieldForm }, Text(multiset), new SqlValue.Text(multiset) { Form = PredicateAtom.FieldForm },
+            })
             {
                 AtomsIn(Eq(unread, "1")).Should().BeEmpty(unread.ToString());
                 AtomsIn(IsNull(unread)).Should().BeEmpty(unread.ToString());

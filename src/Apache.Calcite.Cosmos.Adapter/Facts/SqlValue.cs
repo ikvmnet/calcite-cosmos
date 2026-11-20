@@ -241,7 +241,8 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names, an element's index bare,
-        /// so it is no name, and the element a traversal yields by its type and number after <c>yield</c>, so it is neither.
+        /// so it is no name, and the element a traversal yields by its type, form and number after <c>yield</c>, so it is
+        /// neither.
         /// </summary>
         internal static string Spell(JsonDocumentPath path)
         {

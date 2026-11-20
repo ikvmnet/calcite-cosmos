@@ -8,7 +8,6 @@ using org.apache.calcite.plan.volcano;
 using org.apache.calcite.rel;
 using org.apache.calcite.rel.core;
 using org.apache.calcite.rex;
-using org.apache.calcite.sql.type;
 
 namespace Apache.Calcite.Cosmos.Adapter.Rel
 {
@@ -21,13 +20,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <remarks>
     /// <para>
     /// <b>The element of a traversal.</b> The right side is walked as registered, through projections of input references
-    /// (the rename <c>AS u(t)</c> registers) and its own filters, to an <c>Uncollect</c> of one column, with no ordinality,
-    /// whose input projects one expression: a plain <c>JSON_QUERY … RETURNING &lt;type&gt; ARRAY</c> over the correlation
-    /// variable alone. Resolved over the left's binding, that is the array's path, and the element binds to it with a yielded
-    /// step (<see cref="CosmosPathSegment.Yielded"/>) naming the array's component type and the traversal's number, read as
-    /// <see cref="CosmosReading.Text"/>. The type is data: what an element of it holds, and whether its text reads, is the
-    /// facts graph's rows', and a type no row names reads nothing. <c>StringToArray</c>'s element is no plain
-    /// <c>JSON_QUERY</c>'s, and stays unbound.
+    /// (the rename <c>AS u(t)</c> registers) and its own filters, to an <c>Uncollect</c> of one column, its ordinal after it
+    /// where it is written <c>WITH ORDINALITY</c>, whose input projects one expression: a plain <c>JSON_QUERY … RETURNING
+    /// &lt;type&gt; ARRAY</c> over the correlation variable alone. Resolved over the left's binding, that is the array's path,
+    /// and the element binds to it with a yielded step (<see cref="CosmosPathSegment.Yielded"/>) naming the collection's
+    /// component type, the traversal's form and the traversal's number, read as <see cref="CosmosReading.Text"/>. The form is
+    /// the collection's type name, <c>ARRAY</c> or <c>MULTISET</c>, and <c>WITH ORDINALITY</c> after it where the traversal is
+    /// written so. The type and the form are data: what an element of a type in a form holds, and whether its text reads, is
+    /// the facts graph's rows', and a pair no row names reads nothing, <c>ARRAY WITH ORDINALITY</c> among them. The ordinal,
+    /// and <c>StringToArray</c>'s element, which is no plain <c>JSON_QUERY</c>'s, stay unbound.
     /// </para>
     /// <para>
     /// <b>A lateral's column.</b> Through projections of input references and the lateral's own filters to its projection over
@@ -102,26 +103,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         }
 
         /// <summary>
-        /// The element an uncollect yields, where its input projects the array a plain <c>JSON_QUERY</c> returns over the
-        /// correlation variable.
+        /// The element an uncollect yields, where its input projects the collection a plain <c>JSON_QUERY</c> returns over the
+        /// correlation variable, named by its component type and the traversal's form.
         /// </summary>
         (CosmosPath? Path, CosmosReading Reading) Element(Correlate correlate, Uncollect uncollect, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
         {
-            // Not WITH ORDINALITY: that form yields every element, a number or an object among them, and no row measures it.
-            if (uncollect.withOrdinality || uncollect.getRowType().getFieldCount() != 1
+            // One column, the element, and the ordinal after it where the traversal is written WITH ORDINALITY.
+            if (uncollect.getRowType().getFieldCount() != (uncollect.withOrdinality ? 2 : 1)
                 || Original(uncollect.getInput()) is not Project project || project.getProjects().size() != 1)
                 return Unbound;
 
             var array = (RexNode)project.getProjects().get(0);
-            if (CosmosRexShapes.IsPlainJsonQuery(array) == false || array.getType()?.getSqlTypeName() != SqlTypeName.ARRAY
-                || array.getType().getComponentType()?.getSqlTypeName()?.getName() is not string type
+            if (CosmosRexShapes.IsPlainJsonQuery(array) == false
+                || array.getType()?.getComponentType()?.getSqlTypeName()?.getName() is not string type
                 || OverTheLeft(correlate, array, left, leftReadings) is not (CosmosPath at, _))
                 return Unbound;
 
             if (_numbers.TryGetValue(uncollect, out var number) == false)
                 _numbers[uncollect] = number = _numbers.Count;
 
-            return (at.Append(CosmosPathSegment.Yielded(type, number)), CosmosReading.Text);
+            var collection = array.getType().getSqlTypeName().getName();
+            var form = uncollect.withOrdinality ? collection + " WITH ORDINALITY" : collection;
+            return (at.Append(CosmosPathSegment.Yielded(type, form, number)), CosmosReading.Text);
         }
 
         /// <summary>

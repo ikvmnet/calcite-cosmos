@@ -14,7 +14,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
     /// <summary>
     /// A path written the way a person writes one: <c>$</c>, <c>$.a.b</c>, <c>$.tags[10]</c>, and <c>$.items[*].id</c>
     /// for property <c>id</c> of every element of <c>items</c>. Beside them, the element a traversal yields, which no person
-    /// writes and <see cref="Parse"/> reads not: <c>$.tags[yield VARCHAR 0]</c>, a <see cref="JsonYieldedStep"/>.
+    /// writes and <see cref="Parse"/> reads not: <c>$.tags[yield VARCHAR ARRAY 0]</c>, a <see cref="JsonYieldedStep"/>.
     /// </summary>
     internal sealed record JsonPathSpec(IReadOnlyList<object> Segments)
     {
@@ -94,7 +94,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     string name => paths.Prop.Of(term, name),
                     long index => paths.Index.Of(term, index),
-                    JsonYieldedStep yielded => paths.Yield.Of(term, yielded.Type, yielded.Traversal),
+                    JsonYieldedStep yielded => paths.Yield.Of(term, yielded.Type, yielded.Form, yielded.Traversal),
                     _ => paths.Each.Of(term),
                 };
 

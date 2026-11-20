@@ -363,7 +363,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Calcite's simplification of the whole reads away (w13, fz2_320), beside a literal <c>FALSE</c> (rf2), in an arm the
         /// whole reads away (a1), in what the first firing leaves above and the second moves (mf1), or that the whole reads as
         /// true over the condition of a join on the left (r3a); and the same over the join with the element compared with a
-        /// text constant in place of the cast, which never raises (jn1).
+        /// text constant in place of the cast, which never raises (jn1). And fr0 over a traversal written <c>WITH
+        /// ORDINALITY</c> (fr0o) and over a <c>VARCHAR MULTISET</c> (fr0m), forms no row names.
         /// </summary>
         static string BesideACorrelateAsked(string name, string t)
         {
@@ -374,10 +375,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var cb = $"CAST({J("c", "body")} AS INTEGER)";
             var xn = """JSON_VALUE(x."DOC", '$.n' RETURNING INTEGER)""";
             string U(string where) => $"""SELECT c."id", u.t FROM {t} AS c, UNNEST({Q("c", "tags")}) AS u(t) WHERE {where}""";
+            var fr0 = $"{k} = 'A' AND ({k} = 'B' OR u.t = '1')";
             var x = $"""(SELECT c."id", c."DOC", u.t FROM {t} AS c, UNNEST({Q("c", "tags")}) AS u(t) WHERE CAST(u.t AS INTEGER) = 1 AND {k} = 'A') AS x""";
             return name switch
             {
-                "fr0" => U($"{k} = 'A' AND ({k} = 'B' OR u.t = '1')"),
+                "fr0" => U(fr0),
+                "fr0o" => $"""SELECT c."id", u.t, u.o FROM {t} AS c, UNNEST({Q("c", "tags")}) WITH ORDINALITY AS u(t, o) WHERE {fr0}""",
+                "fr0m" => $"""SELECT c."id", u.t FROM {t} AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR MULTISET)) AS u(t) WHERE {fr0}""",
                 "frkk" => U($"{k} = 'A' AND {k} = 'B' AND u.t = '1'"),
                 "fruu" => U($"u.t = '1' AND u.t = '2' AND {k} = 'A'"),
                 "ws1k" => $"""SELECT x."id", x.t, v.s FROM {x}, UNNEST({Q("x", "more")}) AS v(s) WHERE CAST({J("x", "body")} AS INTEGER) = 7 AND {xn} > 50 AND ({xn} > 40 OR v.s = '1')""",
@@ -856,10 +860,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// leaves above an <c>OR</c> holding a cast of <c>body</c> and whose last leaves nothing, but under <see
         /// cref="TraversedFixed"/>; and r3a, whose <c>OR</c> Calcite with no transposition reads as true over the join's
         /// condition, asks it, binds no container on the join, and reads every document, as jn1 does, whose <c>OR</c> never
-        /// fails.
+        /// fails. fr0 over a traversal written <c>WITH ORDINALITY</c> (fr0o) or over a <c>VARCHAR MULTISET</c> (fr0m) reads
+        /// every document: its element binds with its form, which no row names, so the comparison of it may fail.
         /// </summary>
         [Theory]
         [InlineData("fr0", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE (c.kind = @p0) | @p0=A")]
+        [InlineData("fr0o", "Traversed", "", "")]
+        [InlineData("fr0m", "Traversed", "", "")]
         [InlineData("fruu", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE (c.kind = @p0) | @p0=A")]
         [InlineData("frkk", "Traversed", "nothing", "nothing")]
         [InlineData("ws1k", "TwoTraversals", "WHERE ((c.kind = @p0) AND (c.n > @p1)) | @p0=A, @p1=50", "")]
@@ -900,6 +907,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         [Theory]
         [InlineData("fr0", "Traversed")]
+        [InlineData("fr0o", "Traversed")]
+        [InlineData("fr0m", "Traversed")]
         [InlineData("frkk", "Traversed")]
         [InlineData("fruu", "Traversed")]
         [InlineData("ws1k", "TwoTraversals")]

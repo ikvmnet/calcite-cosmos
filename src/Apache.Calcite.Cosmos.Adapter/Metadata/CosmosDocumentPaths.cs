@@ -60,7 +60,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 else if (segment.IsYielded == false)
                     document = document.Element(segment.ArrayIndex);
                 else if (i == path.Segments.Count - 1)
-                    document = document.Yielded(segment.ElementType!, segment.Traversal);
+                    document = document.Yielded(segment.ElementType!, segment.TraversalForm!, segment.Traversal);
                 else
                     return null;
             }

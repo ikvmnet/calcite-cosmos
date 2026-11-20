@@ -23,7 +23,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="name">The property name.</param>
         /// <returns>The segment.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="name"/> is <c>null</c>.</exception>
-        public static CosmosPathSegment Property(string name) => new(name ?? throw new ArgumentNullException(nameof(name)), -1, null, -1);
+        public static CosmosPathSegment Property(string name) => new(name ?? throw new ArgumentNullException(nameof(name)), -1, null, null, -1);
 
         /// <summary>
         /// Creates a segment that accesses an array element.
@@ -31,30 +31,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <param name="index">The zero-based index.</param>
         /// <returns>The segment.</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
-        public static CosmosPathSegment Index(int index) => index >= 0 ? new(null, index, null, -1) : throw new ArgumentOutOfRangeException(nameof(index));
+        public static CosmosPathSegment Index(int index) => index >= 0 ? new(null, index, null, null, -1) : throw new ArgumentOutOfRangeException(nameof(index));
 
         /// <summary>
-        /// Creates the segment of the element a traversal of an array yields: its element type, as data, and the traversal's
-        /// number, so two traversals of one array are two segments.
+        /// Creates the segment of the element a traversal of an array yields: its element type and the traversal's form, as
+        /// data, and the traversal's number, so two traversals of one array are two segments.
         /// </summary>
         /// <param name="type">The element type, by its <c>SqlTypeName</c>'s name: <c>VARCHAR</c>.</param>
+        /// <param name="form">The traversal's form: the collection's <c>SqlTypeName</c>'s name, and <c>WITH ORDINALITY</c> after it
+        /// where the traversal is written so: <c>ARRAY</c>, <c>ARRAY WITH ORDINALITY</c>.</param>
         /// <param name="traversal">The traversal's number, from zero, in the order a binding walks a statement's traversals.</param>
         /// <returns>The segment.</returns>
-        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> or <paramref name="form"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="traversal"/> is negative.</exception>
-        internal static CosmosPathSegment Yielded(string type, int traversal) =>
-            new(null, -1, type ?? throw new ArgumentNullException(nameof(type)), traversal >= 0 ? traversal : throw new ArgumentOutOfRangeException(nameof(traversal)));
+        internal static CosmosPathSegment Yielded(string type, string form, int traversal) =>
+            new(null, -1, type ?? throw new ArgumentNullException(nameof(type)), form ?? throw new ArgumentNullException(nameof(form)),
+                traversal >= 0 ? traversal : throw new ArgumentOutOfRangeException(nameof(traversal)));
 
         readonly string? _name;
         readonly int _index;
         readonly string? _type;
+        readonly string? _form;
         readonly int _traversal;
 
-        CosmosPathSegment(string? name, int index, string? type, int traversal)
+        CosmosPathSegment(string? name, int index, string? type, string? form, int traversal)
         {
             _name = name;
             _index = index;
             _type = type;
+            _form = form;
             _traversal = traversal;
         }
 
@@ -85,19 +90,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         internal string? ElementType => _type;
 
         /// <summary>
+        /// Gets the form of the traversal that yields the element, or <c>null</c> when <see cref="IsYielded"/> is <c>false</c>.
+        /// </summary>
+        internal string? TraversalForm => _form;
+
+        /// <summary>
         /// Gets the traversal's number, or <c>-1</c> when <see cref="IsYielded"/> is <c>false</c>.
         /// </summary>
         internal int Traversal => _traversal;
 
         /// <inheritdoc />
         public bool Equals(CosmosPathSegment other) =>
-            _index == other._index && _traversal == other._traversal && string.Equals(_name, other._name, StringComparison.Ordinal) && string.Equals(_type, other._type, StringComparison.Ordinal);
+            _index == other._index && _traversal == other._traversal && string.Equals(_name, other._name, StringComparison.Ordinal)
+            && string.Equals(_type, other._type, StringComparison.Ordinal) && string.Equals(_form, other._form, StringComparison.Ordinal);
 
         /// <inheritdoc />
         public override bool Equals(object? obj) => obj is CosmosPathSegment other && Equals(other);
 
         /// <inheritdoc />
-        public override int GetHashCode() => HashCode.Combine(_name, _index, _type, _traversal);
+        public override int GetHashCode() => HashCode.Combine(_name, _index, _type, _form, _traversal);
 
     }
 

@@ -193,7 +193,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AFormReadingTheElementATraversalYieldsIsRefused()
         {
-            var element = JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", 0);
+            var element = JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", "ARRAY", 0);
             var paths = new Dictionary<string, JsonDocumentPath> { [SqlValue.Spell(element)] = element };
 
             FluentActions.Invoking(() => RenderingPrinter.Print(ServiceForm.TestOf(CosmosServiceTest.IsDefined, SqlValue.Spell(element)), paths, Alias, new CosmosParameterList()))

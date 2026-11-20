@@ -639,10 +639,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText",
                 "UNNEST of JSON_QUERY RETURNING VARCHAR ARRAY, of any length, written AS u(t), without ordinality, yields each element of an array of strings and nulls, uncut, and each reading of it, =, <>, <, IN, IS NULL, LIKE, a cast to INTEGER, BIGINT, DOUBLE or BOOLEAN, CHAR_LENGTH, UPPER, TRIM and ||, answers what the same reading of the text accessor answers over a path holding the same value. Over an array holding a number, a boolean, an object or an array anywhere in it, and over an object where the array is, the traversal raises before any row is read, COUNT(*) among them; over an empty, absent or null array, or a scalar where the array is, it yields no row.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 19), "Measurements.CalciteUnnestMeasurementTests.AVarcharArrayYieldsItsStringsAndNullsAsTheText",
-                // What a traversal of a VARCHAR array without ordinality, the one form the binding binds, yields, read by element
-                // type (yieldkinds, yieldreads): a string or a null, read as the text. A type no row names yields an element that
-                // holds anything and reads as nothing.
-                Yields: [new CosmosTraversalYield("VARCHAR", [Class.String, Class.Null], PredicateAtom.TextReader)]),
+                // What a traversal of a VARCHAR array written without ordinality yields, read by element type and form (yieldkinds,
+                // yieldreads): a string or a null, read as the text. A type or a form no row names, ARRAY WITH ORDINALITY among
+                // them, yields an element that holds anything and reads as nothing.
+                Yields: [new CosmosTraversalYield("VARCHAR", "ARRAY", [Class.String, Class.Null], PredicateAtom.TextReader)]),
             new("Calcite.VariantEqualsOnlyItsOwnBox",
                 "A VARIANT equals a value cast to VARIANT only in its own box: a stored integer, boxed BIGINT, the integer cast to BIGINT and nothing else, a fraction, boxed DOUBLE, a DOUBLE, a boolean, boxed BOOLEAN, a BOOLEAN, and a string a string, a CHAR literal among them; so an IN of a number and its spelling keeps each in its own box alone. A text cast to VARIANT is a string box, equal to a boxed string where the text is that string; and a VARCHAR, a BOOLEAN, an INTEGER, a BIGINT, a DOUBLE and a DECIMAL cast to VARIANT are each null where the value is null. JSON_VALUE RETURNING VARIANT holds what it reads in no box: unequal to every value cast to VARIANT, a string, a BIGINT, an INTEGER and a BOOLEAN among them, wherever the path holds a scalar, and null where it holds none.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteVariantMeasurementTests.AVariantEqualsOnlyItsOwnBox",

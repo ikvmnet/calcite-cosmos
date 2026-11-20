@@ -254,17 +254,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// two of one array among them, and at least one over an element. Such a conjunct reads the element as the loader
         /// reads a column bound to one, its text written apart as a field or not: compared, a member, tested for null, matched,
         /// or cast to a number or a boolean; now and then through a reading no row measured of it, a raw value's, its cast to
-        /// text or a <c>RETURNING</c>, or it reads an element of a type no row names; now and then beside a conjunct of the
-        /// document in one disjunction. Any other is of the document: its text compared, or a conjunct the trial drew. Each
-        /// negated now and then.
+        /// text or a <c>RETURNING</c>, or it reads an element of a type or a form no row names, <c>RETURNING INTEGER ARRAY</c>'s
+        /// or one written <c>WITH ORDINALITY</c>; now and then beside a conjunct of the document in one disjunction. Any other
+        /// is of the document: its text compared, or a conjunct the trial drew. Each negated now and then.
         /// </summary>
         public static IReadOnlyList<SqlPredicate> Traversed(Random random, Declaration declaration, IReadOnlyList<SqlPredicate> drawn)
         {
             var arrays = new[] { Declaration.A, Declaration.B, Declaration.N };
             var first = arrays[random.Next(arrays.Length)];
-            var elements = new List<JsonDocumentPath> { first.Yielded(random.Next(6) == 0 ? "INTEGER" : "VARCHAR", 0) };
+            var elements = new List<JsonDocumentPath>
+            {
+                random.Next(6) switch { 0 => first.Yielded("INTEGER", "ARRAY", 0), 1 => first.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 0), _ => first.Yielded("VARCHAR", "ARRAY", 0) },
+            };
             if (random.Next(3) == 0)
-                elements.Add((random.Next(2) == 0 ? first : arrays[random.Next(arrays.Length)]).Yielded("VARCHAR", 1));
+                elements.Add((random.Next(2) == 0 ? first : arrays[random.Next(arrays.Length)]).Yielded("VARCHAR", "ARRAY", 1));
 
             SqlValue.Literal Text() => SqlValue.Of(random.Next(3) == 0 ? ElementTexts[random.Next(ElementTexts.Length)] : Texts[random.Next(Texts.Length)]);
 

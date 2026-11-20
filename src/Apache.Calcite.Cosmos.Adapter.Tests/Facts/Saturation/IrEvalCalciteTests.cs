@@ -265,7 +265,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         [Fact]
         public void TheElementATraversalYieldsAgreesWithCalcite()
         {
-            var element = Declaration.A.Yielded("VARCHAR", 0);
+            var element = Declaration.A.Yielded("VARCHAR", "ARRAY", 0);
             SqlValue t = new SqlValue.Text(element) { Form = PredicateAtom.FieldForm };
             (SqlPredicate Ir, string Sql)[] predicates =
             [

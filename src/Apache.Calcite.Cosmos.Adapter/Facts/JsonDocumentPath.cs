@@ -21,8 +21,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// through an accessor whose path names it (<c>Calcite.ReadingsOfAnIndexAreAsOfAPath</c>); the facts graph reads it
     /// as its own index segment, and what a fact declared for <c>items</c> says of <c>$.tags[0]</c> is the theory's
     /// rules over <c>Index</c>, never a lookup here. So is the element a traversal yields (<see cref="Yielded"/>), a step
-    /// of its own by its element type and the traversal's number, which the facts graph reads as <c>Yield</c> and no request
-    /// spells. <see cref="Names"/> refuses a path holding either.
+    /// of its own by its element type, the traversal's form and its number, which the facts graph reads as <c>Yield</c> and
+    /// no request spells. <see cref="Names"/> refuses a path holding either.
     /// </para>
     /// <para>
     /// <b>A value, and a struct for that reason.</b> Two paths naming the same properties are the same
@@ -177,10 +177,11 @@ namespace Apache.Calcite.Cosmos.Facts
         /// every index and to every other traversal's element, which no request, policy or document read can spell.
         /// </summary>
         /// <param name="type">The element type the traversal reads it as, by its <c>SqlTypeName</c>'s name: <c>VARCHAR</c>.</param>
+        /// <param name="form">The traversal's form, data beside the type: <c>ARRAY</c>, <c>ARRAY WITH ORDINALITY</c>.</param>
         /// <param name="traversal">The traversal's number, from zero.</param>
-        /// <exception cref="ArgumentNullException"><paramref name="type"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="type"/> or <paramref name="form"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="traversal"/> is negative.</exception>
-        internal JsonDocumentPath Yielded(string type, long traversal) => new(new Node(_last, null, yielded: new JsonYieldedStep(type, traversal)));
+        internal JsonDocumentPath Yielded(string type, string form, long traversal) => new(new Node(_last, null, yielded: new JsonYieldedStep(type, form, traversal)));
 
         /// <summary>
         /// Determines whether this path is <paramref name="ancestor"/> or lies beneath it.

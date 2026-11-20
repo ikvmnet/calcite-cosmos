@@ -32,7 +32,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var types = new JavaTypeFactoryImpl();
             var rowType = types.builder().add("t", types.createSqlType(SqlTypeName.VARCHAR)).build();
             var physType = ClrPhysTypeImpl.Of(types, rowType, JavaRowFormat.ARRAY);
-            var element = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0));
+            var element = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
 
             CosmosConverters.DocumentRowBuilder(physType, rowType, [CosmosPath.Root("c").Property("t")], [CosmosReading.Typed], [null]).Should().NotBeNull();
 

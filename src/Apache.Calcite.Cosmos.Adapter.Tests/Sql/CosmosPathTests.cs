@@ -192,12 +192,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
         /// <summary>
         /// The element a traversal yields is a segment of a third kind: no name and no index, equal only to the same
-        /// traversal's element of the same type.
+        /// traversal's element of the same type in the same form.
         /// </summary>
         [Fact]
         public void TheElementATraversalYieldsIsASegmentOfItsOwn()
         {
-            var yielded = CosmosPathSegment.Yielded("VARCHAR", 0);
+            var yielded = CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0);
 
             yielded.IsYielded.Should().BeTrue();
             yielded.IsIndex.Should().BeFalse();
@@ -207,14 +207,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             CosmosPathSegment.Index(0).IsYielded.Should().BeFalse();
             CosmosPathSegment.Property("a").IsYielded.Should().BeFalse();
 
-            yielded.Should().Be(CosmosPathSegment.Yielded("VARCHAR", 0));
-            yielded.Should().NotBe(CosmosPathSegment.Yielded("VARCHAR", 1));
-            yielded.Should().NotBe(CosmosPathSegment.Yielded("INTEGER", 0));
+            yielded.Should().Be(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
+            yielded.Should().NotBe(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 1));
+            yielded.Should().NotBe(CosmosPathSegment.Yielded("INTEGER", "ARRAY", 0));
+            yielded.Should().NotBe(CosmosPathSegment.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 0));
             yielded.Should().NotBe(CosmosPathSegment.Index(0));
-            yielded.GetHashCode().Should().Be(CosmosPathSegment.Yielded("VARCHAR", 0).GetHashCode());
+            yielded.GetHashCode().Should().Be(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0).GetHashCode());
 
-            var act = () => CosmosPathSegment.Yielded("VARCHAR", -1);
+            var act = () => CosmosPathSegment.Yielded("VARCHAR", "ARRAY", -1);
             act.Should().Throw<ArgumentOutOfRangeException>();
+            var formless = () => CosmosPathSegment.Yielded("VARCHAR", null!, 0);
+            formless.Should().Throw<ArgumentNullException>();
         }
 
         /// <summary>
@@ -224,14 +227,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void APathHoldingTheElementATraversalYieldsIsRefusedWhereItWouldBeSpelled()
         {
-            var path = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", 0));
+            var path = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
 
             path.HasYielded.Should().BeTrue();
             CosmosPath.Root("c").Property("tags").Index(0).HasYielded.Should().BeFalse();
-            path.ToString().Should().Be("c.tags[yield VARCHAR 0]");
+            path.ToString().Should().Be("c.tags[yield VARCHAR ARRAY 0]");
+            CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY WITH ORDINALITY", 1)).ToString().Should().Be("c.tags[yield VARCHAR ARRAY WITH ORDINALITY 1]");
 
             var write = () => path.WriteTo(new StringBuilder());
-            write.Should().Throw<InvalidOperationException>().WithMessage("c.tags[yield VARCHAR 0] holds the element a traversal yields, which a request cannot address*");
+            write.Should().Throw<InvalidOperationException>().WithMessage("c.tags[yield VARCHAR ARRAY 0] holds the element a traversal yields, which a request cannot address*");
 
             var policy = () => path.ToPolicyPath();
             policy.Should().Throw<InvalidOperationException>().WithMessage("*which an indexing policy cannot address*");

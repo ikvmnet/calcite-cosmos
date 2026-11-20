@@ -35,16 +35,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             return CosmosFilterStatement.Of(filter.getCondition(), fields, readings, container, filter.getCluster().getRexBuilder());
         }
 
-        static string Traversal(string where, string type = "VARCHAR") => $"""
-            SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING {type} ARRAY)) AS u(t)
+        static string Traversal(string where, string type = "VARCHAR", string collection = "ARRAY", bool ordinality = false) => $"""
+            SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING {type} {collection})) {(ordinality ? "WITH ORDINALITY AS u(t, o)" : "AS u(t)")}
             WHERE {where}
             """;
 
         /// <summary>
         /// A comparison of the element a traversal yields and of the document's text raises nowhere, a cast of the element
-        /// may raise on a string it does not parse, and an element of a type no row names reads nothing, so a null test of
-        /// it may raise: it loads as its text written apart, as a <c>VARCHAR</c> element's does, and the rows decide. Asked
-        /// of the statement whole, nothing assumed, whether it keeps a document or not.
+        /// may raise on a string it does not parse, and an element of a type or a form no row names reads nothing, so a null
+        /// test of it may raise: it loads as its text written apart, as a <c>VARCHAR ARRAY</c> element's does, and the rows
+        /// decide. So does a <c>RETURNING INTEGER ARRAY</c>'s, a <c>VARCHAR MULTISET</c>'s and one written <c>WITH
+        /// ORDINALITY</c>. Asked of the statement whole, nothing assumed, whether it keeps a document or not.
         /// </summary>
         [Fact]
         public void RaisesNothingAsksWhetherAnythingTheStatementHoldsRaises()
@@ -57,8 +58,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             AboveTheCorrelate(Traversal("JSON_VALUE(c.\"DOC\", '$.kind') = 'A' OR CAST(u.t AS INTEGER) = 1")).RaisesNothing.Should().BeFalse("Calcite reads both sides of an OR");
             AboveTheCorrelate(Traversal("u.t IS NULL")).RaisesNothing.Should().BeTrue();
             var integer = AboveTheCorrelate(Traversal("u.t IS NULL", "INTEGER"));
-            integer.Statement.Conjuncts.Should().Equal(new SqlPredicate.IsNull(new SqlValue.Text(JsonDocumentPath.Root.Property("tags").Yielded("INTEGER", 0)) { Form = PredicateAtom.FieldForm }));
+            integer.Statement.Conjuncts.Should().Equal(new SqlPredicate.IsNull(new SqlValue.Text(JsonDocumentPath.Root.Property("tags").Yielded("INTEGER", "ARRAY", 0)) { Form = PredicateAtom.FieldForm }));
             integer.RaisesNothing.Should().BeFalse("no row names what an INTEGER traversal yields");
+
+            foreach (var (form, sql) in new[] { ("ARRAY WITH ORDINALITY", Traversal("u.t IS NULL", ordinality: true)), ("MULTISET", Traversal("u.t IS NULL", collection: "MULTISET")) })
+            {
+                var unread = AboveTheCorrelate(sql);
+                unread.Statement.Conjuncts.Should().Equal(new SqlPredicate.IsNull(new SqlValue.Text(JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", form, 0)) { Form = PredicateAtom.FieldForm }));
+                unread.RaisesNothing.Should().BeFalse("no row names what a VARCHAR {0} traversal yields", form);
+            }
         }
 
     }
