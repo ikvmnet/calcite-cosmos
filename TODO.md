@@ -2017,7 +2017,9 @@ the element may raise under every declaration, whatever `items` says: `kind = 'B
 INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1) keeps its `WHERE` above its traversal, and its request reads every
 document (section 10, *A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral that Calcite evaluates sends
 none of its conjuncts of the document*). Reading `items` at `Each`, `prefixItems` at `Index`, `minItems`, `maxItems`,
-`uniqueItems` and `contains` is about 180 to 220 lines, 300 of tests and four claims, and no rule.
+`uniqueItems` and `contains` is about 180 to 220 lines, 300 of tests and four claims, and no rule. What a traversal
+written `WITH ORDINALITY` yields is Java's rendering of an element, which what `items` states must not reach; it reads
+nothing while no row names that form (section 10, *An element of a type or a form no row measures reads nothing*).
 
 **A geography's proof is the one reader that asks now.** `CosmosGeographyForms` reads a subschema's
 `minItems`, `maxItems`, `prefixItems`/`items` and its elements' `minimum` and `maximum` itself, a second
@@ -3098,20 +3100,30 @@ across documents* and *A join of a container to itself* is the record.
   lateral's or a left projection's column that no accessor reads, `UPPER(JSON_VALUE(c."DOC", '$.body')) AS b2`, binds to
   no path in the correlate rule's question, so a condition over it may raise. The fix inlines such a column, and reads a
   `CASE` of values compared with a literal. About 80 to 100 lines and 150 of tests.
-- **An element of a type no row measures reads nothing** — *small each, a cost: a request that reads every document.*
-  Only `UNNEST` of `JSON_QUERY … RETURNING VARCHAR ARRAY`, written `AS u(t)` without ordinality, has a row
-  (`Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText`): an element of `RETURNING INTEGER ARRAY` binds and reads
-  nothing, so `u.t IS NULL` over it may raise (`CosmosFilterStatementTests`); `StringToArray`'s element, typed `ANY`,
-  stays unbound; and so does an element of an element's own array, `StringToArray(CAST(u.e AS VARCHAR))`. Each wants a
-  row measured as the `VARCHAR` one was, about 30 lines and 60 of tests a type, and about 60 for the nested element. An
-  element that reads as something other than the text accessor reads it, as an `INTEGER`'s reads as `RETURNING INTEGER`
-  does, also wants the binding and the loader to write that reading. The element of a traversal written `WITH
-  ORDINALITY AS u(t, o)` stays unbound too (`CosmosImplementorTests.AnElementOfATraversalWithOrdinalityBindsNothing`):
-  that form yields every element, a number, a boolean, an object or an array as the text of Java's rendering of it, and
-  raises only over an object where the array is
-  (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`), so the
-  `VARCHAR` row does not hold of it. It wants a row of its own, with its form carried in the yielded step as data beside
-  the type, about 30 lines and 60 of tests.
+- **An element of a type or a form no row measures reads nothing** — *small each, a cost: a request that reads every
+  document.* The binding names a plain `JSON_QUERY`'s element by its type and its traversal's form, both as data, and
+  only `UNNEST` of `JSON_QUERY … RETURNING VARCHAR ARRAY`, written `AS u(t)` without ordinality, has a row
+  (`Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText`, of `VARCHAR` in the form `ARRAY`). An element of
+  `RETURNING INTEGER ARRAY` or `RETURNING VARCHAR MULTISET` binds and reads nothing, so `u.t IS NULL` over it may raise
+  (`CosmosFilterStatementTests`); `StringToArray`'s element, typed `ANY`, stays unbound; and so does an element of an
+  element's own array, `StringToArray(CAST(u.e AS VARCHAR))`. Each wants a row measured as the `VARCHAR` one was, about
+  30 lines and 60 of tests a type or a form, and about 60 for the nested element. An element that reads as something
+  other than the text accessor reads it, as an `INTEGER`'s reads as `RETURNING INTEGER` does, also wants the binding and
+  the loader to write that reading.
+
+  **A traversal written `WITH ORDINALITY` wants more than a row.** Its element binds with that form, which no row names,
+  so fr0 written `WITH ORDINALITY AS u(t, o)` reads every document (`CosmosDeclaredFactPlanningTests`, fr0o). The form
+  yields every element, a number, a boolean, an object or an array among them, and raises only over an object where the
+  array is (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`); a
+  reading of an element that is no string reads the text of its Java rendering, `{a=1}` for `{"a":1}`, where the text
+  accessor reads an object or an array as null. That rendering is no element of the array, so a row made as the
+  `VARCHAR` one was is unsound once `items` is read: the instance rule carries what `items` states of every element to
+  it, and with every element stated a boolean, `CAST(u.t AS INTEGER) = 1` is judged never to raise where Calcite raises
+  `NumberFormatException` on `"true"`. So the row also wants the instance rule keyed by what a form yields, the element
+  itself for `ARRAY` and its rendering for `ARRAY WITH ORDINALITY`, which no fact of every element reaches; or a reading
+  of the rendering where it differs from the text accessor, over an object and an array, in the vocabulary and written
+  by the binding and the loader. About 60 to 80 lines and 100 of tests, with pins that hold a stated element fact
+  against Calcite's ordinality traversal.
 - **The facts graph reads no call, and no comparison of two places** — *small, a cost: a request that reads every
   document.* `u.t = CAST(CAST(body AS INTEGER) AS VARCHAR)` (w13) and `CAST(u.t AS INTEGER) = CHAR_LENGTH(body)` (p1)
   give no atom, so a test that asks one may raise, w13's under every declaration. The reading is the one *A comparison

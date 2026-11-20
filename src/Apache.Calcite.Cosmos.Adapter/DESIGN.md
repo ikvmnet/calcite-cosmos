@@ -10914,22 +10914,25 @@ it is. So the question is given the element, as a path of its own.
   `InvalidCastException` before any row is read, `COUNT(*)` among them; over an empty, absent or null array, or a
   scalar where the array is, it yields no row.
 - **The row and its tables.** `Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText` names it and carries
-  `CosmosTraversalYield("VARCHAR", [String, Null], text)` (`CosmosAxiom.Yields`). `CosmosAxiomRows` reads it into
-  `CalciteRows`, the classes as JSON kinds, and both graphs assume it at the root beside `asofapath`, as two tables of
-  the readings vocabulary: `yieldkinds(t)`, the kinds a traversal of element type `t` yields, one set a type; and
-  `yieldreads(t, k)`, the reading its elements read as.
-- **The path.** `Yield(p, t, n)` (`PathVocabulary`) is the element traversal `n` of the array at `p` yields, of element
-  type `t`. The binding's yielded segment becomes `JsonDocumentPath`'s yielded step (`CosmosDocumentPaths.From`, asked
-  with elements), of which `HasElement` holds and which `Names` refuses, as of an index, and `JsonFactEncoding.Path`
-  writes that as `Yield`; it is spelled `$.tags[yield VARCHAR 0]`.
+  `CosmosTraversalYield("VARCHAR", "ARRAY", [String, Null], text)` (`CosmosAxiom.Yields`), the type and the form it
+  measured. `CosmosAxiomRows` reads it into `CalciteRows`, the classes as JSON kinds, and both graphs assume it at the
+  root beside `asofapath`, as two tables of the readings vocabulary: `yieldkinds(t, f)`, the kinds a traversal of
+  element type `t` in form `f` yields, one set a pair; and `yieldreads(t, f, k)`, the reading its elements read as.
+- **The path.** `Yield(p, t, f, n)` (`PathVocabulary`) is the element traversal `n` of the array at `p` yields, of
+  element type `t`, by a traversal of form `f`: the collection's type name, `ARRAY` or `MULTISET`, and `WITH ORDINALITY`
+  after it where the traversal is written so. The binding's yielded segment becomes `JsonDocumentPath`'s yielded step
+  (`CosmosDocumentPaths.From`, asked with elements), of which `HasElement` holds and which `Names` refuses, as of an
+  index, and `JsonFactEncoding.Path` writes that as `Yield`; it is spelled `$.tags[yield VARCHAR ARRAY 0]`.
 - **Four rules.** In `json`: an element a traversal yields is an instance of every element of its array, so what is
   declared of every element reaches it through the inheritance an index already has, and the rule makes no path; and it
-  holds only what its traversal yields, `types` narrowed to `yieldkinds(t)`, a string or a null for `VARCHAR`. In
-  `analyse`, in both graphs: an accessor of it reads it as its traversal's elements read, `yieldreads(t)`, the text
-  alone for `VARCHAR`; and a reading written apart of it, the field form the loader writes, reads what its reading reads
-  where the row names that reading. Neither `noelement` nor `haselement` holds of a `Yield`, so the element rules, and
-  the element reading that always raises, never read it. Comparisons, `IN`, `LIKE`, null tests and casts then read it
-  through the rules already there, and `PredicateAtom.RaisesOver` judges each atom over what `possible` holds of it.
+  holds only what its traversal yields, `types` narrowed to `yieldkinds(t, f)`, a string or a null for `VARCHAR` in the
+  form `ARRAY`. In `analyse`, in both graphs: an accessor of it reads it as its traversal's elements read,
+  `yieldreads(t, f)`, the text alone for `VARCHAR ARRAY`; and a reading written apart of it, the field form the loader
+  writes, reads what its reading reads where the row names that reading. The narrowing and both readings join their
+  table by the type and the form, so a pair no row names gets none. Neither `noelement` nor `haselement` holds of a
+  `Yield`, so the element rules, and the element reading that always raises, never read it. Comparisons, `IN`, `LIKE`,
+  null tests and casts then read it through the rules already there, and `PredicateAtom.RaisesOver` judges each atom
+  over what `possible` holds of it.
 - **The loader.** A field bound to a yielded element is read as its text written apart as a field, the form a field read
   as text takes, and as nothing else: read typed, it is opaque. `Addressed` passes a yielded path only as a field's own
   reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is opaque.
@@ -10953,28 +10956,35 @@ it is. So the question is given the element, as a path of its own.
   of strings and nulls the service yields the same values, and over any other Calcite's plans fail at the traversal, a
   difference older than this (`TODO.md`, *A traversal the README's connection pushes compares an element Calcite's
   traversal fails on*).
-- **The element type is data.** The binding names the `SqlTypeName` of the array's component, so `VARCHAR(1)` is
-  `VARCHAR`, and no C# reads the name: the rows decide what such an element holds, and whether it reads as its text,
-  the one reading the binding gives it. Only `VARCHAR` has a row. An element of another type, `RETURNING
-  INTEGER ARRAY`'s, binds, and gets no narrowing, no reading and no atom, so a term over it may raise
-  (`CosmosFilterStatementTests`); `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound. So does the
-  element of a traversal written `WITH ORDINALITY AS u(t, o)`, until a row measures that form and the yielded step
-  carries it (`TODO.md`, *An element of a type no row measures reads nothing*): measured beside the row's form
-  (`ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`), it yields every element, a number, a
-  boolean, an object or an array as the text of Java's rendering of it, and raises only over an object where the array
-  is, so neither the row's narrowing nor the raise the narrowing's soundness rests on holds of it. What `items`
-  declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a cast of an
-  element may raise under every declaration; once it is read, the instance rule carries it.
+- **The element type and the traversal's form are data.** The binding names the `SqlTypeName` of the collection's
+  component, so `VARCHAR(1)` is `VARCHAR`, and the traversal's form, and no C# reads either: the rows decide what such
+  an element holds, and whether it reads as its text, the one reading the binding gives it. Only `VARCHAR` in the form
+  `ARRAY` has a row. An element of another type or form binds, and gets no narrowing, no reading and no atom, so a term
+  over it may raise (`CosmosFilterStatementTests`): `RETURNING INTEGER ARRAY`'s, `RETURNING VARCHAR MULTISET`'s, and
+  that of a traversal written `WITH ORDINALITY AS u(t, o)`, whose ordinal stays unbound
+  (`CosmosImplementorTests.AnElementBindsWithItsTraversalsFormAsData`). That form is measured beside the row's
+  (`ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`): it yields every element, a number, a
+  boolean, an object or an array among them, and raises only over an object where the array is, so neither the row's
+  narrowing nor the raise the narrowing's soundness rests on holds of it; and a reading of an element that is no string
+  reads the text of its Java rendering, which over an object or an array the text accessor does not read. That
+  rendering is no element of the array, so before a row names the form, what `items` states of every element must be
+  kept from it (`TODO.md`, *An element of a type or a form no row measures reads nothing*); while none does, nothing
+  reads what the instance rule carries to it. `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound.
+  What `items` declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a
+  cast of an element may raise under every declaration; once it is read, the instance rule carries it.
 - **Checked.** `JsonRulesTests` and `PredicateVocabularyTests` state facts by hand on `$.tags[*]`: a comparison, a
   `LIKE` and a null test of the element never raise with nothing declared; a cast of it may raise with nothing declared
   and with every element stated a string, and never raises with every element stated one of `"1"` and `"2"`; its kinds
-  narrow; an `INTEGER` element reads nothing; two traversals are two paths; a raw reading or an item of it gives no
-  atom; and a narrowing to no kind makes no node contradictory. `IrEval` reads the element over the rows a document
-  joins, and `IrEvalCalciteTests.TheElementATraversalYieldsAgreesWithCalcite` holds that to Calcite over twenty values
-  where the array is. Population D asks the raises question of a statement beside a traversal over drawn arrays of
-  strings and nulls, a document whose traversal raises first not counted against a conjunct over its element, and two
-  plants, `yieldkinds("VARCHAR")` a null alone and `VARCHAR`'s `yieldreads` naming the raw reading beside the text, are
-  each caught by it (`PlantedBugTests`).
+  narrow; an element of `INTEGER ARRAY`, of `VARCHAR ARRAY WITH ORDINALITY` or of `VARCHAR MULTISET` reads nothing
+  and is narrowed by nothing; two traversals are two paths; a raw reading or an item of it gives no atom; and a
+  narrowing to no kind makes no node contradictory. `IrEval` reads the element over the rows a document joins, the
+  measured pair alone through a reading, and `IrEvalCalciteTests.TheElementATraversalYieldsAgreesWithCalcite` holds
+  that to Calcite over twenty values where the array is. Population D asks the raises question of a statement beside a
+  traversal over drawn arrays of strings and nulls, the ordinality form among the traversals drawn, a document whose
+  traversal raises first not counted against a conjunct over its element, and three plants, `yieldkinds("VARCHAR",
+  "ARRAY")` a null alone, `VARCHAR ARRAY`'s `yieldreads` naming the raw reading beside the text, and the measured
+  pair's rows stated of `ARRAY WITH ORDINALITY` too, are each caught by it (`PlantedBugTests`). fr0 written `WITH
+  ORDINALITY` and over a `VARCHAR MULTISET` reads every document (`CosmosDeclaredFactPlanningTests`, fr0o and fr0m).
 
 ## Differential testing
 
