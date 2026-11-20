@@ -439,6 +439,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
                 .Should().Equal("c", "c.tags[yield VARCHAR 0]", "c.tags[yield VARCHAR 0]", null, null, "c.xs[yield VARCHAR 1]");
         }
 
+        /// <summary>
+        /// A correlate whose left is a join (the correlate pins' jn1 and r3a) or a grouping by grouping sets (gsf) binds no
+        /// container, the elements on or off: the walk reads neither, so the correlate rule's question over such a row is not
+        /// read, and a test with something to ask declines (TODO.md, <i>A correlate's left side that binds no container</i>).
+        /// </summary>
+        [Theory]
+        [InlineData("jn1", true)]
+        [InlineData("r3a", true)]
+        [InlineData("gsf", false)]
+        public void ACorrelateOverAJoinOrAGroupingBySetsBindsNoContainer(string name, bool join)
+        {
+            static org.apache.calcite.rel.RelNode Original(org.apache.calcite.rel.RelNode node) => ((org.apache.calcite.plan.volcano.RelSubset)node).getOriginal()!;
+
+            var correlate = Members<org.apache.calcite.rel.core.Correlate>(EndToEnd.CosmosDeclaredFactPlanningTests.BesideACorrelate(name, "products"))[0];
+            if (join)
+                Original(correlate.getLeft()).Should().BeAssignableTo<org.apache.calcite.rel.core.Join>();
+            else
+                Original(Original(correlate.getLeft()).getInput(0)).Should().BeAssignableTo<org.apache.calcite.rel.core.Aggregate>()
+                    .Which.getGroupType().Should().NotBe(org.apache.calcite.rel.core.Aggregate.Group.SIMPLE);
+
+            CosmosImplementor.TryBindElements(correlate, out _, out _, out var container).Should().BeFalse();
+            container.Should().BeNull();
+            CosmosImplementor.TryBindOutput(correlate, out _, out _).Should().BeFalse();
+        }
+
         [Fact]
         public void ContainerMetadataIsReachableForRuleGuards()
         {

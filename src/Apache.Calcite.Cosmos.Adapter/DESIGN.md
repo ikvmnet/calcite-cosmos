@@ -1358,7 +1358,7 @@ conjunct both hold is evaluated above on rows that plan joins too, on the same v
 '1' AND (c.id = '9' OR CAST(u.t AS INTEGER) > 0)` over a join on `c.id = '9'` (r3a) leaves the `OR` above, which `calc`
 holds and `pulled` reads as true: Calcite without the transposition, its correlate's left the join, never casts, and the
 transposed plan, its left a Calc, casts an element `"x"`; asked, the test declines, its row binding no container over
-the join, and the statement answers as that plan does
+the join (`TODO.md`, *A correlate's left side that binds no container*), and the statement answers as that plan does
 (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). The whole as the
 builder writes it is no baseline: the builder runs with predicate elimination off and rewrites an `OR`'s disjuncts
 first, so it can keep a conjunct `calc` drops, which no plan evaluates. `(NOT (CAST(u.t AS INTEGER) > 0 OR m = '2') OR

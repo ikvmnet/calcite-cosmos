@@ -362,7 +362,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// and one whose transposition newly evaluates a cast, or a comparison of the element with a computed value, that
         /// Calcite's simplification of the whole reads away (w13, fz2_320), beside a literal <c>FALSE</c> (rf2), in an arm the
         /// whole reads away (a1), in what the first firing leaves above and the second moves (mf1), or that the whole reads as
-        /// true over the condition of a join on the left (r3a).
+        /// true over the condition of a join on the left (r3a); and the same over the join with the element compared with a
+        /// text constant in place of the cast, which never raises (jn1).
         /// </summary>
         static string BesideACorrelateAsked(string name, string t)
         {
@@ -387,6 +388,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "rf2" => U($"{cb} > 0 AND ({k} = 'B' OR u.t = 'x') AND NOT ({k} = 'B' OR u.t = 'x')"),
                 "a1" => U($"{k} = 'B' AND (({k} = 'A' AND CAST(u.t AS INTEGER) = 1) OR ({k} = 'B' AND u.t = 'x'))"),
                 "r3a" => $"""SELECT c."id", u.t FROM {t} AS c JOIN {t} AS d ON c."id" = '9', UNNEST({Q("c", "tags")}) AS u(t) WHERE {m} = '1' AND (c."id" = '9' OR CAST(u.t AS INTEGER) > 0)""",
+                "jn1" => $"""SELECT c."id", u.t FROM {t} AS c JOIN {t} AS d ON c."id" = '9', UNNEST({Q("c", "tags")}) AS u(t) WHERE {m} = '1' AND (c."id" = '9' OR u.t = '1')""",
                 "mf1" => U($"{k} = 'A' AND NOT (u.t = 'x' OR ({k} = 'B' AND {cb} = 7))"),
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
@@ -853,7 +855,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// does not under <see cref="TraversedFixed"/>, where no cast of <c>body</c> fails; so does mf1, whose first firing
         /// leaves above an <c>OR</c> holding a cast of <c>body</c> and whose last leaves nothing, but under <see
         /// cref="TraversedFixed"/>; and r3a, whose <c>OR</c> Calcite with no transposition reads as true over the join's
-        /// condition, asks it, binds no container on the join, and reads every document.
+        /// condition, asks it, binds no container on the join, and reads every document, as jn1 does, whose <c>OR</c> never
+        /// fails.
         /// </summary>
         [Theory]
         [InlineData("fr0", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE (c.kind = @p0) | @p0=A")]
@@ -868,6 +871,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("rf2", "Traversed", "", "")]
         [InlineData("fz2_320", "Traversed", "", "")]
         [InlineData("r3a", "Traversed", "", "")]
+        [InlineData("jn1", "Traversed", "", "")]
         [InlineData("mf1", "Traversed", "", "")]
         [InlineData("mf1", "TraversedFixed", "WHERE ((c.kind = @p0) AND ((c.body != @p1) OR (c.kind != @p2))) | @p0=A, @p1=7, @p2=B", "")]
         public async Task AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail(string name, string schema, string declared, string undeclared)
@@ -906,6 +910,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("rf2", "Traversed")]
         [InlineData("fz2_320", "Traversed")]
         [InlineData("r3a", "Traversed")]
+        [InlineData("jn1", "Traversed")]
         [InlineData("mf1", "Traversed")]
         [InlineData("mf1", "TraversedFixed")]
         public void ATraversalTheCorrelateRuleAsksAboutIsCalcites(string name, string schema)

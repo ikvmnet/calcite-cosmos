@@ -3063,20 +3063,21 @@ across documents* and *A join of a container to itself* is the record.
   conjuncts of the document** — *small, a cost, the answer the same but where something in the `WHERE` can fail; new in
   "fail like Calcite", and left for a change of its own.* Where `CosmosFilterCorrelateRule` moves nothing in a
   statement, because something a transposition there or at another correlate of the statement would newly evaluate can
-  raise on a document the declaration admits, or holds a term the facts graph has no reading of yet (the entries that
-  follow), or the statement reaches the rule's bound of sixteen firings over one filter or correlates within one
-  another, each such condition stays above its traversal, and where Calcite evaluates that traversal, its request
-  carries none of that `WHERE`'s conjuncts of the document. Measured offline in the host Chapter 21 describes, for
-  example: in ws1k (above), where nothing declares `n`, the sub-query's `CAST(u.t AS INTEGER) = 1 AND kind = 'A'` reads
-  every document where `main` sent `WHERE ((c.kind = @p0) AND (c.n > @p1))`; and `l.k2 = 'A' AND l.k2 = 'B' AND
-  CAST(body AS INTEGER) = 7` over a lateral (wf3), which Calcite reads as false, reads every document where `body` is
-  declared a string or nothing is declared, since the cast it would move can fail. Where something in the `WHERE` can
-  fail, the answer is the one the correlate entry above gives where the transposition is not taken: wf3 answers no rows
-  over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does. Where the facts graph answers
-  that nothing a test asks can fail, the rule takes the transposition: `kind = 'A' AND (kind = 'B' OR u.t = '1')` and
-  `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A' AND kind = 'B' AND u.t = '1'`
-  sends no request, declared and not; so does ws1k with `n` declared an integer from 0 to 100, `WHERE ((c.kind = @p0)
-  AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body = @p0)`
+  raise on a document the declaration admits, or holds a term the facts graph has no reading of yet, or is read over a
+  row that binds no container (the entries that follow), or the statement reaches the rule's bound of sixteen firings
+  over one filter or correlates within one another, each such condition stays above its traversal, and where Calcite
+  evaluates that traversal, its request carries none of that `WHERE`'s conjuncts of the document. Measured offline in
+  the host Chapter 21 describes, for example: in ws1k (above), where nothing declares `n`, the sub-query's `CAST(u.t AS
+  INTEGER) = 1 AND kind = 'A'` reads every document where `main` sent `WHERE ((c.kind = @p0) AND (c.n > @p1))`; and
+  `l.k2 = 'A' AND l.k2 = 'B' AND CAST(body AS INTEGER) = 7` over a lateral (wf3), which Calcite reads as false, reads
+  every document where `body` is declared a string or nothing is declared, since the cast it would move can fail. Where
+  something in the `WHERE` can fail, the answer is the one the correlate entry above gives where the transposition is
+  not taken: wf3 answers no rows over a `body` of `"q"`, where `main` failed as Calcite with `FILTER_CORRELATE` does.
+  Where the facts graph answers that nothing a test asks can fail, the rule takes the transposition: `kind = 'A' AND
+  (kind = 'B' OR u.t = '1')` and `u.t = '1' AND u.t = '2' AND kind = 'A'` send `WHERE (c.kind = @p0)` and `kind = 'A'
+  AND kind = 'B' AND u.t = '1'` sends no request, declared and not; so does ws1k with `n` declared an integer from 0 to
+  100, `WHERE ((c.kind = @p0) AND (c.n > @p1))`, and wf3 with `body` declared one of `"5"` and `"6"`, `WHERE (c.body =
+  @p0)`
   (`CosmosDeclaredFactPlanningTests.AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`).
   The fix, sending such a `WHERE`'s conjuncts of the document while Calcite evaluates the whole above, over only the
   documents the request returns as a split's part kept in process is (Chapter 14.2), is a change of its own after "fail
@@ -3111,12 +3112,23 @@ across documents* and *A join of a container to itself* is the record.
   give no atom, so a test that asks one may raise, w13's under every declaration. The reading is the one *A comparison
   of two paths, a call, and a parameter over a cast of a raw value read as "may raise"* asks for. About 100 lines, 150
   of tests and two to four rules.
-- **A grouping-set key binds nothing** — *small, a cost: a request that reads every document.* A left side grouped by a
-  `ROLLUP` or `GROUPING SETS` binds no container, so the correlate rule's question over it cannot be read, and the test
-  declines: over a grouping by grouping sets beneath a lateral, `(NOT (CAST(l.t2 AS INTEGER) > 0 OR x.k = 'B') OR x.k IN
-  ('A', 'B')) AND x.k = 'A'` (gsf) is not transposed
-  (`AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). The fix reads such a key as its path's value or
-  null. gs1, gso and ag1 also wait on *Facts about array elements*. About 60 lines and 100 of tests.
+- **A correlate's left side that binds no container** — *small, a cost: a request that reads every document, or a
+  condition kept above its traversal.* The correlate rule's question reads the correlate's row through the binding walk,
+  which reads neither a join nor a grouping by a `ROLLUP` or `GROUPING SETS`, so over a left side that is either the row
+  binds no container, the question cannot be read, and a test with something to ask declines
+  (`CosmosImplementorTests.ACorrelateOverAJoinOrAGroupingBySetsBindsNoContainer`). Over a grouping by grouping sets
+  beneath a lateral, `(NOT (CAST(l.t2 AS INTEGER) > 0 OR x.k = 'B') OR x.k IN ('A', 'B')) AND x.k = 'A'` (gsf) is not
+  transposed (`AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends`). Over `items AS c JOIN items AS d ON
+  c.id = '9'`, `m = '1' AND (c.id = '9' OR u.t = '1')` (jn1) leaves above an `OR` that Calcite without the transposition
+  reads as true over the join's condition, so its test asks it, and declines, though the `OR` only compares the element
+  with a text constant; in the host Chapter 21 describes the join's scans read every document whether the rule takes the
+  transposition or not, so declining keeps the `WHERE` above the traversal and sends the same requests. r3a, the same
+  with a cast of the element in the `OR`, declines too
+  (`AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail`,
+  `ATraversalTheCorrelateRuleAsksAboutIsCalcites`). The fixes: read a grouping-set key as its path's value or null,
+  about 60 lines and 100 of tests (gs1, gso and ag1 also wait on *Facts about array elements*); and bind the fields of
+  the side of a join that holds the correlate's array, leaving the other side's opaque, an estimate no probe has
+  measured of about 40 to 60 lines and 80 of tests. Neither adds a rule.
 - **A lateral's `RETURNING` column is read as its conversion** — *small, a cost: a request that reads every document.*
   The question reads `JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS n2` as that `RETURNING` of `n`, so `l.n2 = 3` may
   raise where `n` may hold a string, though the lateral's projection converts it, in both of Calcite's plans, before any
