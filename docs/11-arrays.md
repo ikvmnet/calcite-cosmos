@@ -38,11 +38,12 @@ The traversal and a predicate over the element are both evaluated by the service
 the element is written as a `WHERE` after the `JOIN`, which is exactly traverse-then-filter. When the
 element itself is selected, it is added to the object the statement returns.
 
-In a planner you build (Chapter 21), a `WHERE` that reads the element and the document together is
-moved beside the traversal, as Calcite's own rule moves it, and its conditions on the document are
-sent, only where nothing the move would newly leave above the traversal can fail on a document the
-schema admits. Comparing the element of a `VARCHAR ARRAY` with a text constant, a `LIKE` over it and
-a null test of it never fail, so this `WHERE` sends its condition on the document with a schema or
+In a planner you build (Chapter 21), the plan may evaluate a traversal in process rather than send
+it to the service. There, a `WHERE` that reads the element and the document together is moved
+beside the traversal, as Calcite's own rule moves it, and its conditions on the document are sent,
+only where nothing the move would newly leave above the traversal can fail on a document the schema
+admits. Comparing the element of a `VARCHAR ARRAY` with a text constant, a `LIKE` over it and a
+null test of it never fail, so this `WHERE` sends its condition on the document with a schema or
 without one:
 
 ```sql
@@ -51,15 +52,15 @@ WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND (JSON_VALUE(c."DOC", '$.kind') = '
 ```
 
 Otherwise the whole `WHERE` stays above the traversal, and none of its conditions on the document
-is sent. Among what keeps it there, where the move would leave it above the traversal: a cast of
-the element, whatever the schema says of the array's items; any reading of an element of another
+is sent. Among what keeps it there, where the move would newly leave it above the traversal: a cast
+of the element, whatever the schema says of the array's items; any reading of an element of another
 array type, or of `StringToArray`; and a cast or a `RETURNING` of a property that can fail on a
 value the schema admits. Declaring a property's values can let such a cast go: with `n` declared an
 integer from 0 to 100, `JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER)` cannot fail (Chapter 14.2).
 
-A condition the move takes beside the traversal is evaluated on every document the request returns,
-those whose array yields no element among them, as Calcite's own rule evaluates it, and can fail
-there (Chapter 23).
+Where the plan evaluates the traversal in process, a condition on the document the move takes
+beside it is evaluated on every document the request returns, those whose array yields no element
+among them, as Calcite's own rule evaluates it, and can fail there (Chapter 23).
 
 A traversal pushes the same way whichever accessor names the array — `JSON_QUERY(… RETURNING …
 ARRAY)` or `StringToArray(JSON_QUERY(…))` — because the adapter reads the path, not the function.
