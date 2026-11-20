@@ -344,6 +344,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
         }
 
         /// <summary>
+        /// The element of a traversal written <c>WITH ORDINALITY</c> binds nothing, nor does its ordinal, where the same
+        /// traversal without it binds its yielded path: that form yields every element, a number or an object among them,
+        /// where the form the <c>VARCHAR</c> row measures raises
+        /// (<c>CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject</c>), and no
+        /// row measures it.
+        /// </summary>
+        [Fact]
+        public void AnElementOfATraversalWithOrdinalityBindsNothing()
+        {
+            var plain = Members<org.apache.calcite.rel.core.Correlate>($"""SELECT c."id", u.t FROM products AS c, UNNEST({Tags}) AS u(t) WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'""")[0];
+            Elements(plain, Products([null])).Fields.Should().Equal(Products("c.tags[yield VARCHAR 0]"));
+
+            var members = RegisteredMembers.Of($"""SELECT c."id", u.t, u.o FROM products AS c, UNNEST({Tags}) WITH ORDINALITY AS u(t, o) WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'""");
+            members.OfType<org.apache.calcite.rel.core.Uncollect>().Should().ContainSingle().Which.withOrdinality.Should().BeTrue();
+
+            var (fields, readings) = Elements(members.OfType<org.apache.calcite.rel.core.Correlate>().First(), Products(null, null));
+            fields.Should().Equal(Products(null, null));
+            readings.Skip(5).Should().Equal(CosmosReading.Typed, CosmosReading.Typed);
+        }
+
+        /// <summary>
         /// A lateral's column that reads the correlation variable alone binds to the document path it reads, with the reading
         /// a projection gives it: the text accessor as text, a <c>RETURNING</c> as typed, a plain <c>JSON_QUERY</c> as JSON
         /// text, a field of the left as the left reads it. A computed column and a column of the lateral's own row stay

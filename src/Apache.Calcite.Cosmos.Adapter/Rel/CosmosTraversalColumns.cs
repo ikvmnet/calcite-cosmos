@@ -107,6 +107,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         (CosmosPath? Path, CosmosReading Reading) Element(Correlate correlate, Uncollect uncollect, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
         {
+            // Not WITH ORDINALITY: that form yields every element, a number or an object among them, and no row measures it.
             if (uncollect.withOrdinality || uncollect.getRowType().getFieldCount() != 1
                 || Original(uncollect.getInput()) is not Project project || project.getProjects().size() != 1)
                 return Unbound;

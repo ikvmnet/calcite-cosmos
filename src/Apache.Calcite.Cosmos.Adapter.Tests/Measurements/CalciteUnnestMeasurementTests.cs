@@ -15,7 +15,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
     /// <summary>
     /// What Calcite's traversal of an array yields in process: <c>UNNEST</c> of a plain <c>JSON_QUERY … RETURNING VARCHAR
-    /// ARRAY</c>, the element a condition over a correlate reads.
+    /// ARRAY</c>, without ordinality and with it, the element a condition over a correlate reads.
     /// </summary>
     /// <remarks>
     /// In process, over <see cref="MaterialisedTable"/>'s document column, as <see cref="CalciteItemMeasurementTests"/> measures
@@ -51,12 +51,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         const string Text = "JSON_VALUE(\"d\", '$.s')";
 
         /// <summary>
-        /// A traversal of a <c>VARCHAR</c> array of any length yields each string and null its array holds, uncut, and each
-        /// reading of it, a test, a cast or a call, answers what the same reading of the text accessor answers over a path
-        /// holding the same value: the value, or a raise of the same type. Over an array holding a number, a fraction, a
-        /// boolean, an object or an array anywhere in it, and over an object where the array is, the traversal itself raises,
-        /// so <c>COUNT(*)</c>, which reads no element, raises too; over an empty, absent or null array, and over a scalar where
-        /// the array is, it yields no row.
+        /// Written <c>AS u(t)</c>, without ordinality, a traversal of a <c>VARCHAR</c> array of any length yields each string
+        /// and null its array holds, uncut, and each reading of it, a test, a cast or a call, answers what the same reading of
+        /// the text accessor answers over a path holding the same value: the value, or a raise of the same type. Over an array
+        /// holding a number, a fraction, a boolean, an object or an array anywhere in it, and over an object where the array
+        /// is, the traversal itself raises, so <c>COUNT(*)</c>, which reads no element, raises too; over an empty, absent or
+        /// null array, and over a scalar where the array is, it yields no row.
         /// </summary>
         [Fact, CosmosPins("Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText")]
         public void AVarcharArrayYieldsItsStringsAndNullsAsTheText()
@@ -102,8 +102,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             }
         }
 
-        /// <summary>The <c>FROM</c> clause after the table: the table as <c>x</c>, and the traversal of its <c>tags</c> as <c>u(t)</c>.</summary>
-        static string Traversal(string type) => $" AS \"x\", UNNEST(JSON_QUERY(\"x\".\"d\", '$.tags' RETURNING {type} ARRAY)) AS \"u\"(\"t\")";
+        /// <summary>
+        /// Written <c>WITH ORDINALITY AS u(t, o)</c>, a traversal of a <c>VARCHAR</c> array yields every element its array
+        /// holds, numbered from one. Its strings and nulls are yielded uncut and read as the form above reads them, each
+        /// reading answering as the text accessor's over a path holding the same value. Where the form above raises, it yields
+        /// a number, a fraction, a boolean, an object or an array as the text of Java's rendering of it: <c>u.t = '1'</c> is
+        /// true over <c>[1]</c>, and an object reads <c>{a=1}</c> where the text accessor reads null. It raises only over an
+        /// object where the array is, <c>COUNT(*)</c> among them, and over an empty, absent or null array, or a scalar where
+        /// the array is, yields no row. So the row the form above pins does not hold of it, and its element binds nothing
+        /// (<c>CosmosTraversalColumns</c>).
+        /// </summary>
+        [Fact]
+        public void ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject()
+        {
+            using var connection = MaterialisedTable.Open();
+            var elements = MaterialisedTable.Of(Values.Select(v => $"{{\"tags\":[{v}]}}"));
+            var paths = MaterialisedTable.Of(Values.Select(v => $"{{\"s\":{v}}}"));
+
+            foreach (var type in Types)
+            {
+                Run(connection, elements, "\"k\"", type, " ORDER BY \"k\"", ordinality: true).Should().Equal(Values.Select((_, k) => (object)k), type);
+
+                var read = new Dictionary<string, object?[]>();
+                foreach (var reading in Readings)
+                {
+                    var a = read[reading] = elements.Values(connection, string.Format(reading, Element), Traversal(type, ordinality: true));
+                    var b = paths.Values(connection, string.Format(reading, Text));
+                    Same(a, b).Should().BeTrue($"{string.Format(reading, "u.t")} over RETURNING {type} ARRAY WITH ORDINALITY answers {Shown(a)} against the text's {Shown(b)}");
+                }
+
+                read["CAST({0} AS INTEGER)"][Array.IndexOf(Values, "\"x\"")].Should().BeOfType<java.lang.NumberFormatException>(type);
+                read["CHAR_LENGTH({0})"][Array.IndexOf(Values, "\"abc\"")].Should().Be(3, $"RETURNING {type} ARRAY WITH ORDINALITY cuts no element");
+            }
+
+            foreach (var type in Types)
+            {
+                var three = Document("{\"tags\":[\"1\",null,\"x\"]}");
+                Run(connection, three, Element, type, ordinality: true).Should().Equal(["1", null, "x"], type);
+                Run(connection, three, "\"u\".\"o\"", type, ordinality: true).Should().Equal([1, 2, 3], type);
+
+                foreach (var (array, yielded) in new (string, string[])[]
+                {
+                    ("[1]", ["1"]), ("[2.5]", ["2.5"]), ("[true]", ["true"]), ("[{\"a\":1}]", ["{a=1}"]), ("[[1]]", ["[1]"]), ("[\"1\",2]", ["1", "2"]), ("[2,\"1\"]", ["2", "1"]),
+                })
+                {
+                    var table = Document($"{{\"tags\":{array}}}");
+                    Run(connection, table, "COUNT(*)", type, ordinality: true).Should().Equal([(long)yielded.Length], $"COUNT(*) over {array} as {type} with ordinality");
+                    Run(connection, table, Element, type, ordinality: true).Should().Equal(yielded, $"u.t over {array} as {type} with ordinality");
+                }
+
+                // A reading of such an element reads the rendering, not the text accessor's answer.
+                Run(connection, Document("{\"tags\":[1]}"), $"{Element} = '1'", type, ordinality: true).Should().Equal([true], type);
+                Run(connection, Document("{\"tags\":[{\"a\":1}]}"), $"{Element} IS NULL", type, ordinality: true).Should().Equal([false], type);
+                MaterialisedTable.Of(["{\"s\":{\"a\":1}}"]).Values(connection, $"{Text} IS NULL").Should().Equal([true], "the text accessor reads an object as null");
+
+                var object1 = Document("{\"tags\":{\"a\":\"1\"}}");
+                Raised(() => Run(connection, object1, "COUNT(*)", type, ordinality: true)).Should().BeOfType<InvalidCastException>($"COUNT(*) over an object as {type} with ordinality");
+                Raised(() => Run(connection, object1, Element, type, ordinality: true)).Should().BeOfType<InvalidCastException>($"u.t over an object as {type} with ordinality");
+
+                foreach (var none in new[] { "{\"tags\":[]}", "{}", "{\"tags\":null}", "{\"tags\":\"ab\"}", "{\"tags\":30}", "{\"tags\":true}" })
+                {
+                    Run(connection, Document(none), "COUNT(*)", type, ordinality: true).Should().Equal([0L], $"COUNT(*) over {none} as {type} with ordinality");
+                    Run(connection, Document(none), Element, type, ordinality: true).Should().BeEmpty($"u.t over {none} as {type} with ordinality");
+                }
+            }
+        }
+
+        /// <summary>
+        /// The <c>FROM</c> clause after the table: the table as <c>x</c>, and the traversal of its <c>tags</c> as <c>u(t)</c>,
+        /// or <c>WITH ORDINALITY</c> as <c>u(t, o)</c>.
+        /// </summary>
+        static string Traversal(string type, bool ordinality = false) => ordinality
+            ? $" AS \"x\", UNNEST(JSON_QUERY(\"x\".\"d\", '$.tags' RETURNING {type} ARRAY)) WITH ORDINALITY AS \"u\"(\"t\", \"o\")"
+            : $" AS \"x\", UNNEST(JSON_QUERY(\"x\".\"d\", '$.tags' RETURNING {type} ARRAY)) AS \"u\"(\"t\")";
 
         static MaterialisedTable Document(string document) => MaterialisedTable.Of([document]);
 
@@ -111,10 +182,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// What a projection is on each row a traversal of a table's documents joins, each a value or <c>null</c>, the rest of
         /// the statement following; a statement that fails throws.
         /// </summary>
-        static List<object?> Run(DbConnection connection, MaterialisedTable table, string projection, string type, string rest = "")
+        static List<object?> Run(DbConnection connection, MaterialisedTable table, string projection, string type, string rest = "", bool ordinality = false)
         {
             using var command = connection.CreateCommand();
-            command.CommandText = $"SELECT {projection} FROM \"{table.AddTo(connection)}\"{Traversal(type)}{rest}";
+            command.CommandText = $"SELECT {projection} FROM \"{table.AddTo(connection)}\"{Traversal(type, ordinality)}{rest}";
             var values = new List<object?>();
             using var reader = command.ExecuteReader();
             while (reader.Read())
