@@ -53,22 +53,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <summary>
         /// Each Volcano planner's statement, as its root and the number of rules it held, whether it takes Calcite's
-        /// transposition, and the planner runs, the questions and the times it took to work that out; weak on the planner,
-        /// which dies with the statement.
+        /// transposition, and the planner runs, the tests with something to ask and the times it took to work that out; weak
+        /// on the planner, which dies with the statement.
         /// </summary>
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<RelOptPlanner, Answered> Statements = new();
 
         /// <summary>
         /// A statement's answer: the root and the number of rules it was read under, the answer, and how many planner runs
-        /// carried conjuncts past a member, how many questions its tests asked the facts graph and how many times the answer
-        /// was worked out, over the planner's life.
+        /// carried conjuncts past a member, how many of its tests had something to ask, a row that binds no container among
+        /// them, and how many times the answer was worked out, over the planner's life.
         /// </summary>
         sealed record Answered(RelNode Root, int Rules, bool Transposes, long Carries, int Questions, int Times);
 
         /// <summary>
-        /// Returns how many times the planner's rules were run over a member to carry conjuncts past it, how many questions
-        /// the statement's tests asked the facts graph, and how many times the statement's answer was worked out, for the
-        /// statements a planner planned.
+        /// Returns how many times the planner's rules were run over a member to carry conjuncts past it, how many of the
+        /// statement's tests had something to ask, a row that binds no container among them, and how many times the
+        /// statement's answer was worked out, for the statements a planner planned.
         /// </summary>
         internal static (long Carries, int Questions, int Times) Work(RelOptPlanner planner) =>
             Statements.TryGetValue(planner, out var answered) ? (answered.Carries, answered.Questions, answered.Times) : (0, 0, 0);
@@ -253,7 +253,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             public long Carries { get; private set; }
 
             /// <summary>
-            /// Gets how many of the walk's tests asked the facts graph something the transposition newly evaluates.
+            /// Gets how many of the walk's tests had something the transposition newly evaluates to ask, a row that binds no
+            /// container among them, over which the facts graph is not asked.
             /// </summary>
             public int Questions { get; private set; }
 

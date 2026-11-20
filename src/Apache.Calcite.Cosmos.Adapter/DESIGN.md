@@ -1336,12 +1336,12 @@ service's form moves as Calcite's rule moves it. Through a connection whose Calc
 where one of Calcite's plans fails*, records what was measured); through the README's, those rules have moved the
 document's conjuncts before this rule reads the plan, and it asks the facts graph nothing
 (`CosmosConnectionPlanningTests.AWhereOverATraversalSendsWhatItSentAndTheCorrelateRuleAsksNothing`). The answer, and how
-many questions it asked, is kept with the planner for its root and the number of its rules, and worked out again where
-the planner replaces its root or its rules change in number; each time, each question of it is asked once, so the work
-grows with the statement's members and the sets of conjuncts reaching each, not with the paths down to them. Where
-filters merge, conjuncts carried past a filter without it merge with no filter further down: they reach what is beneath
-only once that filter has gone into its correlate, whose sides then hold its parts, and those parts merged with them are
-asked as well.
+many of its tests had something to ask, is kept with the planner for its root and the number of its rules, and worked
+out again where the planner replaces its root or its rules change in number; each time, each question of it is asked
+once, so the work grows with the statement's members and the sets of conjuncts reaching each, not with the paths down to
+them. Where filters merge, conjuncts carried past a filter without it merge with no filter further down: they reach what
+is beneath only once that filter has gone into its correlate, whose sides then hold its parts, and those parts merged
+with them are asked as well.
 
 What a test asks is read off Calcite's own classification, simplifier, builder and metadata, compared as Calcite
 compares expressions, and the rule runs every firing of Calcite's rule to collect it. Call `calc` Calcite's

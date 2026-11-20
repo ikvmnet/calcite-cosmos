@@ -895,7 +895,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// The statements <see cref="AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail"/>
         /// pins keep their traversal in Calcite in the host Chapter 21 describes, no <c>CosmosUnnest</c> in their plans, and
-        /// the correlate rule asks the facts graph at least one question of each, declared and not, under both targets.
+        /// in each the correlate rule has a test with something to ask, which it asks the facts graph but where the row binds
+        /// no container (r3a, jn1), declared and not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("fr0", "Traversed")]
