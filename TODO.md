@@ -3033,7 +3033,7 @@ across documents* and *A join of a container to itself* is the record.
   is that connection's Calcite's. Beside a correlate as anywhere, a part of a condition kept in process reads only the
   rows the part sent returns (Chapter 14.2), so a statement can answer where both of Calcite's plans fail: for example
   `m = '2' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` with nothing declared (ab5), and over a `LEFT JOIN` of
-  `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu, `main` the same). A
+  `tags`, `kind <> 'A'` beside a `CASE` on `CAST(body AS INTEGER)` whose arms agree (b253lu). A
   statement the rule takes because nothing its test asks can raise sends its conjuncts of the document, and can do so
   too: `kind = 'A' AND CAST(body AS INTEGER) = 7 AND (kind = 'B' OR u.t = '1')` (j3n) sends its conjunct on `kind`,
   keeps the cast in process, and over a document of kind `B` holding an element and a `body` of `"q"` answers the row of
@@ -3053,7 +3053,7 @@ across documents* and *A join of a container to itself* is the record.
   that connection's own rules still carry a `WHERE`'s conjuncts onto a traversal beneath a grouping, where they are
   evaluated on its every element as its Calcite does without the transposition: for example `x.id = '1' AND (x.id = '2'
   OR CAST(x.t AS INTEGER) = 7)` over a grouping of an `UNNEST` of an array of `body` and `m`, beneath a lateral (agr1),
-  fails on a `body` of `"q"` where `main` answered. Through the README's connection, Calcite's own decorrelation moves
+  fails on a `body` of `"q"`. Through the README's connection, Calcite's own decorrelation moves
   `kind IN ('A', 'B')` beside the traversal in `kind IN ('A', 'B') AND (kind IN ('A', 'B') OR CAST(u.t AS INTEGER) = 1)`
   (u18b) before any adapter rule reads the condition, and it fails as that connection's Calcite does; so there a
   statement may hold that transposition at one correlate and none at another, as where a `WHERE` over a lateral is moved
