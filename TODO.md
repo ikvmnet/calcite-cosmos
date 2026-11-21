@@ -3123,7 +3123,20 @@ across documents* and *A join of a container to itself* is the record.
   itself for `ARRAY` and its rendering for `ARRAY WITH ORDINALITY`, which no fact of every element reaches; or a reading
   of the rendering where it differs from the text accessor, over an object and an array, in the vocabulary and written
   by the binding and the loader. About 60 to 80 lines and 100 of tests, with pins that hold a stated element fact
-  against Calcite's ordinality traversal.
+  against Calcite's ordinality traversal. Its ordinal reads nothing either (the next entry).
+- **The ordinal of a traversal written `WITH ORDINALITY` reads nothing** — *small, a cost: a request that reads every
+  document.* The correlate rule's question binds such a traversal's element (the entry above) and leaves its ordinal
+  unbound, since it is no path of the document, so the loader reads it as opaque and a condition over it may raise:
+  `kind = 'A' AND (kind = 'B' OR u.o = 1)` over `UNNEST(…) WITH ORDINALITY AS u(t, o)` (frord) reads every document,
+  and `kind = 'A' AND kind = 'B' AND u.o = 1` (frordkk) sends a request that reads every document where frkk, which
+  compares the element of a plain traversal, sends none, declared and not, under both targets
+  (`CosmosDeclaredFactPlanningTests`). Calcite numbers the ordinal from 1 and never leaves it null
+  (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject` pins 1, 2 and
+  3), so such a comparison never fails in process. Reading it wants a term of its own beside `Yield`, stated by a
+  measured row an integer from 1 that is never null, bound by the walk to its traversal, read by the loader as typed,
+  and given a reading for a comparison and a cast of it; and that term needs a step beside the yielded one, through the
+  segment, the document path, the theory's spelling and every writer's refusal. About 60 to 100 lines and 100 of tests,
+  built with the `WITH ORDINALITY` row above or on its own.
 - **The facts graph reads no call, and no comparison of two places** — *small, a cost: a request that reads every
   document.* `u.t = CAST(CAST(body AS INTEGER) AS VARCHAR)` (w13) and `CAST(u.t AS INTEGER) = CHAR_LENGTH(body)` (p1)
   give no atom, so a test that asks one may raise, w13's under every declaration. The reading is the one *A comparison

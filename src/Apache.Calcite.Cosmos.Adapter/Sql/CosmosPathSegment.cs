@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <param name="type">The element type, by its <c>SqlTypeName</c>'s name: <c>VARCHAR</c>.</param>
         /// <param name="form">The traversal's form: the collection's <c>SqlTypeName</c>'s name, and <c>WITH ORDINALITY</c> after it
-        /// where the traversal is written so: <c>ARRAY</c>, <c>ARRAY WITH ORDINALITY</c>.</param>
+        /// where the planned traversal keeps its ordinal: <c>ARRAY</c>, <c>ARRAY WITH ORDINALITY</c>.</param>
         /// <param name="traversal">The traversal's number, from zero, in the order a binding walks a statement's traversals.</param>
         /// <returns>The segment.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="type"/> or <paramref name="form"/> is <c>null</c>.</exception>

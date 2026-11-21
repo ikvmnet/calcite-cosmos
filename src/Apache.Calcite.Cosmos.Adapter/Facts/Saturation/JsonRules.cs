@@ -620,7 +620,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
             // narrowed to no kind it is absent, and nothing is contradictory: Calcite's traversal raises first over an array
             // holding a kind the row does not name, in either plan. A traversal written WITH ORDINALITY yields the text of an
             // element's rendering, which is no element of the array: no row names that form, so nothing reads what reaches it,
-            // and a row for it must first keep the instance off it (TODO.md).
+            // and a row for it must first keep the instance off it, or read it through a reading of the rendering (TODO.md).
             Rule("an element a traversal yields is an instance of every element of its array", r =>
             {
                 var (y, e, p) = r.Vars<JPath, JPath, JPath>("y", "e", "p");

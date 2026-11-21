@@ -21,14 +21,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
     /// <para>
     /// <b>The element of a traversal.</b> The right side is walked as registered, through projections of input references
     /// (the rename <c>AS u(t)</c> registers) and its own filters, to an <c>Uncollect</c> of one column, its ordinal after it
-    /// where it is written <c>WITH ORDINALITY</c>, whose input projects one expression: a plain <c>JSON_QUERY … RETURNING
-    /// &lt;type&gt; ARRAY</c> over the correlation variable alone. Resolved over the left's binding, that is the array's path,
-    /// and the element binds to it with a yielded step (<see cref="CosmosPathSegment.Yielded"/>) naming the collection's
+    /// where it keeps one, whose input projects one expression: a plain <c>JSON_QUERY … RETURNING &lt;type&gt; ARRAY</c> or
+    /// <c>MULTISET</c> over the correlation variable alone. Resolved over the left's binding, that is the array's path, and
+    /// the element binds to it with a yielded step (<see cref="CosmosPathSegment.Yielded"/>) naming the collection's
     /// component type, the traversal's form and the traversal's number, read as <see cref="CosmosReading.Text"/>. The form is
-    /// the collection's type name, <c>ARRAY</c> or <c>MULTISET</c>, and <c>WITH ORDINALITY</c> after it where the traversal is
-    /// written so. The type and the form are data: what an element of a type in a form holds, and whether its text reads, is
-    /// the facts graph's rows', and a pair no row names reads nothing, <c>ARRAY WITH ORDINALITY</c> among them. The ordinal,
-    /// and <c>StringToArray</c>'s element, which is no plain <c>JSON_QUERY</c>'s, stay unbound.
+    /// the collection's type name, <c>ARRAY</c> or <c>MULTISET</c>, and <c>WITH ORDINALITY</c> after it where the
+    /// <c>Uncollect</c> as registered keeps its ordinal: where the statement writes it so, unless a rule has dropped an ordinal
+    /// nothing reads, after which the traversal runs as the plain form (DESIGN.md). The type and the form are data: what an
+    /// element of a type in a form holds, and whether its text reads, is the facts graph's rows', and a pair no row names
+    /// reads nothing, <c>ARRAY WITH ORDINALITY</c> among them. The ordinal, which is no path of the document, and
+    /// <c>StringToArray</c>'s element, which is no plain <c>JSON_QUERY</c>'s, stay unbound (TODO.md).
     /// </para>
     /// <para>
     /// <b>A lateral's column.</b> Through projections of input references and the lateral's own filters to its projection over
@@ -108,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         (CosmosPath? Path, CosmosReading Reading) Element(Correlate correlate, Uncollect uncollect, IReadOnlyList<CosmosPath?> left, IReadOnlyList<CosmosReading> leftReadings)
         {
-            // One column, the element, and the ordinal after it where the traversal is written WITH ORDINALITY.
+            // One column, the element, and the ordinal after it where the uncollect keeps one.
             if (uncollect.getRowType().getFieldCount() != (uncollect.withOrdinality ? 2 : 1)
                 || Original(uncollect.getInput()) is not Project project || project.getProjects().size() != 1)
                 return Unbound;

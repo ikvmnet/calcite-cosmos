@@ -13,9 +13,9 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <param name="Type">The element type, by its <c>SqlTypeName</c>'s name, any length dropped: <c>VARCHAR</c>.</param>
     /// <param name="Form">The traversal's form: the collection's <c>SqlTypeName</c>'s name, <c>ARRAY</c> or <c>MULTISET</c>,
-    /// and <c>WITH ORDINALITY</c> after it where the traversal is written so. Data beside the type: what an element of a
-    /// type in a form holds, and whether its text reads, is that pair's row's (<c>yieldkinds</c>, <c>yieldreads</c>), and a
-    /// pair no row names reads nothing.</param>
+    /// and <c>WITH ORDINALITY</c> after it where the planned traversal keeps its ordinal. Data beside the type: what an
+    /// element of a type in a form holds, and whether its text reads, is that pair's row's (<c>yieldkinds</c>,
+    /// <c>yieldreads</c>), and a pair no row names reads nothing.</param>
     /// <param name="Traversal">The traversal's number, from zero, in the order the binding walks a statement's traversals.</param>
     internal sealed record JsonYieldedStep(string Type, string Form, long Traversal)
     {

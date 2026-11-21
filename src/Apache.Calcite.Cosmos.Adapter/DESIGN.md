@@ -2424,24 +2424,25 @@ walk knows to that.
 **One walk binds more, and what it names no request can spell.** The correlate rule's question binds a
 correlate's row with its elements on (`CosmosImplementor.TryBindElements`; the walk's `elements`, off
 for every other caller). Over a `Correlate`, `CosmosTraversalColumns` walks the right side as
-registered: the element of an `Uncollect` of a plain `JSON_QUERY … RETURNING <type> ARRAY` over the
-correlation variable, reached through projections of input references and the right's own filters, binds
-to the array's path with a yielded step naming the component's type and the traversal's number, read as
-the text; a lateral's accessor column, over its own filters and a one-tuple `VALUES`, binds as the
-projection arm binds a projected column, through the one reader of both (`CosmosImplementor.Projected`),
-which resolves over the input's readings, so an accessor over a field read as text, which Calcite
-parses, binds nothing in either. Implementation binds neither. What keeps that from reaching a request
-is the step: `CosmosPathSegment.Yielded` is a third kind beside a name and an index; everything that
-spells a path into a request, a policy or a document read (`CosmosPath.WriteTo` and `ToPolicyPath`,
-`RenderingPrinter`, `CosmosJson.GetPath`, `CosmosDocument.TryRead`, `CosmosConverters`' row builder)
-throws on one, and every reader that answers a question of one declines (the path readers where the
-target stores a name escaped, the translator's constant accessor, `CosmosDocumentPaths.From` asked
-without elements, the loader's `JsonPathOf`). While the elements bind, the filter arm asks no recheck,
-so no translator is built over such a path, and the projection arm passes the element on only as a
-direct reference: an accessor over it parses its text, which is no path. Without the elements the walk
-binds as every other caller has it bound, which `CosmosImplementorTests` holds for each shape it binds
-with them, and the statement read through it is the raises question's alone (*The raises question*,
-under *The reduce asks every row false*).
+registered: the element of an `Uncollect` of a plain `JSON_QUERY … RETURNING <type> ARRAY` or `MULTISET`
+over the correlation variable, reached through projections of input references and the right's own
+filters, binds to the array's path with a yielded step naming the component's type, the traversal's form
+and its number, read as the text; a lateral's accessor column, over its own filters and a one-tuple
+`VALUES`, binds as the projection arm binds a projected column, through the one reader of both
+(`CosmosImplementor.Projected`), which resolves over the input's readings, so an accessor over a field
+read as text, which Calcite parses, binds nothing in either. Implementation binds neither. What keeps
+that from reaching a request is the step: `CosmosPathSegment.Yielded` is a third kind beside a name
+and an index; everything that spells a path into a request, a policy or a document read
+(`CosmosPath.WriteTo` and `ToPolicyPath`, `RenderingPrinter`, `CosmosJson.GetPath`,
+`CosmosDocument.TryRead`, `CosmosConverters`' row builder) throws on one, and every reader that
+answers a question of one declines (the path readers where the target stores a name escaped, the
+translator's constant accessor, `CosmosDocumentPaths.From` asked without elements, the loader's
+`JsonPathOf`). While the elements bind, the filter arm asks no recheck, so no translator is built over
+such a path, and the projection arm passes the element on only as a direct reference: an accessor over
+it parses its text, which is no path. Without the elements the walk binds as every other caller has it
+bound, which `CosmosImplementorTests` holds for each shape it binds with them, and the statement read
+through it is the raises question's alone (*The raises question*, under *The reduce asks every row
+false*).
 
 **The same holds of every walk a rule decides on and a node asks again, and the binding walk is not
 the only one.** A walk that knows the logical form of a node and not its converted form answers for
@@ -10920,9 +10921,13 @@ it is. So the question is given the element, as a path of its own.
   element type `t` in form `f` yields, one set a pair; and `yieldreads(t, f, k)`, the reading its elements read as.
 - **The path.** `Yield(p, t, f, n)` (`PathVocabulary`) is the element traversal `n` of the array at `p` yields, of
   element type `t`, by a traversal of form `f`: the collection's type name, `ARRAY` or `MULTISET`, and `WITH ORDINALITY`
-  after it where the traversal is written so. The binding's yielded segment becomes `JsonDocumentPath`'s yielded step
-  (`CosmosDocumentPaths.From`, asked with elements), of which `HasElement` holds and which `Names` refuses, as of an
-  index, and `JsonFactEncoding.Path` writes that as `Yield`; it is spelled `$.tags[yield VARCHAR ARRAY 0]`.
+  after it where the planned `Uncollect` keeps its ordinal. That is where the statement writes it, unless a Calcite rule
+  drops an ordinal nothing reads: `CoreRules.PROJECT_UNCOLLECT_MERGE`, new after Calcite 1.42 and in no rule set the
+  adapter, its tests' hosts or the README's connection runs, makes such a traversal the plain form, which is how it then
+  runs, so the form the step names is the one the plan evaluates. The binding's yielded segment becomes
+  `JsonDocumentPath`'s yielded step (`CosmosDocumentPaths.From`, asked with elements), of which `HasElement` holds and
+  which `Names` refuses, as of an index, and `JsonFactEncoding.Path` writes that as `Yield`; it is spelled
+  `$.tags[yield VARCHAR ARRAY 0]`.
 - **Four rules.** In `json`: an element a traversal yields is an instance of every element of its array, so what is
   declared of every element reaches it through the inheritance an index already has, and the rule makes no path; and it
   holds only what its traversal yields, `types` narrowed to `yieldkinds(t, f)`, a string or a null for `VARCHAR` in the
@@ -10937,12 +10942,13 @@ it is. So the question is given the element, as a path of its own.
   as text takes, and as nothing else: read typed, it is opaque. `Addressed` passes a yielded path only as a field's own
   reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is opaque.
 - **Why a path of its own.** The element a condition reads cannot be a number, while an element of the array can, so it
-  is not `Each(p)`; what is declared of every element must still reach it, which the instance rule carries; and two
-  traversals of one array yield elements apart. Read as one path, `u.t = '1' AND v.s = '2'` over two traversals of
-  `tags` would be one atom over one path: harmless to a question that assumes nothing, as this one does, and a
-  contradiction to any node that assumes the conjuncts. So the binding numbers each traversal in its walk's order, alike
-  for one plan shape, so that a repeated shape finds the oracle's memo, and one traversal is one path wherever its
-  column surfaces.
+  is not `Each(p)`; what is declared of every element must still reach it, which the instance rule carries, where the
+  traversal yields the element itself, as `ARRAY` and `MULTISET` do, and not the rendering a traversal written `WITH
+  ORDINALITY` yields (below); and two traversals of one array yield elements apart. Read as one path, `u.t = '1' AND
+  v.s = '2'` over two traversals of `tags` would be one atom over one path: harmless to a question that assumes nothing,
+  as this one does, and a contradiction to any node that assumes the conjuncts. So the binding numbers each traversal in
+  its walk's order, alike for one plan shape, so that a repeated shape finds the oracle's memo, and one traversal is one
+  path wherever its column surfaces.
 - **Why narrowing is sound.** A term over the element is evaluated, in either of Calcite's plans, only on an element the
   traversal yielded. On a document whose array holds anything else the traversal raises in both plans on every document
   that reaches it, and a moved conjunct can only keep a document from reaching it. So the traversal's raise is never
@@ -10961,8 +10967,10 @@ it is. So the question is given the element, as a path of its own.
   an element holds, and whether it reads as its text, the one reading the binding gives it. Only `VARCHAR` in the form
   `ARRAY` has a row. An element of another type or form binds, and gets no narrowing, no reading and no atom, so a term
   over it may raise (`CosmosFilterStatementTests`): `RETURNING INTEGER ARRAY`'s, `RETURNING VARCHAR MULTISET`'s, and
-  that of a traversal written `WITH ORDINALITY AS u(t, o)`, whose ordinal stays unbound
-  (`CosmosImplementorTests.AnElementBindsWithItsTraversalsFormAsData`). That form is measured beside the row's
+  that of a traversal written `WITH ORDINALITY AS u(t, o)`
+  (`CosmosImplementorTests.AnElementBindsWithItsTraversalsFormAsData`), whose ordinal, no path of the document, stays
+  unbound, so a condition over it may raise too (`TODO.md`, *The ordinal of a traversal written `WITH ORDINALITY` reads
+  nothing*). That form is measured beside the row's
   (`ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject`): it yields every element, a number, a
   boolean, an object or an array among them, and raises only over an object where the array is, so neither the row's
   narrowing nor the raise the narrowing's soundness rests on holds of it; and a reading of an element that is no string
@@ -10984,7 +10992,8 @@ it is. So the question is given the element, as a path of its own.
   traversal raises first not counted against a conjunct over its element, and three plants, `yieldkinds("VARCHAR",
   "ARRAY")` a null alone, `VARCHAR ARRAY`'s `yieldreads` naming the raw reading beside the text, and the measured
   pair's rows stated of `ARRAY WITH ORDINALITY` too, are each caught by it (`PlantedBugTests`). fr0 written `WITH
-  ORDINALITY` and over a `VARCHAR MULTISET` reads every document (`CosmosDeclaredFactPlanningTests`, fr0o and fr0m).
+  ORDINALITY` and over a `VARCHAR MULTISET` reads every document, and so do frord and frordkk, fr0 and frkk with the
+  ordinal compared in place of the element (`CosmosDeclaredFactPlanningTests`, fr0o, fr0m, frord and frordkk).
 
 ## Differential testing
 
