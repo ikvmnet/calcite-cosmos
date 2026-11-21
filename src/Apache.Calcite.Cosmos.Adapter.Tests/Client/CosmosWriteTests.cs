@@ -378,12 +378,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <c>INSERT</c> creates, so a repeat is a conflict rather than a replacement.
         /// </summary>
         /// <remarks>
-        /// The emulator at times answers the repeat with a 500 from its own database rather than the 409 Azure answers: a
-        /// Postgres error over a cursor, "cannot drop portal ... while it is being set up" from EN20261019 and
-        /// <c>SqlState(E24000)</c> from EN20260907. A fresh emulator does so now and then, and one that has done so does so
-        /// on every repeat, across a restart, until its container is made again. The repeat is refused and the first
-        /// untouched there too, which is checked before the status is read; only the conflict's status cannot be read, so
-        /// such a run skips against an emulator, named or not, and a 500 from Azure fails.
+        /// The emulator at times answers the repeat with a 500 from the Postgres beneath it rather than the 409 Azure answers,
+        /// an error over a cursor: "cannot drop portal ... while it is being set up" from EN20261019 and
+        /// <c>SqlState(E24000)</c> from EN20260907. CI's fresh emulator did so once, and two long-running emulators on every
+        /// repeat, across a restart; one of them, made again from its image, answers 409. The repeat is refused and the
+        /// first untouched there too, which is checked before the status is read; only the 409 cannot be checked, so such a
+        /// run skips against an emulator, named or not, and a 500 from Azure fails.
         /// </remarks>
         [Fact]
         public async Task ADuplicateIdIsRefused()
@@ -403,10 +403,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 && message.Contains(" failed with 500 InternalServerError.", StringComparison.Ordinal))
             {
                 var reason = message.IndexOf("Reason: (", StringComparison.Ordinal) is var at and >= 0 ? message[at..].Split('\r', '\n')[0] : message;
-                Assert.Skip("This emulator answered the repeat with a 500 from its own database, not a 409, so the conflict's status cannot be read; the repeat was refused and the first is untouched. " + reason);
+                Assert.Skip("This emulator answered the repeat with a 500 from the Postgres beneath it, not a 409, so whether it saw a conflict cannot be told; the repeat was refused and the first is untouched. " + reason);
             }
 
-            refused.WithMessage("*409*");
+            // The adapter's own words, as the skip reads them: the SDK's diagnostics after them can hold "409" by chance.
+            refused.WithMessage("* failed with 409 Conflict.*");
         }
 
         [Fact]
