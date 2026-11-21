@@ -148,8 +148,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         {
             var cast = new SqlValue.Cast("VARCHAR", new SqlValue.Raw(Declaration.A));
             SqlPredicate[] predicates = [new SqlPredicate.IsNull(cast),
-                .. from text in new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" } from op in new[] { "=", "<" } select new SqlPredicate.Compare(op, cast, SqlValue.Of(text)),
-                .. from pattern in new[] { "bi%", "x%", "%x", "{%", "%}", "[%", "%]", "{}", "[]", "%x%", "%" } select new SqlPredicate.Affix("LIKE", cast, pattern)];
+                .. new[] { "30", "30.0", "1.0E30", "1.0E20", "9223372036854775807", "true", "x", "{}" }
+                    .SelectMany(text => new[] { "=", "<" }.Select(op => new SqlPredicate.Compare(op, cast, SqlValue.Of(text)))),
+                .. new[] { "bi%", "x%", "%x", "{%", "%}", "[%", "%]", "{}", "[]", "%x%", "%" }
+                    .Select(pattern => new SqlPredicate.Affix("LIKE", cast, pattern))];
             var documents = Values.Append(new J.Num(99999999999999999999m)).Append(new J.Num(long.MaxValue)).Select(v => new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = v }))
                 .Append(new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal))).ToArray();
             var (world, mismatches, compared) = (new World(0), new List<string>(), 0);
@@ -246,7 +248,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         public void ARawNumberInItsBoxAgreesWithCalcite()
         {
             string[] values = ["9007199254740993", "9007199254740993.0", "0.1", "30", "30.0", "29.9999999999999999"];
-            var asked = (from n in new[] { 9007199254740993m, 0.1m, 30m } from op in new[] { "=", "<", ">" } select new SqlPredicate.Compare(op, new SqlValue.Raw(Declaration.A), SqlValue.Of(n))).ToArray();
+            var asked = new[] { 9007199254740993m, 0.1m, 30m }
+                .SelectMany(n => new[] { "=", "<", ">" }.Select(op => new SqlPredicate.Compare(op, new SqlValue.Raw(Declaration.A), SqlValue.Of(n))))
+                .ToArray();
             var world = new World(0);
             string Evaluated(SqlPredicate p) => string.Concat(values.Select(v => Letter(IrEval.Truth(p,
                 new J.Obj(new SortedDictionary<string, J>(StringComparer.Ordinal) { ["a"] = new J.Num(decimal.Parse(v, CultureInfo.InvariantCulture)) }), world, IrEval.TypedAs.Returning, IrEval.RawAs.Any))));

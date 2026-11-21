@@ -62,8 +62,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             thrown.Should().BeEmpty();
 
-            var asked = from atom in Synthetic(plain: true) from fit in Measured.Fits where fit.Shape == RenderingTemplates.ShapeOf(atom)
-                        from row in RenderingTemplateRows.Templates where row.Item1 == fit.Item1 select (Id: fit.Item1, Pos: row.Item2, Atom: atom);
+            var asked = Synthetic(plain: true)
+                .SelectMany(atom => Measured.Fits
+                    .Where(fit => fit.Shape == RenderingTemplates.ShapeOf(atom))
+                    .SelectMany(fit => RenderingTemplateRows.Templates
+                        .Where(row => row.Item1 == fit.Item1)
+                        .Select(row => (Id: fit.Item1, Pos: row.Item2, Atom: atom))));
             asked.Should().NotBeEmpty();
             asked.Where(a => ProbeRows.Spell(a.Id, a.Pos, a.Atom, Path).Kind == ServiceFormKind.Opaque).Select(a => $"{a.Id} at {a.Pos} over {a.Atom}").Should().BeEmpty();
             TestContext.Current.TestOutputHelper?.WriteLine($"{loaded.Count} atoms loaded, {atoms.Count} in all; {asked.Count()} pairs asked of plain atoms; {Measured.Fits.Count} fits rows");
@@ -76,7 +80,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var parameters = Synthetic(plain: true).Select(a => a with { Operand = null, Points = null, Parameter = true }).ToList();
             parameters.Select(RenderingTemplates.ShapeOf).Should().OnlyContain(s => s == RenderingTemplates.ParameterShape);
             Measured.Fits.Should().NotContain(f => f.Shape == RenderingTemplates.ParameterShape);
-            (from atom in parameters from id in System.Enum.GetValues<TemplateId>() from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
+            parameters
+                .SelectMany(atom => System.Enum.GetValues<TemplateId>()
+                    .SelectMany(id => System.Enum.GetValues<RenderPosition>()
+                        .Select(pos => ProbeRows.Spell(id, pos, atom, Path))))
                 .Should().OnlyContain(f => f.Kind == ServiceFormKind.Opaque);
         }
 
@@ -133,8 +140,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <c>conjunct</c> rows, so a template that wrote a range would never be held to <c>Range</c>.
         /// </summary>
         [Fact]
-        public void NoTemplateWritesTwoOrderingsOfOnePath() => (from atom in Synthetic(plain: false) from id in System.Enum.GetValues<TemplateId>()
-                from pos in System.Enum.GetValues<RenderPosition>() select ProbeRows.Spell(id, pos, atom, Path))
+        public void NoTemplateWritesTwoOrderingsOfOnePath() => Synthetic(plain: false)
+            .SelectMany(atom => System.Enum.GetValues<TemplateId>()
+                .SelectMany(id => System.Enum.GetValues<RenderPosition>()
+                    .Select(pos => ProbeRows.Spell(id, pos, atom, Path))))
             .Where(f => f.Subforms.Count(g => RenderingPrimitives.StringOrdering.Function(g)) > 1).Select(f => f.Text).Should().BeEmpty();
 
         /// <summary>

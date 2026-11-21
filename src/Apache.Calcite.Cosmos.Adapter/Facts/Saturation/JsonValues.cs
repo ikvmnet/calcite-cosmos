@@ -425,7 +425,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// <param name="classes">The classes held.</param>
         /// <param name="maps">The rows.</param>
         public static ValueSet<string> Mapped(ValueSet<string> classes, ValueSet<JsonClassMap> maps) =>
-            classes.Union(ValueSet.From(from map in maps where classes.Contains(map.From) select map.To));
+            classes.Union(ValueSet.From(maps.Where(map => classes.Contains(map.From)).Select(map => map.To)));
 
         /// <summary>
         /// Determines whether a text holds no unpaired surrogate, which the SDK's encoder refuses to send

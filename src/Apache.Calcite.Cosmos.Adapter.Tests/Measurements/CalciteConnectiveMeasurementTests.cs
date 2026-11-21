@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             var row = CosmosAxioms.Get("Calcite.ConnectivesAreKleene").Outcomes!.ToDictionary(o => (o.Test, o.Operand), o => o.Cells.ToDictionary(c => c.Cell, c => c.Answer.ToString()[0]));
             CosmosValueClass[] truths = [CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Undefined];
-            string Each(Func<CosmosValueClass, CosmosValueClass, char> answer) => string.Concat(from a in truths from b in truths select answer(a, b));
+            string Each(Func<CosmosValueClass, CosmosValueClass, char> answer) => string.Concat(truths.SelectMany(a => truths.Select(b => answer(a, b))));
             pairs.Ask(connection, $"{A} AND {B}", $"{B} AND {A}", $"{A} OR {B}", $"{B} OR {A}", $"NOT {A}").Should().Equal(
                 Each((a, b) => row[(CosmosServiceTest.And, a)][b]), Each((a, b) => row[(CosmosServiceTest.And, b)][a]),
                 Each((a, b) => row[(CosmosServiceTest.Or, a)][b]), Each((a, b) => row[(CosmosServiceTest.Or, b)][a]), Each((a, _) => row[(CosmosServiceTest.Not, CosmosValueClass.None)][a]));

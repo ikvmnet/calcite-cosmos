@@ -83,10 +83,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var table = new MaterialisedTable([("s", SqlTypeName.VARCHAR), ("n", SqlTypeName.INTEGER), ("x", SqlTypeName.DOUBLE)],
                 [("{}", [null, null, null]), ("{}", ["\"12\"", "2", "2.5"])]);
             var (columns, constants) = (new Dictionary<char, string> { ['s'] = "\"s\"", ['n'] = "\"n\"", ['x'] = "\"x\"" }, new Dictionary<char, string> { ['s'] = "'12'", ['n'] = "2", ['x'] = "2.5" });
-            var asked = (from name in names
-                         from form in Forms[name]
-                         from i in Enumerable.Range(0, form.Kinds.Length)
-                         select string.Format(form.Form, form.Kinds.Select((k, j) => j == i ? columns[k] : constants[k]).ToArray<object>())).ToList();
+            var asked = names
+                .SelectMany(name => Forms[name]
+                    .SelectMany(form => Enumerable.Range(0, form.Kinds.Length)
+                        .Select(i => string.Format(form.Form, form.Kinds.Select((k, j) => j == i ? columns[k] : constants[k]).ToArray<object>()))))
+                .ToList();
 
             using var connection = Open();
             var answers = table.Ask(connection, [.. asked.Select(e => e + " IS NULL")]);
@@ -121,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             readers.Where(r => Witnesses(r).Any() == false).Should().BeEmpty("every reading the row holds is measured");
 
             using var connection = Open();
-            var asked = (from reader in readers from w in Witnesses(reader) select (reader, w.Table, w.Value, Expression: w.Expression + " IS NULL")).ToList();
+            var asked = readers.SelectMany(reader => Witnesses(reader).Select(w => (reader, w.Table, w.Value, Expression: w.Expression + " IS NULL"))).ToList();
             asked.Where(a => a.Table(null).Ask(connection, a.Expression)[0] != "T").Select(a => $"{a.reader}: {a.Expression}").Should().BeEmpty("null over an absent path");
             asked.Where(a => a.Table(a.Value).Failure(connection, a.Expression) is null && a.Table(a.Value).Ask(connection, a.Expression)[0] != "F")
                 .Select(a => $"{a.reader}: {a.Expression}").Should().BeEmpty("present, it answers or raises");

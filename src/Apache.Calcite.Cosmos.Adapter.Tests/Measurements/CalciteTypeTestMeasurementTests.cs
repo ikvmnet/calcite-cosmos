@@ -33,13 +33,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public void EachTypeTestAnswersItsRowInProcess()
         {
             var tests = CosmosFunctionBodiesTests.Tests.ToDictionary(t => t.Name.Replace("IS_", "").Replace("_", ""), t => t.Body, System.StringComparer.OrdinalIgnoreCase);
-            var wrong = from outcome in CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies").Outcomes!
-                        from cell in outcome.Cells
-                        from json in CosmosOutcomeWitnesses.Of(CosmosValueClass.None, cell.Cell)
-                        let document = json is null ? "{}" : $"{{\"v\":{json}}}"
-                        let answer = tests[outcome.Test.ToString()[2..]](document, "$.v") ? CosmosAnswer.True : CosmosAnswer.False
-                        where answer != cell.Answer
-                        select $"{outcome.Test} over {json ?? "absent"} is {answer}, the row {cell.Answer}";
+            var wrong = CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies").Outcomes!
+                .SelectMany(outcome => outcome.Cells.SelectMany(cell => CosmosOutcomeWitnesses.Of(CosmosValueClass.None, cell.Cell)
+                    .Select(json => (Json: json, Document: json is null ? "{}" : $"{{\"v\":{json}}}"))
+                    .Select(witness => (witness.Json,
+                        Answer: tests[outcome.Test.ToString()[2..]](witness.Document, "$.v") ? CosmosAnswer.True : CosmosAnswer.False))
+                    .Where(witness => witness.Answer != cell.Answer)
+                    .Select(witness => $"{outcome.Test} over {witness.Json ?? "absent"} is {witness.Answer}, the row {cell.Answer}")));
 
             wrong.Should().BeEmpty();
             CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies").Outcomes!.Select(o => o.Test).Should().BeEquivalentTo(
@@ -110,7 +110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var row = CosmosAxioms.Get("Calcite.TypeTestsAreTheirBodies");
             var classes = new[] { CosmosValueClass.Absent, CosmosValueClass.Null, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Number, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array };
             // The catalogue's witnesses, and a string every RETURNING of a number reads as one.
-            var witnesses = (from cell in classes from json in CosmosOutcomeWitnesses.Of(CosmosValueClass.None, cell) select (Cell: cell, Json: json))
+            var witnesses = classes.SelectMany(cell => CosmosOutcomeWitnesses.Of(CosmosValueClass.None, cell).Select(json => (Cell: cell, Json: json)))
                 .Append((Cell: CosmosValueClass.String, Json: (string?)"\"30\"")).ToList();
 
             using var connection = MaterialisedTable.Open("all");

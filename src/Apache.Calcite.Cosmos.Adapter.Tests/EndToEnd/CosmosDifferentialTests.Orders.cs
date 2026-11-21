@@ -97,12 +97,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>The paths every pair of which has a composite index, in both direction patterns.</summary>
         static readonly string[] OrderIndexedPairs = ["/s", "/t", "/k", "/b", "/w", "/id", "/e"];
 
-        static IEnumerable<(string First, string Second, bool SecondDescending)> OrderCompositePairs() =>
-            from first in OrderIndexedPairs
-            from second in OrderIndexedPairs
-            where first != second
-            from down in new[] { false, true }
-            select (first, second, down);
+        static IEnumerable<(string First, string Second, bool SecondDescending)> OrderCompositePairs() => OrderIndexedPairs
+            .SelectMany(first => OrderIndexedPairs
+                .Where(second => first != second)
+                .SelectMany(second => new[] { false, true }.Select(down => (first, second, down))));
 
         static CosmosCompositeIndex[] OrderCompositeIndexes() => OrderCompositePairs()
             .Select(p => new CosmosCompositeIndex([new CosmosCompositeIndexPath(p.First, false), new CosmosCompositeIndexPath(p.Second, p.SecondDescending)]))

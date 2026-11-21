@@ -116,12 +116,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void NoTwoOutcomesNameOneTargetForOneCell()
         {
-            var claims = from axiom in WithOutcomes
-                         from outcome in axiom.Outcomes!
-                         from target in Enum.GetValues<CosmosAxiomTarget>()
-                         where outcome.On.HasFlag(target)
-                         from cell in outcome.Cells
-                         select $"{axiom.Id} {outcome.Formula ?? outcome.Test + "/" + outcome.Operand} {cell.Cell} on {target}";
+            var claims = WithOutcomes
+                .SelectMany(axiom => axiom.Outcomes!
+                    .SelectMany(outcome => Enum.GetValues<CosmosAxiomTarget>()
+                        .Where(target => outcome.On.HasFlag(target))
+                        .SelectMany(target => outcome.Cells
+                            .Select(cell => $"{axiom.Id} {outcome.Formula ?? outcome.Test + "/" + outcome.Operand} {cell.Cell} on {target}"))));
 
             claims.Should().OnlyHaveUniqueItems();
         }
@@ -145,7 +145,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void TheFunctionRowsReadBackKeyByKey()
         {
-            var outcomes = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] select (axiom, o)).ToList();
+            var outcomes = CosmosAxioms.All.SelectMany(axiom => (axiom.FunctionOutcomes ?? []).Select(o => (axiom, o))).ToList();
             outcomes.Should().NotBeEmpty();
             foreach (var (axiom, o) in outcomes)
                 (o.On != 0 && (o.On & ~axiom.MeasuredOn) == 0).Should().BeTrue($"{axiom.Id}'s {o.Function}/{o.Operand}/{o.Band} names {o.On}, within {axiom.MeasuredOn}");
@@ -225,12 +225,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 (RenderingTarget.Azure, Test.Contains, CosmosTruncation.OneRun, JsonValues.NulClass), (RenderingTarget.Azure, Test.Like, CosmosTruncation.OneRun, JsonValues.NulClass),
             });
             CosmosAxiomRows.ReadRewrites(all).Should().BeEquivalentTo(new[] { (CosmosAnswer.StoredCodePoint, JsonValues.NulClass), (CosmosAnswer.StoredCodePoint, JsonValues.EscapeClass) });
-            CosmosAxiomRows.ReadFolds(all).Should().BeEquivalentTo(
-                from target in new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
-                from test in new[] { Test.StartsWith, Test.EndsWith, Test.Contains }
-                from function in new[] { "UPPER", "LOWER" }
-                from band in new[] { JsonValues.SurrogateBand, JsonValues.HighBand, JsonValues.NonAsciiBand }
-                select (target, test, function, band));
+            CosmosAxiomRows.ReadFolds(all).Should().BeEquivalentTo(new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
+                .SelectMany(target => new[] { Test.StartsWith, Test.EndsWith, Test.Contains }
+                    .SelectMany(test => new[] { "UPPER", "LOWER" }
+                        .SelectMany(function => new[] { JsonValues.SurrogateBand, JsonValues.HighBand, JsonValues.NonAsciiBand }
+                            .Select(band => (target, test, function, band))))));
             CosmosAxiomRows.ReadUnsent(all).Should().BeEquivalentTo(new[] { (RenderingTarget.Azure, JsonValues.UnpairedClass), (RenderingTarget.Emulator, JsonValues.UnpairedClass) });
 
             var mirror = CosmosAxiomRows.ReadPairReadings(all);
@@ -354,11 +353,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var means = ProbeTheory.Theory.Get(ProbeTheory.Means.Of());
             ValueSet<CosmosAnswer>? Final(MeasuredKey key, RenderingSet set) => ProbeTheory.Theory.TryGet(ProbeTheory.Final.Of(key, set), out var answers) ? answers : null;
             ServiceOutcomes Meaning(ValueSet<CosmosAnswer> answers) => answers.Aggregate(ServiceOutcomes.None, (m, a) => m | means.Of(a));
-            var disagreeing = from key in ProbeRows.Rows.Select(r => r.Key).Distinct()
-                              let azure = Final(key, RenderingSet.Production)
-                              let emulator = Final(key, RenderingSet.Emulator)
-                              where azure is not null && emulator is not null && azure.Equals(emulator) == false && (Meaning(azure) & Meaning(emulator)) == ServiceOutcomes.None
-                              select key.ToString();
+            var disagreeing = ProbeRows.Rows.Select(r => r.Key).Distinct()
+                .Select(key => (Key: key, Azure: Final(key, RenderingSet.Production), Emulator: Final(key, RenderingSet.Emulator)))
+                .Where(settled => settled.Azure is not null && settled.Emulator is not null && settled.Azure.Equals(settled.Emulator) == false
+                    && (Meaning(settled.Azure) & Meaning(settled.Emulator)) == ServiceOutcomes.None)
+                .Select(settled => settled.Key.ToString());
 
             disagreeing.Should().BeEquivalentTo(Disagreements.Select(k => k.ToString()));
         }
@@ -373,9 +372,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var rows = CosmosAxiomRows.Read(CosmosAxioms.All);
             rows.Where(r => CosmosOutcomeWitnesses.Cells(r.Key.Test, r.Key.Operand, r.Target).Contains(r.Key.Cell) == false).Should().BeEmpty();
 
-            var uncovered = from key in rows.GroupBy(r => (r.Key.Test, r.Key.Operand, r.Target))
-                            from cell in CosmosOutcomeWitnesses.Cells(key.Key.Test, key.Key.Operand, key.Key.Target).Except(key.Select(r => r.Key.Cell))
-                            select $"{MeasuredKey.Of(key.Key.Test, key.Key.Operand, cell)} on {key.Key.Target}";
+            var uncovered = rows.GroupBy(r => (r.Key.Test, r.Key.Operand, r.Target))
+                .SelectMany(key => CosmosOutcomeWitnesses.Cells(key.Key.Test, key.Key.Operand, key.Key.Target).Except(key.Select(r => r.Key.Cell))
+                    .Select(cell => $"{MeasuredKey.Of(key.Key.Test, key.Key.Operand, cell)} on {key.Key.Target}"));
 
             uncovered.Should().BeEquivalentTo(CosmosAxiomRows.Owed.Select(o => $"{o.Key} on {o.Target}"));
         }
@@ -391,17 +390,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var path = SqlValue.Spell(JsonDocumentPath.Root.Property("v"));
             var tables = new[] { (CosmosAxiomTarget.Emulator, RenderingSet.Emulator), (CosmosAxiomTarget.Azure, RenderingSet.Production) }
                 .ToDictionary(t => t.Item1, t => ServiceTable.Of(ProbeTheory.Theory.Get(ProbeTheory.Table.Of(t.Item2)), ProbeTheory.Theory.Get(ProbeTheory.ReaderClasses.Of())));
-            var wrong = from axiom in WithOutcomes
-                        from outcome in axiom.Outcomes!
-                        where outcome.Formula is not null
-                        from target in tables.Keys
-                        where outcome.On.HasFlag(target)
-                        from cell in outcome.Cells
-                        let measured = AnswerMeanings.Measured.Of(cell.Answer)
-                        let cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell.Cell).Select(CellOf)))
-                        from composed in CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], LeafReads.None).Outcomes.Select(o => o.Outcomes)
-                        where composed != measured
-                        select $"{axiom.Id}: {outcome.Formula} at {cell.Cell} on {target} is {measured}, composed {composed}";
+            var wrong = WithOutcomes
+                .SelectMany(axiom => axiom.Outcomes!
+                    .Where(outcome => outcome.Formula is not null)
+                    .SelectMany(outcome => tables.Keys
+                        .Where(target => outcome.On.HasFlag(target))
+                        .SelectMany(target => outcome.Cells.SelectMany(cell =>
+                        {
+                            var measured = AnswerMeanings.Measured.Of(cell.Answer);
+                            var cells = new CellPartition(path, ValueSet.From(CosmosOutcomeWitnesses.Of(Class.None, cell.Cell).Select(CellOf)));
+                            return CellOutcomesTests.Evaluate(Read(outcome.Formula!, path), cells, tables[target], LeafReads.None).Outcomes.Select(o => o.Outcomes)
+                                .Where(composed => composed != measured)
+                                .Select(composed => $"{axiom.Id}: {outcome.Formula} at {cell.Cell} on {target} is {measured}, composed {composed}");
+                        }))));
 
             wrong.Should().BeEmpty();
         }
@@ -482,24 +483,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
 
             // The cells each row's keys declare, and the class whose witnesses stand there: a connective's and a composite's
             // are the kinds at c.v, as the harness writes them.
-            var declared = (from axiom in WithOutcomes
-                            from o in axiom.Outcomes!
-                            from cell in o.Cells
-                            select (Key: (axiom.Id, o.Formula ?? o.Test + "/" + o.Operand, cell.Cell), Operand: o.Formula is null && o.Test is not (Test.And or Test.Or) ? o.Operand : Class.None))
+            var declared = WithOutcomes
+                .SelectMany(axiom => axiom.Outcomes!
+                    .SelectMany(o => o.Cells
+                        .Select(cell => (Key: (axiom.Id, o.Formula ?? o.Test + "/" + o.Operand, cell.Cell),
+                            Operand: o.Formula is null && o.Test is not (Test.And or Test.Or) ? o.Operand : Class.None))))
                 .DistinctBy(d => d.Key).ToDictionary(d => d.Key, d => d.Operand);
             var split = records.GroupBy(r => (r.Record, r.Row, r.Key, r.Cell)).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
-            var claimable = (from r in records
-                             where Enum.TryParse<CosmosAnswer>(r.Answer, out _) && declared.TryGetValue((r.Row, r.Key, r.Cell), out var operand)
-                                 && split.Contains((r.Record, r.Row, r.Key, r.Cell)) == false && Witnessed(operand, r.Cell, r.Witnesses)
-                             select (r.Row, r.Key, r.Cell, Answer: Enum.Parse<CosmosAnswer>(r.Answer))).ToList();
+            var claimable = records
+                .Where(r => Enum.TryParse<CosmosAnswer>(r.Answer, out _) && declared.TryGetValue((r.Row, r.Key, r.Cell), out var operand)
+                    && split.Contains((r.Record, r.Row, r.Key, r.Cell)) == false && Witnessed(operand, r.Cell, r.Witnesses))
+                .Select(r => (r.Row, r.Key, r.Cell, Answer: Enum.Parse<CosmosAnswer>(r.Answer)))
+                .ToList();
             // A row the probe account's witness record holds is held to it below, line by line, not by the harness's cells.
             var witnessed = AzureWitnessRecords().Select(l => l.Row).ToHashSet();
-            var claims = (from axiom in WithOutcomes
-                          where witnessed.Contains(axiom.Id) == false
-                          from outcome in axiom.Outcomes!
-                          where outcome.On.HasFlag(CosmosAxiomTarget.Azure)
-                          from cell in outcome.Cells
-                          select (axiom.Id, outcome.Formula ?? outcome.Test + "/" + outcome.Operand, cell.Cell, cell.Answer)).ToList();
+            var claims = WithOutcomes
+                .Where(axiom => witnessed.Contains(axiom.Id) == false)
+                .SelectMany(axiom => axiom.Outcomes!
+                    .Where(outcome => outcome.On.HasFlag(CosmosAxiomTarget.Azure))
+                    .SelectMany(outcome => outcome.Cells
+                        .Select(cell => (axiom.Id, outcome.Formula ?? outcome.Test + "/" + outcome.Operand, cell.Cell, cell.Answer))))
+                .ToList();
 
             // A line is claimed by its answer, or by a later run's that means nothing more, as a WHERE NOT read beside a NotKept.
             claims.Except(claimable).Should().BeEmpty("an outcome claims Azure only where a run read the cell as its test does");
@@ -608,7 +612,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void AFunctionKeyAnotherRowRanNamesARowMeasuredWhereItClaims()
         {
-            var backed = (from axiom in CosmosAxioms.All from o in axiom.FunctionOutcomes ?? [] where o.Evidence is not null select (axiom, o)).ToList();
+            var backed = CosmosAxioms.All
+                .SelectMany(axiom => (axiom.FunctionOutcomes ?? []).Where(o => o.Evidence is not null).Select(o => (axiom, o)))
+                .ToList();
             backed.Should().NotBeEmpty();
             foreach (var (axiom, o) in backed)
             {

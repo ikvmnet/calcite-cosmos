@@ -446,7 +446,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     return [];
 
                 var calcite = new List<Truths>();
-                foreach (var (mode, column) in from mode in Modes from column in IrEval.RawModes(ir) select (mode, column))
+                foreach (var (mode, column) in Modes.SelectMany(mode => IrEval.RawModes(ir).Select(column => (mode, column))))
                 {
                     var tossed = world.Tossed;
                     Truths truth;

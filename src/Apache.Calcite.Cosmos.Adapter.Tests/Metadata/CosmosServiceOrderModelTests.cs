@@ -962,11 +962,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                                 yield return [new Key(first, d1, n1), new Key(second, d2, d2)];
         }
 
-        static IEnumerable<IReadOnlyList<Key>> OneKey() =>
-            from operand in Operands()
-            from down in new[] { false, true }
-            from nullsFirst in new[] { false, true }
-            select (IReadOnlyList<Key>)[new Key(operand, down, nullsFirst)];
+        static IEnumerable<IReadOnlyList<Key>> OneKey() => Operands()
+            .SelectMany(operand => new[] { false, true }
+                .SelectMany(down => new[] { false, true }
+                    .Select(nullsFirst => (IReadOnlyList<Key>)[new Key(operand, down, nullsFirst)])));
 
         static readonly Value[] Literals = [Value.Of(""), Value.Of("a"), Value.Of("B"), Value.Of("\u00E9"), Value.Of(1), Value.Of(9223372036854775801)];
 

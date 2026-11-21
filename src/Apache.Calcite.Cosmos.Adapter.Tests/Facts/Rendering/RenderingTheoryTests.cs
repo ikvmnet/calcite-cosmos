@@ -461,9 +461,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static bool Keeps(ServiceOutcomes y, RenderPosition pos) => y == (pos == RenderPosition.Pos ? ServiceOutcomes.True : ServiceOutcomes.False);
 
         static IEnumerable<(Truths Calcite, ServiceOutcomes Service)> Pairs(CellClass k) =>
-            from x in Enumerable.Range(0, 4) where ((int)k.Calcite & 1 << x) != 0
-            from y in Enumerable.Range(0, 4) where ((int)k.Service & 1 << y) != 0
-            select ((Truths)(1 << x), (ServiceOutcomes)(1 << y));
+            Enumerable.Range(0, 4).Where(x => ((int)k.Calcite & 1 << x) != 0)
+                .SelectMany(x => Enumerable.Range(0, 4).Where(y => ((int)k.Service & 1 << y) != 0)
+                    .Select(y => ((Truths)(1 << x), (ServiceOutcomes)(1 << y))));
 
         /// <summary>
         /// A key is settled in a set once every target the set serves measured it: one the emulator alone measured is in
@@ -657,7 +657,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .Concat(scalars.Select(PredicateAtom.TypedReader))
                 // A computed text place's reader (h10): the loader types a call VARCHAR or CHAR.
                 .Concat(new[] { "VARCHAR", "CHAR" }.Select(PredicateAtom.TypedReader))
-                .Concat(from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner))
+                .Concat(new[] { "INTEGER", "BIGINT", "DOUBLE" }
+                    .SelectMany(target => new[] { PredicateAtom.TextReader, PredicateAtom.RawReader }
+                        .Select(inner => PredicateAtom.CastReader(target, inner))))
                 // The text's parse as a boolean, which S's reading builds (h14's triage).
                 .Append(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader))
                 // A JSON_QUERY with no clause, which a loading reading places builds (G8).
@@ -665,8 +667,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .ToList();
 
             // Each raw reading again through each declared column (rawtyped).
-            built.AddRange([.. from reader in built where PredicateAtom.IsRaw(reader) || reader.EndsWith(":" + PredicateAtom.RawReader, StringComparison.Ordinal)
-                               from column in PredicateAtom.Columns select PredicateAtom.InColumn(reader, column)]);
+            built.AddRange([.. built
+                .Where(reader => PredicateAtom.IsRaw(reader)
+                    || reader.EndsWith(":" + PredicateAtom.RawReader, StringComparison.Ordinal))
+                .SelectMany(reader => PredicateAtom.Columns.Select(column => PredicateAtom.InColumn(reader, column)))]);
 
             // A numeric cast of the raw value is held back until a Calcite row measures it, through a column or not.
             var covered = built.Where(reader => reader.StartsWith("cast:", StringComparison.Ordinal) == false || reader.EndsWith(":" + PredicateAtom.TextReader, StringComparison.Ordinal)

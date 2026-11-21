@@ -32,11 +32,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <see cref="FunctionKey.Literal"/> where they key a literal apart: the rows' own.</param>
         /// <param name="literals">The readers of a literal operand: S's <c>literalreaders</c>.</param>
         public static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered, ValueSet<long> subjects, ValueSet<string> literals) =>
-            ValueSet.From(from i in gathered.AsEnumerable()
-                          from ordinal in FunctionKey.OrdinalsKeying(i.Ordinal, i.Reader, literals).AsEnumerable()
-                          where subjects.Contains(ordinal)
-                          from key in KeysOf(function, ordinal, i)
-                          select key);
+            ValueSet.From(gathered.AsEnumerable().SelectMany(i => FunctionKey.OrdinalsKeying(i.Ordinal, i.Reader, literals).AsEnumerable()
+                .Where(ordinal => subjects.Contains(ordinal))
+                .SelectMany(ordinal => KeysOf(function, ordinal, i))));
 
         /// <summary>
         /// The keys a call's result falls under where its function's rows key one (<see cref="FunctionKey.Result"/>): a string

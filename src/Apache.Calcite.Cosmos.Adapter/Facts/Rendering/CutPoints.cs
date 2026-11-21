@@ -30,7 +30,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 .Concat(patterns.Select(AffixPattern.Unescaped).OfType<string>().Select(p => JsonValues.Of(p))).Distinct().ToList();
             return ValueSet.From(literals.Select(l => new CutPoint(l, CutKind.Literal)).Concat(edges.Boundaries.Select(b => new CutPoint(b, CutKind.Boundary)))
                 .Concat(patterns.Where(p => AffixPattern.Unescaped(p) is null).Select(p => new CutPoint(JsonValues.Of(p), CutKind.Affix)))
-                .Concat(from c in literals.Where(IsExactNumber).Select(NumberOf) from edge in edges.Edges select Edge(c, edge)).OfType<CutPoint>());
+                .Concat(literals.Where(IsExactNumber).Select(NumberOf).SelectMany(c => edges.Edges.Select(edge => Edge(c, edge)))).OfType<CutPoint>());
         }
 
         static CutPoint? Edge(decimal c, CutKind edge) => edge switch

@@ -215,8 +215,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             try
             {
                 var answers = await ask(pk, ids);
-                var lines = (from p in pairs ?? [.. from e in Enumerable.Range(0, expressions.Length) from i in Enumerable.Range(0, witnesses.Count) select (e, i)]
-                             select (Expression: expressions[p.Expression], Witness: witnesses[p.Witness] is { Length: > 0 } w ? w : "absent", Answer: answers[p.Expression][p.Witness])).ToList();
+                var lines = (pairs ?? [.. Enumerable.Range(0, expressions.Length).SelectMany(e => Enumerable.Range(0, witnesses.Count).Select(i => (e, i)))])
+                    .Select(p => (Expression: expressions[p.Expression], Witness: witnesses[p.Witness] is { Length: > 0 } w ? w : "absent", Answer: answers[p.Expression][p.Witness]))
+                    .ToList();
                 lock (Log)
                 {
                     var path = Path.GetFullPath(Path.Combine("TestResults", "measurements", "emulator-runs.tsv"));
@@ -226,11 +227,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
                 // A release with a record answers as it did: every line of a release's own record, and any line another holds.
                 var (recorded, complete) = (Recorded.Value, Recorded.Value.Keys.Any(k => k.Release == Release && k.Row == row) && Complete.Value.Contains(Release));
-                var differs = (from l in lines
-                               let key = (Release, row, l.Expression, l.Witness, Projected(l.Answer))
-                               let found = recorded.TryGetValue(key, out var was) ? was : null
-                               where found is null ? complete : found != l.Answer
-                               select $"{l.Expression} over {l.Witness}: {l.Answer}, recorded {found ?? "nothing"}").ToList();
+                var differs = lines
+                    .Select(l => (l.Expression, l.Witness, l.Answer,
+                        Found: recorded.TryGetValue((Release, row, l.Expression, l.Witness, Projected(l.Answer)), out var was) ? was : null))
+                    .Where(l => l.Found is null ? complete : l.Found != l.Answer)
+                    .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer}, recorded {l.Found ?? "nothing"}")
+                    .ToList();
                 if (differs.Count > 0)
                     Assert.Fail($"Release {Release} answers {row} otherwise than its record: " + string.Join("; ", differs.Take(20)));
 

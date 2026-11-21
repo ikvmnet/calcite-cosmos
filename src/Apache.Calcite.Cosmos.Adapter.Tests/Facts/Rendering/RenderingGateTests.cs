@@ -257,7 +257,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         public void AComparisonPartsTheOrdersWhereTheImportMayHoldTheOtherBand()
         {
             var high = "";
-            foreach (var (chars, parted, op) in from c in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) } from op in new[] { "<", "<>" } select (c.Item1, c.Item2, op))
+            foreach (var (chars, parted, op) in new[] { (AllBands, true), (ValueSet.Of(HighBand), false), (NoBand, false) }
+                .SelectMany(c => new[] { "<", "<>" }.Select(op => (c.Item1, c.Item2, op))))
             {
                 var form = ServiceForm.CompareOf(op == "<" ? CosmosServiceTest.Less : CosmosServiceTest.NotEqual, Label, Of(high));
                 using var bundle = ProbeTheory.Open(RenderingCheckRun.AssertedSet);

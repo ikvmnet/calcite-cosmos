@@ -375,12 +375,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             static bool Subject(FunctionKey k) => k.Function == "LOWER" && k.Kind == CosmosValueClass.String && k.Band == JsonCharacterBand.None;
             static RenderingTheory Split(params FunctionValueClass[] classes) => RenderingTheory.Define(Measured with
             {
-                Functions = [.. Measured.Functions.Where(f => Subject(f.Key) == false), .. from f in Measured.Functions where Subject(f.Key) from c in classes select (f.Key with { Value = c }, f.Target, f.Answer)],
+                Functions =
+                [
+                    .. Measured.Functions.Where(f => Subject(f.Key) == false),
+                    .. Measured.Functions
+                        .Where(f => Subject(f.Key))
+                        .SelectMany(f => classes.Select(c => (f.Key with { Value = c }, f.Target, f.Answer))),
+                ],
             });
             var (whole, part) = (Split(FunctionValueClass.Empty, FunctionValueClass.NonEmpty), Split(FunctionValueClass.NonEmpty));
             var differing = RenderingTheory.Define(Measured with
             {
-                Functions = [.. Measured.Functions, .. from f in Measured.Functions where Subject(f.Key) select (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs)],
+                Functions =
+                [
+                    .. Measured.Functions,
+                    .. Measured.Functions
+                        .Where(f => Subject(f.Key))
+                        .Select(f => (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs)),
+                ],
             });
 
             Generate(lower, RenderingSet.Emulator, Strings, JsonCharacterBand.None, whole).Answer.Kind.Should().Be(RenderingVerdictKind.Proven, "the two classes hold both atoms of a string");
@@ -401,7 +413,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var left = Loading.Read(Rex.makeCall(SqlStdOperatorTable.EQUALS, Rex.makeCall(SqlLibraryOperators.LEFT, Name, Int(2)), Lit("ab")));
             static RenderingTheory Counted(CosmosFunctionAnswer answer) => RenderingTheory.Define(Measured with
             {
-                Functions = [.. Measured.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, answer)],
+                Functions =
+                [
+                    .. Measured.Functions,
+                    .. new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
+                        .Select(target => (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, answer)),
+                ],
                 FunctionSubjects = [.. Measured.FunctionSubjects, ("LEFT", 1L)],
                 FunctionYields = [.. Measured.FunctionYields, (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), CalciteYield.Value)],
             });
@@ -428,10 +445,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 Functions =
                 [
                     .. Measured.Functions.Where(f => Subject(f.Key) == false),
-                    .. from f in Measured.Functions
-                       where Subject(f.Key)
-                       from row in new[] { (FunctionValueClass.BelowOne, CosmosFunctionAnswer.Same), (FunctionValueClass.AtLeastOne, CosmosFunctionAnswer.Differs) }
-                       select (f.Key with { Value = row.Item1 }, f.Target, row.Item2),
+                    .. Measured.Functions
+                        .Where(f => Subject(f.Key))
+                        .SelectMany(f => new[] { (FunctionValueClass.BelowOne, CosmosFunctionAnswer.Same), (FunctionValueClass.AtLeastOne, CosmosFunctionAnswer.Differs) }
+                            .Select(row => (f.Key with { Value = row.Item1 }, f.Target, row.Item2))),
                 ],
             });
             static PathValues Cell(string number) => PathValues.Meet(PathValues.OneOf(ValueSet.Of(Of("ABC"), number)), PathValues.OfKinds(ValueSet.Of(StringType, TypeOf(number))));

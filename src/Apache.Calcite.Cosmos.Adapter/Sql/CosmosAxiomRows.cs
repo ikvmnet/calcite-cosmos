@@ -25,13 +25,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>One row per cell per target of every outcome that is no composite, citing its axiom.</summary>
         public static IReadOnlyList<MeasuredOutcome> Read(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. from axiom in axioms
-               from outcome in axiom.Outcomes ?? []
-               where outcome.Formula is null
-               from target in Targets
-               where outcome.On.HasFlag(target.Flag)
-               from cell in outcome.Cells
-               select new MeasuredOutcome(axiom.Id, MeasuredKey.Of(outcome.Test, outcome.Operand, cell.Cell, outcome.Band), target.Target, cell.Answer),
+            .. axioms.SelectMany(axiom => (axiom.Outcomes ?? [])
+                .Where(outcome => outcome.Formula is null)
+                .SelectMany(outcome => Targets
+                    .Where(target => outcome.On.HasFlag(target.Flag))
+                    .SelectMany(target => outcome.Cells
+                        .Select(cell => new MeasuredOutcome(
+                            axiom.Id, MeasuredKey.Of(outcome.Test, outcome.Operand, cell.Cell, outcome.Band),
+                            target.Target, cell.Answer))))),
         ];
 
         /// <summary>
@@ -44,10 +45,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>One row per key per target of each function outcome given: the axioms' and the declared rows' alike.</summary>
         public static IReadOnlyList<(FunctionKey Key, RenderingTarget Target, CosmosFunctionAnswer Answer)> ReadFunctions(IEnumerable<CosmosFunctionOutcome> outcomes) =>
         [
-            .. from outcome in outcomes
-               from target in Targets
-               where outcome.On.HasFlag(target.Flag)
-               select (KeyOf(outcome), target.Target, outcome.Answer),
+            .. outcomes.SelectMany(outcome => Targets
+                .Where(target => outcome.On.HasFlag(target.Flag))
+                .Select(target => (KeyOf(outcome), target.Target, outcome.Answer))),
         ];
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>functionyield</c>: what a call's image holds where its keys agree, as the row states it. It merges nothing.
         /// </summary>
         public static IReadOnlyList<(FunctionKey Key, CalciteYield Yields)> ReadFunctionYields(IEnumerable<CosmosFunctionOutcome> outcomes) =>
-            [.. (from outcome in outcomes select (KeyOf(outcome), outcome.Yields)).Distinct()];
+            [.. outcomes.Select(outcome => (KeyOf(outcome), outcome.Yields)).Distinct()];
 
         /// <summary>
         /// One row per name a function's rows are filed under, with the operator it is of and the SQL type it is keyed by,
@@ -63,7 +63,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// is keyed by is S's rule over these, never a list of the operators keyed by type.
         /// </summary>
         public static IReadOnlyList<(string Operator, string? Type, string Name)> ReadFunctionNames(IEnumerable<CosmosFunctionOutcome> outcomes) =>
-            [.. (from outcome in outcomes select (outcome.Function, outcome.Type, outcome.Name)).Distinct()];
+            [.. outcomes.Select(outcome => (outcome.Function, outcome.Type, outcome.Name)).Distinct()];
 
         /// <summary>Every function outcome of the axioms given.</summary>
         public static IEnumerable<CosmosFunctionOutcome> OutcomesOf(IEnumerable<CosmosAxiom> axioms) => axioms.SelectMany(a => a.FunctionOutcomes ?? []);
@@ -85,13 +85,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         public static IReadOnlyList<CosmosFunctionOutcome> Declared { get; } =
         [
-            .. from kind in new[] { CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
-                   CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
-               select new CosmosFunctionOutcome("ToString", FunctionKey.Every, kind, JsonCharacterBand.None, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
-                   CosmosFunctionAnswer.Defined, CalciteYield.Null),
-            .. from band in JsonValues.CharacterClasses.Where(c => c.Flag == c.Within).Select(c => c.Flag).Prepend(JsonCharacterBand.None)
-               select new CosmosFunctionOutcome("ToString", FunctionKey.Every, CosmosValueClass.String, band, CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure,
-                   CosmosFunctionAnswer.Defined, CalciteYield.Null),
+            .. new[] { CosmosValueClass.Number, CosmosValueClass.True, CosmosValueClass.False, CosmosValueClass.Null,
+                    CosmosValueClass.Absent, CosmosValueClass.Object, CosmosValueClass.Array }
+                .Select(kind => new CosmosFunctionOutcome("ToString", FunctionKey.Every, kind, JsonCharacterBand.None,
+                    CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Defined, CalciteYield.Null)),
+            .. JsonValues.CharacterClasses
+                .Where(c => c.Flag == c.Within)
+                .Select(c => c.Flag)
+                .Prepend(JsonCharacterBand.None)
+                .Select(band => new CosmosFunctionOutcome("ToString", FunctionKey.Every, CosmosValueClass.String, band,
+                    CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, CosmosFunctionAnswer.Defined, CalciteYield.Null)),
         ];
 
         /// <summary>
@@ -100,9 +103,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<JsonClassMap> ReadStored(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from stored in axiom.StoredAs ?? []
-                select new JsonClassMap(stored.Written, stored.Stored)).Distinct(),
+            .. axioms.SelectMany(axiom => axiom.StoredAs ?? [])
+                .Select(stored => new JsonClassMap(stored.Written, stored.Stored))
+                .Distinct(),
         ];
 
         /// <summary>
@@ -111,20 +114,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(RenderingTarget Target, string Written, string Stored)> ReadStoredOn(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from stored in axiom.StoredAs ?? []
-                from target in Targets
-                where axiom.MeasuredOn.HasFlag(target.Flag)
-                select (target.Target, stored.Written, stored.Stored)).Distinct(),
+            .. axioms
+                .SelectMany(axiom => (axiom.StoredAs ?? [])
+                    .SelectMany(stored => Targets
+                        .Where(target => axiom.MeasuredOn.HasFlag(target.Flag))
+                        .Select(target => (target.Target, stored.Written, stored.Stored))))
+                .Distinct(),
         ];
 
         /// <summary>One row per pair of bands a comparator ranks apart from Calcite's order (F3), S's <c>parts</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band, string Other)> ReadParts(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from part in axiom.Parts ?? [] select (part.Comparator, part.Band, part.Other)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Parts ?? [])
+                .Select(part => (part.Comparator, part.Band, part.Other))
+                .Distinct()];
 
         /// <summary>One row per band a comparator's spelling rewrites (G1), S's <c>rewrites</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadRewrites(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from rewrite in axiom.Rewrites ?? [] select (rewrite.Comparator, rewrite.Band)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Rewrites ?? [])
+                .Select(rewrite => (rewrite.Comparator, rewrite.Band))
+                .Distinct()];
 
         /// <summary>
         /// One row per class a parameter holding a character of is never sent, on each target the row was measured on (G1),
@@ -132,20 +140,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(RenderingTarget Target, string Class)> ReadUnsent(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from @class in axiom.Unsent ?? []
-                from target in Targets
-                where axiom.MeasuredOn.HasFlag(target.Flag)
-                select (target.Target, @class)).Distinct(),
+            .. axioms
+                .SelectMany(axiom => (axiom.Unsent ?? [])
+                    .SelectMany(@class => Targets
+                        .Where(target => axiom.MeasuredOn.HasFlag(target.Flag))
+                        .Select(target => (target.Target, @class))))
+                .Distinct(),
         ];
 
         /// <summary>One row per way a comparator reads a whole number within int64 (G2), S's <c>wholereads</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Reading)> ReadWholeReadings(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from reading in axiom.WholeReadings ?? [] select (reading.Comparator, reading.Reading)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.WholeReadings ?? [])
+                .Select(reading => (reading.Comparator, reading.Reading))
+                .Distinct()];
 
         /// <summary>One row per band a comparator moves in order (F3), S's <c>moves</c>. It merges nothing.</summary>
         public static IReadOnlyList<(CosmosAnswer Comparator, string Band)> ReadMoves(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from move in axiom.Moves ?? [] select (move.Comparator, move.Band)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Moves ?? []).Select(move => (move.Comparator, move.Band)).Distinct()];
 
         /// <summary>
         /// One row per target a test reads a string to a band's first character on, for an argument of a shape (F3), S's
@@ -153,11 +164,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Shape, string Band)> ReadTruncations(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from truncation in axiom.Truncations ?? []
-                from target in Targets
-                where truncation.On.HasFlag(target.Flag)
-                select (target.Target, truncation.Test, truncation.Shape, truncation.Band)).Distinct(),
+            .. axioms.SelectMany(axiom => axiom.Truncations ?? [])
+                .SelectMany(truncation => Targets
+                    .Where(target => truncation.On.HasFlag(target.Flag))
+                    .Select(target => (target.Target, truncation.Test, truncation.Shape, truncation.Band)))
+                .Distinct(),
         ];
 
         /// <summary>
@@ -166,43 +177,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(RenderingTarget Target, CosmosServiceTest Test, string Function, string Band)> ReadFolds(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from fold in axiom.Folds ?? []
-                from target in Targets
-                where fold.On.HasFlag(target.Flag)
-                from band in JsonValues.ClassSet(fold.Band).AsEnumerable()
-                select (target.Target, fold.Test, fold.Function, band)).Distinct(),
+            .. axioms.SelectMany(axiom => axiom.Folds ?? [])
+                .SelectMany(fold => Targets
+                    .Where(target => fold.On.HasFlag(target.Flag))
+                    .SelectMany(target => JsonValues.ClassSet(fold.Band).AsEnumerable()
+                        .Select(band => (target.Target, fold.Test, fold.Function, band))))
+                .Distinct(),
         ];
 
         /// <summary>One row per way a comparison of two paths reads against a literal, the mirror law (F3), S's <c>pairreads</c>.</summary>
         public static IReadOnlyList<(CosmosServiceTest Test, bool Swapped, CosmosServiceTest Reads)> ReadPairReadings(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from reading in axiom.PairReadings ?? [] select (reading.Test, reading.Swapped, reading.Reads)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.PairReadings ?? [])
+                .Select(reading => (reading.Test, reading.Swapped, reading.Reads))
+                .Distinct()];
 
         /// <summary>One row per reading or kind of value and the box it is held in cast to <c>VARIANT</c> (F3), S's <c>boxof</c>.</summary>
         public static IReadOnlyList<(string Kind, string Box)> ReadBoxes(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from box in axiom.Boxes ?? [] select (box.Kind, box.Box)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Boxes ?? []).Select(box => (box.Kind, box.Box)).Distinct()];
 
         /// <summary>One row per comparison that reads the values inside one box (F3), S's <c>seesthrough</c>.</summary>
         public static IReadOnlyList<string> ReadSeesThrough(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from op in axiom.SeesThrough ?? [] select op).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.SeesThrough ?? []).Distinct()];
 
         /// <summary>One row per SQL type whose box is null where what it holds is, each measured apart (G8), S's <c>boxnull</c>.</summary>
         public static IReadOnlyList<string> ReadNullThrough(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from type in axiom.NullThrough ?? [] select type).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.NullThrough ?? []).Distinct()];
 
         /// <summary>
         /// One row per reading and kind of stored value a <c>Calcite</c> row measured in process, with what it answers (F3),
         /// S's <c>calcitereads</c>. It merges nothing.
         /// </summary>
         public static IReadOnlyList<(string Reader, CosmosValueClass Kind, string Answer)> ReadCalciteReadings(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from reading in axiom.CalciteReadings ?? [] select (reading.Reader, reading.Kind, reading.Answer)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.CalciteReadings ?? [])
+                .Select(reading => (reading.Reader, reading.Kind, reading.Answer))
+                .Distinct()];
 
         /// <summary>
         /// One row per character class the witnesses of a reading's kind held (F3), S's <c>calcitebands</c>, whose union is
         /// what was measured: what lies beyond it was not.
         /// </summary>
         public static IReadOnlyList<(string Reader, CosmosValueClass Kind, string Band)> ReadCalciteBands(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from reading in axiom.CalciteReadings ?? [] from band in reading.Bands ?? [] select (reading.Reader, reading.Kind, band)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.CalciteReadings ?? [])
+                .SelectMany(reading => (reading.Bands ?? []).Select(band => (reading.Reader, reading.Kind, band)))
+                .Distinct()];
 
         /// <summary>
         /// One row per reading a <c>Calcite</c> row names, by its readings, the readings it reads as another and the tests it
@@ -210,9 +227,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(string Reader, string Row)> ReadCalciteRows(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                from reader in (axiom.CalciteReadings ?? []).Select(r => r.Reader).Concat((axiom.ReadAs ?? []).Select(r => r.Reader)).Concat((axiom.Through ?? []).Select(r => r.Reader))
-                select (reader, axiom.Id)).Distinct(),
+            .. axioms
+                .SelectMany(axiom => (axiom.CalciteReadings ?? []).Select(r => r.Reader)
+                    .Concat((axiom.ReadAs ?? []).Select(r => r.Reader))
+                    .Concat((axiom.Through ?? []).Select(r => r.Reader))
+                    .Select(reader => (reader, axiom.Id)))
+                .Distinct(),
         ];
 
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
@@ -227,7 +247,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// among it, both graphs' <c>asofapath</c>: which readings of an element the predicate vocabulary reads as a path's.
         /// </summary>
         public static IReadOnlyList<string> ReadAsOfAPath(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from reader in axiom.AsOfAPath ?? [] select reader).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.AsOfAPath ?? []).Distinct()];
 
         /// <summary>
         /// One row per element type a <c>Calcite</c> row measured a traversal of, the traversal's form, and each JSON kind of
@@ -235,40 +255,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// a yielded element holds.
         /// </summary>
         public static IReadOnlyList<(string Type, string Form, string Kind)> ReadYieldKinds(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms
-                 from y in axiom.Yields ?? []
-                 from c in y.Classes
-                 from k in CosmosValueClasses.JsonKinds
-                 where k.Class == c
-                 select (y.Type, y.Form, k.Kind)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Yields ?? [])
+                .SelectMany(y => y.Classes
+                    .SelectMany(c => CosmosValueClasses.JsonKinds
+                        .Where(k => k.Class == c)
+                        .Select(k => (y.Type, y.Form, k.Kind))))
+                .Distinct()];
 
         /// <summary>
         /// One row per element type a <c>Calcite</c> row measured a traversal of, the traversal's form, and the reading its
         /// elements read as, both graphs' <c>yieldreads</c>.
         /// </summary>
         public static IReadOnlyList<(string Type, string Form, string Reader)> ReadYieldReads(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from y in axiom.Yields ?? [] select (y.Type, y.Form, y.Reader)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Yields ?? []).Select(y => (y.Type, y.Form, y.Reader)).Distinct()];
 
         /// <summary>
         /// One row per raw column a <c>Calcite</c> row says compares with a parameter as another column does, by its class, both
         /// graphs' <c>parameteras</c>: what a column no literal's row measured answers beside a parameter.
         /// </summary>
         public static IReadOnlyList<(string Column, string As)> ReadParametersAs(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from pair in axiom.ParametersAs ?? [] select pair).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.ParametersAs ?? []).Distinct()];
 
         /// <summary>
         /// One row per reading the facts graph reads as Calcite does beside a literal of a class, both graphs'
         /// <c>readsexactly</c>: which strata a statement's later rounds may rest on (<see cref="CosmosExactReading"/>).
         /// </summary>
         public static IReadOnlyList<(string Reader, CosmosValueClass Beside)> ReadExactReadings(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from exact in axiom.ExactReadings ?? [] select (exact.Reader, exact.Beside)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.ExactReadings ?? [])
+                .Select(exact => (exact.Reader, exact.Beside))
+                .Distinct()];
 
         /// <summary>
         /// One row per reading a one-place test's in-process body takes apart, with the reading it reads instead (G8), both
         /// graphs' <c>testreads</c>: what the predicate vocabulary's type-test and definedness rules read a test's value by.
         /// </summary>
         public static IReadOnlyList<(string Reader, string As)> ReadTestReads(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from read in axiom.TestReads ?? [] select (read.Reader, read.As)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.TestReads ?? []).Select(read => (read.Reader, read.As)).Distinct()];
 
         /// <summary>One row per unit of a pattern a <c>Calcite</c> row says <c>LIKE</c> reads, with what it reads it as, citing the row (G7), <c>likeunits</c>.</summary>
         public static IReadOnlyList<(LikeUnit Unit, string Row)> ReadLikeUnits(IEnumerable<CosmosAxiom> axioms) =>
@@ -288,43 +310,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         static IEnumerable<(RenderingTarget Target, LikeUnit Unit, string Row)> ReadLikeUnitsOn(IEnumerable<CosmosAxiom> axioms)
         {
-            var rows = (from axiom in axioms
-                        from unit in axiom.LikeUnits ?? []
-                        from target in Targets
-                        where (unit.On ?? axiom.MeasuredOn).HasFlag(target.Flag) && axiom.MeasuredOn.HasFlag(target.Flag)
-                        select (target.Target, unit, axiom.Id)).ToList();
-            return (from row in rows
-                    let named = row.Item2.Unit.Length > 0 ? ValueSet<string>.Empty
-                        : ValueSet.From(rows.Where(o => o.Item1 == row.Item1 && o.Item2.Unit.Length > 0).Select(o => o.Item2.Unit))
-                    let over = row.Item2.Over is { } classes ? ValueSet.From(classes) : null
-                    select (row.Item1, new LikeUnit(row.Item2.Unit, row.Item2.Reads, row.Item2.Except ?? "", over, named), row.Item3)).Distinct();
+            var rows = axioms
+                .SelectMany(axiom => (axiom.LikeUnits ?? [])
+                    .SelectMany(unit => Targets
+                        .Where(target => (unit.On ?? axiom.MeasuredOn).HasFlag(target.Flag)
+                            && axiom.MeasuredOn.HasFlag(target.Flag))
+                        .Select(target => (target.Target, unit, axiom.Id))))
+                .ToList();
+            return rows.Select(row =>
+            {
+                var named = row.Item2.Unit.Length > 0 ? ValueSet<string>.Empty
+                    : ValueSet.From(rows.Where(o => o.Item1 == row.Item1 && o.Item2.Unit.Length > 0).Select(o => o.Item2.Unit));
+                var over = row.Item2.Over is { } classes ? ValueSet.From(classes) : null;
+                return (row.Item1, new LikeUnit(row.Item2.Unit, row.Item2.Reads, row.Item2.Except ?? "", over, named), row.Item3);
+            }).Distinct();
         }
 
         /// <summary>One row per reading a <c>Calcite</c> row says is read as another over each class both read alike (G7), <c>calcitereadas</c>.</summary>
         public static IReadOnlyList<(string Reader, string As)> ReadCalciteReadAs(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from read in axiom.ReadAs ?? [] select (read.Reader, read.As)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.ReadAs ?? []).Select(read => (read.Reader, read.As)).Distinct()];
 
         /// <summary>One row per test of a reading a <c>Calcite</c> row says is its operand's (G7), <c>calcitethrough</c>.</summary>
         public static IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> ReadCalciteThrough(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from through in axiom.Through ?? [] select (through.Reader, through.Test, through.Operand)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.Through ?? [])
+                .Select(through => (through.Reader, through.Test, through.Operand))
+                .Distinct()];
 
         /// <summary>
         /// One row per cast a <c>Calcite</c> row measured, by its target and the reading cast, citing the row (F3): both graphs'
         /// <c>measuredcast</c>, which the shared cast rule reads (h15b), and the cast keys of the edges table.
         /// </summary>
         public static IReadOnlyList<(string Target, string Reader, string Row)> ReadCasts(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from cast in axiom.Casts ?? [] select (cast.Target, cast.Reader, axiom.Id)).Distinct()];
+            [.. axioms.SelectMany(axiom => (axiom.Casts ?? []).Select(cast => (cast.Target, cast.Reader, axiom.Id)))
+                .Distinct()];
 
         /// <summary>
         /// One row per reading that compares a number Calcite wrote cast with the number it denotes, moved or not (G8), S's
         /// <c>takesconstant</c>, citing its row.
         /// </summary>
         public static IReadOnlyList<(string Reading, bool Moved, string Row)> ReadComparands(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from comparand in axiom.Comparands ?? [] select (comparand.Reading, comparand.Moved, axiom.Id)).Distinct()];
+            [.. axioms
+                .SelectMany(axiom => (axiom.Comparands ?? [])
+                    .Select(comparand => (comparand.Reading, comparand.Moved, axiom.Id)))
+                .Distinct()];
 
         /// <summary>One row per claim a reading's order holds in process (F3), S's <c>readerorder</c>, whose union is a reading's.</summary>
         public static IReadOnlyList<(string Reader, string Claim)> ReadReaderOrders(IEnumerable<CosmosAxiom> axioms) =>
-            [.. (from axiom in axioms from order in axiom.ReaderOrders ?? [] select (order.Reader, order.Claim)).Distinct()];
+            [.. axioms.SelectMany(axiom => axiom.ReaderOrders ?? [])
+                .Select(order => (order.Reader, order.Claim))
+                .Distinct()];
 
         /// <summary>
         /// One row per class a one-place test a <c>Calcite</c> row measured is TRUE of, citing the row (F3): what a type test
@@ -334,13 +368,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(CosmosServiceTest Test, CosmosValueClass Kind, string Row)> ReadTestKinds(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. (from axiom in axioms
-                where axiom.MeasuredOn == CosmosAxiomTarget.Calcite
-                from outcome in axiom.Outcomes ?? []
-                where outcome.Formula is null && outcome.Operand == CosmosValueClass.None
-                from cell in outcome.Cells
-                where cell.Answer == CosmosAnswer.True
-                select (outcome.Test, cell.Cell, axiom.Id)).Distinct(),
+            .. axioms
+                .Where(axiom => axiom.MeasuredOn == CosmosAxiomTarget.Calcite)
+                .SelectMany(axiom => (axiom.Outcomes ?? [])
+                    .Where(outcome => outcome.Formula is null && outcome.Operand == CosmosValueClass.None)
+                    .SelectMany(outcome => outcome.Cells
+                        .Where(cell => cell.Answer == CosmosAnswer.True)
+                        .Select(cell => (outcome.Test, cell.Cell, axiom.Id))))
+                .Distinct(),
         ];
 
         /// <summary>
@@ -351,7 +386,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>One row per operand each function outcome given is of, by the name its rows are filed under.</summary>
         public static IReadOnlyList<(string Function, long Subject)> ReadFunctionSubjects(IEnumerable<CosmosFunctionOutcome> outcomes) =>
-            [.. (from outcome in outcomes select (outcome.Name, outcome.Subject)).Distinct()];
+            [.. outcomes.Select(outcome => (outcome.Name, outcome.Subject)).Distinct()];
 
         /// <summary>
         /// One row per function an axiom's rows compute: the readers its witnesses were read through, which S reads as
@@ -361,9 +396,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<(string Function, IReadOnlyList<string> Readers)> ReadFunctionReads(IEnumerable<CosmosAxiom> axioms) =>
         [
-            .. from axiom in axioms
-               from function in (axiom.FunctionOutcomes ?? []).Select(o => o.Name).Distinct()
-               select (function, axiom.Readers ?? []),
+            .. axioms.SelectMany(axiom => (axiom.FunctionOutcomes ?? []).Select(o => o.Name).Distinct()
+                .Select(function => (function, axiom.Readers ?? []))),
         ];
 
         /// <summary>
@@ -373,13 +407,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static RawColumnRows ReadColumns(IEnumerable<CosmosAxiom> axioms)
         {
-            var columns = (from axiom in axioms where axiom.MeasuredOn == CosmosAxiomTarget.Calcite from column in axiom.Columns ?? [] select column).ToList();
+            var columns = axioms
+                .Where(axiom => axiom.MeasuredOn == CosmosAxiomTarget.Calcite)
+                .SelectMany(axiom => axiom.Columns ?? [])
+                .ToList();
             return new(
-                [.. from c in columns from read in c.Reads select (c.Reader, c.Name, read.Key, read.Value)],
-                [.. from c in columns from operand in c.Beside select (c.Reader, c.Name, operand)],
-                [.. from c in columns from test in c.Compiles select (c.Reader, c.Name, test.Key, test.Value)],
-                [.. from c in columns select (c.Reader, c.Name, c.AsType)],
-                [.. from c in columns from test in c.Across select (c.Reader, c.Name, test.Key, test.Value)]);
+                [.. columns.SelectMany(c => c.Reads.Select(read => (c.Reader, c.Name, read.Key, read.Value)))],
+                [.. columns.SelectMany(c => c.Beside.Select(operand => (c.Reader, c.Name, operand)))],
+                [.. columns.SelectMany(c => c.Compiles.Select(test => (c.Reader, c.Name, test.Key, test.Value)))],
+                [.. columns.Select(c => (c.Reader, c.Name, c.AsType))],
+                [.. columns.SelectMany(c => c.Across.Select(test => (c.Reader, c.Name, test.Key, test.Value)))]);
         }
 
         /// <summary>

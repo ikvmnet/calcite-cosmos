@@ -38,9 +38,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         [
             (CosmosServiceTest.IsNull, CalciteRead.Itself, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Renders, Truths.False), (CosmosServiceTest.IsNull, CalciteRead.Null, Truths.True),
             (CosmosServiceTest.IsNull, CalciteRead.Raises, Truths.Raises), (CosmosServiceTest.IsNull, CalciteRead.Parses, Truths.False | Truths.Raises),
-            .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
-               from read in new[] { (CalciteRead.Null, Truths.Unknown), (CalciteRead.Raises, Truths.Raises) }
-               select (test, read.Item1, read.Item2),
+            .. new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
+                .SelectMany(test => new[] { (CalciteRead.Null, Truths.Unknown), (CalciteRead.Raises, Truths.Raises) }.Select(read => (test, read.Item1, read.Item2))),
         ];
 
         /// <summary>
@@ -49,9 +48,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// </summary>
         public static IReadOnlyList<(CosmosServiceTest Test, string Read)> Compares { get; } =
         [
-            .. from test in new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
-               from read in new[] { CalciteRead.Itself, CalciteRead.Renders, CalciteRead.Parses }
-               select (test, read),
+            .. new[] { CosmosServiceTest.Equal, CosmosServiceTest.Less, CosmosServiceTest.LessOrEqual, CosmosServiceTest.Greater, CosmosServiceTest.GreaterOrEqual }
+                .SelectMany(test => new[] { CalciteRead.Itself, CalciteRead.Renders, CalciteRead.Parses }.Select(read => (test, read))),
         ];
 
         /// <summary>Kleene's answer on each key, for each target that may be handed its operands.</summary>
@@ -68,17 +66,13 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// junction, either side or both, over every operand the other may be; a negation's operand.
         /// </summary>
         public static IReadOnlyList<(MeasuredKey Failing, MeasuredKey Stands)> Failing { get; } =
-            [.. from c in new[] { And, Or }
-                from y in Operands.Append(CosmosValueClass.Failing)
-                from x in Booleans
-                from b in y == CosmosValueClass.Failing ? Booleans : new[] { y }
-                select (MeasuredKey.Of(c, CosmosValueClass.Failing, y), MeasuredKey.Of(c, x, b)),
-             .. from c in new[] { And, Or }
-                from x in Operands
-                from y in Booleans
-                select (MeasuredKey.Of(c, x, CosmosValueClass.Failing), MeasuredKey.Of(c, x, y)),
-             .. from x in Booleans
-                select (MeasuredKey.Of(Not, None, CosmosValueClass.Failing), MeasuredKey.Of(Not, None, x))];
+            [.. new[] { And, Or }.SelectMany(c => Operands.Append(CosmosValueClass.Failing)
+                    .SelectMany(y => Booleans
+                        .SelectMany(x => (y == CosmosValueClass.Failing ? Booleans : new[] { y })
+                            .Select(b => (MeasuredKey.Of(c, CosmosValueClass.Failing, y), MeasuredKey.Of(c, x, b)))))),
+             .. new[] { And, Or }.SelectMany(c => Operands
+                    .SelectMany(x => Booleans.Select(y => (MeasuredKey.Of(c, x, CosmosValueClass.Failing), MeasuredKey.Of(c, x, y))))),
+             .. Booleans.Select(x => (MeasuredKey.Of(Not, None, CosmosValueClass.Failing), MeasuredKey.Of(Not, None, x)))];
 
         /// <summary>
         /// Each position and truth value an else-arm leaves its case's rows at as a condition that is not TRUE does under a
@@ -146,10 +140,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// orders or not, and undefined over a value of another type or none, as both its orderings are.
         /// </summary>
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Pointwise(RenderingTarget target) =>
-            from bounds in new[] { Parted, Agreeing }
-            from cell in new[] { (Between, CosmosAnswer.True), (Outside, CosmosAnswer.False) }
+            new[] { Parted, Agreeing }.SelectMany(bounds => new[] { (Between, CosmosAnswer.True), (Outside, CosmosAnswer.False) }
                 .Concat(new[] { Absent, Null, True, False, Number, Object, CosmosValueClass.Array }.Select(kind => (kind, CosmosAnswer.Undefined)))
-            select (target, MeasuredKey.Of(CosmosServiceTest.Range, bounds, cell.Item1), cell.Item2);
+                .Select(cell => (target, MeasuredKey.Of(CosmosServiceTest.Range, bounds, cell.Item1), cell.Item2)));
 
         /// <summary>
         /// A ternary takes its then-arm where its condition is TRUE and its else-arm over every other operand, as Calcite's
@@ -168,9 +161,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A constant written as a condition is its own truth over every kind of value a path holds, and none.</summary>
         static IEnumerable<(RenderingTarget, MeasuredKey, CosmosAnswer)> Constants(RenderingTarget target) =>
-            from constant in new[] { True, False }
-            from cell in new[] { Absent, Null, True, False, Number, CosmosValueClass.String, Object, CosmosValueClass.Array }
-            select (target, MeasuredKey.Of(Constant, constant, cell), constant == True ? CosmosAnswer.True : CosmosAnswer.False);
+            new[] { True, False }.SelectMany(constant => new[] { Absent, Null, True, False, Number, CosmosValueClass.String, Object, CosmosValueClass.Array }
+                .Select(cell => (target, MeasuredKey.Of(Constant, constant, cell), constant == True ? CosmosAnswer.True : CosmosAnswer.False)));
 
         /// <summary>Kleene's connectives, an operand that is no truth read as unknown.</summary>
         static CosmosAnswer Answer(CosmosServiceTest connective, CosmosValueClass x, CosmosValueClass y)

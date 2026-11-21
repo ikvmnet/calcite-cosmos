@@ -131,10 +131,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// a key of one answer both.
         /// </summary>
         public static IEnumerable<MeasuredOutcome> Portable(IEnumerable<(MeasuredKey Key, CosmosAnswer Answer)> answers) =>
-            from key in answers.GroupBy(each => each.Key, each => each.Answer)
-            let given = key.Distinct().ToList()
-            from target in given.Count <= 2 ? new[] { RenderingTarget.Emulator, RenderingTarget.Azure } : throw new ArgumentException($"{key.Key} is given {given.Count} answers, more than the two targets hold", nameof(answers))
-            select new MeasuredOutcome("Service.Planted", key.Key, target, given[target == RenderingTarget.Emulator ? 0 : given.Count - 1]);
+            answers.GroupBy(each => each.Key, each => each.Answer)
+                .Select(key => (key.Key, Given: key.Distinct().ToList()))
+                .SelectMany(key => (key.Given.Count <= 2 ? new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
+                        : throw new ArgumentException($"{key.Key} is given {key.Given.Count} answers, more than the two targets hold", nameof(answers)))
+                    .Select(target => new MeasuredOutcome("Service.Planted", key.Key, target, key.Given[target == RenderingTarget.Emulator ? 0 : key.Given.Count - 1])));
 
         /// <summary>
         /// Checks a form claimed for a conjunct in a bundle of its own, every path imported as anything unless given, and

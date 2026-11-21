@@ -751,7 +751,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 bundle.Generate(terms[root]);
             bundle.RunGenerate(RenderingBundle.WidthOf(roots)).Should().Be(Disciplined);
 
-            var forms = (from n in nodes from pos in System.Enum.GetValues<RenderPosition>() from a in bundle.Agreements(terms[n], pos) select (n, pos, a.Form, a.Claim)).ToList();
+            var forms = nodes
+                .SelectMany(n => System.Enum.GetValues<RenderPosition>()
+                    .SelectMany(pos => bundle.Agreements(terms[n], pos).Select(a => (n, pos, a.Form, a.Claim))))
+                .ToList();
             var claim = RenderingCheckRun.Claimed(bundle, roots, ServiceForm.ConstantOf(true), [.. roots.Select(_ => (ServiceForm?)null)], [], null, null);
             var (tally, world) = (new RenderingSoundnessTests.Tally(), new World(8));
             foreach (var document in RenderingDocumentSampler.Sample(claim))

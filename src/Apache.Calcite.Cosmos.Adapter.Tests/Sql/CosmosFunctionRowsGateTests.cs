@@ -149,10 +149,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         [Fact]
         public void EveryBandTheEmulatorPartsOverIsRefusedThere()
         {
-            var parted = from o in CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
-                         where o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
-                             && o.On.HasFlag(CosmosAxiomTarget.Emulator)
-                         select (o.Function, o.Subject, o.Band);
+            var parted = CosmosAxioms.Get("Service.StringFunctionAnswersByBand").FunctionOutcomes!
+                .Where(o => o.Operand == Apache.Calcite.Cosmos.Facts.Rendering.CosmosValueClass.String && o.Answer != Apache.Calcite.Cosmos.Facts.Rendering.CosmosFunctionAnswer.Same
+                    && o.On.HasFlag(CosmosAxiomTarget.Emulator))
+                .Select(o => (o.Function, o.Subject, o.Band));
             parted.Should().NotBeEmpty();
             foreach (var (function, subject, band) in parted)
                 foreach (var call in Measured(function, subject))
@@ -397,7 +397,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Over(registry, Emulator, lower).Should().BeTrue("the registry's rows agree over ASCII");
             var differing = registry with
             {
-                Functions = [.. registry.Functions, .. from f in registry.Functions where Lower(f.Key) select (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs)],
+                Functions = [.. registry.Functions, .. registry.Functions.Where(f => Lower(f.Key))
+                    .Select(f => (f.Key with { Value = FunctionValueClass.Empty }, f.Target, CosmosFunctionAnswer.Differs))],
             };
             Over(differing, Emulator, lower).Should().BeFalse("the empty string's row disagrees beside the row of every string");
             Over(differing, Azure, lower).Should().BeFalse();
@@ -407,7 +408,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 Functions =
                 [
                     .. registry.Functions.Where(f => Lower(f.Key) == false),
-                    .. from f in registry.Functions where Lower(f.Key) from c in new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty } select (f.Key with { Value = c }, f.Target, f.Answer),
+                    .. registry.Functions.Where(f => Lower(f.Key))
+                        .SelectMany(f => new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty }.Select(c => (f.Key with { Value = c }, f.Target, f.Answer))),
                 ],
             };
             Over(split, Emulator, lower).Should().BeTrue("the two classes cover both atoms of a string, and agree");
@@ -416,7 +418,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             var left = Call(SqlLibraryOperators.LEFT, Str(), Int(2));
             var counted = registry with
             {
-                Functions = [.. registry.Functions, .. from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure } select (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, CosmosFunctionAnswer.Same)],
+                Functions = [.. registry.Functions, .. new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
+                    .Select(target => (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), target, CosmosFunctionAnswer.Same))],
                 FunctionSubjects = [.. registry.FunctionSubjects, ("LEFT", 1L)],
                 FunctionYields = [.. registry.FunctionYields, (FunctionKey.Of("LEFT", 1, CosmosValueClass.Number, JsonCharacterBand.None), CalciteYield.Value)],
             };

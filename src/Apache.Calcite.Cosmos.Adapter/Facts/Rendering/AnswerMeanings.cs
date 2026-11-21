@@ -56,9 +56,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             ValueSet.Of("Service.BarePathKeepsOnlyTrue", "Service.NotOverAPathKeepsOnlyFalse"),
             ValueSet.From(StringOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.String, Answer: c))
                 .Concat(NumberOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.Number, Answer: c)))
-                .Concat(from test in ServiceForm.Affixes.AsEnumerable()
-                        from matcher in Matching.AsEnumerable()
-                        select (Test: test, Operand: CosmosValueClass.String, Answer: matcher))));
+                .Concat(ServiceForm.Affixes.AsEnumerable()
+                    .SelectMany(test => Matching.AsEnumerable().Select(matcher => (Test: test, Operand: CosmosValueClass.String, Answer: matcher))))));
 
         /// <summary>The outcomes an answer means; none for one that names a comparator.</summary>
         public ServiceOutcomes Of(CosmosAnswer answer) => answer switch
