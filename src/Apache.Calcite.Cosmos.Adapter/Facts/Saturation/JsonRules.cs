@@ -135,6 +135,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public Constructor<JPath, string, JPath> Prop => Paths.Prop;
         public Constructor<JPath, long, JPath> Index => Paths.Index;
         public Constructor<JPath, JPath> Each => Paths.Each;
+        public Constructor<JPath, string, string, long, JPath> Yield => Paths.Yield;
 
         /// <summary>The path is there.</summary>
         public Relation<JPath> Present { get; }
@@ -612,6 +613,28 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 var i = r.Var<long>("i");
                 r.When(c.Is(Index.Of(p, i)), e.Is(Each.Of(p)));
                 r.Then(Instance.Of(c, e));
+            });
+            // The element a traversal yields (Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText): what is declared of every
+            // element reaches it, and it holds only the kinds the row of its element type in its traversal's form says the
+            // traversal yields (yieldkinds), a type or a form no row names narrowing nothing. Nothing makes it present, so
+            // narrowed to no kind it is absent, and nothing is contradictory: Calcite's traversal raises first over an array
+            // holding a kind the row does not name, in either plan. A traversal written WITH ORDINALITY yields the text of an
+            // element's rendering, which is no element of the array: no row names that form, so nothing reads what reaches it,
+            // and a row for it must first keep the instance off it, or read it through a reading of the rendering (TODO.md).
+            Rule("an element a traversal yields is an instance of every element of its array", r =>
+            {
+                var (y, e, p) = r.Vars<JPath, JPath, JPath>("y", "e", "p");
+                var (t, f, n) = r.Vars<string, string, long>("t", "f", "n");
+                r.When(y.Is(Yield.Of(p, t, f, n)), e.Is(Each.Of(p)));
+                r.Then(Instance.Of(y, e));
+            });
+            Rule("an element a traversal yields holds only what its traversal yields", r =>
+            {
+                var (y, p) = r.Vars<JPath, JPath>("y", "p");
+                var (t, f, n) = r.Vars<string, string, long>("t", "f", "n");
+                var k = r.Var<ValueSet<string>>("k");
+                r.When(y.Is(Yield.Of(p, t, f, n)), k.Is(Readings.YieldKinds.Of(t, f)));
+                r.Then(Types.Of(y).Is(k));
             });
             Rule("a property of an instance is an instance of the property", r =>
             {

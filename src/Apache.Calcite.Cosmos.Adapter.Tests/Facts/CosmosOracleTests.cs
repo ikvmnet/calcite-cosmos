@@ -181,6 +181,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             scope.AssumedIn(OracleLicence.Siblings(3)).Should().Equal(0, 1, 2);
             scope.AssumedIn(OracleLicence.Kept).Should().Equal(0, 1, 2, 3);
             scope.AssumedIn(OracleLicence.Reduce).Should().Equal(new[] { 0, 1, 2, 3 }, "the WHERE, the most the reduce's node may assume, where nothing in it raises");
+            scope.AssumedIn(OracleLicence.Raises).Should().BeEmpty("FALSE gated on the WHERE, and no conjunct");
             scope.AssumedIn(OracleLicence.NeverRead(2, new[] { Opaque(8) })).Should().Equal(scope.AssumedIn(OracleLicence.Arm(2, new[] { Opaque(8) })),
                 "what the arm's question assumes, the most the never-read node may assume, where the WHERE raises nowhere");
             scope.AssumedIn(OracleLicence.Applied(new[] { Opaque(7) })).Should().Equal(0, 1, 2);
@@ -396,6 +397,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
 
             Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Kept).Should().BeTrue();
             Oracle(theory).Admit(new PredicateStatement(new[] { Eq(Text(Kind), "c") })).IsContradictory(OracleLicence.Reduce).Should().BeTrue("a comparison of text raises nowhere");
+        }
+
+        /// <summary>
+        /// The raises question's node is contradictory exactly where nothing the statement holds raises on a document the
+        /// declaration admits, whether the statement keeps a document or not; and it assumes nothing, so what a conjunct
+        /// says of the documents is not among its facts.
+        /// </summary>
+        [Fact]
+        public void TheRaisesQuestionIsContradictoryExactlyWhereNothingRaises()
+        {
+            var theory = Theory(Outright(Kind, Enum("a", "b")), Outright(A, Type(JsonType.String)));
+            CosmosStatementScope Scope(params SqlPredicate[] conjuncts) => Oracle(theory).Admit(new PredicateStatement(conjuncts));
+
+            var keeps = Scope(Eq(Text(Kind), "a"), Eq(Text(X), "y"));
+            keeps.IsContradictory(OracleLicence.Raises).Should().BeTrue("a comparison of text raises nowhere, and the statement keeps documents");
+            keeps.IsContradictory(OracleLicence.Reduce).Should().BeFalse();
+
+            Scope(Eq(Text(Kind), "c")).IsContradictory(OracleLicence.Raises).Should().BeTrue("a statement that keeps nothing raises nothing either");
+
+            var mayRaise = Scope(Eq(Text(Kind), "a"), Eq(Cast("INTEGER", Text(B)), 7m));
+            mayRaise.IsContradictory(OracleLicence.Raises).Should().BeFalse("b is declared nothing, and its text may be \"x\", which no cast to INTEGER parses");
+            Knows(mayRaise.Facts(OracleLicence.Raises), Kind, Value("a")).Should().BeFalse("no conjunct is assumed");
+            Knows(mayRaise.Facts(OracleLicence.Raises), B, Present).Should().BeFalse();
+            Scope(Eq(Cast("INTEGER", Text(A)), 7m)).IsContradictory(OracleLicence.Raises)
+                .Should().BeFalse("a is declared a string, which may be \"x\"");
+            Scope(Or(Eq(Text(Kind), "a"), Eq(Cast("INTEGER", Text(B)), 7m))).IsContradictory(OracleLicence.Raises)
+                .Should().BeFalse("Calcite reads both sides of an OR whose left is not TRUE");
+
+            Oracle(Theory(Outright(B, Enum("1", "2")))).Admit(new PredicateStatement(new[] { Eq(Cast("INTEGER", Text(B)), 7m) }))
+                .IsContradictory(OracleLicence.Raises).Should().BeTrue("b holds \"1\" or \"2\" where it is there, each of which the cast parses");
         }
 
         // A container that declares no schema.

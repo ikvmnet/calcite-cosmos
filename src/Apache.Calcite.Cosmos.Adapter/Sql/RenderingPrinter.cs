@@ -64,10 +64,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
                 builder.Append(rootAlias);
                 foreach (var segment in path.Segments)
-                    if (segment is not string name)
-                        builder.Append('[').Append(((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
-                    else
-                        CosmosSql.WritePropertyAccess(builder, RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                    switch (segment)
+                    {
+                        case string name:
+                            CosmosSql.WritePropertyAccess(builder, RenderingPrinterFaults.Has(RenderingPrinterFault.M16) ? Misspelled(name) : name);
+                            break;
+                        case long index:
+                            builder.Append('[').Append(index.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                            break;
+                        default:
+                            // The element a traversal yields, which only the correlate rule's question reads: a defect here.
+                            throw new InvalidOperationException($"The form reads {spelled}, the element a traversal yields, which a request cannot address: only the correlate rule's question binds one.");
+                    }
             }
 
             string? Place(SqlValue.Call call) => CosmosFunctionSpellings.Spell(call, operand =>

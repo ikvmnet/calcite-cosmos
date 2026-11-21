@@ -240,14 +240,21 @@ namespace Apache.Calcite.Cosmos.Facts
         };
 
         /// <summary>
-        /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names, and an element's index
-        /// bare, so it is no name.
+        /// Spells a path unambiguously: every name quoted, so a name holding a dot is not two names, an element's index bare,
+        /// so it is no name, and the element a traversal yields by its type, form and number after <c>yield</c>, so it is
+        /// neither.
         /// </summary>
         internal static string Spell(JsonDocumentPath path)
         {
             var builder = new StringBuilder("$");
             foreach (var segment in path.Segments)
-                builder.Append('[').Append(segment is string name ? Quote(name) : ((long)segment).ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(']');
+                builder.Append('[').Append(segment switch
+                {
+                    string name => Quote(name),
+                    long index => index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    JsonYieldedStep yielded => yielded.ToString(),
+                    _ => throw new NotSupportedException(segment.GetType().Name),
+                }).Append(']');
 
             return builder.ToString();
         }

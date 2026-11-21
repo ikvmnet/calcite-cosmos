@@ -696,6 +696,110 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             scope.After(OracleLicence.Select).Knows(new JsonFact(Label, new JsonClaim.EqualTo("bikes"))).Should().BeTrue();
         }
 
+        // ── The element a traversal yields, and a lateral's columns ─────────────────
+
+        /// <summary>The element the first traversal of <c>tags</c> yields, read as <c>VARCHAR</c>.</summary>
+        static readonly JsonDocumentPath Yielded = P("tags").Yielded("VARCHAR", "ARRAY", 0);
+
+        /// <summary>The element's text, written apart as a field.</summary>
+        static SqlValue YieldedField => new SqlValue.Text(Yielded) { Form = PredicateAtom.FieldForm };
+
+        /// <summary>
+        /// The fields above and the element of <c>tags</c> three times over, as the correlate rule's question binds it: 3 a
+        /// <c>VARCHAR</c> read as text, 4 an <c>ANY</c> read as text, 5 a <c>VARCHAR</c> read as typed.
+        /// </summary>
+        CosmosPredicateLoader.Loading ElementLoading()
+        {
+            var element = CosmosPath.Root("c").Property("tags").Append(CosmosPathSegment.Yielded("VARCHAR", "ARRAY", 0));
+            return new([.. _fields, element, element, element], [.. _readings, CosmosReading.Text, CosmosReading.Text, CosmosReading.Typed], "c");
+        }
+
+        RexNode Element(int index, SqlTypeName? type = null) => _rex.makeInputRef(_types.createTypeWithNullability(Sql(type ?? SqlTypeName.VARCHAR), true), index);
+
+        RexNode Accessor(RexNode document, string path) => _rex.makeCall(Sql(SqlTypeName.VARCHAR), SqlStdOperatorTable.JSON_VALUE, Nodes(document, Str(path)));
+
+        /// <summary>
+        /// A field bound to the element a traversal yields loads as its text written apart as a field, which its traversal's
+        /// row reads (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>).
+        /// </summary>
+        [Fact]
+        public void AFieldBoundToTheElementATraversalYieldsLoadsAsItsTextWrittenApart()
+        {
+            var loading = ElementLoading();
+
+            loading.Read(Call(SqlStdOperatorTable.EQUALS, Element(3), Str("x"))).Should().Be(Eq(YieldedField, "x"));
+            loading.Read(Call(SqlStdOperatorTable.IS_NULL, Element(3))).Should().Be(IsNull(YieldedField));
+        }
+
+        /// <summary>
+        /// The element is read as its text and nothing else: a field typed as a raw value, and an accessor over the element,
+        /// which reads its text parsed, are opaque, whether the path reaches a step beneath the element or the element
+        /// itself.
+        /// </summary>
+        [Fact]
+        public void TheElementIsReadAsItsTextAloneAndAnAccessorOverItIsOpaque()
+        {
+            var loading = ElementLoading();
+
+            loading.Read(Call(SqlStdOperatorTable.EQUALS, Element(5), Str("x"))).Should().BeOfType<SqlPredicate.Opaque>();
+            loading.Read(Call(SqlStdOperatorTable.EQUALS, Accessor(Element(3), "$.a"), Str("x"))).Should().BeOfType<SqlPredicate.Opaque>();
+            loading.Read(Call(SqlStdOperatorTable.EQUALS, Accessor(Element(4, SqlTypeName.ANY), "$"), Str("x"))).Should().BeOfType<SqlPredicate.Opaque>();
+            loading.Read(Call(SqlStdOperatorTable.EQUALS, Accessor(Element(4, SqlTypeName.ANY), "$.a"), Str("x"))).Should().BeOfType<SqlPredicate.Opaque>();
+        }
+
+        /// <summary>The conjuncts of the <c>WHERE</c> above a statement's correlate, read through the correlate rule's question's binding.</summary>
+        static IReadOnlyList<SqlPredicate> AboveTheCorrelate(string sql)
+        {
+            var members = Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure.RegisteredMembers.Of(sql);
+            var correlate = members.OfType<org.apache.calcite.rel.core.Correlate>().First();
+            var filter = members.OfType<org.apache.calcite.rel.core.Filter>().First();
+
+            CosmosImplementor.TryBindElements(correlate, out var fields, out var readings, out _).Should().BeTrue();
+            return new CosmosPredicateLoader.Loading(fields, readings, "c").Statement(CosmosFilterStatement.ConjunctsOf(filter.getCondition())).Conjuncts;
+        }
+
+        /// <summary>
+        /// Above a planned traversal, the element loads as its text written apart, beside the document's own conjunct.
+        /// </summary>
+        [Fact]
+        public void AConditionOverAPlannedTraversalLoadsTheElement()
+        {
+            AboveTheCorrelate("""
+                SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t)
+                WHERE JSON_VALUE(c."DOC", '$.kind') = 'A' AND u.t = '1'
+                """).Should().Equal(Eq(Text(Kind), "A"), Eq(YieldedField, "1"));
+        }
+
+        /// <summary>
+        /// The element of a traversal of a type no row names loads as its text written apart too, as the binding reads every
+        /// element: what it reads is the rows' to say, and with no row it reads nothing.
+        /// </summary>
+        [Fact]
+        public void AnElementOfATypeNoRowNamesLoadsAsItsTextWrittenApart()
+        {
+            AboveTheCorrelate("""
+                SELECT c."id", u.t FROM products AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING INTEGER ARRAY)) AS u(t)
+                WHERE u.t IS NULL
+                """).Should().Equal(IsNull(new SqlValue.Text(P("tags").Yielded("INTEGER", "ARRAY", 0)) { Form = PredicateAtom.FieldForm }));
+        }
+
+        /// <summary>
+        /// Above a planned lateral, an accessor column loads its document path with the reading its accessor gives it, the
+        /// text written apart or a <c>RETURNING</c> written apart, and a computed column is opaque.
+        /// </summary>
+        [Fact]
+        public void ALateralsAccessorColumnLoadsItsPathAndAComputedOneIsOpaque()
+        {
+            AboveTheCorrelate("""
+                SELECT c."id" FROM products AS c CROSS JOIN LATERAL (SELECT JSON_VALUE(c."DOC", '$.kind') AS k2,
+                JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS n2, UPPER(JSON_VALUE(c."DOC", '$.body')) AS b2 FROM (VALUES (1)) AS v(x0)) AS l
+                WHERE l.k2 = 'A' AND l.n2 = 3 AND l.b2 = 'X'
+                """).Should().Equal(
+                    Eq(new SqlValue.Text(Kind) { Form = PredicateAtom.FieldForm }, "A"),
+                    Eq(new SqlValue.Typed(N, "INTEGER") { Form = PredicateAtom.FieldForm }, 3L),
+                    Opaque(0));
+        }
+
     }
 
 }

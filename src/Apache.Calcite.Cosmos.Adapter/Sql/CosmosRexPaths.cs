@@ -84,12 +84,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             return false;
         }
 
-        /// <summary>Whether a path names a member holding U+0000 or U+FDD0, which the emulator stores escaped.</summary>
+        /// <summary>
+        /// Whether a path names a member holding U+0000 or U+FDD0, which the emulator stores escaped; or holds the element a
+        /// traversal yields, which names no member the service stores and is declined with it.
+        /// </summary>
         internal static bool NamesAnEscape(CosmosPath? path)
         {
             if (path is not null)
                 foreach (var segment in path.Segments)
-                    if (segment.IsIndex == false && EmulatorStoredText.Escapes(segment.Name!))
+                    if (segment.IsYielded || (segment.Name is string name && EmulatorStoredText.Escapes(name)))
                         return true;
 
             return false;

@@ -13,7 +13,8 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 
     /// <summary>
     /// A path written the way a person writes one: <c>$</c>, <c>$.a.b</c>, <c>$.tags[10]</c>, and <c>$.items[*].id</c>
-    /// for property <c>id</c> of every element of <c>items</c>.
+    /// for property <c>id</c> of every element of <c>items</c>. Beside them, the element a traversal yields, which no person
+    /// writes and <see cref="Parse"/> reads not: <c>$.tags[yield VARCHAR ARRAY 0]</c>, a <see cref="JsonYieldedStep"/>.
     /// </summary>
     internal sealed record JsonPathSpec(IReadOnlyList<object> Segments)
     {
@@ -26,6 +27,9 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         public JsonPathSpec this[string property] => new(Segments.Append(property).ToArray());
 
         public JsonPathSpec this[long index] => new(Segments.Append((object)index).ToArray());
+
+        /// <summary>The element a traversal of the array here yields (<see cref="PathVocabulary.Yield"/>).</summary>
+        public JsonPathSpec this[JsonYieldedStep yielded] => new(Segments.Append(yielded).ToArray());
 
         public JsonPathSpec Elements => new(Segments.Append(Every).ToArray());
 
@@ -90,6 +94,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     string name => paths.Prop.Of(term, name),
                     long index => paths.Index.Of(term, index),
+                    JsonYieldedStep yielded => paths.Yield.Of(term, yielded.Type, yielded.Form, yielded.Traversal),
                     _ => paths.Each.Of(term),
                 };
 
@@ -111,6 +116,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 {
                     string name => "." + name,
                     long index => "[" + index.ToString(CultureInfo.InvariantCulture) + "]",
+                    JsonYieldedStep yielded => "[" + yielded + "]",
                     _ => "[*]",
                 });
 

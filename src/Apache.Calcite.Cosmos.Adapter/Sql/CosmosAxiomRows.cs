@@ -219,7 +219,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
             new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
-                Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms), ReadColumns(axioms), CosmosValueClasses.Types, ReadParametersAs(axioms));
+                Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms), ReadYieldKinds(axioms), ReadYieldReads(axioms), ReadColumns(axioms),
+                CosmosValueClasses.Types, ReadParametersAs(axioms));
 
         /// <summary>
         /// One row per reading a <c>Calcite</c> row says an index reads as of a path holding the element, a test's body over it
@@ -227,6 +228,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         public static IReadOnlyList<string> ReadAsOfAPath(IEnumerable<CosmosAxiom> axioms) =>
             [.. (from axiom in axioms from reader in axiom.AsOfAPath ?? [] select reader).Distinct()];
+
+        /// <summary>
+        /// One row per element type a <c>Calcite</c> row measured a traversal of, the traversal's form, and each JSON kind of
+        /// each class it yields an element of (<see cref="CosmosValueClasses.JsonKinds"/>), both graphs' <c>yieldkinds</c>: what
+        /// a yielded element holds.
+        /// </summary>
+        public static IReadOnlyList<(string Type, string Form, string Kind)> ReadYieldKinds(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms
+                 from y in axiom.Yields ?? []
+                 from c in y.Classes
+                 from k in CosmosValueClasses.JsonKinds
+                 where k.Class == c
+                 select (y.Type, y.Form, k.Kind)).Distinct()];
+
+        /// <summary>
+        /// One row per element type a <c>Calcite</c> row measured a traversal of, the traversal's form, and the reading its
+        /// elements read as, both graphs' <c>yieldreads</c>.
+        /// </summary>
+        public static IReadOnlyList<(string Type, string Form, string Reader)> ReadYieldReads(IEnumerable<CosmosAxiom> axioms) =>
+            [.. (from axiom in axioms from y in axiom.Yields ?? [] select (y.Type, y.Form, y.Reader)).Distinct()];
 
         /// <summary>
         /// One row per raw column a <c>Calcite</c> row says compares with a parameter as another column does, by its class, both

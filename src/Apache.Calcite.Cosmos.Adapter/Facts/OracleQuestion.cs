@@ -39,6 +39,13 @@ namespace Apache.Calcite.Cosmos.Facts
         Reduce,
 
         /// <summary>
+        /// Whether anything a statement holds raises on a document the declaration admits: nothing assumed, <c>FALSE</c>
+        /// gated on the statement's conjunction, so that its node is contradictory exactly where nothing raises. What the
+        /// correlate rule asks of what a transposition would newly evaluate, loaded as one statement.
+        /// </summary>
+        Raises,
+
+        /// <summary>
         /// Inside the arm of a <c>CASE</c> in a conjunct: every sibling, and the conditions the arm is read under, never
         /// the conjunct itself; of them, only what the facts graph reads exactly.
         /// </summary>

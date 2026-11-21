@@ -17,13 +17,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// <summary>
     /// Calcite's <c>FILTER_CORRELATE</c>, written as its rule writes it, wherever every filter of the statement the planner
     /// plans, at every correlate the planner's rules carry it onto where that rule would move a part of it, would be
-    /// transposed by its test; and nowhere in a statement where one would not.
+    /// transposed by its test; and nowhere in a statement where one would not. The test asks the facts graph whether what
+    /// the transposition newly evaluates can raise on a document the declaration admits, and takes it only where nothing
+    /// can (<see cref="Walk.Transposes"/>).
     /// </summary>
     /// <remarks>
     /// <para>
     /// A predicate over a traversed element is written above the traversal, where <see cref="CosmosUnnestRule"/> cannot see
     /// it; moved into the correlate it sits between the traversal and the uncollect, which that rule renders as a
     /// <c>WHERE</c> over the alias, and a conjunct of the document alone goes into the request.
+    /// </para>
+    /// <para>
+    /// What the transposition newly evaluates is read off Calcite's own classification, simplifier, builder and metadata;
+    /// whether it can raise is the facts graph's, over the correlate's row bound with the element a traversal yields and a
+    /// lateral's accessor columns (<see cref="CosmosImplementor.TryBindElements"/>). The bounds on firings and depth, a
+    /// side's filter not transposed at a correlate it reaches, and a row that binds no container decline.
     /// </para>
     /// <para>
     /// A condition holding the service's form (<see cref="Sql.CosmosOperators.HoldsServiceForm"/>) moves as Calcite's rule
@@ -45,23 +53,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <summary>
         /// Each Volcano planner's statement, as its root and the number of rules it held, whether it takes Calcite's
-        /// transposition, and the planner runs and the times it took to work that out; weak on the planner, which dies with
-        /// the statement.
+        /// transposition, and the planner runs, the tests with something to ask and the times it took to work that out; weak
+        /// on the planner, which dies with the statement.
         /// </summary>
         static readonly System.Runtime.CompilerServices.ConditionalWeakTable<RelOptPlanner, Answered> Statements = new();
 
         /// <summary>
         /// A statement's answer: the root and the number of rules it was read under, the answer, and how many planner runs
-        /// carried conjuncts past a member and how many times the answer was worked out, over the planner's life.
+        /// carried conjuncts past a member, how many of its tests had something to ask, a row that binds no container among
+        /// them, and how many times the answer was worked out, over the planner's life.
         /// </summary>
-        sealed record Answered(RelNode Root, int Rules, bool Transposes, long Carries, int Times);
+        sealed record Answered(RelNode Root, int Rules, bool Transposes, long Carries, int Questions, int Times);
 
         /// <summary>
-        /// Returns how many times the planner's rules were run over a member to carry conjuncts past it, and how many times
-        /// the statement's answer was worked out, for the statements a planner planned.
+        /// Returns how many times the planner's rules were run over a member to carry conjuncts past it, how many of the
+        /// statement's tests had something to ask, a row that binds no container among them, and how many times the
+        /// statement's answer was worked out, for the statements a planner planned.
         /// </summary>
-        internal static (long Carries, int Times) Work(RelOptPlanner planner) =>
-            Statements.TryGetValue(planner, out var answered) ? (answered.Carries, answered.Times) : (0, 0);
+        internal static (long Carries, int Questions, int Times) Work(RelOptPlanner planner) =>
+            Statements.TryGetValue(planner, out var answered) ? (answered.Carries, answered.Questions, answered.Times) : (0, 0, 0);
 
         // As CosmosFilterSplitRule: RelOptRule's operand builders are deprecated in favour of RelRule.Config, whose operand
         // supplier costs more ceremony from C# than it buys. The operands are Calcite's rule's.
@@ -125,7 +135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var walk = new Walk(rexBuilder, planner);
             var transposes = Statement(walk, root);
-            Statements.AddOrUpdate(planner, new Answered(root, rules, transposes, (known?.Carries ?? 0) + walk.Carries, (known?.Times ?? 0) + 1));
+            Statements.AddOrUpdate(planner, new Answered(root, rules, transposes, (known?.Carries ?? 0) + walk.Carries, (known?.Questions ?? 0) + walk.Questions, (known?.Times ?? 0) + 1));
             return transposes;
         }
 
@@ -218,8 +228,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// The test, over one statement: Calcite's simplification and the planner's own rules that carry a filter past a
-        /// member.
+        /// The test, over one statement: Calcite's simplification, the planner's own rules that carry a filter past a
+        /// member, and the facts graph's answer of whether what a transposition newly evaluates can raise.
         /// </summary>
         /// <remarks>
         /// Each question is asked once over a statement (<see cref="_reached"/>), and each member's carry once for one set of
@@ -243,6 +253,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             public long Carries { get; private set; }
 
             /// <summary>
+            /// Gets how many of the walk's tests had something the transposition newly evaluates to ask, a row that binds no
+            /// container among them, over which the facts graph is not asked.
+            /// </summary>
+            public int Questions { get; private set; }
+
+            /// <summary>
             /// Initializes a new instance, reading the planner's rules that move a filter, or a join's condition, beneath
             /// another member: past a projection, a grouping, a window, a join, a sample, a set operation, a sort or a table
             /// function; and whether one merges a filter into the filter beneath. A correlate is this rule's, and a filter
@@ -263,37 +279,67 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             /// <summary>
-            /// Determines whether Calcite's transposition is taken: Calcite's simplification of the whole condition, unknown read
-            /// as false, reads it as false neither as written nor as Calcite's builder writes it; every conjunct of that
-            /// simplification of what Calcite's rule leaves above after its last firing is a conjunct of that simplification of
-            /// the whole as the builder writes it, compared as Calcite compares expressions; and where the filter a firing writes
-            /// into a side reaches a correlate, the transposition of it there is taken too.
+            /// Determines whether Calcite's transposition is taken: where the filter a firing writes into a side reaches a
+            /// correlate, the transposition of it there is taken too; and the facts graph answers that nothing the transposition
+            /// newly evaluates raises on a document the declaration admits (<see cref="RaisesNothing"/>). That is every
+            /// conjunct of what each firing leaves above, as Calcite's builder writes it and read unknown as false, that either
+            /// of Calcite's simplifications of the whole condition, unknown read as false, lacks, over no predicates and over
+            /// those the correlate pulls up, compared as Calcite compares expressions; and where Calcite reads the whole as
+            /// false, as written, as its builder writes it or over those predicates, or the builder writes a rest as false,
+            /// every part each firing moves into either side.
             /// </summary>
             /// <remarks>
+            /// <para>
+            /// Calcite's Calc above the correlate evaluates, without the transposition, the whole simplified over its input's
+            /// pulled-up predicates, every operand of it (<c>Calcite.ConnectivesAreKleene</c>). A correlate pulls up its left's:
+            /// none where the left is a Calc (<c>CalciteCalcPredicateMeasurementTests.ACalcPullsUpNoPredicates</c>), an inner
+            /// join's condition or a <c>VALUES</c>'s constants where it is one (<c>ACorrelatePullsUpWhatItsLeftPullsUp</c>).
+            /// Which that plan's left is, the rule cannot know, so a conjunct is read as that plan's only where both
+            /// simplifications hold it: evaluated above on the rows the transposed correlate joins, it is evaluated on rows
+            /// that plan joins too. The whole as the builder writes it is no baseline: the builder can keep a conjunct both
+            /// drop, which no plan evaluates. Where the whole is read as false that plan evaluates none of it, so each part
+            /// moved is new; elsewhere a part moves as Calcite's rule moves it, on every row its side reads. A literal is no
+            /// term to ask, and the set is joined unsimplified, so a <c>FALSE</c> in it cannot read the rest away.
+            /// </para>
+            /// <para>
             /// The whole is read as Calcite's builder writes it, the form in which a later firing reads what the one before left,
             /// and a side's filter as Calcite's rule fires on it next, where the planner's rules carry it, so each firing over the
-            /// filters this one writes decides as this one does.
+            /// filters this one writes decides as this one does. The bounds on firings and depth decline.
+            /// </para>
             /// </remarks>
             public bool Transposes(Correlate correlate, RexNode condition, java.util.List above, java.util.List left, java.util.List right, int depth, bool merging)
             {
-                if (depth == Firings || _simplify.simplifyUnknownAsFalse(condition).isAlwaysFalse())
+                if (depth == Firings)
                     return false;
 
+                var calc = _simplify.simplifyUnknownAsFalse(condition);
+                var pulled = new RexSimplify(_rexBuilder, correlate.getCluster().getMetadataQuery().getPulledUpPredicates(correlate), RexUtil.EXECUTOR).simplifyUnknownAsFalse(condition);
                 var whole = _simplify.simplifyFilterPredicates(java.util.Collections.singletonList(condition));
-                if (whole is null || _simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse())
-                    return false;
+                var readFalse = calc.isAlwaysFalse() || pulled.isAlwaysFalse() || whole is null || _simplify.simplifyUnknownAsFalse(whole).isAlwaysFalse();
 
                 // Each firing's builder writes what is left above as Calcite's RelBuilder does, and the next firing moves what of
-                // that reads one side; a rest the builder writes as false, or firings past the bound, move nothing.
+                // that reads one side; a rest the builder writes as false moves nothing, and firings past the bound decline.
+                var shift = correlate.getLeft().getRowType().getFieldCount();
+                var parts = new List<RexNode>();
+                var rests = new List<RexNode>();
                 var rest = _simplify.simplifyFilterPredicates(above);
                 for (var firing = 1; ; firing++)
                 {
                     if (Reaches(correlate.getLeft(), left, true, depth, CosmosPlanMembers.NewSeen(), merging) == false || Reaches(correlate.getRight(), right, true, depth, CosmosPlanMembers.NewSeen(), merging) == false)
                         return false;
 
-                    if (rest is null)
-                        return false;
+                    for (var i = 0; i < left.size(); i++)
+                        parts.Add((RexNode)left.get(i));
+                    for (var i = 0; i < right.size(); i++)
+                        parts.Add(RexUtil.shift((RexNode)right.get(i), shift));
 
+                    if (rest is null)
+                    {
+                        readFalse = true;
+                        break;
+                    }
+
+                    rests.AddRange(Conjuncts(_simplify.simplifyUnknownAsFalse(rest)));
                     (above, left, right) = Classify(correlate, rest);
                     if (left.isEmpty() && right.isEmpty())
                         break;
@@ -304,8 +350,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     rest = _simplify.simplifyFilterPredicates(above);
                 }
 
-                var read = new HashSet<RexNode>(Conjuncts(_simplify.simplifyUnknownAsFalse(whole)));
-                return Conjuncts(_simplify.simplifyUnknownAsFalse(rest)).All(read.Contains);
+                var evaluated = new HashSet<RexNode>(Conjuncts(calc));
+                evaluated.IntersectWith(Conjuncts(pulled));
+                var asked = (readFalse ? parts : Enumerable.Empty<RexNode>()).Concat(rests.Where(r => evaluated.Contains(r) == false))
+                    .Where(r => r is not RexLiteral || (r.isAlwaysTrue() == false && r.isAlwaysFalse() == false))
+                    .Distinct()
+                    .ToList();
+
+                return asked.Count == 0 || RaisesNothing(correlate, asked);
+            }
+
+            /// <summary>
+            /// Asks the facts graph whether anything given raises on a document the declaration admits, each a term over the
+            /// correlate's row, read through the binding that names the element a traversal yields and a lateral's accessor
+            /// columns (<see cref="CosmosImplementor.TryBindElements"/>); a row that binds no container may raise.
+            /// </summary>
+            /// <remarks>
+            /// The terms are joined by an <c>AND</c> as given, never simplified, and the statement read from it is the
+            /// question's alone: its binding names paths no request may spell, and nothing renders it.
+            /// </remarks>
+            bool RaisesNothing(Correlate correlate, List<RexNode> asked)
+            {
+                Questions++;
+                if (CosmosImplementor.TryBindElements(correlate, out var fields, out var readings, out var container) == false)
+                    return false;
+
+                var terms = new java.util.ArrayList();
+                foreach (var term in asked)
+                    terms.add(term);
+
+                var condition = asked.Count == 1 ? asked[0] : _rexBuilder.makeCall(org.apache.calcite.sql.fun.SqlStdOperatorTable.AND, terms);
+                return Metadata.CosmosFilterStatement.Of(condition, fields, readings, container, _rexBuilder).RaisesNothing;
             }
 
             /// <summary>

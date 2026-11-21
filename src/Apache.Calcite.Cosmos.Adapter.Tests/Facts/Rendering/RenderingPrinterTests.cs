@@ -187,6 +187,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A form reading the element a traversal yields, which only the correlate rule's question binds, is refused as the
+        /// defect it is rather than printed as an index.
+        /// </summary>
+        [Fact]
+        public void AFormReadingTheElementATraversalYieldsIsRefused()
+        {
+            var element = JsonDocumentPath.Root.Property("tags").Yielded("VARCHAR", "ARRAY", 0);
+            var paths = new Dictionary<string, JsonDocumentPath> { [SqlValue.Spell(element)] = element };
+
+            FluentActions.Invoking(() => RenderingPrinter.Print(ServiceForm.TestOf(CosmosServiceTest.IsDefined, SqlValue.Spell(element)), paths, Alias, new CosmosParameterList()))
+                .Should().Throw<InvalidOperationException>().WithMessage("*the element a traversal yields, which a request cannot address*");
+        }
+
+        /// <summary>
         /// Each literal bound as the translator binds Calcite's exact literal of the same number
         /// (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>), and refused where the translator declines it; text,
         /// a boolean and null as themselves; a number held approximately as its double; and a lone surrogate refused by the

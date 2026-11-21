@@ -69,6 +69,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// <summary>Whether the arm asked of was never read: its question's node, gated on the WHERE, contradictory.</summary>
         public bool NeverRead { get; set; }
 
+        /// <summary>Whether the raises question's node was contradictory, nothing the statement holds raising.</summary>
+        public bool RaisesNothing { get; set; }
+
+        /// <summary>The statement the raises question was asked of beside a traversal (<see cref="Statements.Traversed"/>).</summary>
+        public IReadOnlyList<SqlPredicate> Traversed { get; set; } = [];
+
+        /// <summary>Whether the raises question's node beside a traversal was contradictory, nothing that statement holds raising.</summary>
+        public bool TraversedRaisesNothing { get; set; }
+
         public TimeSpan Elapsed { get; set; }
 
         public void Fail(string check, string message)
@@ -79,7 +88,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>The trial, spelled so that it can be reproduced and read.</summary>
         public string Describe() =>
-            $"seed {Seed}\ndeclaration:\n  {Declaration.ToString().Replace("\n", "\n  ")}\nconjuncts:\n  {string.Join("\n  ", Conjuncts.Select((c, i) => i + ": " + c))}\nfailures:\n  {string.Join("\n  ", Failures.Select(f => "[" + f.Check + "] " + f.Message))}";
+            $"seed {Seed}\ndeclaration:\n  {Declaration.ToString().Replace("\n", "\n  ")}\nconjuncts:\n  {string.Join("\n  ", Conjuncts.Select((c, i) => i + ": " + c))}\n"
+            + $"beside a traversal:\n  {string.Join("\n  ", Traversed.Select((c, i) => i + ": " + c))}\nfailures:\n  {string.Join("\n  ", Failures.Select(f => "[" + f.Check + "] " + f.Message))}";
 
     }
 

@@ -31,7 +31,7 @@ namespace Apache.Calcite.Cosmos.Facts
     {
 
         /// <summary>
-        /// Returns the theory's spelling of a path.
+        /// Returns the theory's spelling of a path: a name, an index and the element a traversal yields, each as the step it is.
         /// </summary>
         /// <param name="path">The path.</param>
         /// <returns>The path as the theory writes it.</returns>
@@ -39,7 +39,13 @@ namespace Apache.Calcite.Cosmos.Facts
         {
             var spec = Saturation.JsonPathSpec.Root;
             foreach (var segment in path.Segments)
-                spec = segment is string name ? spec[name] : spec[(long)segment];
+                spec = segment switch
+                {
+                    string name => spec[name],
+                    long index => spec[index],
+                    JsonYieldedStep yielded => spec[yielded],
+                    _ => throw new NotSupportedException(segment.GetType().Name),
+                };
 
             return spec;
         }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -298,6 +297,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "gslc" => QC(gsl, ork),
                 "gsk" => $"""SELECT x."id", x.k, l.t2 FROM {gsk} {onk} WHERE {ork2}""",
                 "gskc" => $"""SELECT COUNT(*) AS q FROM {gsk} {onk} WHERE {ork2}""",
+                "gsf" => $"""SELECT x."id", x.t, l.t2 FROM {gsk} CROSS JOIN LATERAL (SELECT x.t AS t2 FROM (VALUES (1)) AS w(x0)) AS l WHERE (NOT (CAST(l.t2 AS INTEGER) > 0 OR x.k = 'B') OR x.k IN ('A', 'B')) AND x.k = 'A'""",
                 "wr" => $"""SELECT x."id", x.t, l.t2, x.rn FROM (SELECT c."id", u.t, ROW_NUMBER() OVER (PARTITION BY c."id", u.t ORDER BY u.t) AS rn FROM {t} AS c, {tags}) AS x {some} WHERE {ork}""",
                 "wr2" => $"""SELECT x."id", x.t, l.t2, x.rn FROM (SELECT c."id", u.t, ROW_NUMBER() OVER (PARTITION BY c."id" ORDER BY u.t) AS rn FROM {t} AS c, {tags}) AS x {some} WHERE {ork}""",
                 "wj2" => $"""SELECT x."id", x.t, l.t2 FROM (SELECT c."id", u.t FROM {t} AS c CROSS JOIN {tags} JOIN {t} AS d ON d."id" = c."id") AS x {some} WHERE {ork}""",
@@ -351,6 +351,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "ws6c" => SC(U(inner), $"CAST({xb} AS INTEGER) = 7 AND v.s = 'a'"),
                 "ws7" => S(U(decides), $"CAST({xb} AS INTEGER) = 7 AND v.s IS NOT NULL"),
                 "ws7c" => SC(U(decides), $"CAST({xb} AS INTEGER) = 7 AND v.s IS NOT NULL"),
+                _ => BesideACorrelateAsked(name, t),
+            };
+        }
+
+        /// <summary>
+        /// More of <see cref="BesideACorrelate"/>: a <c>WHERE</c> over a traversal whose transposition newly evaluates only
+        /// what never raises, the element compared beside the document read as false or deciding the rest (fr0, frkk, fruu), a
+        /// cast of the document beside it (j3n, j1n) and the sub-query's <c>WHERE</c> of ws1 beneath a <c>RETURNING</c> (ws1k);
+        /// and one whose transposition newly evaluates a cast, or a comparison of the element with a computed value, that
+        /// Calcite's simplification of the whole reads away (w13, fz2_320), beside a literal <c>FALSE</c> (rf2), in an arm the
+        /// whole reads away (a1), in what the first firing leaves above and the second moves (mf1), or that the whole reads as
+        /// true over the condition of a join on the left (r3a); and the same over the join with the element compared with a
+        /// text constant in place of the cast, which never raises (jn1). And fr0 over a traversal written <c>WITH
+        /// ORDINALITY</c> (fr0o) and over a <c>VARCHAR MULTISET</c> (fr0m), forms no row names; and fr0 and frkk over a
+        /// traversal written <c>WITH ORDINALITY</c> with its ordinal compared in place of the element (frord, frordkk).
+        /// </summary>
+        static string BesideACorrelateAsked(string name, string t)
+        {
+            static string J(string a, string p) => $"""JSON_VALUE({a}."DOC", '$.{p}')""";
+            static string Q(string a, string p) => $"""JSON_QUERY({a}."DOC", '$.{p}' RETURNING VARCHAR ARRAY)""";
+            var k = J("c", "kind");
+            var m = J("c", "m");
+            var cb = $"CAST({J("c", "body")} AS INTEGER)";
+            var xn = """JSON_VALUE(x."DOC", '$.n' RETURNING INTEGER)""";
+            string U(string where) => $"""SELECT c."id", u.t FROM {t} AS c, UNNEST({Q("c", "tags")}) AS u(t) WHERE {where}""";
+            var fr0 = $"{k} = 'A' AND ({k} = 'B' OR u.t = '1')";
+            string O(string where) => $"""SELECT c."id", u.t, u.o FROM {t} AS c, UNNEST({Q("c", "tags")}) WITH ORDINALITY AS u(t, o) WHERE {where}""";
+            var x = $"""(SELECT c."id", c."DOC", u.t FROM {t} AS c, UNNEST({Q("c", "tags")}) AS u(t) WHERE CAST(u.t AS INTEGER) = 1 AND {k} = 'A') AS x""";
+            return name switch
+            {
+                "fr0" => U(fr0),
+                "fr0o" => O(fr0),
+                "frord" => O($"{k} = 'A' AND ({k} = 'B' OR u.o = 1)"),
+                "frordkk" => O($"{k} = 'A' AND {k} = 'B' AND u.o = 1"),
+                "fr0m" => $"""SELECT c."id", u.t FROM {t} AS c, UNNEST(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR MULTISET)) AS u(t) WHERE {fr0}""",
+                "frkk" => U($"{k} = 'A' AND {k} = 'B' AND u.t = '1'"),
+                "fruu" => U($"u.t = '1' AND u.t = '2' AND {k} = 'A'"),
+                "ws1k" => $"""SELECT x."id", x.t, v.s FROM {x}, UNNEST({Q("x", "more")}) AS v(s) WHERE CAST({J("x", "body")} AS INTEGER) = 7 AND {xn} > 50 AND ({xn} > 40 OR v.s = '1')""",
+                "j3n" => U($"{k} = 'A' AND {cb} = 7 AND ({k} = 'B' OR u.t = '1')"),
+                "j1n" => U($"{m} IS NOT NULL AND {cb} = 7 AND u.t = 'x'"),
+                "w13" => U($"{k} = 'B' AND ({k} = 'A' OR u.t <> 'zz') AND (u.t = CAST({cb} AS VARCHAR) OR {k} IN ('A', 'B') OR NOT {k} IN ('A', 'B'))"),
+                "fz2_320" => U($"(NOT (CAST(u.t AS INTEGER) > 0 OR {m} = '2') OR {k} IN ('A', 'B')) AND {k} = 'A'"),
+                "rf2" => U($"{cb} > 0 AND ({k} = 'B' OR u.t = 'x') AND NOT ({k} = 'B' OR u.t = 'x')"),
+                "a1" => U($"{k} = 'B' AND (({k} = 'A' AND CAST(u.t AS INTEGER) = 1) OR ({k} = 'B' AND u.t = 'x'))"),
+                "r3a" => $"""SELECT c."id", u.t FROM {t} AS c JOIN {t} AS d ON c."id" = '9', UNNEST({Q("c", "tags")}) AS u(t) WHERE {m} = '1' AND (c."id" = '9' OR CAST(u.t AS INTEGER) > 0)""",
+                "jn1" => $"""SELECT c."id", u.t FROM {t} AS c JOIN {t} AS d ON c."id" = '9', UNNEST({Q("c", "tags")}) AS u(t) WHERE {m} = '1' AND (c."id" = '9' OR u.t = '1')""",
+                "mf1" => U($"{k} = 'A' AND NOT (u.t = 'x' OR ({k} = 'B' AND {cb} = 7))"),
                 _ => throw new ArgumentOutOfRangeException(nameof(name), name, "No such shape."),
             };
         }
@@ -374,33 +421,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         ];
 
         /// <summary>
-        /// The correlate rule takes Calcite's transposition at every correlate of a statement or at none: where the
-        /// <c>WHERE</c> over a traversal or a lateral of a sub-query would not be transposed, the sub-query's own <c>WHERE</c>
-        /// over a traversal is not either, so ws1 to ws5, ws8 and their <c>COUNT</c>s fail on the element <c>"x"</c> as
-        /// Calcite with no transposition does, where moving the sub-query's alone answered; ws6, whose two are both
-        /// transposed, fails on the <c>body</c> <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does; and ws7, whose
-        /// sub-query's is not, answers as Calcite with no transposition does, declared or not, under both targets.
+        /// The correlate rule takes Calcite's transposition at every correlate of a statement or at none, and over a traversal
+        /// or a lateral of a sub-query whose own <c>WHERE</c> is over another, takes it where nothing its tests newly evaluate
+        /// can fail on a document the declaration admits. Where <c>n</c> is declared an integer from 0 to 100, ws1 to ws4
+        /// and their <c>COUNT</c>s are transposed and fail on the <c>body</c> <c>"zz"</c> as Calcite with
+        /// <c>FILTER_CORRELATE</c> does;
+        /// where nothing is declared, the <c>RETURNING</c> of <c>n</c> their tests ask can fail, nothing is transposed, and
+        /// they fail on the element <c>"x"</c> as Calcite with no transposition does. ws5, ws6, ws7 and their <c>COUNT</c>s,
+        /// whose tests ask nothing that can fail, fail on <c>"zz"</c> as Calcite with <c>FILTER_CORRELATE</c> does, declared or
+        /// not; ws6 sends the weakening of the sub-query's cast of <c>w</c>, and answers over the two documents it keeps. ws8
+        /// and its <c>COUNT</c>, over a <c>LEFT JOIN</c>, fail on <c>"x"</c> where nothing is declared; where <c>n</c> is
+        /// declared, the planner takes the transposition at the sub-query's traversal alone, which keeps the document holding
+        /// <c>"x"</c> from its cast, and keeps the outer <c>WHERE</c> above its traversal, so they answer the row of the third
+        /// document where both of Calcite's plans fail, Calcite with <c>FILTER_CORRELATE</c> taking both: a transposition
+        /// prunes what Calcite with no transposition fails on. Under both targets.
         /// </summary>
         [Theory]
-        [InlineData("ws1", "raises x")]
-        [InlineData("ws1c", "raises x")]
-        [InlineData("ws2", "raises x")]
-        [InlineData("ws2c", "raises x")]
-        [InlineData("ws3", "raises x")]
-        [InlineData("ws3c", "raises x")]
-        [InlineData("ws4", "raises x")]
-        [InlineData("ws4c", "raises x")]
-        [InlineData("ws5", "raises x")]
-        [InlineData("ws5c", "raises x")]
-        [InlineData("ws8", "raises x")]
-        [InlineData("ws8c", "raises x")]
-        [InlineData("ws6", "raises zz")]
-        [InlineData("ws6c", "raises zz")]
-        [InlineData("ws7", "3,1,a")]
-        [InlineData("ws7c", "1")]
-        public async Task AStatementIsTransposedAtEveryCorrelateOrAtNone(string name, string rows)
+        [InlineData("ws1", "raises zz", "raises x")]
+        [InlineData("ws1c", "raises zz", "raises x")]
+        [InlineData("ws2", "raises zz", "raises x")]
+        [InlineData("ws2c", "raises zz", "raises x")]
+        [InlineData("ws3", "raises zz", "raises x")]
+        [InlineData("ws3c", "raises zz", "raises x")]
+        [InlineData("ws4", "raises zz", "raises x")]
+        [InlineData("ws4c", "raises zz", "raises x")]
+        [InlineData("ws5", "raises zz", "raises zz")]
+        [InlineData("ws5c", "raises zz", "raises zz")]
+        [InlineData("ws6", "raises zz", "raises zz")]
+        [InlineData("ws6c", "raises zz", "raises zz")]
+        [InlineData("ws7", "raises zz", "raises zz")]
+        [InlineData("ws7c", "raises zz", "raises zz")]
+        [InlineData("ws8", "3,1,a", "raises x")]
+        [InlineData("ws8c", "1", "raises x")]
+        public async Task AStatementIsTransposedAtEveryCorrelateOrAtNone(string name, string rows, string undeclared)
         {
-            await Answers(name, rows, TwoTraversals, TwoTraversalsDocuments);
+            await Answers(name, rows, TwoTraversals, TwoTraversalsDocuments, undeclared);
         }
 
         /// <summary>
@@ -451,16 +506,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Where a correlate's side holds another correlate beneath a sub-query's projection, its own <c>WHERE</c>, a second
-        /// projection or a grouping, the conjuncts Calcite's rule would move into that side reach the inner correlate, and
-        /// are moved only where its transposition of them, beside any <c>WHERE</c> they meet, is taken too: np1, np6, the
-        /// lateral np8, np10 over a lateral, nq1 and px5 over a sub-query's <c>WHERE</c>, nt1 through two projections, nd1
-        /// beside an <c>EXISTS</c>, ag1 through a grouping, h1pl, h8pll and h8pld over a lateral traversed again, pz2, pz4
-        /// and the <c>COUNT</c>s cast no element or <c>body</c> of a kind the condition rules out, and answer the rows it
-        /// keeps, as c2 and h3, the same conditions with no sub-query, do, declared or not, under both targets. So do the
-        /// groupings by grouping sets, by keys beside a <c>ROLLUP</c> and by one grouping set, past which Calcite's rule
+        /// projection or a grouping, the conjuncts Calcite's rule would move into that side reach the inner correlate, and are
+        /// moved only where its transposition of them, beside any <c>WHERE</c> they meet, is taken too, and only where nothing
+        /// a test newly evaluates can fail: np1, np6, the lateral np8, np10 over a lateral, nq1 over a sub-query's
+        /// <c>WHERE</c>, nt1 through two projections, nd1 beside an <c>EXISTS</c>, ag1 through a grouping, h1pl, h8pll and
+        /// h8pld over a lateral traversed again and the <c>COUNT</c>s, where something its test asks can fail, cast no element
+        /// or <c>body</c> of a kind the condition rules out, and answer the rows it keeps, as c2 and h3, the same conditions
+        /// with no sub-query, do; px5 over a sub-query's <c>WHERE</c>, pz2, pz4 and px5's <c>COUNT</c>, whose tests ask nothing
+        /// that can fail, are transposed and answer as both of Calcite's plans do; declared or not, under both targets. So do
+        /// the groupings by grouping sets, by keys beside a <c>ROLLUP</c> and by one grouping set, past which Calcite's rule
         /// carries a conjunct whose columns every set holds: gs1, gs3, gs5, gs5p, gs7, gso, gro, gwo beside a sub-query's
-        /// <c>WHERE</c>, gsl over a <c>LEFT JOIN</c>, gsk, the lateral gl1 and the <c>COUNT</c>s; and gs4, a <c>ROLLUP</c>
-        /// of every key, which no column of every set lets the conjuncts pass, fails on <c>"x"</c> as Calcite with
+        /// <c>WHERE</c>, gsl over a <c>LEFT JOIN</c>, gsk, the lateral gl1 and the <c>COUNT</c>s; and gs4, a <c>ROLLUP</c> of
+        /// every key, which no column of every set lets the conjuncts pass, fails on <c>"x"</c> as Calcite with
         /// <c>FILTER_CORRELATE</c> does.
         /// </summary>
         [Theory]
@@ -545,10 +602,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Where a conjunct the rule would move decides what Calcite's simplification of the whole reads of a conjunct of both
-        /// sides, nothing moves and the term that reading leaves stays above the correlate: x3, x9, x9b and the lateral x8
-        /// cast no <c>body</c> of a document with no element or no lateral row, and answer the rows the condition keeps, as
-        /// does mx1, which beside such a conjunct holds one the whole reads away, and z189u and w1 fail on the element
-        /// <c>"x"</c> as Calcite does, declared or not, under both targets.
+        /// sides, and the term that reading leaves, which its test asks, can fail, nothing moves and that term stays above the
+        /// correlate: x3, x9, x9b and the lateral x8 cast no <c>body</c> of a document with no element or no lateral row, and
+        /// answer the rows the condition keeps, as does mx1, which beside such a conjunct holds one the whole reads away, and
+        /// z189u fails on the element <c>"x"</c> as Calcite does, declared or not, under both targets. w1, under <see
+        /// cref="TraversedFixed"/>, whose cast of <c>body</c> cannot fail, has a test that asks nothing that can fail where
+        /// declared, yet the planner keeps its <c>WHERE</c> above the correlate, and it fails on <c>"x"</c> as both of
+        /// Calcite's plans do, declared or not.
         /// </summary>
         [Theory]
         [InlineData("x3", "1,1;1,x")]
@@ -570,11 +630,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A conjunct of both sides that Calcite's simplification takes down to a term of one side is planned as one of
-        /// Calcite's plans: where all its rule leaves above after its last firing is read in the whole, as that rule leaves
-        /// it, which moves the term into that side, so n1, n2, bd1, the laterals n5 and bd4, the two traversals of bd8 and
-        /// the <c>COUNT</c>s fail on the <c>body</c> of a document with no element or no lateral row as Calcite with
-        /// <c>FILTER_CORRELATE</c> does; and elsewhere with no transposition, so k1, the lateral k2 and k1's <c>COUNT</c>
-        /// cast no such <c>body</c> and answer the rows the condition keeps, declared or not, under both targets.
+        /// Calcite's plans: transposed where nothing its test newly evaluates above the correlate can fail, which moves the
+        /// term into that side, so n1, n2, bd1, the laterals n5 and bd4, the two traversals of bd8, k1, the lateral k2 and the
+        /// <c>COUNT</c>s fail on the <c>body</c> of a document with no element or no lateral row as Calcite with
+        /// <c>FILTER_CORRELATE</c> does, declared or not, under both targets: what k1 and k2 leave above compares the element
+        /// and the document's text alone.
         /// </summary>
         [Theory]
         [InlineData("n1", "raises q")]
@@ -582,9 +642,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("n2", "raises q")]
         [InlineData("n5", "raises q")]
         [InlineData("n5c", "raises q")]
-        [InlineData("k1", "1,1")]
-        [InlineData("k1c", "1")]
-        [InlineData("k2", "1")]
+        [InlineData("k1", "raises q")]
+        [InlineData("k1c", "raises q")]
+        [InlineData("k2", "raises q")]
         [InlineData("bd1", "raises q")]
         [InlineData("bd1c", "raises q")]
         [InlineData("bd4", "raises q")]
@@ -596,8 +656,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A conjunct of both sides kept above a correlate is read beside the rest, which it absorbs, where the conjunct the
-        /// rule would move decides it: p1, p14, the lateral p6 and p1's <c>COUNT</c> cast no element <c>"x"</c> and no
-        /// <c>body</c> of <c>"abc"</c>, and answer the rows the condition keeps, declared or not, under both targets.
+        /// rule would move decides it, where something its test asks can fail: p1, p14, the lateral p6 and p1's <c>COUNT</c>
+        /// cast no element <c>"x"</c> and no <c>body</c> of <c>"abc"</c>, and answer the rows the condition keeps, declared or
+        /// not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("p1", "1,1;3,2;4,3")]
@@ -610,10 +671,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Where Calcite's simplification of the whole condition above a correlate reads it as false, nothing is moved into a
-        /// side, where a conjunct that can fail would be evaluated alone: v0, its <c>COUNT</c>, the lateral v2, the left
-        /// traversal v3, and wf1, wf2, the lateral wf3 and wf1's <c>COUNT</c>, each of whose conjuncts reads one side, answer no
-        /// rows over a <c>body</c> of <c>"abc"</c>, declared or not, under both targets.
+        /// Where Calcite's simplification of the whole condition above a correlate reads it as false and something its test
+        /// asks can fail, nothing is moved into a side, where that would be evaluated alone: v0, its <c>COUNT</c>, the lateral
+        /// v2, the left traversal v3, and wf1, wf2, the lateral wf3 and wf1's <c>COUNT</c>, each of whose conjuncts reads one
+        /// side, answer no rows over a <c>body</c> of <c>"abc"</c>, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("v0", "")]
@@ -645,9 +706,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Where a conjunct Calcite's rule would move into a side decides what Calcite's simplification of the whole reads of
-        /// the rest, nothing moves, and the cast that reading leaves unread is not evaluated: j1, the lateral jb4, jb7 over a
-        /// second traversal, k5u and their <c>COUNT</c>s answer the rows the condition keeps over a document of kind
-        /// <c>A</c> holding an element <c>"x"</c>, declared or not, under both targets.
+        /// the rest, and something its test asks can fail, nothing moves, and the cast that reading leaves unread is not
+        /// evaluated: j1, the lateral jb4, jb7 over a second traversal, k5u and their <c>COUNT</c>s answer the rows the
+        /// condition keeps over a document of kind <c>A</c> holding an element <c>"x"</c>, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("j1", "1,1;3,2")]
@@ -665,9 +726,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A conjunct of the document is not evaluated alone in a side beside which Calcite's simplification reads a term it
-        /// derives from a conjunct of both sides as false: dd2, the laterals dd1 and d392l and their <c>COUNT</c>s answer no
-        /// rows over a document whose <c>body</c> no integer parses and which holds no element or has no lateral row,
-        /// declared or not, under both targets.
+        /// derives from a conjunct of both sides as false, where something its test asks can fail: dd2, the laterals dd1 and
+        /// d392l and their <c>COUNT</c>s answer no rows over a document whose <c>body</c> no integer parses and which holds no
+        /// element or has no lateral row, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("dd2", "")]
@@ -720,7 +781,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 {
                     var seen = new Infrastructure.PlannersSeen();
                     PlanToCosmos(Stacked(family, depth, "items"), container.WithServiceTarget(target), out _, listener: seen).Should().NotBeNull();
-                    var (carries, times) = Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(seen.Planners.Should().ContainSingle().Subject);
+                    var (carries, _, times) = Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(seen.Planners.Should().ContainSingle().Subject);
                     TestContext.Current.TestOutputHelper?.WriteLine($"{family}{depth:00} {target} {declared}: carries {carries}, times {times}");
                     times.Should().Be(1, $"{family}{depth} {target} {declared}");
                     carries.Should().BeLessThanOrEqualTo(bound, $"{family}{depth} {target} {declared}");
@@ -729,38 +790,244 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Plans and runs a shape of <see cref="BesideACorrelate"/> over documents, declared and not, under both targets: the rows
-        /// given, separated by <c>;</c>, or, written <c>raises x</c>, a failure on the text <c>"x"</c>.
+        /// Plans and runs a shape of <see cref="BesideACorrelate"/> over documents, declared and not, under both targets: the
+        /// rows given, separated by <c>;</c>, or, written <c>raises x</c>, a failure on the text <c>"x"</c>; with <paramref
+        /// name="undeclared"/>, that answer where nothing is declared.
         /// </summary>
-        static async Task Answers(string name, string rows, string schema, string[] documents)
+        static async Task Answers(string name, string rows, string schema, string[] documents, string? undeclared = null)
         {
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
             {
-                foreach (var (declared, container) in new[] { ("declared", Declaring(schema)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+                foreach (var (declared, container, expected) in new[] { ("declared", Declaring(schema), rows), ("undeclared", Declaring("""{ "type": "object" }"""), undeclared ?? rows) })
                 {
                     var (answer, raised, plan) = await Answer(BesideACorrelate(name, "items"), container.WithServiceTarget(target), documents);
-                    if (rows.StartsWith("raises ", StringComparison.Ordinal))
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{name} {target} {declared}: " + (raised is null ? string.Join(";", answer!) : "raises " + Innermost(raised).Message));
+                    if (expected.StartsWith("raises ", StringComparison.Ordinal))
                     {
                         var inner = raised;
                         while (inner?.InnerException is not null)
                             inner = inner.InnerException;
 
                         inner.Should().NotBeNull($"{name} {target} {declared}: " + plan);
-                        inner!.Message.Should().Contain($"\"{rows["raises ".Length..]}\"", $"{name} {target} {declared}: " + plan);
+                        inner!.Message.Should().Contain($"\"{expected["raises ".Length..]}\"", $"{name} {target} {declared}: " + plan);
                     }
                     else
                     {
                         raised.Should().BeNull($"{name} {target} {declared}: " + plan);
-                        answer.Should().BeEquivalentTo(rows.Length == 0 ? [] : rows.Split(';'), $"{name} {target} {declared}: " + plan);
+                        answer.Should().BeEquivalentTo(expected.Length == 0 ? [] : expected.Split(';'), $"{name} {target} {declared}: " + plan);
                     }
                 }
             }
         }
 
+        /// <summary>The innermost exception a run raised.</summary>
+        static Exception Innermost(Exception raised)
+        {
+            while (raised.InnerException is not null)
+                raised = raised.InnerException;
+
+            return raised;
+        }
+
+        /// <summary>
+        /// Plans and runs a shape of <see cref="BesideACorrelate"/> over no documents, as <see cref="Answer"/> runs it: each
+        /// request its plan sent, as the text after the container's alias and its parameters' values, or <c>nothing</c>.
+        /// </summary>
+        static async Task<(string Sent, string Plan)> Sends(string name, CosmosContainerMetadata container)
+        {
+            var outer = Sending.Value;
+            var sent = new List<(CosmosServiceTarget Target, CosmosQuery Query, string[] Documents)>();
+            Sending.Value = sent;
+            var (_, raised, plan) = await Answer(BesideACorrelate(name, "items"), container, []);
+            raised.Should().BeNull(name + ": " + plan);
+            if (outer is not null)
+                lock (outer)
+                    outer.AddRange(sent);
+
+            const string From = " FROM items c";
+            var requests = sent.Select(s => s.Query).Select(q => (q.Sql.Contains(From, StringComparison.Ordinal) ? q.Sql[(q.Sql.IndexOf(From, StringComparison.Ordinal) + From.Length)..].Trim() : q.Sql)
+                + string.Concat(q.Parameters.Select((p, i) => (i == 0 ? " | " : ", ") + p.Name + "=" + Convert.ToString(p.Value, CultureInfo.InvariantCulture))));
+            return (sent.Count == 0 ? "nothing" : string.Join("; ", requests.Distinct()), plan);
+        }
+
+        /// <summary>
+        /// What a <c>WHERE</c> over a traversal sends where the correlate rule's test asks the facts graph whether what
+        /// Calcite's transposition newly evaluates can fail on a document the declaration admits, in the host Chapter 21
+        /// describes, declared and not, under both targets: each request as the text after the container's alias with its
+        /// parameters, empty for one that reads every document, or <c>nothing</c>. fr0 and fruu, whose transposition newly
+        /// evaluates only comparisons of the element and the document's text, send their conjunct of the document; frkk, which
+        /// keeps no document, sends none; ws1k sends its conjuncts of the document where <c>n</c> is declared an integer from 0
+        /// to 100, so that its <c>RETURNING</c> never fails, and reads every document where nothing is declared; j3n sends
+        /// <c>kind</c> and keeps its cast of <c>body</c> in process; wf3, a1, w13, rf2 and fz2_320, whose transposition newly
+        /// evaluates a cast that can fail or a comparison of the element with a computed value, read every document, as wf3
+        /// does not under <see cref="TraversedFixed"/>, where no cast of <c>body</c> fails; so does mf1, whose first firing
+        /// leaves above an <c>OR</c> holding a cast of <c>body</c> and whose last leaves nothing, but under <see
+        /// cref="TraversedFixed"/>; and r3a, whose <c>OR</c> Calcite with no transposition reads as true over the join's
+        /// condition, asks it, binds no container on the join, and reads every document, as jn1 does, whose <c>OR</c> never
+        /// fails. fr0 over a traversal written <c>WITH ORDINALITY</c> (fr0o) or over a <c>VARCHAR MULTISET</c> (fr0m) reads
+        /// every document: its element binds with its form, which no row names, so the comparison of it may fail. So do fr0
+        /// and frkk with the ordinal of a traversal written <c>WITH ORDINALITY</c> compared in place of the element (frord,
+        /// frordkk), where frkk sends nothing: the ordinal binds to nothing, so its comparison may fail.
+        /// </summary>
+        [Theory]
+        [InlineData("fr0", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE (c.kind = @p0) | @p0=A")]
+        [InlineData("fr0o", "Traversed", "", "")]
+        [InlineData("fr0m", "Traversed", "", "")]
+        [InlineData("frord", "Traversed", "", "")]
+        [InlineData("frordkk", "Traversed", "", "")]
+        [InlineData("fruu", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE (c.kind = @p0) | @p0=A")]
+        [InlineData("frkk", "Traversed", "nothing", "nothing")]
+        [InlineData("ws1k", "TwoTraversals", "WHERE ((c.kind = @p0) AND (c.n > @p1)) | @p0=A, @p1=50", "")]
+        [InlineData("j3n", "Traversed", "WHERE (c.kind = @p0) | @p0=A", "WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1))) | @p0=A, @p1=7")]
+        [InlineData("wf3", "Traversed", "", "")]
+        [InlineData("wf3", "TraversedFixed", "WHERE (c.body = @p0) | @p0=7", "")]
+        [InlineData("a1", "Traversed", "", "")]
+        [InlineData("w13", "Traversed", "", "")]
+        [InlineData("rf2", "Traversed", "", "")]
+        [InlineData("fz2_320", "Traversed", "", "")]
+        [InlineData("r3a", "Traversed", "", "")]
+        [InlineData("jn1", "Traversed", "", "")]
+        [InlineData("mf1", "Traversed", "", "")]
+        [InlineData("mf1", "TraversedFixed", "WHERE ((c.kind = @p0) AND ((c.body != @p1) OR (c.kind != @p2))) | @p0=A, @p1=7, @p2=B", "")]
+        public async Task AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail(string name, string schema, string declared, string undeclared)
+        {
+            var declaration = schema switch { "TwoTraversals" => TwoTraversals, "TraversedFixed" => TraversedFixed, _ => Traversed };
+            var wrong = new List<string>();
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var (label, container, expected) in new[] { ("declared", Declaring(declaration), declared), ("undeclared", Declaring("""{ "type": "object" }"""), undeclared) })
+                {
+                    var (sent, plan) = await Sends(name, container.WithServiceTarget(target));
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{name} {schema} {target} {label}: {sent}");
+                    if (sent != expected)
+                        wrong.Add($"{name} {target} {label} sends {sent}: " + plan);
+                }
+            }
+
+            wrong.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// The statements <see cref="AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail"/>
+        /// pins keep their traversal in Calcite in the host Chapter 21 describes, no <c>CosmosUnnest</c> in their plans, and
+        /// in each the correlate rule has a test with something to ask, which it asks the facts graph but where the row binds
+        /// no container (r3a, jn1), declared and not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("fr0", "Traversed")]
+        [InlineData("fr0o", "Traversed")]
+        [InlineData("fr0m", "Traversed")]
+        [InlineData("frord", "Traversed")]
+        [InlineData("frordkk", "Traversed")]
+        [InlineData("frkk", "Traversed")]
+        [InlineData("fruu", "Traversed")]
+        [InlineData("ws1k", "TwoTraversals")]
+        [InlineData("j3n", "Traversed")]
+        [InlineData("wf3", "Traversed")]
+        [InlineData("wf3", "TraversedFixed")]
+        [InlineData("a1", "Traversed")]
+        [InlineData("w13", "Traversed")]
+        [InlineData("rf2", "Traversed")]
+        [InlineData("fz2_320", "Traversed")]
+        [InlineData("r3a", "Traversed")]
+        [InlineData("jn1", "Traversed")]
+        [InlineData("mf1", "Traversed")]
+        [InlineData("mf1", "TraversedFixed")]
+        public void TheTraversalsWhoseRequestsThePinsHoldAreCalcites(string name, string schema)
+        {
+            var declaration = schema switch { "TwoTraversals" => TwoTraversals, "TraversedFixed" => TraversedFixed, _ => Traversed };
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var (label, container) in new[] { ("declared", Declaring(declaration)), ("undeclared", Declaring("""{ "type": "object" }""")) })
+                {
+                    var seen = new Infrastructure.PlannersSeen();
+                    var plan = PlanText(PlanToCosmos(BesideACorrelate(name, "items"), container.WithServiceTarget(target), out _, windows: true, subqueries: true, listener: seen));
+                    plan.Should().NotContain("CosmosUnnest", $"{name} {target} {label}: " + plan);
+                    var (_, questions, _) = Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(seen.Planners.Should().ContainSingle().Subject);
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{name} {target} {label}: {questions} questions");
+                    questions.Should().BePositive($"{name} {target} {label}: " + plan);
+                }
+            }
+        }
+
+        /// <summary>
+        /// What <see cref="Traversed"/> admits: beside three documents whose every cast reads, one of kind <c>B</c> holding an
+        /// element <c>"1"</c> and a <c>body</c> of <c>"q"</c>, which a conjunct of <c>kind</c> sent drops and no cast to
+        /// <c>INTEGER</c> reads.
+        /// </summary>
+        internal static readonly string[] SentBesideQ =
+        [
+            """{"id":"1","category":"a","kind":"A","m":"1","flag":true,"tags":["1","2"],"xs":["1"],"more":["1"],"body":"7","n":60,"w":60,"s":"1"}""",
+            """{"id":"2","category":"a","kind":"B","m":"2","flag":false,"tags":["1"],"xs":["2"],"more":["2"],"body":"5","n":45,"w":10,"s":"2"}""",
+            """{"id":"3","category":"b","kind":"A","m":"2","flag":true,"tags":["2"],"xs":["3"],"more":["1"],"body":"9","n":70,"w":70,"s":"1"}""",
+            """{"category":"c","kind":"B","m":"1","body":"q","n":60,"w":60,"tags":["1"],"xs":["1"],"more":["1"],"id":"9"}""",
+        ];
+
+        /// <summary>What <see cref="Traversed"/> admits: the first three of <see cref="SentBesideQ"/>, and one of kind <c>A</c> holding an element <c>"x"</c>.</summary>
+        internal static readonly string[] ElementXBesideSent =
+        [
+            .. SentBesideQ[..3],
+            """{"id":"9","category":"c","kind":"A","body":"7","n":60,"w":60,"m":"1","tags":["x"],"xs":["1"],"more":["1"]}""",
+        ];
+
+        /// <summary>What <see cref="Traversed"/> admits: the first three of <see cref="SentBesideQ"/>, and one of kind <c>A</c> holding an element <c>"1"</c> and a <c>body</c> of <c>"q"</c>.</summary>
+        internal static readonly string[] KindAQBesideSent =
+        [
+            .. SentBesideQ[..3],
+            """{"category":"c","kind":"A","m":"1","body":"q","n":60,"w":60,"tags":["1"],"xs":["1"],"more":["1"],"id":"9"}""",
+        ];
+
+        /// <summary>What <see cref="Traversed"/> admits: the first three of <see cref="SentBesideQ"/>, and one of kind <c>B</c> holding no element and a <c>body</c> of <c>"q"</c>.</summary>
+        internal static readonly string[] NoElementBesideQ =
+        [
+            .. SentBesideQ[..3],
+            """{"category":"c","kind":"B","m":"1","body":"q","n":60,"w":60,"tags":[],"xs":["1"],"more":["1"],"id":"9"}""",
+        ];
+
+        /// <summary>
+        /// A <c>WHERE</c> over a traversal answers as one of Calcite's plans, or over what it sends, declared and not, under
+        /// both targets. j3n, lifted, sends <c>kind</c> and keeps its cast of <c>body</c> in process over the documents the
+        /// request returns, so it answers the row of kind <c>A</c> where both of Calcite's plans fail on the <c>body</c>
+        /// <c>"q"</c> of a document of kind <c>B</c> whose element joins: a part kept in process reads only the rows a part
+        /// sent returns (Chapter 14.2). w13, fz2_320 and rf2, whose transposition newly evaluates a cast that can fail, are not
+        /// transposed, and answer as Calcite with no transposition does, where Calcite with <c>FILTER_CORRELATE</c> fails on
+        /// <c>"q"</c> or <c>"x"</c>; j1n, transposed as before, fails on the <c>body</c> of a document with no element as
+        /// Calcite with <c>FILTER_CORRELATE</c> does, as n1 does. gsf, over a grouping by grouping sets whose row binds no
+        /// container, so that its test cannot be asked, is not transposed, and answers as Calcite with no transposition
+        /// does where Calcite with <c>FILTER_CORRELATE</c> fails on <c>"x"</c>. r3a, whose <c>OR</c> holding a cast of the
+        /// element Calcite with no transposition reads as true over the condition of the join on its left, asks it, binds no
+        /// container on the join, is not transposed, and answers as Calcite with no transposition does where Calcite with
+        /// <c>FILTER_CORRELATE</c> fails on <c>"x"</c>. mf1, whose first firing leaves above an <c>OR</c> holding a cast of
+        /// <c>body</c> that its second moves, asks it, is not transposed, and answers as both of Calcite's plans do over a
+        /// document of kind <c>A</c> with a <c>body</c> of <c>"q"</c>, where a test that asked only the last firing's rest
+        /// would take the transposition and fail on <c>"q"</c>.
+        /// </summary>
+        [Theory]
+        [InlineData("j3n", "q", "1,1")]
+        [InlineData("w13", "q", "2,1;9,1")]
+        [InlineData("fz2_320", "x", "1,1;1,2;3,2;9,x")]
+        [InlineData("rf2", "n", "")]
+        [InlineData("j1n", "e", "raises q")]
+        [InlineData("gsf", "t", "1,1,1;1,1,1;1,x,x;1,x,x")]
+        [InlineData("r3a", "x", "9,x;9,x;9,x;9,x")]
+        [InlineData("mf1", "a", "1,1;1,2;3,2;9,1")]
+        public async Task AWhereOverATraversalAnswersAsOneOfCalcitesPlansOrOverWhatItSends(string name, string documents, string rows)
+        {
+            await Answers(name, rows, Traversed, documents switch
+            {
+                "q" => SentBesideQ,
+                "x" => ElementXBesideSent,
+                "a" => KindAQBesideSent,
+                "n" => NoElementBesideQ,
+                "t" => TraversedDocuments,
+                _ => BesideAnEmptySide,
+            });
+        }
+
         /// <summary>
         /// u18a, u18b, u18d, u18f, the lateral l18a and their <c>COUNT</c>s, each a conjunct of the document beside a part of
-        /// both sides it decides, cast no element and no <c>body</c>, and answer the rows the condition keeps, declared or not,
-        /// under both targets.
+        /// both sides it decides, where something its test asks can fail, cast no element and no <c>body</c>, and answer the
+        /// rows the condition keeps, declared or not, under both targets.
         /// </summary>
         [Theory]
         [InlineData("u18a", "1,x;1,1;2,2")]
@@ -784,9 +1051,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Where Calcite's simplification of the whole condition above a correlate reads it as false, nothing moves into a
-        /// side: u6 plans within the bound, declared or not, under both targets, its condition, cast and all, in the node above
-        /// the correlate, and no node beneath the correlate holds a condition.
+        /// Where Calcite's simplification of the whole condition above a correlate reads it as false and something its test
+        /// asks can fail, nothing moves into a side: u6 plans within the bound, declared or not, under both targets, its
+        /// condition, cast and all, in the node above the correlate, and no node beneath the correlate holds a condition.
         /// </summary>
         [Fact]
         public void AConditionReadAsFalseIsKeptWholeAboveACorrelate()
@@ -806,14 +1073,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Plans a statement in the host Chapter 21 describes, its calc pass after, and runs it over a container whose every
-        /// request is answered with the same documents, each as the row a statement reading the document and its id is
-        /// returned: the rows, each as its columns' text joined by commas, or what the run raised.
+        /// Plans a statement in the host Chapter 21 describes, its calc pass after, and runs it over a container whose requests
+        /// are answered over the documents given, each request's <c>WHERE</c> evaluated as the service evaluates it: the rows,
+        /// each as its columns' text joined by commas, or what the run raised.
         /// </summary>
         static async Task<(List<string>? Rows, Exception? Raised, string Plan)> Answer(string sql, CosmosContainerMetadata container, string[] documents)
         {
             var typeFactory = new JavaTypeFactoryImpl();
-            var table = new CosmosTable(container, new DocumentsExecutor(documents));
+            var table = new CosmosTable(container, new DocumentsExecutor(documents, container.ServiceTarget));
             var plan = "";
             try
             {
@@ -836,7 +1103,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
                 return (rows, null, plan);
             }
-            catch (Exception e)
+            catch (Exception e) when (Infrastructure.DocumentRequests.IsRefusal(e) == false)
             {
                 return (null, e, plan);
             }
@@ -845,16 +1112,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// An executor that answers every request reading the document with the same documents, whatever its <c>WHERE</c>,
-        /// each as <c>{ "DOC": c, "id": c.id }</c>, and refuses any other.
+        /// Where set, each request a pin's plan sends, on its target, with the documents it was answered over: what
+        /// <see cref="CorrelatePinsServiceTests"/> sends the service.
         /// </summary>
-        sealed class DocumentsExecutor(string[] documents) : ICosmosQueryExecutor
+        internal static readonly AsyncLocal<List<(CosmosServiceTarget Target, CosmosQuery Query, string[] Documents)>?> Sending = new();
+
+        /// <summary>
+        /// An executor that answers a request reading whole documents over the documents given, its <c>WHERE</c> evaluated as
+        /// the service evaluates it on the container's target (<see cref="Infrastructure.DocumentRequests"/>), and refuses
+        /// any other.
+        /// </summary>
+        sealed class DocumentsExecutor(string[] documents, CosmosServiceTarget target) : ICosmosQueryExecutor
         {
 
-            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default) =>
-                query.Sql.StartsWith("SELECT VALUE { \"DOC\": c,", StringComparison.Ordinal) && query.Sql.Contains(" JOIN ", StringComparison.Ordinal) == false
-                    ? new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())))
-                    : throw new InvalidOperationException("Not answered here: " + query.Sql);
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                var rows = Infrastructure.DocumentRequests.Answer(query, partitionKey, documents, target);
+                if (Sending.Value is { } sending)
+                    lock (sending)
+                        sending.Add((target, query, documents));
+
+                return new(Infrastructure.ListCursor.Documents(rows));
+            }
 
         }
 

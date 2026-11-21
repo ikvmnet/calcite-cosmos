@@ -237,12 +237,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="path">The path, relative to the document.</param>
         /// <param name="value">On success, the element at the path.</param>
         /// <returns><c>true</c> where the path is present, whatever it holds.</returns>
+        /// <exception cref="InvalidOperationException">The path holds the element a traversal yields.</exception>
         public static bool TryRead(JsonElement document, CosmosPath path, out JsonElement value)
         {
             value = document;
 
             if (path is null)
                 return false;
+
+            path.RefuseYielded("a document read");
 
             foreach (var segment in path.Segments)
             {

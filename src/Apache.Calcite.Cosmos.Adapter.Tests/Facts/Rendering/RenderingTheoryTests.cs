@@ -47,7 +47,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// alone defines, the images a call's rows license, and the case-insensitive affix a LIKE over a fold is written as
         /// (G6); and what Calcite makes of each reading, <c>LIKE</c>'s units, what each type test is TRUE of, and what each raw
         /// column answers on a key, beside a parameter too, and their union, the readings vocabulary's, which the facts graph
-        /// runs too (G7). No count bounds them: what the rules cost is judged at the end-of-plan evaluation.
+        /// runs too (G7); and the element a traversal yields read as its row says. No count bounds them: what the rules cost is
+        /// judged at the end-of-plan evaluation.
         /// </summary>
         [Fact]
         public void TheTheorysRulesAreHeldByFamily()
@@ -72,6 +73,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "an accessor of a path holding an element reads the element reading where an index does not read it as of a path",
                     "a reading written apart reads what its reading reads where its path holds no element",
                     "a reading written apart of a path holding an element reads the element reading",
+                    "an accessor of an element a traversal yields reads it as its traversal's elements read",
+                    "a reading written apart of an element a traversal yields reads what its reading reads",
                     "a test reads a call's place as every call's row says the body reads it",
                     "a literal a cast to DOUBLE converts denotes the number it spells",
                     "a literal a cast to a DECIMAL converts denotes the number it spells",
@@ -386,7 +389,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(204, "the raw columns' nine rules moved into the readings vocabulary, its two that give a comparison with a parameter its column's answer, and the two that give a raw column's reading its rows, which the rendering graph runs as the facts graph does");
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(206, "the raw columns' nine rules moved into the readings vocabulary, its two that give a comparison with a parameter its column's answer, the two that give a raw column's reading its rows, which the rendering graph runs as the facts graph does, and the vocabulary's two that read the element a traversal yields");
         }
 
         /// <summary>
@@ -521,6 +524,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 s.Theory.Get(s.ReaderOrder.Of(g.Key)).Should().BeEquivalentTo(g.Select(r => r.Claim));
             foreach (var g in d.TestKinds.Where(r => ServiceForm.SpellingOf(r.Test) is not null).GroupBy(r => ServiceForm.SpellingOf(r.Test)!))
                 s.Theory.Get(s.TestKinds.Of(g.Key)).Should().BeEquivalentTo(g.SelectMany(r => CosmosValueClasses.JsonKinds.Where(k => k.Class == r.Kind).Select(k => k.Kind)).Distinct());
+        }
+
+        /// <summary>
+        /// What a traversal of each element type in each form yields, and the reading its elements read as
+        /// (<c>CosmosAxiomRows.ReadYieldKinds</c>, <c>ReadYieldReads</c>), are facts of both graphs' roots, S's and the facts
+        /// graph's, a pair's kinds in one value.
+        /// </summary>
+        [Fact]
+        public void TheYieldRowsAreFactsOfBothGraphs()
+        {
+            var (d, s) = (Measured, ProbeTheory);
+            var facts = new JsonContexts(Adapter.Metadata.CosmosReasoning.Rows);
+            d.YieldReads.Should().NotBeEmpty();
+            d.YieldKinds.Should().NotBeEmpty();
+            foreach (var (type, form, reader) in d.YieldReads)
+            {
+                s.Theory.Check(s.Calcite.YieldReads.Of(type, form, reader)).Should().BeTrue($"S reads {type} {form}'s elements as {reader}");
+                facts.Json.Check(facts.Rules.Readings.YieldReads.Of(type, form, reader)).Should().BeTrue($"the facts graph reads {type} {form}'s elements as {reader}");
+            }
+
+            foreach (var g in d.YieldKinds.GroupBy(r => (r.Type, r.Form)))
+            {
+                s.Theory.Get(s.Calcite.YieldKinds.Of(g.Key.Type, g.Key.Form)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"S's {g.Key}");
+                facts.Json.Get(facts.Rules.Readings.YieldKinds.Of(g.Key.Type, g.Key.Form)).Should().BeEquivalentTo(g.Select(r => r.Kind), $"the facts graph's {g.Key}");
+            }
+
+            GC.KeepAlive(facts);
         }
 
         /// <summary>

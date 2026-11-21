@@ -43,7 +43,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// the value, which is not what <c>RETURNING</c> asserts (<c>Calcite.ColumnReadsWholeNumbersAsItsType</c>);</item>
     /// <item><c>raw</c> is one of three columns (<see cref="RawAs"/>), whose comparisons and null were measured
     /// (<c>Calcite.RawStringEqualityIsOrdinal</c>, <c>Calcite.RawNullIsSqlNull</c>), and so was the cast of one to text
-    /// (<c>Calcite.CastOfARawValueToText</c>).</item>
+    /// (<c>Calcite.CastOfARawValueToText</c>);</item>
+    /// <item>the element a traversal yields is read on each row a document joins (<see cref="Joined"/>) as its row measured
+    /// it, a <c>VARCHAR ARRAY</c>'s traversed without ordinality as the text of a path holding the same value, and through
+    /// no other reading (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>).</item>
     /// </list>
     /// <para>
     /// <b>What was not measured is a coin</b> (<see cref="World"/>): a raw value compared with a parameter through no named
@@ -101,6 +104,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </remarks>
         public static Truths Truth(SqlPredicate predicate, J.Obj document, World world, TypedAs typed = TypedAs.Returning, RawAs? raw = null)
         {
+            if (ReadsAnElementUnmeasured(predicate))
+                return R;
+
             switch (predicate)
             {
                 case SqlPredicate.Not n:
@@ -345,21 +351,128 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         };
 
         /// <summary>
-        /// Returns the value at a path of a document, or <c>null</c> where it is absent.
+        /// Returns the value at a path of a document, or <c>null</c> where it is absent: of the element a traversal yields,
+        /// the one a row of the traversal binds (<see cref="Joined"/>), and nothing of a document read whole or beneath it.
         /// </summary>
         public static J? At(J document, JsonDocumentPath path)
         {
             J? current = document;
-            foreach (var segment in path.Segments)
-                current = segment switch
+            var segments = path.Segments;
+            for (var i = 0; i < segments.Count; i++)
+                current = segments[i] switch
                 {
                     string name => current is J.Obj o && o.Properties.TryGetValue(name, out var child) ? child : null,
                     long index => current is J.Arr a && index < a.Elements.Count ? a.Elements[(int)index] : null,
+                    JsonYieldedStep when i == segments.Count - 1 => document is J.Obj row && row.Properties.TryGetValue(Yielded, out var bound)
+                        && bound is J.Obj elements && elements.Properties.TryGetValue(SqlValue.Spell(path), out var element) ? element : null,
                     _ => null,
                 };
 
             return current;
         }
+
+        // ── The element a traversal yields ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The property a row of a traversal binds the elements it yields under, each by its path's spelling
+        /// (<see cref="Joined"/>): a name no declaration draws, read by <see cref="At"/> alone.
+        /// </summary>
+        public const string Yielded = "(yielded)";
+
+        /// <summary>
+        /// The element type and the form whose traversal was measured
+        /// (<c>Calcite.AVarcharArrayYieldsItsStringsAndNullsAsTheText</c>): it yields each string and null its array holds,
+        /// read as the text of a path holding the same value; and over an array holding anything else, or an object where the
+        /// array is, it raises before anything reads a row.
+        /// </summary>
+        static readonly (string Type, string Form) MeasuredElement = ("VARCHAR", "ARRAY");
+
+        /// <summary>Whether a traversal's element is of the type and the form measured (<see cref="MeasuredElement"/>).</summary>
+        static bool IsMeasured(JsonYieldedStep step) => (step.Type, step.Form) == MeasuredElement;
+
+        /// <summary>Whether a path is the element a traversal yields: its last step is one.</summary>
+        public static bool IsElement(JsonDocumentPath path) => path.HasElement && path.Segments[^1] is JsonYieldedStep;
+
+        /// <summary>The elements of traversals a predicate reads.</summary>
+        public static IReadOnlyList<JsonDocumentPath> Elements(SqlPredicate predicate) => [.. predicate.Paths.Where(IsElement).Distinct()];
+
+        /// <summary>
+        /// The rows a document joins over traversals of its arrays, one for each element each traversal yields, every
+        /// traversal's crossed, each the document with the elements bound under <see cref="Yielded"/>: the document itself
+        /// where nothing is traversed; none where an array is empty, absent or null, or a scalar stands where it is; and
+        /// <c>null</c> where a traversal raises before anything reads a row, so that nothing over its element is evaluated.
+        /// </summary>
+        /// <remarks>
+        /// A <c>VARCHAR ARRAY</c> traversal yields the strings and nulls of its array, raising over an array holding anything
+        /// else or an object where the array is (<see cref="MeasuredElement"/>). A traversal of a type or a form no row names,
+        /// <c>WITH ORDINALITY</c>'s among them, yields every element its array holds, raising over an object where the array
+        /// is, and nothing reads it (<see cref="ReadsAnElementUnmeasured(SqlValue)"/>).
+        /// </remarks>
+        public static IReadOnlyList<J.Obj>? Joined(J.Obj document, IReadOnlyList<JsonDocumentPath> elements)
+        {
+            if (elements.Count == 0)
+                return [document];
+
+            IEnumerable<SortedDictionary<string, J>> bindings = [new(StringComparer.Ordinal)];
+            foreach (var element in elements.Distinct())
+            {
+                var step = (JsonYieldedStep)element.Segments[^1];
+                IReadOnlyList<J>? yielded = At(document, ArrayOf(element)) switch
+                {
+                    J.Arr a when IsMeasured(step) == false => a.Elements,
+                    J.Arr a => a.Elements.All(e => e is J.Str or J.Null) ? a.Elements : null,
+                    J.Obj => null,
+                    _ => [],
+                };
+
+                if (yielded is null)
+                    return null;
+
+                var spelled = SqlValue.Spell(element);
+                bindings = bindings.SelectMany(bound => yielded.Select(value => new SortedDictionary<string, J>(bound, StringComparer.Ordinal) { [spelled] = value })).ToArray();
+            }
+
+            return [.. bindings.Select(bound => new J.Obj(new SortedDictionary<string, J>(document.Properties, StringComparer.Ordinal) { [Yielded] = new J.Obj(bound) }))];
+        }
+
+        /// <summary>The array a traversal's element is yielded from: its path without its last step.</summary>
+        public static JsonDocumentPath ArrayOf(JsonDocumentPath element) => element.Segments.SkipLast(1).Aggregate(JsonDocumentPath.Root, (path, segment) => segment switch
+        {
+            string name => path.Property(name),
+            long index => path.Element(index),
+            _ => throw new NotSupportedException($"{element} yields from no array a name or an index reaches."),
+        });
+
+        /// <summary>
+        /// Whether an atom reads the element a traversal yields through anything but its row's reading, the text: a raw
+        /// value's, a <c>RETURNING</c>'s, a <c>JSON_QUERY</c>'s, a test of its kind or its presence, or any reading of an
+        /// element of a type or a form no row names. The row measured the element as the text alone, so any other reading is
+        /// none Calcite was measured to give, and the loader leaves it opaque; it is read here as a raise, the world in which
+        /// nothing said never to raise over it holds.
+        /// </summary>
+        static bool ReadsAnElementUnmeasured(SqlPredicate predicate) => predicate switch
+        {
+            SqlPredicate.IsDefined d => d.Value.PathRead is { } p && IsElement(p) || ReadsAnElementUnmeasured(d.Value),
+            SqlPredicate.TypeTest t => t.Value.PathRead is { } p && IsElement(p) || ReadsAnElementUnmeasured(t.Value),
+            SqlPredicate.Compare c => ReadsAnElementUnmeasured(c.Left) || ReadsAnElementUnmeasured(c.Right),
+            SqlPredicate.In i => ReadsAnElementUnmeasured(i.Value),
+            SqlPredicate.IsNull n => ReadsAnElementUnmeasured(n.Value),
+            SqlPredicate.Affix a => ReadsAnElementUnmeasured(a.Value),
+            _ => false,
+        };
+
+        /// <inheritdoc cref="ReadsAnElementUnmeasured(SqlPredicate)"/>
+        static bool ReadsAnElementUnmeasured(SqlValue value) => value switch
+        {
+            SqlValue.Text t => IsElement(t.Path) && IsMeasured((JsonYieldedStep)t.Path.Segments[^1]) == false,
+            SqlValue.Raw or SqlValue.Typed or SqlValue.Query => value.PathRead is { } p && IsElement(p),
+            SqlValue.Cast c => ReadsAnElementUnmeasured(c.Value),
+            SqlValue.DecimalCast d => ReadsAnElementUnmeasured(d.Value),
+            SqlValue.Box b => ReadsAnElementUnmeasured(b.Value),
+            SqlValue.Call c => c.Operands.Any(ReadsAnElementUnmeasured),
+            SqlValue.Case c => c.Arms.Any(ReadsAnElementUnmeasured) || c.Conditions.Any(ReadsAnElementUnmeasured),
+            _ => false,
+        };
 
         /// <summary>
         /// Returns what <c>JSON_VALUE</c> renders a stored value as, or <c>null</c> for SQL null.

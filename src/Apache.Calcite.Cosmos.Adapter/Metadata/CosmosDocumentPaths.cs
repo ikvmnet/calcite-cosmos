@@ -33,10 +33,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// with <paramref name="elements"/>, which the predicate loader alone asks, it is the element's
         /// own segment (<see cref="JsonDocumentPath.Element"/>), which no other caller reads yet.
         /// </para>
+        /// <para>
+        /// So is the element a traversal yields (<see cref="CosmosPathSegment.IsYielded"/>), which only the correlate rule's
+        /// question binds: asked with <paramref name="elements"/>, it is the document path's yielded step, last only, since
+        /// what is beneath it is read out of the element's text, which no path names; asked without, <c>null</c>.
+        /// </para>
         /// </remarks>
         /// <param name="path">The statement's path.</param>
         /// <param name="rootAlias">The alias the statement binds the container to.</param>
-        /// <param name="elements">Whether an array subscript is read as an element rather than refused.</param>
+        /// <param name="elements">Whether an array subscript, or a final element a traversal yields, is read as an element rather than refused.</param>
         /// <returns>The document path, or <c>null</c>.</returns>
         public static JsonDocumentPath? From(CosmosPath? path, string rootAlias, bool elements = false)
         {
@@ -47,10 +52,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             for (var i = 0; i < path.Segments.Count; i++)
             {
-                if (path.Segments[i].Name is string name)
+                var segment = path.Segments[i];
+                if (segment.Name is string name)
                     document = document.Property(name);
-                else if (elements)
-                    document = document.Element(path.Segments[i].ArrayIndex);
+                else if (elements == false)
+                    return null;
+                else if (segment.IsYielded == false)
+                    document = document.Element(segment.ArrayIndex);
+                else if (i == path.Segments.Count - 1)
+                    document = document.Yielded(segment.ElementType!, segment.TraversalForm!, segment.Traversal);
                 else
                     return null;
             }

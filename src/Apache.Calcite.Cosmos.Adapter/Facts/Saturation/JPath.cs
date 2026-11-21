@@ -9,7 +9,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
 {
 
     /// <summary>
-    /// A path into a document: a class of terms built from <c>Root</c>, <c>Prop</c>, <c>Index</c> and <c>Each</c>.
+    /// A path into a document: a class of terms built from <c>Root</c>, <c>Prop</c>, <c>Index</c>, <c>Each</c> and <c>Yield</c>.
     /// </summary>
     internal readonly record struct JPath(ClassId Id) : ISort<JPath>
     {

@@ -3,6 +3,7 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Facts;
+using Apache.Calcite.Cosmos.Facts.Rendering;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using Eggnog;
@@ -35,8 +36,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
     /// those the service trims, or U+0000 left out — and an arm's stated of its disjunction. And two are the
     /// theory's rules of a domain: its numbers read as bounding the path above their least, and a domain of one read as
     /// one value in every document without the path's presence. Another is <c>D0</c>'s: a declared path read as there.
-    /// The last two are the reduce's, which only the stronger check of a statement made FALSE sees: the gate without its
-    /// guard, and a disjunction read as raising nowhere its left side raises nowhere.
+    /// Two are the reduce's, which only the stronger check of a statement made FALSE sees: the gate without its guard, and
+    /// a disjunction read as raising nowhere its left side raises nowhere. And three are the rows of the element a traversal
+    /// yields, which only the raises question's check sees, beside a traversal: the element narrowed to a null alone, read
+    /// through a reading no row measured of it, and a traversal written <c>WITH ORDINALITY</c> read as the measured form.
     /// </para>
     /// </remarks>
     public sealed class PlantedBugTests
@@ -380,6 +383,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 r.When(e.Is(rules.Or.Of(a, b)), rules.NeverRaises.Of(a));
                 r.Then(rules.NeverRaises.Of(e));
             })), "reduce");
+
+        /// <summary>
+        /// The element a <c>VARCHAR</c> traversal yields narrowed to a null alone, its row's kinds stated so
+        /// (<c>yieldkinds("VARCHAR", "ARRAY")</c> a null): a cast of it then reads as never raising, which an element Calcite
+        /// does not parse refutes.
+        /// </summary>
+        [Fact]
+        public void AnElementATraversalYieldsNarrowedToANullAloneIsCaught() =>
+            Caught(Seeded(CosmosReasoning.Rows.Calcite with { YieldKinds = [("VARCHAR", "ARRAY", NullType)] }), "raises");
+
+        /// <summary>
+        /// The element a <c>VARCHAR</c> traversal yields read, beside its text, as a raw value, a reading whose cast rows say
+        /// a cast never raises (<c>Calcite.CastOfARawValueToText</c>), its row naming it (<c>yieldreads</c>): the row measured
+        /// the element as the text alone, so a raw reading of it, compared or cast to text, is none Calcite was measured to
+        /// give, and is said never to raise.
+        /// </summary>
+        [Fact]
+        public void AnElementATraversalYieldsReadThroughAReadingNoRowMeasuredOfItIsCaught() =>
+            Caught(Seeded(CosmosReasoning.Rows.Calcite with { YieldReads = [.. CosmosReasoning.Rows.Calcite.YieldReads, ("VARCHAR", "ARRAY", PredicateAtom.RawReader)] }), "raises");
+
+        /// <summary>
+        /// The element a <c>VARCHAR</c> traversal written <c>WITH ORDINALITY</c> yields given the measured form's kinds and
+        /// reading, as rows of its own form: no row measured that form, which yields every element, an object's or an array's
+        /// rendering among them, so a reading of it said never to raise is none Calcite was measured to give.
+        /// </summary>
+        [Fact]
+        public void AnElementOfATraversalWithOrdinalityReadAsTheMeasuredFormsIsCaught() =>
+            Caught(Seeded(CosmosReasoning.Rows.Calcite with
+            {
+                YieldKinds = [.. CosmosReasoning.Rows.Calcite.YieldKinds, .. CosmosReasoning.Rows.Calcite.YieldKinds.Select(y => (y.Type, y.Form + " WITH ORDINALITY", y.Kind))],
+                YieldReads = [.. CosmosReasoning.Rows.Calcite.YieldReads, .. CosmosReasoning.Rows.Calcite.YieldReads.Select(y => (y.Type, y.Form + " WITH ORDINALITY", y.Reader))],
+            }), "raises");
+
+        /// <summary>
+        /// The predicate rules of a graph of the test's own, seeded with Calcite's rows of its own beside the stored forms'.
+        /// </summary>
+        static Func<JsonFactTheory, CosmosOracle> Seeded(CalciteRows rows)
+        {
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows with { Calcite = rows }, long.MaxValue);
+            return theory => new CosmosOracle(theory, generations);
+        }
 
         /// <summary>
         /// The predicate rules of a graph of the test's own, planted.

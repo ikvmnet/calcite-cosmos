@@ -54,6 +54,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         }
 
+        /// <summary>An executor that answers every request with no document, and keeps each request's text and parameters.</summary>
+        sealed class RecordingExecutor(System.Collections.Generic.List<string> sent) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                lock (sent)
+                    sent.Add(query.Sql + string.Concat(query.Parameters.Select((p, i) => (i == 0 ? " | " : ", ") + p.Name + "=" + Convert.ToString(p.Value, System.Globalization.CultureInfo.InvariantCulture))));
+
+                return new(Infrastructure.ListCursor.Documents([]));
+            }
+
+        }
+
+        /// <summary>
+        /// Runs a statement over a container that holds no document, with each planner the host makes given to <paramref
+        /// name="bound"/>: each request sent, with its parameters, or <c>nothing</c>.
+        /// </summary>
+        static string Sends(string sql, bool declared, string schema, CosmosServiceTarget target, java.util.function.Consumer bound)
+        {
+            var sent = new System.Collections.Generic.List<string>();
+            using var source = Open(declared ? schema : null, new RecordingExecutor(sent), target);
+            using var hook = org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
+            using var connection = source.OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            using (var reader = command.ExecuteReader())
+                while (reader.Read())
+                    continue;
+
+            return sent.Count == 0 ? "nothing" : string.Join("; ", sent.Distinct());
+        }
+
         static string Explain(string sql, bool declared, string schema = Schema, CosmosServiceTarget? target = null, java.util.function.Consumer? bound = null)
         {
             using var source = Open(declared ? schema : null, new NoExecutor(), target);
@@ -478,6 +511,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     work.Sum(w => w.Carries).Should().BeLessThanOrEqualTo(bound, $"{family}{depth} {target} declared {declared}");
                 }
             }
+        }
+
+        /// <summary>
+        /// The statements <see
+        /// cref="CosmosDeclaredFactPlanningTests.AWhereOverATraversalSendsItsConditionsOnTheDocumentWhereNothingItNewlyEvaluatesCanFail"/>
+        /// pins through this connection, whose Calcite moves a <c>WHERE</c>'s conjuncts of the document by its own rules before
+        /// the planner registers the statement: each sends the request it sent before the correlate rule asked the facts graph
+        /// anything, and the rule asks it nothing, declared and not, under both targets.
+        /// </summary>
+        [Theory]
+        [InlineData("fr0", "Traversed",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null), \"EXPR$0\": t0 } FROM items c JOIN t0 IN c.tags WHERE ((c.kind = @p0) AND (t0 = @p1)) | @p0=A, @p1=1",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null), \"EXPR$0\": t0 } FROM items c JOIN t0 IN c.tags WHERE ((c.kind = @p0) AND (t0 = @p1)) | @p0=A, @p1=1")]
+        [InlineData("frkk", "Traversed",
+            "nothing",
+            "nothing")]
+        [InlineData("fruu", "Traversed",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A")]
+        [InlineData("ws1k", "TwoTraversals",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND (c.n > @p1)) | @p0=A, @p1=50",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1)) AND (c.n > @p2)) | @p0=A, @p1=7, @p2=50")]
+        [InlineData("j3n", "Traversed",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1))) | @p0=A, @p1=7")]
+        [InlineData("w13", "Traversed",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null), \"EXPR$0\": t0 } FROM items c JOIN t0 IN c.tags WHERE ((c.kind = @p0) AND (IS_DEFINED(t0) AND NOT IS_NULL(t0) AND (t0 != @p1))) | @p0=B, @p1=zz",
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null), \"EXPR$0\": t0 } FROM items c JOIN t0 IN c.tags WHERE ((c.kind = @p0) AND (IS_DEFINED(t0) AND NOT IS_NULL(t0) AND (t0 != @p1))) | @p0=B, @p1=zz")]
+        public void AWhereOverATraversalSendsWhatItSentAndTheCorrelateRuleAsksNothing(string name, string schema, string declaredSends, string undeclaredSends)
+        {
+            var wrong = new System.Collections.Generic.List<string>();
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var declared in new[] { true, false })
+                {
+                    var seen = new Infrastructure.PlannersSeen();
+                    var sent = Sends(CosmosDeclaredFactPlanningTests.BesideACorrelate(name, "items"), declared, schema == "TwoTraversals" ? CosmosDeclaredFactPlanningTests.TwoTraversals : CosmosDeclaredFactPlanningTests.Traversed, target, seen);
+                    var questions = seen.Planners.Sum(p => Adapter.Rel.Convert.CosmosFilterCorrelateRule.Work(p).Questions);
+                    TestContext.Current.TestOutputHelper?.WriteLine($"{name} {target} declared {declared}: {sent}; {questions} questions");
+                    if (sent != (declared ? declaredSends : undeclaredSends) || questions != 0)
+                        wrong.Add($"{name} {target} declared {declared} sends {sent}, {questions} questions");
+                }
+            }
+
+            wrong.Should().BeEmpty();
         }
 
         /// <summary>

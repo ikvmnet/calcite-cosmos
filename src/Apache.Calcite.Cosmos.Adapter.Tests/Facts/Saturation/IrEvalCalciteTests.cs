@@ -255,6 +255,82 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             Assert.Equal(asked.Select(Evaluated), MaterialisedTable.Of(SqlTypeName.ANY, values).Ask(connection, [.. asked.Select(p => $"\"v\" {p.Op} {NumberOf(((SqlValue.Literal)p.Right).Value).ToString(CultureInfo.InvariantCulture)}")]));
         }
 
+        /// <summary>
+        /// The element a <c>VARCHAR</c> traversal yields, read by the evaluator over the rows a document joins
+        /// (<see cref="IrEval.Joined"/>) as Calcite's traversal yields them in process: each test of its text, and each cast
+        /// of it, answers row by row what Calcite answers, or raises where Calcite's statement fails; the traversal raises
+        /// over an array holding anything but a string or a null, or an object where the array is; and over an empty, absent
+        /// or null array, or a scalar where the array is, no row is joined.
+        /// </summary>
+        [Fact]
+        public void TheElementATraversalYieldsAgreesWithCalcite()
+        {
+            var element = Declaration.A.Yielded("VARCHAR", "ARRAY", 0);
+            SqlValue t = new SqlValue.Text(element) { Form = PredicateAtom.FieldForm };
+            (SqlPredicate Ir, string Sql)[] predicates =
+            [
+                (new SqlPredicate.Compare("=", t, SqlValue.Of("x")), "{0} = 'x'"),
+                (new SqlPredicate.Compare("<>", t, SqlValue.Of("30")), "{0} <> '30'"),
+                (new SqlPredicate.Compare("<", t, SqlValue.Of("b")), "{0} < 'b'"),
+                (new SqlPredicate.In(t, ValueSet.Of(SqlValue.Of("1").Value, SqlValue.Of("x").Value)), "{0} IN ('1', 'x')"),
+                (new SqlPredicate.IsNull(t), "{0} IS NULL"),
+                (new SqlPredicate.Affix(PredicateAtom.LikeTest, t, "1%"), "{0} LIKE '1%'"),
+                (new SqlPredicate.Compare("=", new SqlValue.Cast("INTEGER", t), SqlValue.Of(7m)), "CAST({0} AS INTEGER) = 7"),
+                (new SqlPredicate.Compare(">", new SqlValue.Cast("DOUBLE", t), SqlValue.Of(2m)), "CAST({0} AS DOUBLE) > 2"),
+                (new SqlPredicate.Compare("=", new SqlValue.Cast("BOOLEAN", t), SqlValue.Of(true)), "CAST({0} AS BOOLEAN) = TRUE"),
+            ];
+
+            J Of(params J[] elements) => new J.Arr([.. elements]);
+            J?[] arrays =
+            [
+                .. Declaration.StringArrays, Of(new J.Num(30m)), Of(new J.Num(2.5m)), Of(new J.Bool(true)), Of(new J.Obj(new(StringComparer.Ordinal) { ["x"] = new J.Num(1m) })),
+                Of(Of(new J.Num(1m))), Of(new J.Str("1"), new J.Num(30m)), new J.Obj(new(StringComparer.Ordinal) { ["x"] = new J.Str("1") }), Of(), new J.Null(), null, new J.Str("ab"), new J.Num(30m),
+            ];
+
+            using var connection = MaterialisedTable.Open();
+            var world = new World(0);
+            var failures = new List<string>();
+            foreach (var array in arrays)
+            {
+                var document = new J.Obj(array is null ? new(StringComparer.Ordinal) : new(StringComparer.Ordinal) { ["a"] = array });
+                var rows = IrEval.Joined(document, [element]);
+                var from = $" FROM \"{MaterialisedTable.Of([Documents.Json(document)]).AddTo(connection)}\" AS \"x\", UNNEST(JSON_QUERY(\"x\".\"d\", '$.a' RETURNING VARCHAR ARRAY)) AS \"u\"(\"t\")";
+                foreach (var (ir, sql) in predicates)
+                {
+                    var truths = rows?.Select(row => IrEval.Truth(ir, row, world)).ToArray();
+                    var evaluated = truths is null || truths.Contains(Truths.Raises) ? null : string.Concat(truths.Select(Letter));
+                    var answered = Joined(connection, from, string.Format(CultureInfo.InvariantCulture, sql, "\"u\".\"t\""));
+                    if (evaluated != answered)
+                        failures.Add($"{string.Format(CultureInfo.InvariantCulture, sql, "u.t")} over {(array is null ? "an absent array" : Documents.Json(array))}: Calcite {answered ?? "raises"}, the evaluator {evaluated ?? "raises"}");
+                }
+            }
+
+            Assert.True(failures.Count == 0, string.Join("\n", failures));
+        }
+
+        /// <summary>
+        /// A predicate projected over each row a table's traversal joins, as a letter a row in the order Calcite yields them;
+        /// or <c>null</c> where the statement fails.
+        /// </summary>
+        static string? Joined(DbConnection connection, string from, string predicate)
+        {
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT ({predicate}){from}";
+                var letters = new System.Text.StringBuilder();
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    letters.Append(reader.IsDBNull(0) ? "U" : Convert.ToBoolean(reader.GetValue(0), CultureInfo.InvariantCulture) ? "T" : "F");
+
+                return letters.ToString();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         static string Letter(Truths truth) => truth switch
         {
             Truths.True => "T",

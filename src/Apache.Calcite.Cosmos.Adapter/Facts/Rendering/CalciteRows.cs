@@ -24,6 +24,10 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// <param name="StrictOperators">Each operator by its name in the IR, and whether Calcite answers null for it over a null operand.</param>
     /// <param name="Casts">Each cast a row measured, by its target and the reading cast, its column apart, citing the row (h15b).</param>
     /// <param name="AsOfAPath">The readings an index reads as of a path holding the element, a test's body over each among it.</param>
+    /// <param name="YieldKinds">Each JSON kind a traversal of an array of an element type yields an element of, by the type's name
+    /// and the traversal's form.</param>
+    /// <param name="YieldReads">The reading the elements a traversal of an array of an element type yields read as, by the type's
+    /// name and the traversal's form.</param>
     /// <param name="Columns">What each raw column states, one fact a field (h12, G5), from which both graphs derive each column's answers and their union.</param>
     /// <param name="ClassTypes">The JSON type of each class of value, which says two are of one type (<see cref="CosmosValueClasses.Types"/>).</param>
     /// <param name="ParametersAs">Each raw column whose comparison with a parameter a row says answers as another column's, by its class.</param>
@@ -44,13 +48,15 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         IReadOnlyList<(string Name, bool Strict)> StrictOperators,
         IReadOnlyList<(string Target, string Reader, string Row)> Casts,
         IReadOnlyList<string> AsOfAPath,
+        IReadOnlyList<(string Type, string Form, string Kind)> YieldKinds,
+        IReadOnlyList<(string Type, string Form, string Reader)> YieldReads,
         RawColumnRows Columns,
         IReadOnlyList<(CosmosValueClass Class, string Type)> ClassTypes,
         IReadOnlyList<(string Column, string As)> ParametersAs)
     {
 
         /// <summary>No row.</summary>
-        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], RawColumnRows.None, [], []);
+        public static readonly CalciteRows None = new([], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], RawColumnRows.None, [], []);
 
     }
 
