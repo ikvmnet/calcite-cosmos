@@ -1,10 +1,10 @@
 # The rules of JSON and of JSON Schema, on Eggnog
 
 The theory the adapter's declared facts are reasoned in. `JsonFactTheory` compiles a container's declaration into
-it and `JsonFactSet` reads the answers back in the adapter's vocabulary; nothing outside `Facts/` uses this
-namespace, and it is internal to the adapter. `DESIGN.md`, under *The theory of JSON, in layers* and the sections
-after it, is the record of why it is built this way. This file is the catalogue: what the tables mean, what the
-rules are, and how they are checked.
+it and `JsonFactSet` reads the answers back in the adapter's vocabulary; the namespace is internal to the adapter,
+whose planner (`Metadata/`) and translator (`Sql/`) use it too. `DESIGN.md`, under *The theory of JSON, in layers*
+and the sections after it, is the record of why it is built this way. This file is the catalogue: what the tables
+mean, what the rules are, and how they are checked.
 
 It depends on `Eggnog` `1.1.1`, an egglog-style e-graph with scopes, lattices and case splits. Its tests are
 the adapter's, in `Apache.Calcite.Cosmos.Adapter.Tests/Facts/Saturation`:
@@ -17,7 +17,7 @@ dotnet exec --roll-forward Major Apache.Calcite.Cosmos.Adapter.Tests.dll -namesp
 
 | context | holds | frozen |
 | --- | --- | --- |
-| root | the rules of JSON, global to the graph; that every document is a present object | yes |
+| root | the rules of JSON, global to the graph; that every document is a present object; what Calcite makes of each reading, settled over its measured rows | yes |
 | JSON Schema (`JsonContexts.JsonSchema`) | the rules of JSON Schema, as local rules, and the interpreter of conditional rules | yes |
 | a schema's (`JsonContexts.OpenSchema`) | its facts, its conditional rules as rows, its discriminators, split on each | once compiled |
 | a query's (`JsonContexts.Open`) | what the query established, split on the discriminators relevant to it | no |
@@ -29,8 +29,10 @@ when it is the conditional-rule machinery. Below, a rule of JSON Schema is marke
 
 ## Vocabulary
 
-A path is a term: `Root`, `Prop(p, name)`, `Index(p, i)`, and `Each(p)`, which stands for every element of the
-array at `p`. Written out, these are `$`, `$.a.b`, `$.tags[10]` and `$.items[*].id`. `Ghost(name)` is a
+A path is a term: `Root`, `Prop(p, name)`, `Index(p, i)`, `Each(p)`, which stands for every element of the array
+at `p`, and `Yield(p, t, f, n)`, the element traversal `n` of that array yields, read as element type `t` by a
+traversal of form `f`, which no request spells. Written out, the first four are `$`, `$.a.b`, `$.tags[10]` and
+`$.items[*].id`. `Ghost(name)` is a
 discriminator that is no place in any document (`JsonPathSpec.HiddenNamed`), for a union whose branches nothing
 in the document tells apart.
 
@@ -53,10 +55,11 @@ in the document tells apart.
 | `containsAtLeast(p, v)`, `containsAtMost(p, v)` | **if** an array, this many of its elements equal `v` (`contains`, `minContains`, `maxContains`) |
 | `nameMinLength(p)`, `nameMaxLength(p)` | **if** an object, its property names are within these lengths (`propertyNames`) |
 | `form(p, f)` | **if** a string, it is spelled in the stored form `f`: a token the theory reads nothing of but its characters |
-| `chars(p) = S` | **if** a string, its characters are of the classes `S` alone, over `surrogate` (U+D800 to U+DFFF), `high` (U+E000 up), `nonascii` (U+0080 to U+D7FF), `trimmed` (what the service's `TRIM` removes beside U+0020) and `nul` (U+0000); none for ASCII other than U+0000 that the service trims as Calcite does |
+| `chars(p) = S` | **if** a string, its characters are of the classes `S` alone, over `surrogate` (U+D800 to U+DFFF), `high` (U+E000 up), `nonascii` (U+0080 to U+D7FF), `trimmed` (what the service's `TRIM` removes beside U+0020) and `nul` (U+0000), and four within them: `replacement` (U+FFFD) and `escape` (U+FDD0) within `high`, `unpaired` (a surrogate no other completes) within `surrogate`, and `lineterm` (a line terminator as Java's pattern reads one) within `trimmed`; none for ASCII other than U+0000 that the service trims as Calcite does |
 | `written(p) = S` | **if** a string, it was written with characters of `S` alone: what a declared `pattern` says, from which `chars` is derived |
 | `formChars(f) = S` | a string in the stored form `f` holds characters of `S` alone: about how a form is written, and no document |
 | `extension(p, k)` | the path holds what a host's claim `k` says; what that entails in JSON's terms is stated beside it |
+| `constant(p, v)` | the path is there and holds `v` in every document, which a presence and a domain of one say together |
 | `p ≡ q` | the two paths hold one value, or are both absent: a union of the two path terms |
 
 Nearly every fact is conditional on the path being there, which is what JSON Schema's keywords mean. That is what
@@ -78,18 +81,26 @@ saturation terminates.
 
 ## The rules
 
+The graph registers 125 of them, 57 of JSON and 68 of JSON Schema, the interpreter of conditional rules below among
+them. A rule written once for several tables counts once for each: an instance's inheritance, written once for fifteen
+of the tables it inherits; a body's extension, for three kinds of atom; and a complete body's statement, for thirteen
+kinds of head.
+
 **Values and types**
 1. A value is of its own type.
 2. A boolean is true or false.
 3. Null is one value.
 4. A disequality narrows a domain.
 5. A value that is not null is of another type.
-6. A path of no possible type is absent.
-7. A path is not both absent and present.
+6. An absent path has no possible type.
+7. A path of no possible type is absent.
+8. A present path whose domain is one value holds it in every document.
+9. A path is not both absent and present.
 
 **Numbers**
 - A lower bound narrows a domain.
 - An upper bound narrows a domain.
+- A domain's numbers bound the path: none below their least, none above their most.
 - No number lies between crossed bounds.
 - No integer lies between bounds closer than one.
 
@@ -101,6 +112,8 @@ saturation terminates.
 - † A stored form is a string or null.
 - A value's characters are its own: a domain's `chars` are the bands its strings hold, and a domain of no string's
   are none. Stated of every domain, so that what a run ends with is what its last domain says.
+- A string is stored as it was written, and as its rows store a class: `chars` holds what `written` says and what the
+  service's rows map it to (a lone surrogate written as an escape is stored as U+FFFD).
 - † A stored form holds the characters it is written in.
 
 **Objects**
@@ -125,8 +138,8 @@ saturation terminates.
 - † A multiple narrows a domain.
 - † A multiple of a whole number is whole.
 - † No multiple lies between bounds, so there is no number.
-- An integer between near bounds is one of the integers between them. This turns `1 ≤ n ≤ 3` into the domain
-  `{1, 2, 3}`, which disequalities can then empty.
+- An integer between near bounds, with at most 64 integers between them, is one of those integers. This turns
+  `1 ≤ n ≤ 3` into the domain `{1, 2, 3}`, which disequalities can then empty.
 - † A unique array is no longer than the values its elements can be: two for booleans, `|enum|` for an enum.
 - † Two present elements of a unique array are not one value.
 - † Properties are counted:
@@ -139,7 +152,7 @@ saturation terminates.
   `$.a[2] ≡ $.b[2]`.
 - Every fact about either, presence included, is a fact about both.
 - A query's `c.a = c.b` proves it, and so does a `CHECK (a = b)` over paths that are both there.
-- No value contains itself, so a path equal to one of its own descendants is absent.
+- No value contains itself, so a path equal to one of its own properties or elements is absent.
 
 **† `contains`, `minContains`, `maxContains`**
 - An array holding a value is a present, non-empty array; holding it `n` times, it is at least `n` long.
@@ -159,6 +172,8 @@ saturation terminates.
 **Patterns**
 - An element is an instance of every element.
 - So is a property of an instance, an element of an instance, and every element of an instance.
+- An element a traversal yields is an instance of every element of its array, and holds only the kinds the row of its
+  element type in its traversal's form says the traversal yields.
 - An instance inherits:
   - `types`, `dom`, `ne` and both numeric bounds;
   - both length bounds, the characters, and both item bounds;
@@ -183,7 +198,7 @@ absent, a disequality stated or proven by a domain. So the body `kind = 'A'` hol
 says so with `present`.
 
 A query therefore costs the rules it fires, not the rules there are. `spikes/EggnogDerive` measured this layout at
-109,000 rules.
+109,000 conditional rules.
 
 **Splits.** Where a discriminator is present and its domain still holds several values, the context opens one case
 per value and lifts to itself what every case proves. The cases cover the context, because the path is there and
@@ -193,7 +208,7 @@ its value is one of the domain's.
 - A query's context splits only on **relevant** discriminators, and a case may split again on a discriminator its
   own branch makes present. A path is relevant if any of these holds:
   - the query mentions it;
-  - it is a parent, element or pattern of a relevant path;
+  - it is the parent or array of a relevant path, or a pattern a relevant path is an instance of;
   - a conditional rule reads it and states something about a relevant path.
 
   That is the integration plan's "governs" demand gate, written as rules. A query context beneath a schema that
@@ -237,8 +252,8 @@ Three observations:
 - **The run is not the bulk of the cost.** A 2-case query at 47k facts takes 5.2 ms in the run, of which search
   is 1.3 ms and merge 1.1 ms; the rest is opening, running and lifting cases.
 - **The cost of a query follows its cases, not the size of the schema.** The 5k and 47k containers cost about
-  the same per case. The rules (110 of them) are evaluated on every iteration, so this is slower than
-  `spikes/EggnogDerive`'s rows-only interpreter, which had 15 rules.
+  the same per case. The rules (125 of them) are evaluated on every iteration, so this is slower than
+  `spikes/EggnogDerive`'s rows-only layout, which ran 22 (an interpreter of 14 beside 8 of JSON).
 - **Concurrency holds.** 512 split queries on 4 threads under one frozen schema context answered exactly as one
   thread does, in 540 ms.
 
@@ -247,15 +262,15 @@ Every path is a property of the root, so that made everything relevant, and one 
 query at 40k facts. Without it, run time fell from 5.1 ms to 1.6 ms. The gate decides only where to split, so
 narrowing it can lose a proof, never invent one.
 
-The adapter asks a compiled declaration about one established set once per statement: `JsonFactTheory` remembers
-the last 256 sets' contexts.
+The adapter opens a compiled declaration's contexts for one statement once: `CosmosOracle` remembers the last 256
+statements' trees.
 
 ## What is checked
 
 - **Soundness.** The theory never derives a falsehood from truths. 12,000 seeded trials each do the following:
   - generate a document;
-  - state up to six random facts that are true of it, over twenty concrete paths and seven patterns. Most are about
-    one path and its relatives (its elements and its parent), and they are weighted towards facts that bear on
+  - state up to six random facts that are true of it, across twenty-four concrete paths and seven patterns. Most are
+    about one path and its relatives (its elements and its parent), and they are weighted towards facts that bear on
     what the document holds there;
   - saturate;
   - check that the context is not contradictory, that every fact derived about every path is true of that
@@ -271,12 +286,13 @@ the last 256 sets' contexts.
 - **Equalities checked too.** A third of the generated documents hold one value at two places. Every pair of
   concrete paths the theory proves equal must hold one value in the document.
 - **Forms, extensions, characters and numbers held approximately.** A document may hold `1e30`, `-1e30` or
-  `1.5e-30`, and strings of every class: a high unit, a supplementary character, both, a character below U+D800 that
-  is no ASCII, a tab, U+00A0 and U+3000, and U+0000. A fact may name a stored form — any string, a string of at most
-  one character, or an ASCII one, whose characters every trial states — the extension "an object", or the classes a
-  string's characters lie in; a conditional rule may state any of them. A proposed fact false of the document is
-  drawn again.
-- **The oracle is shown to catch unsound rules.** Each planted bug fails it. Among them:
+  `1.5e-30`, and strings of each of the five classes `chars` names before its refinements: a high unit, a
+  supplementary character, both, a character below U+D800 that is no ASCII, a tab, U+00A0 and U+3000, and U+0000. A
+  fact may name a stored form — any string, a string of at most one character, or an ASCII one, whose characters
+  every trial states — the extension "an object", or the classes a string's characters lie in; a conditional rule may
+  state any of them. A proposed fact false of the document is drawn again.
+- **The oracle was shown to catch unsound rules.** Each bug below, planted by hand, failed it; no test plants them.
+  Among them:
   - an off-by-one on the maximum array length;
   - a pattern that passes presence on to its elements;
   - `required` firing without checking for an object;
@@ -322,11 +338,12 @@ and `CosmosDeclaredFactPlanningTests`, whose gap tests assert the plans gaps 1�
 
 `PredicateRules` is defined beside `JsonRules` in the same graph, for the predicate oracle (`Facts/CosmosOracle.cs`),
 which every rule that reads a filter's facts asks through `Metadata/CosmosFilterStatement.cs`. It is defined in a
-generation's graph the first time the oracle asks, in the generations the declaration compiles into, and its rulesets
-run only in the oracle's schedules, so a query context the planner opens for itself pays nothing for them.
+generation's graph the first time the oracle, or a question of a computed string's characters, asks, in the
+generations the declaration compiles into, and its rulesets run only in their own schedules, so a query context the
+planner opens for itself pays nothing for them.
 `DESIGN.md`, under *Predicates as facts* and the sections after it, is the record.
 
-**Vocabulary.** Two sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute. The
+**Vocabulary.** Three sorts beside `JPath`, and every constructor unextractable: nothing here is a term to execute. The
 terms, `point`, `reads`, `atom` and the analysis are `PredicateVocabulary`'s (the paths `PathVocabulary`'s), which the
 rendering graph defines too, and `PredicateWriter` writes them.
 
@@ -337,10 +354,19 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `raw in(p, c)` | that value read through the column `c` a loading that reads places names (rawtyped): S's reading, and F's characters', never in F's statements |
 | `typed(p, T)` | `JSON_VALUE(… RETURNING T)`: the stored scalar, asserted to be of `T`; for `DECIMAL`, its rendering parsed |
 | `cast(T, v)` | a numeric cast, or the cast to text over a raw value |
+| `decimal cast(n, s, v)` | a cast of a number to `DECIMAL(n, s)`, which a comparison's other side is made of |
+| `box(T, v)` | a value cast to `VARIANT`: the SQL type of what it boxes, and that value; it reads no path of its own |
+| `query(p)` | `JSON_QUERY(DOC, p)` with no clause, a reading of its own |
+| `apart(f, v)` | a reading written as a form apart from its accessor (a field's, an item's, a cast's to `ANY`): it reads what its reading reads |
 | `literal(s)`, `parameter(n, T)` | a JSON scalar in this theory's spelling; a parameter, with no value |
+| `sql null(T)` | SQL's null, of the SQL type `T` |
 | `call(f, a)`, over `operand(v, a)` and `no operands` | a function of values, its name as the loader spells it — a `TRIM`'s flag in it, a `CASE` read as its arms — and its operands as a list |
 | `compare(op, v, w)`, `in(v, S)`, `is null(v)`, `is defined(v)` | the atoms; `is defined` asks of the document, whatever the reading |
+| `type test(n, v)` | an `IS_*` test but `IS_DEFINED`: its name, and the value it tests |
+| `affix(op, v, s)` | a match of a value's text against a literal pattern: the operator, the value, the pattern |
 | `and`, `or`, `not`, `opaque(n)` | the connectives, right-nested in digest order; what the loader does not read |
+| `case(c, t, f)` | a `CASE` over predicates: its condition, its `THEN` and its `ELSE` |
+| `truth(s)` | a truth value as a predicate: `true`, `false` or `unknown` |
 
 | table | means |
 | --- | --- |
@@ -348,11 +374,16 @@ rendering graph defines too, and `PredicateWriter` writes them.
 | `arms(e, t)`, `arm(e, t, i, a)` | the numbered arms of a junction that decide it at `t`; stated by the host |
 | `point(e, s)` | a literal an atom compares with; stated by the host |
 | `reads(v, p, k)`, `atom(e, p, a)` | analyses of terms alone: the path a value reads and how, and the atom a test is |
+| `accesses(v, p, k, n)` | the path an accessor reads, the reading it is, and the name the readings of an index read as of a path key it by (`asofapath`); an analysis of terms alone |
+| `testread(v, p, k)` | the path a one-place test of a value asks of, and the reading its body reads there, as a row says (`testreads`) |
+| `denotes(v, n, m)` | what a cast of a literal denotes: the number, and whether a cast that drops places moved it; nothing where its whole digits do not fit |
+| `noelement(p)`, `haselement(p)` | a path holding no element, or one, read off its term; neither holds of the element a traversal yields |
 | `possible(p)` | what a path an atom reads may hold, gathered into one value (`PathValues`) |
 | `declared(p)` | a path the declaration mentions; stated by the host, for `D0` (below) |
 | `value chars(v) = S` | **if** the value is a string, its characters are of the classes `S`: `chars` said of a value |
 | `walk(v, i, a)`, `drawn(v, a) = S` | a call's operands from position `i` on, an analysis of terms alone; the classes the call draws from them |
 | `always true(e)`, `always false(e)`, `never true(e)` | the verdicts |
+| `inexact(e)` | the facts graph reads an atom of the predicate otherwise than Calcite does; an analysis of terms and the root's rows alone |
 | `gated(e, w)` | assume `e` where the `WHERE` `w` never raises; stated by a gated node alone, local, never lifted |
 | `never raises(w)` | Calcite raises on no row the context admits, nor fails to compile; judged before anything is assumed, local, read by the gate alone |
 | `two valued(e)` | Calcite answers TRUE or FALSE, never UNKNOWN, on every row the context admits it does not raise on; judged beside `never raises`, local, read by a `CASE`'s condition |
@@ -362,9 +393,28 @@ questions, each an over-approximation: what a row on which the atom takes a trut
 (`Kept`), and which truth values the documents a path's knowledge admits can give it (`Over`). A row Calcite raises
 on is no truth value: it is no row a predicate keeps, and it supports no verdict.
 
-**The rules**, 66 of them and a split.
-- **Analysis** (9): a reading of a path reads it; a cast reads what it converts; a comparison with a literal or a
-  parameter, a membership, a null test and a definedness test are each an atom of what they read.
+**The rules**, 109 of them and a split, counted as the graph registers them: a definition made once for each side of a
+junction, or for each part of a `CASE`, counts once for each.
+- **Analysis** (43):
+  - whether a path holds an element, read off its term: the document and a property of a path holding none hold none,
+    and an index, every element and a property of a path holding one, one (5);
+  - what each accessor accesses of its path, and as what: text, a raw value, a raw value in a column, a `RETURNING` and
+    a `JSON_QUERY` (5);
+  - what a value reads: an accessor, its path, where the path holds no element or the readings an index reads as of a
+    path name it (`asofapath`), and the element reading where they do not; a reading written apart, what its reading
+    reads, and the element reading of a path holding one; and either, of the element a traversal yields, as its
+    traversal's elements read, by `yieldreads` (7); and a cast a row measured, what it converts (1);
+  - a comparison with a literal or a parameter, a membership, a null test and an affix test with a literal pattern are
+    each an atom of what they read (5);
+  - a one-place test reads the path of each accessor, of a reading written apart and of a call as its row says the
+    test's body reads it (7), and a definedness test and a type test are each an atom of the reading they are asked
+    over, read so (2);
+  - what a literal a cast to `DOUBLE` or to a `DECIMAL` converts denotes, and what the cast denotes: the same, moved
+    where a `DECIMAL` drops its places, and nothing where its whole digits do not fit (5); a comparison with what a
+    cast denotes, an atom of what it reads where its reading takes it (1); and a comparison with SQL's null, by an
+    operator null over a null operand, an atom of what it reads (1);
+  - a comparison that sees through a box, of a reading, a raw value or a raw value in a column and a literal boxed
+    alike, and a null test of a box of a type null where what it holds is, each an atom of what the box holds (4).
 - **What a predicate taking a truth value establishes** (21):
   - a conjunction that holds holds on both sides, and a disjunction that fails fails on both;
   - a negation takes the other truth value of its operand;
@@ -397,14 +447,22 @@ on is no truth value: it is no row a predicate keeps, and it supports no verdict
   document the declaration admits makes the `WHERE` true and none makes it raise.
 - **The split over arms**: one case per arm of a disjunction that holds, or of a conjunction that fails. Arms split
   before discriminators.
-- **Decide** (24), run once the facts have settled:
-  - what a path an atom reads may hold, narrowed by presence, types, a domain, a disequality and either bound (7);
-    and, a local rule of `D0` alone, that a path the declaration mentions may hold anything, which the seven narrow;
+- **Decide** (24, from 21 definitions, three of them made once for each side), run once the facts have settled:
+  - what a path an atom reads may hold: anything, narrowed by presence, types, a domain, a disequality and either bound
+    (7, one rule to begin and six to narrow); and, a local rule of `D0` alone, that a path the declaration mentions may
+    hold anything, which the six narrow;
   - an atom is always true, always false or never true where `Over` says so (3);
   - a predicate that holds with a truth value on every row has that verdict, whatever its atoms mean (2): an opaque
     predicate given is one decided, which is the question a weakening already beneath a filter asks;
   - twelve connectives in Kleene's logic. What is always false is never true; nothing reads never-true beneath a
     `NOT`, because UNKNOWN is not FALSE there.
+- **Exactness** (9, ruleset `exactness`, from 5 definitions, two of them made once for each side and one once for
+  each of a `CASE`'s three parts), run beside `Decide`: a predicate is read inexactly (`inexact`) where it holds an
+  atom whose reading the rows do not say the facts graph reads as Calcite does beside its operand's class
+  (`PredicateAtom.ReadExactly` over `readsexactly`), and so is a conjunction or a disjunction either side of which is,
+  a negation of one, and a `CASE` whose condition, `THEN` or `ELSE` is. A later round rests only on a stratum none of
+  whose assumptions is read inexactly (`StatementTerms.ReadsExactly`); a predicate holding no atom is read as exactly
+  as the stratum above it.
 
 **`D0`, the declaration's `possible` rows.** Round 1 renders from the declaration's context, which holds no atom, so
 `possible` held nothing for most round-1 conjuncts, and the rendering graph had nothing to import for them. `D0` is a
@@ -433,14 +491,23 @@ argument (`JsonFactSet.CharactersOf`), in a context made for the question beneat
   what it draws. A parameter, a reading no rule here reads (`JSON_QUERY`, and a `RETURNING` of a type that is not a
   character type), and a call of a function no row names are given nothing: they may hold anything.
 
+**What Calcite makes of each reading** (23 rules, ruleset `readings`), which the facts graph holds whether or not the
+oracle asks: `JsonRules` defines `ReadingVocabulary`'s rules, which the rendering graph defines too, and the root runs
+them once, over the rows of what Calcite was measured to do, before it freezes. They gather every reading's rows into
+one value (`ReaderRows`) — what it reads each class as and the rows it rests on, what its tests and comparisons answer
+over a class by the truth tables or on the cell, what `LIKE` reads each unit of a pattern as, and the rows each type
+test rests on — the raw columns' answers into another (`RawUnion`), a column no row measured answering as the union
+of those that were, and the kinds a type test is TRUE of into `testkinds`, which the analysis's type-test rule reads.
+What an atom establishes and its raises read `ReaderRows` and `RawUnion`, and its verdicts `ReaderRows`.
+
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
-then the verdicts. `Answer`, for a context that assumes nothing, runs JSON, JSON Schema and analysis without a split,
-then the verdicts. `CharacterSaturation` runs JSON, JSON Schema, analysis and the rules of a value's characters, for a
-question of one.
+then the verdicts and exactness. `Answer`, for a context that assumes nothing, runs JSON, JSON Schema and analysis
+without a split, then the verdicts and exactness. `CharacterSaturation` runs JSON, JSON Schema, analysis and the
+rules of a value's characters, for a question of one.
 
 **What is checked**, in the adapter's tests:
 - `PredicateAtomTests`: the truth tables, and the property that `Kept` covers every stored value on which `Over`
-  lets an atom take that truth value, for ten readings, nine tests, ten literals and fifteen kinds of value;
+  lets an atom take that truth value, for eleven readings, nine tests, ten literals and fifteen kinds of value;
 - `PredicateRulesTests`: each family through the engine, each verdict, and each under `NOT`;
 - `PredicateAtomRaiseTests`: wherever `IrEval` raises on a value of a class, read as each target returns it, through
   any reader a reading stands for and in every world population D draws, or fails to compile an atom, `RaisesOver`
@@ -460,23 +527,32 @@ question of one.
 - `PredicateSoundnessTests`, through `PopulationD`: random declarations with a discriminator, one in eight with no
   conditional rule as a container that declares no schema has, random filters over their paths, and 64 documents drawn
   from each declaration and not from its filter; from a stream of their own, patterns, `enum`s and `const`s of strings
-  of every class, filters comparing paths with them, and 16 documents holding them; and, from a third, strings
-  computed from the paths and from strings of every class, nested two deep. Every fact a context holds, row by row,
-  `chars` among them; every claim and verdict each licence's scope answers; what each scope says of each computed
-  string's characters, against the string Calcite's runtime computes; every `holds`, verdict and `possible` row; every
-  `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath` classes; the facts
-  each conjunct was handed to render from; and the conjuncts called redundant. Every statement is rooted at `D0`, so
-  its rows are among those checked. 200 trials a run, 5,000 on request;
+  of each of the five classes, filters comparing paths with them, and 16 documents holding them; from a third, 8
+  documents holding a number no double holds exactly, where the declaration lets one stand; from a fourth, strings
+  computed from the paths and from strings of each of the five classes, nested two deep; and, from a fifth, a
+  traversal beside the statement, and documents holding arrays of strings and nulls for it to traverse. Every fact a
+  context holds, row by row, `chars` among them; every claim and verdict each licence's scope answers; what each scope
+  says of each computed string's characters, against the string Calcite's runtime computes; every `holds`, verdict and
+  `possible` row; every `atom` row against `IrEval` on every declared document; C5 over the `Pred`, `Val` and `JPath`
+  classes; the facts each conjunct was handed to render from; the conjuncts called redundant; and, where a statement
+  is made FALSE, or the raises question says nothing raises of the statement or of it beside the traversal, that no
+  conjunct raises or fails to compile. Every statement is rooted at `D0`, so its rows are among those checked. 200
+  trials a run, 5,000 on request;
 - `CharactersTests` and `CosmosOracleCharactersTests`: what the theory derives of a path's characters, by the rules
-  and through the oracle's strata; `ComputedCharactersTests`, of a computed string's, and `StringCallsTests`, the
-  table of what each function draws held to Calcite's runtime over every code point;
-- `PlantedBugTests`: seventeen faults planted in graphs of their own — a too-wide preimage, establishing from a
+  and through the oracle's strata, `CharactersTests` the four refinements of `chars` too, which no soundness generator
+  draws; `ComputedCharactersTests`, of a computed string's, and `StringCallsTests`, the table of what each function
+  draws held to Calcite's runtime over every code point;
+- `PlantedBugTests`: twenty-five faults planted in graphs of their own — a too-wide preimage, establishing from a
   weakening, never-true read beneath `NOT`, the arm split without its guard, an axiom row contradicting the
   measurement, a stratum handing a conjunct its own facts, a union of two predicates, one kind's characters read of
   every kind, a value's characters read without its surrogates, its characters outside ASCII below them, those the
   service trims or its U+0000, an arm's characters stated of its disjunction, a domain's numbers bounding it above its
-  least, a domain of one read as present, a call's characters read off its first operand alone, and an upper-case
-  mapping read as keeping its classes — each caught within a run's trials;
+  least, a domain of one read as one value in every document without the path's presence, a call's characters read off
+  its first operand alone, an upper-case mapping read as keeping its classes, a declared path read as there in `D0`, a
+  type test read as presence, an affix read without its leading wildcard, a gate assuming where the `WHERE` may raise,
+  a disjunction read as raising nowhere its left side raises nowhere, and the element a traversal yields narrowed to a
+  null alone, read through a reading no row measured of it, or, of a traversal written `WITH ORDINALITY`, read as the
+  measured form's — each caught within a run's trials;
 - `IrEvalCalciteTests`: the evaluator those are checked against, held to Calcite's runtime over the readings that
   were measured. The raw readings are drawn from what the table admits, and nothing holds those rows to Calcite yet.
 
@@ -485,9 +561,12 @@ question of one.
 **For the adapter to use more of it**
 - **The schema reader has to state these facts.** `JsonSchemaFacts` reads `minimum`, `maximum` and their exclusive
   forms as bounds, and does not read `items`, `prefixItems`, `minItems`, `maxItems`, `minLength`, `maxLength`,
-  `multipleOf` or `additionalProperties`. `JsonDocumentPath` has no element segment.
-- **A range is read only through a numeric cast,** whose window was measured (`PredicateAtom`'s `NumberCast`). A
-  comparison on a typed path or a raw value states the types and the presence alone.
+  `multipleOf` or `additionalProperties`. `JsonDocumentPath` has no segment for every element: its index and a
+  traversal's element are the loader's alone, and `Names` refuses a path holding either.
+- **A range is read only through a numeric cast,** whose window was measured (`PredicateAtom`'s `NumberCast`),
+  `RETURNING DECIMAL` being one. An order comparison on another typed path states its type's kinds, and an integer
+  type's range, and on a raw value its presence alone; an equality states the literal, or the numbers whose double
+  (under `REAL`, whose float) is the literal's.
 - **The schema compiler has to emit conditional rules and discriminators directly.** That means a hidden
   discriminator for each undiscriminated `anyOf`, at which point `JsonSchemaFacts.Meet` and `JsonFact.Entails` go.
   Today's compiler emits `JsonFactRule`s and a meet.
