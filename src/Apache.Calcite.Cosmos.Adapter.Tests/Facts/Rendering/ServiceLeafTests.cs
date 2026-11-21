@@ -82,13 +82,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         [Fact]
         public void AnEmptyTableAnswersWidestEverywhere()
         {
-            var narrower = from leaf in Leaves()
-                           from cells in Partitions()
-                           from reads in Reads()
-                           let vector = ServiceLeaf.On(leaf, cells, Empty, reads)
-                           from i in Enumerable.Range(0, vector.Outcomes.Count)
-                           where vector.Outcomes[i].Outcomes != ServiceOutcomes.Widest
-                           select $"{leaf} answers {vector.Outcomes[i].Outcomes} on {cells.Cells[i]}";
+            var narrower = Leaves()
+                .SelectMany(leaf => Partitions()
+                    .SelectMany(cells => Reads()
+                        .Select(reads => ServiceLeaf.On(leaf, cells, Empty, reads))
+                        .SelectMany(vector => Enumerable.Range(0, vector.Outcomes.Count)
+                            .Where(i => vector.Outcomes[i].Outcomes != ServiceOutcomes.Widest)
+                            .Select(i => $"{leaf} answers {vector.Outcomes[i].Outcomes} on {cells.Cells[i]}"))));
 
             narrower.Should().BeEmpty();
         }
@@ -113,14 +113,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 tables.AddRange(ProbeRows.TablesOf(cut.SelectMany(key => key.Answer is CosmosAnswer answer ? key.Rows.Select(row => row with { Answer = answer }) : key.Rows)));
             }
 
-            var empty = from table in tables
-                        from leaf in Leaves()
-                        from cells in Partitions()
-                        from reads in Reads()
-                        let vector = ServiceLeaf.On(leaf, cells, table, reads)
-                        from i in Enumerable.Range(0, vector.Outcomes.Count)
-                        where vector.Outcomes[i].Outcomes == ServiceOutcomes.None
-                        select $"{leaf} answers nothing on {cells.Cells[i]}";
+            var empty = tables
+                .SelectMany(table => Leaves()
+                    .SelectMany(leaf => Partitions()
+                        .SelectMany(cells => Reads()
+                            .Select(reads => ServiceLeaf.On(leaf, cells, table, reads))
+                            .SelectMany(vector => Enumerable.Range(0, vector.Outcomes.Count)
+                                .Where(i => vector.Outcomes[i].Outcomes == ServiceOutcomes.None)
+                                .Select(i => $"{leaf} answers nothing on {cells.Cells[i]}")))));
 
             empty.Should().BeEmpty();
         }
@@ -134,15 +134,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             var orders = ProbeRows.TableOf([Row(CosmosServiceTest.Order, CosmosValueClass.String, CosmosValueClass.None, CosmosAnswer.CodePoint),
                 Row(CosmosServiceTest.Order, CosmosValueClass.Number, CosmosValueClass.None, CosmosAnswer.Numeric)]);
-            var strays = from table in new[] { Empty, orders }
-                         from leaf in Leaves()
-                         from cells in Partitions()
-                         from row in ServiceLeaf.On(leaf, cells, table, LeafReads.None).Rows
-                         where row.StartsWith("missing:", StringComparison.Ordinal)
-                         let key = row["missing:".Length..].Split('/')
-                         where CosmosOutcomeWitnesses.Cells(Enum.Parse<CosmosServiceTest>(key[0]), Enum.Parse<CosmosValueClass>(key[1]), RenderingTarget.Emulator)
-                             .Contains(Enum.Parse<CosmosValueClass>(key[2])) == false
-                         select row;
+            var strays = new[] { Empty, orders }
+                .SelectMany(table => Leaves()
+                    .SelectMany(leaf => Partitions()
+                        .SelectMany(cells => ServiceLeaf.On(leaf, cells, table, LeafReads.None).Rows)))
+                .Where(row => row.StartsWith("missing:", StringComparison.Ordinal))
+                .Select(row => (Row: row, Key: row["missing:".Length..].Split('/')))
+                .Where(missing => CosmosOutcomeWitnesses
+                    .Cells(Enum.Parse<CosmosServiceTest>(missing.Key[0]), Enum.Parse<CosmosValueClass>(missing.Key[1]), RenderingTarget.Emulator)
+                    .Contains(Enum.Parse<CosmosValueClass>(missing.Key[2])) == false)
+                .Select(missing => missing.Row);
 
             strays.Distinct().Should().BeEmpty();
         }
@@ -341,9 +342,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (half, two) = (Of(1.5m), Of(2m));
             var swapped = new[] { (Kind: CosmosValueClass.String, Comparator: CosmosAnswer.Numeric), (Kind: CosmosValueClass.Number, Comparator: CosmosAnswer.CodePoint) };
             var rows = ProbeRows.Rows.Where(row => row.Key.Test != CosmosServiceTest.Order)
-                .Concat(from target in new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
-                        from order in swapped
-                        select new MeasuredOutcome("Service.Planted", MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None), target, order.Comparator));
+                .Concat(new[] { RenderingTarget.Emulator, RenderingTarget.Azure }
+                    .SelectMany(target => swapped
+                        .Select(order => new MeasuredOutcome("Service.Planted", MeasuredKey.Of(CosmosServiceTest.Order, order.Kind, CosmosValueClass.None),
+                            target, order.Comparator))));
             var table = ProbeRows.TableOf(rows, RenderingCheckRun.AssertedSet);
             foreach (var order in swapped)
             {

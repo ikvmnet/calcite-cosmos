@@ -33,7 +33,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>The keys of an operand of strings of unknown values under each band: one an atom of a string, empty or not.</summary>
         static ValueSet<FunctionKey> Strings(string function, long ordinal, params JsonCharacterBand[] bands) =>
-            ValueSet.From(from band in bands from atom in new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty } select FunctionKey.Of(function, ordinal, CosmosValueClass.String, band, atom));
+            ValueSet.From(bands.SelectMany(band => new[] { FunctionValueClass.Empty, FunctionValueClass.NonEmpty }
+                .Select(atom => FunctionKey.Of(function, ordinal, CosmosValueClass.String, band, atom))));
 
         /// <summary>The keys of a call under the subjects its rows carry.</summary>
         static ValueSet<FunctionKey> Keys(string function, ValueSet<PathImport> gathered) =>

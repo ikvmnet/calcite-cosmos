@@ -320,9 +320,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public static ValueSet<(CosmosServiceTest Test, CosmosValueClass Operand, CosmosAnswer Answer)> Evaluates { get; } =
             ValueSet.From(Comparisons.Keys.Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.String, Answer: c))
                 .Concat(NumberOrders.AsEnumerable().Select(c => (Test: CosmosServiceTest.Order, Operand: CosmosValueClass.Number, Answer: c)))
-                .Concat(from test in ServiceForm.Affixes.AsEnumerable()
-                        from matcher in Matchings.Keys
-                        select (Test: test, Operand: CosmosValueClass.String, Answer: matcher)));
+                .Concat(ServiceForm.Affixes.AsEnumerable()
+                    .SelectMany(test => Matchings.Keys.Select(matcher => (Test: test, Operand: CosmosValueClass.String, Answer: matcher)))));
 
         /// <summary>
         /// Two strings under a comparator of strings, its own evaluation (<see cref="Comparisons"/>). The strings are taken as

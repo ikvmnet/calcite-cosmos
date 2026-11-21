@@ -107,16 +107,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             JsonCharacterBand fails = JsonCharacterBand.None, CosmosFunctionAnswer overNull = CosmosFunctionAnswer.Same, CalciteYield nullYields = CalciteYield.Null,
             JsonCharacterBand azureFails = JsonCharacterBand.None) =>
         [
-            .. from band in Bands
-               let emulator = Over(band, differs, fails)
-               let onAzure = Over(band, azure, azureFails)
-               from outcome in emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator, CalciteYield.Value)]
-                   : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator, CalciteYield.Value), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure, CalciteYield.Value) }
-               select outcome,
-            .. from kind in new[] { Class.Number, Class.True, Class.False }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Value),
-            .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, overNull, nullYields),
+            .. Bands.SelectMany(band =>
+            {
+                var emulator = Over(band, differs, fails);
+                var onAzure = Over(band, azure, azureFails);
+                return emulator == onAzure ? [new CosmosFunctionOutcome(function, subject, Class.String, band, Both, emulator, CalciteYield.Value)]
+                    : new[] { new CosmosFunctionOutcome(function, subject, Class.String, band, Emulator, emulator, CalciteYield.Value), new CosmosFunctionOutcome(function, subject, Class.String, band, Azure, onAzure, CalciteYield.Value) };
+            }),
+            .. new[] { Class.Number, Class.True, Class.False }
+                .Select(kind => new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Value)),
+            .. new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
+                .Select(kind => new CosmosFunctionOutcome(function, subject, kind, JsonCharacterBand.None, Both, overNull, nullYields)),
         ];
 
         /// <summary>
@@ -177,10 +178,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         static IEnumerable<CosmosFunctionOutcome> Arithmetic(string function, string type, CosmosFunctionAnswer overNumbers) =>
         [
             new(function, FunctionKey.Every, Class.Number, JsonCharacterBand.None, Both, overNumbers, CalciteYield.Value, Type: type),
-            .. from kind in new[] { Class.String, Class.True }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Null, Type: type),
-            .. from kind in new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
-               select new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Null, Type: type),
+            .. new[] { Class.String, Class.True }
+                .Select(kind => new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Undefined, CalciteYield.Null, Type: type)),
+            .. new[] { Class.Null, Class.Absent, Class.Object, Class.Array }
+                .Select(kind => new CosmosFunctionOutcome(function, FunctionKey.Every, kind, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Null, Type: type)),
         ];
 
         /// <summary>The row of an id.</summary>
@@ -351,13 +352,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             new("Service.IntegerArithmeticIsExactWithinLong",
                 "+, - and * over integers are exact while the result fits int64, past 2^31 and past 2^53, 2^53 + 1 being 9007199254740993, and a double past it, 2^63 - 1 + 1 above 2^63 - 1 and never wrapped; / is a double; a result JSON cannot hold, an infinity, fails the statement projected and is undefined in a WHERE, 1e308 * 2 and any number / 0 alike; and each is undefined over a string, a boolean, a null and an absent path. So against Calcite's INTEGER, BIGINT, DECIMAL and DOUBLE each typed operator parts over a number, Calcite wrapping, truncating, raising over a fraction or rounding past 2^53 where the service does not, and * and / fail where Calcite answers an infinity or raises. Azure answers alike, but for % of 2^63 - 1 by 2, 0 there in doubles where the emulator answers 1.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Cases, "Measurements.CosmosJsonTypeMeasurementTests.IntegerArithmeticIsExactWithinLong",
-                Readers: [.. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" } from reader in new[] { PredicateAtom.TypedReader(type), PredicateAtom.CastReader(type, PredicateAtom.TextReader) } select reader],
+                Readers: [.. new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }.SelectMany(type => new[] { PredicateAtom.TypedReader(type), PredicateAtom.CastReader(type, PredicateAtom.TextReader) })],
                 FunctionOutcomes:
                 [
-                    .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }
-                       from op in new[] { ("+", CosmosFunctionAnswer.Differs), ("-", CosmosFunctionAnswer.Differs), ("*", CosmosFunctionAnswer.Fails), ("/", CosmosFunctionAnswer.Fails), ("%", CosmosFunctionAnswer.Differs) }
-                       from outcome in Arithmetic(op.Item1, type, op.Item2)
-                       select outcome,
+                    .. new[] { "INTEGER", "BIGINT", "DECIMAL", "DOUBLE" }.SelectMany(type =>
+                        new[] { ("+", CosmosFunctionAnswer.Differs), ("-", CosmosFunctionAnswer.Differs), ("*", CosmosFunctionAnswer.Fails), ("/", CosmosFunctionAnswer.Fails), ("%", CosmosFunctionAnswer.Differs) }
+                            .SelectMany(op => Arithmetic(op.Item1, type, op.Item2))),
                 ]),
             new("Service.OutOfDomainArithmeticFailsTheStatement",
                 "ASIN(2), ACOS(2), SQRT(-1) and LOG(0) fail the whole statement rather than answering undefined for the row, where Calcite answers NaN.",
@@ -498,7 +498,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 23), "Measurements.CalciteNullStrictnessMeasurementTests.EveryReadingIsNullOverAnAbsentPath",
                 Subjects: [PredicateAtom.TextReader, PredicateAtom.RawReader,
                     .. new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "DECIMAL", "BOOLEAN" }.Select(PredicateAtom.TypedReader),
-                    .. from target in new[] { "INTEGER", "BIGINT", "DOUBLE" } from inner in new[] { PredicateAtom.TextReader, PredicateAtom.RawReader } select PredicateAtom.CastReader(target, inner),
+                    .. new[] { "INTEGER", "BIGINT", "DOUBLE" }
+                        .SelectMany(target => new[] { PredicateAtom.TextReader, PredicateAtom.RawReader }.Select(inner => PredicateAtom.CastReader(target, inner))),
                     PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader)]),
             new("Calcite.ListedFunctionsAreNullOverANullOperand",
                 "||, UPPER, LOWER, INITCAP, SUBSTRING, CHAR_LENGTH, CHARACTER_LENGTH, POSITION, REPLACE, LEFT, RIGHT, REVERSE, REPEAT, MOD, ABS, ROUND, POWER, SAFE_CAST, TRY_CAST and IN over literals are null wherever an operand is null, in every form each takes, though Calcite declares no null policy for them. Read as data by the rendering graph's strict operators (CosmosStrictness).",
@@ -516,9 +517,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ReaderOrders: [new(PredicateAtom.TypedReader("VARCHAR"), CosmosReaderOrder.Itself), new(PredicateAtom.TypedReader("CHAR"), CosmosReaderOrder.Itself)],
                 CalciteReadings:
                 [
-                    .. from type in new[] { "VARCHAR", "CHAR" }
-                       from read in new[] { (Class.String, CosmosCalciteReading.Itself), (Class.Null, CosmosCalciteReading.Null), (Class.Absent, CosmosCalciteReading.Null) }
-                       select new CosmosCalciteReading(PredicateAtom.TypedReader(type), read.Item1, read.Item2),
+                    .. new[] { "VARCHAR", "CHAR" }.SelectMany(type =>
+                        new[] { (Class.String, CosmosCalciteReading.Itself), (Class.Null, CosmosCalciteReading.Null), (Class.Absent, CosmosCalciteReading.Null) }
+                            .Select(read => new CosmosCalciteReading(PredicateAtom.TypedReader(type), read.Item1, read.Item2))),
                 ],
                 // So each place is read as the accessor's text over every class both read alike, LIKE among its tests (G7).
                 ReadAs: [new(PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.TextReader), new(PredicateAtom.TypedReader("CHAR"), PredicateAtom.TextReader)]),
@@ -617,13 +618,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // reading no cell names is read coarsely, and a stratum never rests on it.
                 ExactReadings:
                 [
-                    .. from reader in new[]
-                       {
-                           PredicateAtom.TextReader, PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader),
-                           PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader), RenderingFamily.TypeTest,
-                       }
-                       from beside in new[] { Class.Number, Class.None }
-                       select new CosmosExactReading(reader, beside),
+                    .. new[]
+                    {
+                        PredicateAtom.TextReader, PredicateAtom.TypedReader("BOOLEAN"), PredicateAtom.CastReader("INTEGER", PredicateAtom.TextReader),
+                        PredicateAtom.CastReader("BIGINT", PredicateAtom.TextReader), RenderingFamily.TypeTest,
+                    }.SelectMany(reader => new[] { Class.Number, Class.None }.Select(beside => new CosmosExactReading(reader, beside))),
                     new(PredicateAtom.RawReader, Class.None), new(RenderingFamily.PresenceTest, Class.None),
                 ]),
             new("Calcite.ItemIsNullWhereNoElementIs",

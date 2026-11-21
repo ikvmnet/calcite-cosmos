@@ -30,8 +30,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// boolean or not, on a cell inside or set aside, 900 in all.
         /// </summary>
         public static ValueSet<CellClass> Classes { get; } = ValueSet.From(
-            from c in Enumerable.Range(1, 15) from s in Enumerable.Range(1, 15) from w in new[] { false, true } from o in new[] { false, true }
-            select new CellClass((Truths)c, (ServiceOutcomes)s, w, o));
+            Enumerable.Range(1, 15).SelectMany(c => Enumerable.Range(1, 15)
+                .SelectMany(s => new[] { false, true }
+                    .SelectMany(w => new[] { false, true }.Select(o => new CellClass((Truths)c, (ServiceOutcomes)s, w, o))))));
 
         /// <summary>The boxes a class must lie in for a verdict to hold on its cells, at each position.</summary>
         public static IReadOnlyList<(RenderPosition, Verdict, Box)> Allowing { get; } =

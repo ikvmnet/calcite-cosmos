@@ -360,9 +360,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 {
                     seen++;
                     var document = row.GetProperty("doc").GetRawText();
-                    disagreements.AddRange(from test in CosmosFunctionBodiesTests.Tests
-                                           where (row.TryGetProperty(test.Name, out var answer) && answer.ValueKind == System.Text.Json.JsonValueKind.True) != test.Body(document, "$.v")
-                                           select $"{test.Name} over {document}");
+                    disagreements.AddRange(CosmosFunctionBodiesTests.Tests
+                        .Where(test => (row.TryGetProperty(test.Name, out var answer) && answer.ValueKind == System.Text.Json.JsonValueKind.True) != test.Body(document, "$.v"))
+                        .Select(test => $"{test.Name} over {document}"));
                 }
             }
 
@@ -500,12 +500,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         internal static readonly CosmosFunctionSpelling[] Arithmetic =
         [
-            .. from type in new[] { "INTEGER", "BIGINT", "DECIMAL(19, 2)", "DOUBLE" }
-               let x = $"CAST(s AS {type})"
-               let name = type.Split('(')[0]
-               from f in new[] { ("+", $"{x} + CAST(1 AS {type})", "s + 1"), ("-", $"{x} - CAST(1 AS {type})", "s - 1"), ("*", $"{x} * CAST(2 AS {type})", "s * 2"),
-                                 ("/", $"{x} / CAST(2 AS {type})", "s / 2"), ("/", $"{x} / CAST(0 AS {type})", "s / 0"), ("%", $"MOD({x}, CAST(2 AS {type}))", "s % 2") }
-               select new CosmosFunctionSpelling(f.Item1 + ":" + name, FunctionKey.Every, f.Item2, f.Item3),
+            .. new[] { "INTEGER", "BIGINT", "DECIMAL(19, 2)", "DOUBLE" }.SelectMany(type =>
+            {
+                var x = $"CAST(s AS {type})";
+                var name = type.Split('(')[0];
+                return new[] { ("+", $"{x} + CAST(1 AS {type})", "s + 1"), ("-", $"{x} - CAST(1 AS {type})", "s - 1"), ("*", $"{x} * CAST(2 AS {type})", "s * 2"),
+                        ("/", $"{x} / CAST(2 AS {type})", "s / 2"), ("/", $"{x} / CAST(0 AS {type})", "s / 0"), ("%", $"MOD({x}, CAST(2 AS {type}))", "s % 2") }
+                    .Select(f => new CosmosFunctionSpelling(f.Item1 + ":" + name, FunctionKey.Every, f.Item2, f.Item3));
+            }),
         ];
 
         /// <summary>The witnesses of the arithmetic keys: numbers at 2^31 - 1, 2^53 and 2^63 - 1, near 1e308, negative and fractional; and a value of each other kind.</summary>

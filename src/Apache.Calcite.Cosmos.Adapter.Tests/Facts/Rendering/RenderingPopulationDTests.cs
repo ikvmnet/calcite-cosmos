@@ -282,7 +282,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 ? literals.All(IsString) ? [IrEval.RawAs.Variant, IrEval.RawAs.Any, IrEval.RawAs.Varchar] : [IrEval.RawAs.Variant, IrEval.RawAs.Any]
                 : [null];
             IrEval.TypedAs[] typed = values.Any(v => v is SqlValue.Typed { Type: not "DECIMAL" }) ? [IrEval.TypedAs.Returning, IrEval.TypedAs.Column] : [IrEval.TypedAs.Returning];
-            return from t in typed from r in raws select (t, r);
+            return typed.SelectMany(t => raws.Select(r => (t, r)));
         }
 
         /// <summary>

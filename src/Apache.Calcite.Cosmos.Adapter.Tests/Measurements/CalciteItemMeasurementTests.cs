@@ -190,26 +190,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// it, whose values over the documents holding an element differ from those over the documents holding the same
         /// at <c>$.g</c>.
         /// </summary>
-        static IEnumerable<string> Differing(System.Data.Common.DbConnection connection, Func<string, string[]> expressions, bool value = true) =>
-            from index in Indexes
-            from expression in expressions(index.Path)
-            from asked in value ? TypeTests.Select(t => $"{t}({expression})").Prepend(expression) : TypeTests.Select(t => $"{t}({expression})")
-            let a = MaterialisedTable.Of(index.Elements).Values(connection, asked)
-            let b = MaterialisedTable.Of(index.Paths).Values(connection, asked.Replace(index.Path, "$.g"))
-            where Same(a, b) == false
-            select $"{asked}: {Shown(a)} against {Shown(b)}";
+        static IEnumerable<string> Differing(System.Data.Common.DbConnection connection, Func<string, string[]> expressions, bool value = true) => Indexes
+            .SelectMany(index => expressions(index.Path)
+                .SelectMany(expression => value ? TypeTests.Select(t => $"{t}({expression})").Prepend(expression) : TypeTests.Select(t => $"{t}({expression})"))
+                .Select(asked => (Asked: asked, A: MaterialisedTable.Of(index.Elements).Values(connection, asked),
+                    B: MaterialisedTable.Of(index.Paths).Values(connection, asked.Replace(index.Path, "$.g")))))
+            .Where(read => Same(read.A, read.B) == false)
+            .Select(read => $"{read.Asked}: {Shown(read.A)} against {Shown(read.B)}");
 
         /// <summary>
         /// Each node built over the path's accessor typed so, by Calcite's executor, whose values over the documents holding an
         /// element differ from those over the documents holding the same at <c>$.g</c>.
         /// </summary>
-        static IEnumerable<string> ExecutedDiffering(SqlTypeName type, params (string Name, Func<RexBuilder, RexNode, RexNode> Build)[] asked) =>
-            from index in Indexes
-            from node in asked
-            let a = Executed(node.Build, index.Path, index.Elements, type)
-            let b = Executed(node.Build, "$.g", index.Paths, type)
-            where Same(a, b) == false
-            select $"{node.Name} at {index.Path}: {Shown(a)} against {Shown(b)}";
+        static IEnumerable<string> ExecutedDiffering(SqlTypeName type, params (string Name, Func<RexBuilder, RexNode, RexNode> Build)[] asked) => Indexes
+            .SelectMany(index => asked
+                .Select(node => (Node: node, A: Executed(node.Build, index.Path, index.Elements, type),
+                    B: Executed(node.Build, "$.g", index.Paths, type)))
+                .Where(read => Same(read.A, read.B) == false)
+                .Select(read => $"{read.Node.Name} at {index.Path}: {Shown(read.A)} against {Shown(read.B)}"));
 
         /// <summary>
         /// The path's accessor over a document column typed so, <c>JSON_VALUE(DOC, path)</c>: re-typed <c>ANY</c>, as the loader

@@ -135,8 +135,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var run = bundle.RunGenerate(RenderingBundle.WidthOf([plant.Root]));
             var answer = bundle.ReadBest(term);
             SqlPredicate[] nodes = plant.Root is SqlPredicate.Not not ? [plant.Root, not.Operand] : [plant.Root];
-            var agreements = (from node in nodes from pos in System.Enum.GetValues<RenderPosition>() from a in bundle.Agreements(bundle.Write(node), pos) where a.Claim == Verdict.Equal
-                              select (node, pos, a.Form)).ToList();
+            var agreements = nodes
+                .SelectMany(node => System.Enum.GetValues<RenderPosition>()
+                    .SelectMany(pos => bundle.Agreements(bundle.Write(node), pos)
+                        .Where(a => a.Claim == Verdict.Equal)
+                        .Select(a => (node, pos, a.Form))))
+                .ToList();
             var claim = RenderingCheckRun.Claimed(bundle, [plant.Root], ServiceForm.ConstantOf(true), [null], [], null, null);
             var (tally, world, targets) = (new RenderingSoundnessTests.Tally(), new World(13), Measured.Serves[plant.Set]);
             foreach (var document in RenderingDocumentSampler.Sample(claim, 512).Append(plant.Witness).DistinctBy(Documents.Json).Where(d => plant.Holds?.Invoke(d) != false))

@@ -363,7 +363,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                 return new CellPartition(path, ValueSet.From(left.Select(cell => (PathCell)new Pair(cell, cell, 0))));
 
             var right = Split(sides?.Right ?? path, pair.Right, pair.RightClasses, cuts).Cells;
-            return new CellPartition(path, ValueSet.From(from a in left from b in right from order in Orders(a, b) select (PathCell)new Pair(a, b, order)));
+            return new CellPartition(path, ValueSet.From(left.SelectMany(a => right.SelectMany(b => Orders(a, b).Select(order => (PathCell)new Pair(a, b, order))))));
         }
 
         /// <summary>

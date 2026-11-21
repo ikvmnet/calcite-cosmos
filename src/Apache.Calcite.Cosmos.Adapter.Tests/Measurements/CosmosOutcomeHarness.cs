@@ -71,12 +71,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 var connective = shared.Any(k => k.First() is { Formula: null, Test: CosmosServiceTest.And or CosmosServiceTest.Or });
                 var compares = shared.Any(k => k.First() is { Formula: null, Test: >= CosmosServiceTest.Equal and <= CosmosServiceTest.GreaterOrEqual or CosmosServiceTest.Range });
                 var operands = connective ? CosmosOutcomeWitnesses.Of(CosmosValueClass.None, operand) : [null];
-                var witnesses = (from edge in literals
-                                 from cell in shared.SelectMany(k => CosmosOutcomeWitnesses.Cells(k.First(), edge)).Distinct()
-                                 from json in CosmosOutcomeWitnesses.Of(connective ? CosmosValueClass.None : operand, cell, edge)
-                                 from u in operands
-                                 select (cell, json, u, Literal: compares ? edge ?? CosmosOutcomeWitnesses.Literal(operand) : null))
-                                .Select((w, n) => new Witness("w" + n, w.cell, w.json, w.u, w.Literal)).ToList();
+                var witnesses = literals
+                    .SelectMany(edge => shared.SelectMany(k => CosmosOutcomeWitnesses.Cells(k.First(), edge)).Distinct()
+                        .SelectMany(cell => CosmosOutcomeWitnesses.Of(connective ? CosmosValueClass.None : operand, cell, edge)
+                            .SelectMany(json => operands
+                                .Select(u => (cell, json, u, Literal: compares ? edge ?? CosmosOutcomeWitnesses.Literal(operand) : null)))))
+                    .Select((w, n) => new Witness("w" + n, w.cell, w.json, w.u, w.Literal)).ToList();
 
                 var pk = Guid.NewGuid().ToString("N");
                 foreach (var witness in witnesses)
@@ -107,12 +107,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>What each target answered at each cell of a key: an atom's as the reader writes S's rows, a composite's as written.</summary>
         static List<(CosmosValueClass Cell, RenderingTarget Target, CosmosAnswer Answer)> Declared(CosmosAxiom axiom, IGrouping<string, CosmosOutcome> key) =>
             key.First().Formula is null
-                ? [.. from row in CosmosAxiomRows.Read([axiom with { Outcomes = [.. key] }]) where row.Target != RenderingTarget.Calcite select (row.Key.Cell, row.Target, row.Answer)]
-                : [.. from outcome in key
-                      from target in new[] { (CosmosAxiomTarget.Emulator, RenderingTarget.Emulator), (CosmosAxiomTarget.Azure, RenderingTarget.Azure) }
-                      where outcome.On.HasFlag(target.Item1)
-                      from cell in outcome.Cells
-                      select (cell.Cell, target.Item2, cell.Answer)];
+                ? [.. CosmosAxiomRows.Read([axiom with { Outcomes = [.. key] }])
+                      .Where(row => row.Target != RenderingTarget.Calcite)
+                      .Select(row => (row.Key.Cell, row.Target, row.Answer))]
+                : [.. key.SelectMany(outcome => new[] { (CosmosAxiomTarget.Emulator, RenderingTarget.Emulator), (CosmosAxiomTarget.Azure, RenderingTarget.Azure) }
+                          .Where(target => outcome.On.HasFlag(target.Item1))
+                          .SelectMany(target => outcome.Cells.Select(cell => (cell.Cell, target.Item2, cell.Answer))))];
 
         static async Task<ILookup<CosmosValueClass, CosmosAnswer>> Truths(Container container, string pk, CosmosOutcome outcome, List<Witness> witnesses,
             List<(CosmosValueClass Cell, RenderingTarget Target, CosmosAnswer Answer)> declared, List<string> failures)
@@ -188,8 +188,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             {
                 var path = Path.GetFullPath(Path.Combine("TestResults", "measurements", "runs.tsv"));
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                File.AppendAllLines(path, from cell in observed from answer in cell select string.Join('\t', new Uri(CosmosEmulator.Endpoint!).Authority, axiom.Id, key.Key, cell.Key, answer,
-                    string.Join('|', declared.Where(d => d.Cell == cell.Key && Within(answer, d.Answer)).Select(d => d.Target)) is { Length: > 0 } targets ? targets : "none"));
+                File.AppendAllLines(path, observed.SelectMany(cell => cell.Select(answer => string.Join('\t', new Uri(CosmosEmulator.Endpoint!).Authority, axiom.Id, key.Key, cell.Key, answer,
+                    string.Join('|', declared.Where(d => d.Cell == cell.Key && Within(answer, d.Answer)).Select(d => d.Target)) is { Length: > 0 } targets ? targets : "none"))));
             }
 
             foreach (var cell in declared.Select(d => d.Cell).Distinct())

@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             string[] comparisons = [PredicateAtom.Equal, PredicateAtom.NotEqual, .. orderings], equalOrOrdering = [PredicateAtom.Equal, .. orderings];
 
             IEnumerable<(TemplateId, string)> Fit(TemplateId id, IEnumerable<string> over, IEnumerable<string> tests, IEnumerable<string> kinds) =>
-                from reader in over from test in tests from kind in kinds select (id, reader + "/" + test + "/" + kind);
+                over.SelectMany(reader => tests.SelectMany(test => kinds.Select(kind => (id, reader + "/" + test + "/" + kind))));
 
             return Fit(Bare, readers, comparisons, literals).Concat(Fit(Bare, readers, [PredicateAtom.InTest], [PointsKind]))
                 .Concat(Fit(Bare, readers, [PredicateAtom.DefinedTest, TypeTestShape], [NoOperand]))

@@ -44,7 +44,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// </summary>
         static readonly string[] Readers = [.. PredicateAtomTests.Readers, PredicateAtom.TypedReader("BIGINT"),
             .. new[] { "FLOAT", "REAL", "TINYINT", "SMALLINT" }.Select(PredicateAtom.TypedReader), .. TextPlaces,
-            .. from column in PredicateAtom.Columns from reader in new[] { Raw, CastOfRaw } select PredicateAtom.InColumn(reader, column)];
+            .. PredicateAtom.Columns.SelectMany(column => new[] { Raw, CastOfRaw }
+                .Select(reader => PredicateAtom.InColumn(reader, column)))];
 
         /// <summary>The grid's literals, beside numbers a double holds only near, past 2^53 and whole-valued, and strings that render a number or none.</summary>
         static readonly string[] Literals = [.. PredicateAtomTests.Literals, Of(0.1m), Of(0.10000000000000001m), Of(9007199254740993m), Of(6.0000000000000001m), Of(""), Of("2.5")];
@@ -254,7 +255,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             }
 
             IEnumerable<PredicateAtom> Beside(string reader, IEnumerable<string> literals) =>
-                (from literal in literals from op in Operators select PredicateAtom.Compare(reader, op, literal))
+                literals.SelectMany(literal => Operators.Select(op => PredicateAtom.Compare(reader, op, literal)))
                 .Concat(literals.Select(literal => PredicateAtom.In(reader, ValueSet.Of(literal, Of("y")))))
                 .Append(PredicateAtom.IsNull(reader))
                 .Concat(Operators.Select(op => PredicateAtom.CompareParameter(reader, op)));
@@ -399,14 +400,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
         /// row names.
         /// </summary>
         static IEnumerable<PredicateAtom> Atoms() =>
-            from reader in Readers
-            from atom in new[] { PredicateAtom.IsNull(reader) }
+            Readers.SelectMany(reader => new[] { PredicateAtom.IsNull(reader) }
                 .Concat(Operators.Select(op => PredicateAtom.CompareParameter(reader, op)))
-                .Concat(from literal in Literals where Compared(reader, literal) from op in Operators select PredicateAtom.Compare(reader, op, literal))
-                .Concat(from literal in Literals where Compared(reader, literal) select PredicateAtom.In(reader, ValueSet.Of(literal, Beside(literal))))
+                .Concat(Literals.Where(literal => Compared(reader, literal))
+                    .SelectMany(literal => Operators.Select(op => PredicateAtom.Compare(reader, op, literal))))
+                .Concat(Literals.Where(literal => Compared(reader, literal))
+                    .Select(literal => PredicateAtom.In(reader, ValueSet.Of(literal, Beside(literal)))))
                 .Concat(Textual(reader) || reader == PredicateAtom.RawIn("VARCHAR") ? Patterns.Select(p => PredicateAtom.Affix(reader, PredicateAtom.LikeTest, p)) : [])
-                .Concat(BodyOf(reader) is { } body ? Tests(reader, body) : [])
-            select atom;
+                .Concat(BodyOf(reader) is { } body ? Tests(reader, body) : []));
 
         /// <summary>Each type test its row names and the definedness test over a reading, read as its body reads it.</summary>
         static IEnumerable<PredicateAtom> Tests(string reader, string body) =>

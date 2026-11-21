@@ -86,10 +86,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>The row's keys of the asked witnesses, each with the ones it holds, in the row's order.</summary>
         static readonly (CosmosValueClass Kind, JsonCharacterBand Band, string?[] Witnesses)[] Keys =
-            [.. from key in CosmosStringFunctionMeasurementTests.FunctionWitnesses
-                let held = key.Witnesses.Where(w => Asked.Contains(w)).ToArray()
-                where held.Length > 0
-                select (key.Kind, key.Band, held)];
+            [.. CosmosStringFunctionMeasurementTests.FunctionWitnesses
+                .Select(key => (key.Kind, key.Band, held: key.Witnesses.Where(w => Asked.Contains(w)).ToArray()))
+                .Where(key => key.held.Length > 0)];
 
         static Task? _asked;
         static CosmosClient? _client;
@@ -214,7 +213,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var witness in witnesses)
                 {
                     var answer = service[w++];
-                    var calcite = (from f in functions from c in CosmosFunctionComparison.CalciteAnswers(Row, f, [witness]) select (f.Calcite, c.Reader, Answer: c.Answers[0])).ToList();
+                    var calcite = functions.SelectMany(f => CosmosFunctionComparison.CalciteAnswers(Row, f, [witness]).Select(c => (f.Calcite, c.Reader, Answer: c.Answers[0]))).ToList();
                     var verdicts = CosmosFunctionComparison.Judge(Row, functions, [(kind, band, [witness])], [[answer]]);
                     yield return string.Join('\t', CosmosWitnessProbe.Release, Row, CosmosFunctionComparison.Spelled(functions[0]), witness, answer,
                         calcite.Select(c => c.Answer).Distinct().Count() == 1 ? calcite[0].Answer : string.Join("; ", calcite.Select(c => $"{c.Calcite} via {c.Reader}: {c.Answer}")),

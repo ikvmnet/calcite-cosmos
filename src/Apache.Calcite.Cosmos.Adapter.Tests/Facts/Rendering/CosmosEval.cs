@@ -336,11 +336,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 long[] subjectsOf = [.. new[] { FunctionKey.Every, (long)i, call.Operands[i] is SqlValue.Literal ? FunctionKey.Literal : (long)i }.Distinct().Where(subjects.Contains)];
                 FunctionValueClass[] classes = [.. Enum.GetValues<FunctionValueClass>().Where(c => c == FunctionValueClass.Any || spelled is not null && FunctionValueClasses.Holds(c, spelled))];
                 foreach (var band in mask == JsonCharacterBand.None ? [JsonCharacterBand.None] : Enum.GetValues<JsonCharacterBand>().Where(b => b != JsonCharacterBand.None && mask.HasFlag(b)))
-                    switch ((from subject in subjectsOf
-                             select (from @class in classes
-                                     where Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target))
-                                     select Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).ToList()).ToList() is var held
-                             && held.All(h => h.Count > 0) && held.SelectMany(h => h).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
+                    switch (subjectsOf.Select(subject => classes
+                                .Where(@class => Rows.ContainsKey((FunctionKey.Of(function, subject, kind, band, @class), target)))
+                                .Select(@class => Rows[(FunctionKey.Of(function, subject, kind, band, @class), target)]).ToList()).ToList() is var held
+                            && held.All(h => h.Count > 0) && held.SelectMany(h => h).Distinct().ToList() is [var answer] ? answer : (CosmosFunctionAnswer?)null)
                     {
                         case CosmosFunctionAnswer.Undefined:
                             undefined = true;

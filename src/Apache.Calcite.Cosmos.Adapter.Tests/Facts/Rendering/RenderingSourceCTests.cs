@@ -66,7 +66,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var random = new Random(1);
             var roots = Enumerable.Range(0, 400).Select(_ => Tree(random, 3)).Where(r => r.Subterms.Any(t => t is SqlPredicate.Case)).Distinct().Take(60).ToList();
-            var documents = (from x in values from n in values select RenderingDocumentSampler.Document([SqlValue.Spell(X), SqlValue.Spell(N)], [x, n])).ToList();
+            var documents = values
+                .SelectMany(x => values
+                    .Select(n => RenderingDocumentSampler.Document([SqlValue.Spell(X), SqlValue.Spell(N)], [x, n])))
+                .ToList();
             Judge(roots.Select(r => (r, PathValues.Anything, AllBands, documents)));
         }
 
@@ -152,7 +155,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             static bool Ascii(J? v) => v is J.Str t && t.Value.All(c => c >= 0x20 && c < 0x7F) && t.Value.Trim() == t.Value;
             List<J.Obj> Over(Func<J?, bool> holds) =>
-                [.. from x in values where holds(x) from n in values where holds(n) select RenderingDocumentSampler.Document([SqlValue.Spell(X), SqlValue.Spell(N)], [x, n])];
+                [.. values
+                    .Where(x => holds(x))
+                    .SelectMany(x => values
+                        .Where(n => holds(n))
+                        .Select(n => RenderingDocumentSampler.Document([SqlValue.Spell(X), SqlValue.Spell(N)], [x, n])))];
 
             var (anything, strings, ascii) = (Over(_ => true), Over(v => v is J.Str), Over(Ascii));
             Judge([

@@ -79,8 +79,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
             var run = bundle.RunGenerate(RenderingBundle.WidthOf(roots));
             T? Get<T>(Term<T> term) where T : class => bundle.Failure is null && bundle.Scope.TryGet(term, out var value) ? value : null;
-            var read = (from node in nodes from pos in System.Enum.GetValues<RenderPosition>()
-                        select (node, pos, Read: (Get(theory.BestExact.Of(terms[node], pos)), Get(theory.Implied.Of(terms[node], pos)), Get(theory.Weakening.Of(terms[node], pos)))))
+            var read = nodes
+                .SelectMany(node => System.Enum.GetValues<RenderPosition>()
+                    .Select(pos => (node, pos, Read: (
+                        Get(theory.BestExact.Of(terms[node], pos)),
+                        Get(theory.Implied.Of(terms[node], pos)),
+                        Get(theory.Weakening.Of(terms[node], pos))))))
                 .ToDictionary(x => (x.node, x.pos), x => x.Read);
             IEnumerable<TableRow> Rows(TableHandle table) => bundle.Failure is null ? bundle.Scope.Rows(table) : [];
             return new(run, [.. roots.Select(r => bundle.ReadBest(terms[r]))], [.. roots.Select(r => bundle.Agreements(terms[r], RenderPosition.Pos))], read,
@@ -347,7 +351,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         {
             SqlPredicate[] roots = [Ne(Text(LabelPath), "bikes"), Eq(Text(KindPath), "true"), In(Raw(CategoryPath), "a", "b"), IsNull(Text(NPath)), Cmp(Cast("DOUBLE", Text(PricePath)), ">", Lit(50))];
             var shapes = Measured.Fits.Select(f => f.Shape).Distinct().ToList();
-            var everything = RenderingTheory.Define(Measured with { Fits = [.. from id in System.Enum.GetValues<TemplateId>() from shape in shapes select (id, shape)] });
+            var everything = RenderingTheory.Define(Measured with { Fits = [.. System.Enum.GetValues<TemplateId>().SelectMany(id => shapes.Select(shape => (id, shape)))] });
             var generated = Generate([.. roots, .. roots.Select(Not)], theory: everything);
 
             generated.Run.Should().Be(Disciplined);

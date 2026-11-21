@@ -41,7 +41,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>The grid's readers, the typed text places, and a raw value and its cast to text through each column (rawtyped).</summary>
         static readonly string[] Readers = [.. PredicateAtomTests.Readers, Bigint, .. TextPlaces,
-            .. from column in PredicateAtom.RawColumns from reader in new[] { PredicateAtom.RawReader, "cast:VARCHAR:raw" } select PredicateAtom.InColumn(reader, column)];
+            .. PredicateAtom.RawColumns.SelectMany(column => new[] { PredicateAtom.RawReader, "cast:VARCHAR:raw" }
+                .Select(reader => PredicateAtom.InColumn(reader, column)))];
 
         /// <summary>Literals where a number's double, its parse and a type's limits part cells.</summary>
         static readonly string[] Boundaries = [Of(9007199254740993m), Of(9007199254740994m), Of(0.1m), Of(2m), Of(2147483648m)];
@@ -229,7 +230,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var (unkept, (asked, tossed)) = (new List<string>(), (0, 0));
             var readers = new HashSet<string>();
             var atoms = Atoms(KeptReaders, reader => PredicateAtom.IsRaw(reader) ? [.. KeptNumbers, .. KeptTexts] : Textual(reader) ? KeptTexts : KeptNumbers)
-                .Concat(from reader in KeptReaders from op in new[] { "<>", "<", "<=", ">", ">=" } select PredicateAtom.CompareParameter(reader, op));
+                .Concat(KeptReaders.SelectMany(reader => new[] { "<>", "<", "<=", ">", ">=" }
+                    .Select(op => PredicateAtom.CompareParameter(reader, op))));
             foreach (var atom in atoms)
             {
                 var kept = new[] { atom.Kept(false, FactsReadings.Rows, FactsReadings.Columns), atom.Kept(true, FactsReadings.Rows, FactsReadings.Columns) };
@@ -350,10 +352,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
 
         /// <summary>The atoms over some readers, as <see cref="Atoms(bool)"/>, each reader compared with the literals <paramref name="beside"/> gives it.</summary>
         static IEnumerable<PredicateAtom> Atoms(string[] readers, Func<string, string[]> beside) => PredicateAtomTests.Grid(readers)
-            .Concat(from row in FactsReadings.TestKinds where row.Test != "IS_DEFINED" select PredicateAtom.TypeTest(PredicateAtom.RawReader, row.Test, row.Kinds))
-            .Concat(from reader in readers.Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR") || TextPlaces.Contains(r))
-                    from pattern in Patterns select PredicateAtom.Affix(reader, PredicateAtom.LikeTest, pattern))
-            .Concat(from reader in readers from literal in beside(reader) from op in new[] { "=", "<", ">=" } select PredicateAtom.Compare(reader, op, literal))
+            .Concat(FactsReadings.TestKinds
+                .Where(row => row.Test != "IS_DEFINED")
+                .Select(row => PredicateAtom.TypeTest(PredicateAtom.RawReader, row.Test, row.Kinds)))
+            .Concat(readers
+                .Where(r => r is PredicateAtom.TextReader || PredicateAtom.Columnless(r) == "cast:VARCHAR:raw" || r == PredicateAtom.RawIn("VARCHAR") || TextPlaces.Contains(r))
+                .SelectMany(reader => Patterns.Select(pattern => PredicateAtom.Affix(reader, PredicateAtom.LikeTest, pattern))))
+            .Concat(readers.SelectMany(reader => beside(reader)
+                .SelectMany(literal => new[] { "=", "<", ">=" }.Select(op => PredicateAtom.Compare(reader, op, literal)))))
             .Where(atom => Literals(atom).All(literal => atom.Reader switch
         {
             // A VARCHAR column is raw beside a string alone: the loader casts it beside anything else.

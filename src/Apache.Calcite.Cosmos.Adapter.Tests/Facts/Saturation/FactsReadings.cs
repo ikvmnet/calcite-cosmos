@@ -26,10 +26,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
             var declaration = OracleFixture.Theory().In(new JsonFactGenerations(CosmosReasoning.Rows)).Declaration()!;
             var contexts = declaration.Generation.Contexts;
             var root = contexts.Graph.Root;
-            var kinds = (from test in Enum.GetValues<CosmosServiceTest>()
-                         let name = ServiceForm.SpellingOf(test)
-                         where name is not null && root.TryGet(contexts.Rules.TestKinds.Of(name), out _)
-                         select (name, root.Get(contexts.Rules.TestKinds.Of(name)))).ToList();
+            var kinds = Enum.GetValues<CosmosServiceTest>()
+                .Select(test => ServiceForm.SpellingOf(test))
+                .OfType<string>()
+                .Where(name => root.TryGet(contexts.Rules.TestKinds.Of(name), out _))
+                .Select(name => (name, root.Get(contexts.Rules.TestKinds.Of(name))))
+                .ToList();
             return (root.Get(contexts.Rules.Readings.ReaderRows.Of()), root.Get(contexts.Rules.Readings.RawUnion.Of()), kinds, declaration);
         });
 

@@ -81,15 +81,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Read off it once, by the definition, a constant of it; a type none names holds no kind S images.
         /// </summary>
         internal static IReadOnlyList<(string Type, string Kind)> ReadTypeKinds() =>
-            [.. from type in SqlTypeName.ALL_TYPES.toArray().Cast<SqlTypeName>().Append(SqlTypeName.ANY).Distinct()
-                from kind in type == SqlTypeName.ANY ? [.. JsonValues.AllTypes.AsEnumerable()]
-                    : SqlTypeName.CHAR_TYPES.contains(type) ? [JsonValues.StringType]
-                    : SqlTypeName.INT_TYPES.contains(type) ? [JsonValues.IntegerType]
-                    : SqlTypeName.NUMERIC_TYPES.contains(type) ? [.. JsonValues.Numbers.AsEnumerable()]
-                    : SqlTypeName.BOOLEAN_TYPES.contains(type) ? new[] { JsonValues.BooleanType }
-                    : []
-                orderby type.getName(), kind
-                select (type.getName(), kind)];
+            [.. SqlTypeName.ALL_TYPES.toArray().Cast<SqlTypeName>().Append(SqlTypeName.ANY).Distinct()
+                .SelectMany(type => (type == SqlTypeName.ANY ? [.. JsonValues.AllTypes.AsEnumerable()]
+                        : SqlTypeName.CHAR_TYPES.contains(type) ? [JsonValues.StringType]
+                        : SqlTypeName.INT_TYPES.contains(type) ? [JsonValues.IntegerType]
+                        : SqlTypeName.NUMERIC_TYPES.contains(type) ? [.. JsonValues.Numbers.AsEnumerable()]
+                        : SqlTypeName.BOOLEAN_TYPES.contains(type) ? new[] { JsonValues.BooleanType }
+                        : [])
+                    .Select(kind => (type, kind)))
+                .OrderBy(t => t.type.getName())
+                .ThenBy(t => t.kind)
+                .Select(t => (t.type.getName(), t.kind))];
 
         /// <summary>
         /// The kind each reading S cuts compares as (<see cref="ReaderEdgesTable.Of"/>, G3): the family Calcite's type system
@@ -98,13 +100,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// the definition, a constant of its type system.
         /// </summary>
         internal static IReadOnlyList<(string Reader, string Kind)> ReadReaderKinds(IEnumerable<string> cut) =>
-            [.. from reader in cut
-                let type = TypeOf(PredicateAtom.Outermost(reader))
-                where type is not null
-                let family = SqlTypeName.get(type)?.getFamily()
-                where family is not null
-                orderby reader
-                select (reader, family.name())];
+            [.. cut
+                .Select(reader => (reader, type: TypeOf(PredicateAtom.Outermost(reader))))
+                .Where(t => t.type is not null)
+                .Select(t => (t.reader, family: SqlTypeName.get(t.type)?.getFamily()))
+                .Where(t => t.family is not null)
+                .OrderBy(t => t.reader)
+                .Select(t => (t.reader, t.family!.name()))];
 
         /// <summary>The SQL type a reading is of, by its name: the text's <c>VARCHAR</c>, <c>typed:T</c>'s and <c>cast:T</c>'s <c>T</c>; none for a raw value.</summary>
         static string? TypeOf(string outermost) => outermost == PredicateAtom.TextReader ? "VARCHAR"

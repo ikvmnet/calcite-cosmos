@@ -43,10 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static IReadOnlyList<string> Readers { get; } =
         [
             .. CosmosAxioms.Get(Readings).Subjects!,
-            .. from reader in CosmosAxioms.Get(Readings).Subjects!
-               where reader == PredicateAtom.RawReader || reader.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal)
-               from column in PredicateAtom.RawColumns
-               select PredicateAtom.InColumn(reader, column),
+            .. CosmosAxioms.Get(Readings).Subjects!
+                .Where(reader => reader == PredicateAtom.RawReader || reader.EndsWith(":" + PredicateAtom.RawReader, System.StringComparison.Ordinal))
+                .SelectMany(reader => PredicateAtom.RawColumns.Select(column => PredicateAtom.InColumn(reader, column))),
         ];
 
         static IReadOnlyList<(string Name, bool Strict)> Read(IReadOnlyList<string> measured)
@@ -59,12 +58,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                 Geography.Sql.GeographyOperatorTable.Instance(),
             };
 
-            return [.. (from table in tables
-                        let list = table.getOperatorList()
-                        from i in Enumerable.Range(0, list.size())
-                        let op = (SqlOperator)list.get(i)
-                        from name in CosmosPredicateLoader.Spellings(op)
-                        select (name, Strong.policy(op) == Strong.Policy.ANY || measured.Contains(op.getName()))).Distinct()];
+            return [.. tables
+                .Select(table => table.getOperatorList())
+                .SelectMany(list => Enumerable.Range(0, list.size()).Select(i => (SqlOperator)list.get(i)))
+                .SelectMany(op => CosmosPredicateLoader.Spellings(op)
+                    .Select(name => (name, Strong.policy(op) == Strong.Policy.ANY || measured.Contains(op.getName()))))
+                .Distinct()];
         }
 
     }
