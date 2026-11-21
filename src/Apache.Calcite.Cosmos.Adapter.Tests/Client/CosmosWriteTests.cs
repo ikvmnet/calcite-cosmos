@@ -377,6 +377,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// <c>INSERT</c> creates, so a repeat is a conflict rather than a replacement.
         /// </summary>
+        /// <remarks>
+        /// The emulator at times answers the repeat with a 500 from its own database rather than the 409 Azure answers: a
+        /// Postgres error over a cursor, "cannot drop portal ... while it is being set up" from EN20261019 and
+        /// <c>SqlState(E24000)</c> from EN20260907. A fresh emulator does so now and then, and one that has done so does so
+        /// on every repeat, across a restart, until its container is made again. The repeat is refused and the first
+        /// untouched there too, which is checked before the status is read; only the conflict's status cannot be read, so
+        /// such a run skips against an emulator, named or not, and a 500 from Azure fails.
+        /// </remarks>
         [Fact]
         public async Task ADuplicateIdIsRefused()
         {
@@ -384,11 +392,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             var act = async () => await Write(CosmosWriteOperation.Insert, ["""{"id":"d1","category":"bikes","name":"Second"}""", null, null, null, null]);
 
-            await act.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*409*");
+            var refused = await act.Should().ThrowAsync<CosmosExecutionException>();
 
             // And the first is untouched, which is the half of "refused" worth stating.
             var written = await Read("d1", new PartitionKey("bikes"));
             written!.Value.GetProperty("name").GetString().Should().Be("First");
+
+            var message = refused.Which.Message;
+            if (CosmosEmulator.ServiceTarget == Adapter.Metadata.CosmosServiceTarget.Emulator
+                && message.Contains(" failed with 500 InternalServerError.", StringComparison.Ordinal))
+            {
+                var reason = message.IndexOf("Reason: (", StringComparison.Ordinal) is var at and >= 0 ? message[at..].Split('\r', '\n')[0] : message;
+                Assert.Skip("This emulator answered the repeat with a 500 from its own database, not a 409, so the conflict's status cannot be read; the repeat was refused and the first is untouched. " + reason);
+            }
+
+            refused.WithMessage("*409*");
         }
 
         [Fact]
