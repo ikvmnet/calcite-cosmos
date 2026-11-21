@@ -2621,6 +2621,26 @@ never consulted.
 | `>=`, `<` | `12:00:01Z` |
 | `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
 
+**Every value is converted to its parameter's type before it is sent, by Calcite's own conversion.** Calcite
+compares a value of the parameter's type, but which class reaches the data context depends on the driver. The ADO.NET
+driver converts each value to the placeholder's type before Calcite sees it (`ParameterBinder`), so there the class
+was the type, and switching on the class, as the bind did, sent what Calcite compared. Calcite's own JDBC driver
+hands the caller's class through, and Calcite converts it only when a row's code reads the parameter
+(`Calcite.AParameterIsConvertedToItsTypeWhenRead`): the long 2^53 + 1 bound to a `DOUBLE` parameter compares as 2^53
+in Calcite and was sent as the 64-bit integer, which the service compares by value and kept nothing for;
+3,000,000,000 bound to an `INTEGER` wraps in Calcite and was sent whole; 30 bound to a text parameter is `'30'` in
+Calcite and was sent as a number, which the service leaves undefined against a string. So the slot carries the
+parameter's SQL type, read off the `RexDynamicParam` beside its length, and `CosmosQueries.Value` converts the value
+by calling what Calcite's generated code calls (`RexToLixTranslator.visitDynamicParam`, through `EnumUtils.convert`):
+`SqlFunctions.toBigDecimal` and the type's own `…Value()` for a number, the object's `toString()` for text, a cast
+for a boolean; every other type, `ANY` among them, Calcite reads as the class the data context holds, and it passes
+as it is. The conversion is called rather than copied, so it cannot drift from Calcite's, and it is the boxed one,
+which wraps an integer past its type, since the validator makes every parameter's type nullable. A value it refuses
+— a string that spells no number, a NaN or an infinity bound to a number — fails the statement by name, where
+Calcite's plan fails reading it. Calcite fails only once a row reaches the parameter, which leaves a statement over
+no row failing where Calcite answers none, and one the facts graph decides not to send answering where Calcite fails;
+`TODO.md` records both.
+
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =
 @p` is true of a document storing null, `c.t != @p` of every other, `c.t <= @p` of a stored null too, and

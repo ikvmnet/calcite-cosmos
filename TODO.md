@@ -1990,6 +1990,22 @@ on Azure, where it is a constant the service may or may not fold before it picks
 host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
 one, which is likely why nothing had reported it.
 
+### A parameter Calcite cannot convert fails where no row reaches it — *small, and the fix is not planned*
+
+The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Value`,
+`Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no
+number bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a boolean bound to a
+`BOOLEAN` — fails the statement by name before it is sent. Calcite fails only once a row reaches the parameter's
+reading, so two cases part from it:
+
+- **over an input that holds no row**, an empty container or partition, Calcite answers no rows and the adapter fails;
+- **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
+  without binding anything, where Calcite's own plan, reading the container's rows, fails.
+
+**The proper fix** is the request decision reading the bound value, so that a statement over no row answers none and
+one over any row fails. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
+the ADO.NET driver refuses a string that spells no number, and a NaN, bound to a `BIGINT` before the statement runs.
+
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
 A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical

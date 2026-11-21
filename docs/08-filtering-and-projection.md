@@ -524,9 +524,22 @@ the value. Its other escape, U+FDD0 as U+FDD0 `1`, keeps the order. Azure stores
 and is unaffected (Appendix E).
 
 **A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
-holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
-`'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
-or padded the same way, so the service keeps the rows SQL does.
+compares the value bound as a value of that type, whichever driver bound it. Through Calcite's own JDBC
+driver the value arrives as the caller bound it and is converted when a row reads it: a `long` bound to
+a `DOUBLE` parameter compares as its double, so 2^53 + 1 is 2^53; a number bound to a text parameter
+compares as Java writes it, `30` as `'30'` and `1e20` as `'1.0E20'`; a string bound to a number compares
+as the number it spells; a long past an `INTEGER` wraps, and a double bound to a `BIGINT` is cut to its
+whole part. The ADO.NET driver converts the value to the type before Calcite sees it, by rules of its
+own: it rounds `1.5` to `2` for a `BIGINT`, and refuses a long past an `INTEGER`. A string is held to its
+type's length too: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is `'a'`, and against a
+`CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, converted by Calcite's own
+conversion and truncated or padded the same way, so the service keeps the rows SQL does.
+
+**A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as Calcite's
+own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN or an
+infinity bound to a numeric one, anything but a boolean bound to a `BOOLEAN` one (Chapter 22). Calcite
+fails only once it reads a row, and over a container or a partition holding none it answers no rows; the
+adapter fails before anything is sent, whatever the container holds.
 
 **Two values that may both be a JSON null are compared in process** where equal values satisfy the
 comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALUE(c."DOC", '$.u')` over paths

@@ -10,6 +10,8 @@ using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
+using org.apache.calcite.rel.type;
+using org.apache.calcite.schema;
 using org.apache.calcite.sql.type;
 
 using Xunit;
@@ -203,6 +205,193 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Calcite's own JDBC driver hands the caller's class to the data context, and Calcite converts the value to the
+        /// parameter's type when a row reads it; the ADO.NET driver converts it to the type before Calcite sees it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each case is a statement over an in-process table that records what the data context holds for <c>?0</c> when
+        /// it is scanned (<see cref="Recording"/>), bound once through <c>jdbc:calcite:</c> with the setter a caller of it
+        /// would use, and once through the ADO.NET driver with the .NET value a caller of it would use; with the rows kept,
+        /// or the innermost exception.
+        /// </para>
+        /// <para>
+        /// <b>Through Calcite's own driver the data context holds the caller's class:</b> a long for a <c>DOUBLE</c>, an
+        /// <c>INTEGER</c>, a <c>SMALLINT</c>, a <c>REAL</c> and a <c>VARCHAR</c> parameter, a double for a <c>BIGINT</c>
+        /// one, a string for a <c>BIGINT</c>, a <c>DECIMAL</c>, an <c>INTEGER</c> and a <c>BOOLEAN</c> one. Calcite compares
+        /// the value of the parameter's type, converted when the row's code reads it: the long 2^53 + 1 as the double 2^53,
+        /// keeping the stored 2^53 and not 1.5 below it; 3,000,000,000 wrapped to −1,294,967,296; 65,537 wrapped to 1 as a
+        /// <c>SMALLINT</c>; 2^24 + 1 rounded to 2^24 as a <c>REAL</c>; 1.5 cut to 1; the string <c>'2'</c> as 2 and
+        /// <c>'2.50'</c> as the decimal 2.5; the long 30 as the text <c>'30'</c> and the double 1e20 as Java writes it,
+        /// <c>'1.0E20'</c>. It fails converting what it cannot: a string that spells no number, a NaN bound to a
+        /// <c>BIGINT</c> or a <c>DOUBLE</c> and −Infinity bound to a <c>DOUBLE</c> (<c>NumberFormatException</c>), a
+        /// string bound to a <c>BOOLEAN</c> (<c>ClassCastException</c>); and over an empty table, where no row reads the
+        /// parameter, it answers no rows.
+        /// A projected parameter is read so too.
+        /// </para>
+        /// <para>
+        /// <b>Through the ADO.NET driver the data context holds the parameter's type's own class</b>, converted from the
+        /// .NET value before the statement runs (<c>ParameterBinder.Bind</c>), by its own rule: it rounds 1.5 to 2 for a
+        /// <c>BIGINT</c> where Calcite's conversion cuts it to 1, refuses a long past an <c>INTEGER</c> or a
+        /// <c>SMALLINT</c> rather than wrap it, refuses a NaN or a string that spells no number for a <c>BIGINT</c>, and
+        /// writes the double 1e20 as .NET's text, <c>'1E+20'</c>. Calcite's conversion then finds the type's class and
+        /// changes nothing, so a value converts to what the data context already holds.
+        /// </para>
+        /// <para>
+        /// A string the data context holds is recorded without a cast to <c>java.lang.Object</c>: IKVM holds Java's
+        /// <c>String</c> as <c>System.String</c>, which no such cast takes.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.AParameterIsConvertedToItsTypeWhenRead")]
+        public void AParameterIsConvertedToItsTypeWhenRead()
+        {
+            var doubles = MaterialisedTable.Of(SqlTypeName.DOUBLE, ["9007199254740992", "1.5"]);
+            var integers = MaterialisedTable.Of(SqlTypeName.INTEGER, ["-1294967296", "5"]);
+            var longs = MaterialisedTable.Of(SqlTypeName.BIGINT, ["1", "2"]);
+            var texts = MaterialisedTable.Of(SqlTypeName.VARCHAR, ["\"30\"", "\"x\"", "\"1.0E20\"", "\"1E+20\""]);
+            var documents = MaterialisedTable.Of(["{\"s\":\"30\"}", "{\"s\":\"x\"}", "{\"n\":2}"]);
+
+            var cases = new Conversion[]
+            {
+                new("DOUBLE v = ?, long 2^53 + 1", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [0]", "java.lang.Double 9.007199254740992E15: rows [0]"),
+                new("DOUBLE v < ?, long 2^53 + 1", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" < ?", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [1]", "java.lang.Double 9.007199254740992E15: rows [1]"),
+                new("INTEGER v = ?, long 3,000,000,000", integers, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows [0]", "not read: OverflowException"),
+                new("SMALLINT v = ?, long 65,537", MaterialisedTable.Of(SqlTypeName.SMALLINT, ["1", "2"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 65537L), 65537L,
+                    "java.lang.Long 65537: rows [0]", "not read: OverflowException"),
+                new("REAL v = ?, long 2^24 + 1", MaterialisedTable.Of(SqlTypeName.REAL, ["16777216", "1.5"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 16777217L), 16777217L,
+                    "java.lang.Long 16777217: rows [0]", "java.lang.Float 1.6777216E7: rows [0]"),
+                new("BIGINT v = ?, double 1.5", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1.5), 1.5d,
+                    "java.lang.Double 1.5: rows [0]", "java.lang.Long 2: rows [1]"),
+                new("BIGINT v = ?, double NaN", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("BIGINT v = ?, double NaN, no row", MaterialisedTable.Of(SqlTypeName.BIGINT, []), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: rows []", "not read: OverflowException"),
+                new("DOUBLE v = ?, double NaN", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "java.lang.Double NaN: NumberFormatException"),
+                new("DOUBLE v = ?, double -Infinity", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NegativeInfinity), double.NegativeInfinity,
+                    "java.lang.Double -Infinity: NumberFormatException", "java.lang.Double -Infinity: NumberFormatException"),
+                new("BIGINT v = ?, string '2'", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: rows [1]", "java.lang.Long 2: rows [1]"),
+                new("BIGINT v = ?, string 'x'", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: NumberFormatException", "not read: FormatException"),
+                new("DECIMAL v = ?, string '2.50'", MaterialisedTable.Of(SqlTypeName.DECIMAL, ["2.5", "3"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "2.50"), "2.50",
+                    "java.lang.String 2.50: rows [0]", "java.math.BigDecimal 2.50: rows [0]"),
+                new("RETURNING INTEGER = ?, string '2'", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.n' RETURNING INTEGER) = ?", s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: rows [2]", "java.lang.Integer 2: rows [2]"),
+                new("BOOLEAN v = ?, string 'true'", MaterialisedTable.Of(SqlTypeName.BOOLEAN, ["true", "false"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: ClassCastException", "java.lang.Boolean true: rows [0]"),
+                new("VARCHAR v = ?, long 30", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 30L), 30L,
+                    "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
+                new("VARCHAR v = ?, double 1e20", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1e20), 1e20d,
+                    "java.lang.Double 1.0E20: rows [2]", "java.lang.String 1E+20: rows [3]"),
+                new("JSON_VALUE = ?, long 30", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.s') = ?", s => s.setLong(1, 30L), 30L,
+                    "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
+                new("projected DOUBLE, long 2^53 + 1", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [0 9.007199254740992E15]", "java.lang.Double 9.007199254740992E15: rows [0 9007199254740992]"),
+                new("projected DOUBLE, double NaN", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "java.lang.Double NaN: NumberFormatException"),
+            };
+
+            var jdbc = new org.apache.calcite.jdbc.Driver().connect("jdbc:calcite:", new java.util.Properties());
+            var schema = ((org.apache.calcite.jdbc.CalciteConnection)jdbc.unwrap(typeof(org.apache.calcite.jdbc.CalciteConnection))).getRootSchema();
+            using var ado = MaterialisedTable.Open();
+            var named = 0;
+            var measured = new List<string>();
+            try
+            {
+                foreach (var conversion in cases)
+                {
+                    measured.Add(conversion.Label + " | jdbc:calcite | " + Run(conversion, schema.add, sql =>
+                    {
+                        var statement = jdbc.prepareStatement(sql);
+                        conversion.Bind(statement);
+                        var result = statement.executeQuery();
+                        var rows = new List<string>();
+                        while (result.next())
+                            rows.Add(string.Join(" ", Enumerable.Range(1, result.getMetaData().getColumnCount()).Select(c => result.getString(c))));
+
+                        return rows;
+                    }));
+
+                    measured.Add(conversion.Label + " | ADO.NET | " + Run(conversion, ((SchemaPlus)((Apache.Calcite.Data.CalciteConnection)ado).RootSchema).add, sql =>
+                    {
+                        using var command = ado.CreateCommand();
+                        command.CommandText = sql;
+                        var parameter = command.CreateParameter();
+                        parameter.Value = conversion.Bound;
+                        command.Parameters.Add(parameter);
+                        var rows = new List<string>();
+                        using var reader = command.ExecuteReader();
+                        while (reader.Read())
+                            rows.Add(string.Join(" ", Enumerable.Range(0, reader.FieldCount).Select(c => Convert.ToString(reader.GetValue(c), System.Globalization.CultureInfo.InvariantCulture))));
+
+                        return rows;
+                    }));
+                }
+            }
+            finally
+            {
+                jdbc.close();
+            }
+
+            measured.Should().Equal(cases.SelectMany(c => new[] { c.Label + " | jdbc:calcite | " + c.Calcite, c.Label + " | ADO.NET | " + c.Ado }));
+
+            // One statement over a fresh recording of the case's table, named afresh: what the data context held when the
+            // table was scanned, or "not read" where the driver failed first, and the rows kept or the innermost exception.
+            string Run(Conversion conversion, Action<string, org.apache.calcite.schema.Table> add, Func<string, List<string>> rows)
+            {
+                var recording = new Recording(conversion.Table);
+                var name = "c" + (++named).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                add(name, recording);
+                try
+                {
+                    var kept = rows(conversion.Sql.Replace("{t}", "\"" + name + "\""));
+                    return $"{recording.Held}: rows [{string.Join(", ", kept)}]";
+                }
+                catch (Exception e)
+                {
+                    while (e.InnerException is { } inner)
+                        e = inner;
+
+                    return $"{recording.Held}: {e.GetType().Name}";
+                }
+            }
+        }
+
+        /// <summary>One conversion case: a statement over a table, how each driver binds its one parameter, and what each answers.</summary>
+        sealed record Conversion(string Label, MaterialisedTable Table, string Sql, Action<java.sql.PreparedStatement> Bind, object? Bound, string Calcite, string Ado);
+
+        /// <summary>
+        /// A table that records what the data context holds for <c>?0</c> when it is scanned, and answers the rows of the
+        /// table it wraps.
+        /// </summary>
+        sealed class Recording(MaterialisedTable table) : org.apache.calcite.schema.impl.AbstractTable, ScannableTable
+        {
+
+            /// <summary>The class and the value <c>?0</c> held at the scan, Java's spelling of each; "not read" before one.</summary>
+            public string Held { get; private set; } = "not read";
+
+            public override RelDataType getRowType(RelDataTypeFactory typeFactory) => table.getRowType(typeFactory);
+
+            public org.apache.calcite.linq4j.Enumerable scan(org.apache.calcite.DataContext root)
+            {
+                Held = root.get("?0") switch
+                {
+                    null => "null",
+                    string text => "java.lang.String " + text,
+                    java.lang.Object held => held.getClass().getName() + " " + held.toString(),
+                    var other => other.GetType().FullName + " " + other,
+                };
+
+                return table.scan(root);
+            }
+
         }
 
         /// <summary>

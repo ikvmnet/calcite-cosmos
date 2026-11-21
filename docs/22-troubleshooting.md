@@ -208,6 +208,14 @@ one, `U&'\D83D'`, is computed in process instead, and so is a column computed fr
 `UPPER(CAST(? AS VARCHAR))`, which is never sent; a parameter the service reads is not known until it is
 bound. Bind a whole character, or compare in the application. Chapter 8.
 
+**"Parameter ?0 cannot be converted to its type, BIGINT, as Calcite converts it when a row reads it"
+(`CosmosExecutionException`) when a statement runs.**
+A parameter was bound to a value Calcite cannot read as the type it gave the parameter, which is the type
+of what the parameter is compared with: a string that spells no number where a number is compared, a NaN
+or an infinity bound to a numeric parameter, a string bound to a `BOOLEAN`. The message names the
+exception Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the
+adapter fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
+
 **400 on a query with `SQRT`, `ASIN` or `ACOS`.**
 Cosmos fails the whole statement for an out-of-domain argument. Guard the input. Chapter 8.
 

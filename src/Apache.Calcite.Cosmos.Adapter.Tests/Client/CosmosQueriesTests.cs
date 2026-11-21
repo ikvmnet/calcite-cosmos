@@ -6,6 +6,9 @@ using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
 using FluentAssertions;
+using FluentAssertions.Execution;
+
+using org.apache.calcite.sql.type;
 
 using Xunit;
 
@@ -123,6 +126,103 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             Bind("1152921504606846977").Parameters[0].Value.Should().BeOfType<long>().Which.Should().Be(1152921504606846977L);
 
             FluentActions.Invoking(() => Bind("1.9999999999999999")).Should().Throw<CosmosExecutionException>();
+        }
+
+        // -- The parameter's type ------------------------------------------------------------------
+
+        /// <summary>Binds one value into a slot of a type, through a data context holding it as it stands.</summary>
+        static object? BindAs(SqlTypeName? type, object? held, int? length = null) => CosmosQueries.Bind(
+            Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = type, Length = length })),
+            new Context(("?0", held))).Parameters[0].Value;
+
+        /// <summary>
+        /// A value is sent as Calcite compares it, converted to the parameter's type, whichever class the data context
+        /// holds: each case <c>CalciteParameterMeasurementTests.AParameterIsConvertedToItsTypeWhenRead</c> measures, as
+        /// Calcite's own driver leaves the caller's class there and as the ADO.NET driver writes the type's own.
+        /// </summary>
+        /// <remarks>
+        /// Sent as the data context held it, a long bound to a <c>DOUBLE</c> parameter past 2^53 was compared by the
+        /// service as another number than Calcite's, 3,000,000,000 bound to an <c>INTEGER</c> one unwrapped, 1.5 bound to
+        /// a <c>BIGINT</c> one uncut, the string <c>'2'</c> bound to a number as a string the service leaves undefined
+        /// against a number, and the long 30 bound to text as a number it leaves undefined against a string
+        /// (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>).
+        /// </remarks>
+        [Fact]
+        public void AValueIsSentAsCalciteConvertsItToTheParametersType()
+        {
+            var cases = new (string Case, SqlTypeName Type, object Held, int? Length, object Sent)[]
+            {
+                // Calcite's own driver: the caller's class.
+                ("DOUBLE, long 2^53 + 1", SqlTypeName.DOUBLE, java.lang.Long.valueOf(9007199254740993L), null, 9007199254740992d),
+                ("INTEGER, long 3,000,000,000", SqlTypeName.INTEGER, java.lang.Long.valueOf(3000000000L), null, -1294967296L),
+                ("SMALLINT, long 65,537", SqlTypeName.SMALLINT, java.lang.Long.valueOf(65537L), null, 1L),
+                ("REAL, long 2^24 + 1", SqlTypeName.REAL, java.lang.Long.valueOf(16777217L), null, 16777216d),
+                ("BIGINT, double 1.5", SqlTypeName.BIGINT, java.lang.Double.valueOf(1.5), null, 1L),
+                ("BIGINT, string '2'", SqlTypeName.BIGINT, "2", null, 2L),
+                ("DECIMAL, string '2.50'", SqlTypeName.DECIMAL, "2.50", null, 2.5m),
+                ("RETURNING INTEGER, string '2'", SqlTypeName.INTEGER, "2", null, 2L),
+                ("VARCHAR, long 30", SqlTypeName.VARCHAR, java.lang.Long.valueOf(30L), null, "30"),
+                ("VARCHAR, double 1e20", SqlTypeName.VARCHAR, java.lang.Double.valueOf(1e20), null, "1.0E20"),
+                ("JSON_VALUE's VARCHAR(2000), long 30", SqlTypeName.VARCHAR, java.lang.Long.valueOf(30L), 2000, "30"),
+                ("projected DOUBLE, long 2^53 + 1", SqlTypeName.DOUBLE, java.lang.Long.valueOf(9007199254740993L), null, 9007199254740992d),
+
+                // The ADO.NET driver: the type's own class, which converts to itself.
+                ("DOUBLE, double 2^53", SqlTypeName.DOUBLE, java.lang.Double.valueOf(9007199254740992d), null, 9007199254740992d),
+                ("REAL, float 2^24", SqlTypeName.REAL, java.lang.Float.valueOf(16777216f), null, 16777216d),
+                ("BIGINT, long 2", SqlTypeName.BIGINT, java.lang.Long.valueOf(2L), null, 2L),
+                ("DECIMAL, decimal 2.50", SqlTypeName.DECIMAL, new java.math.BigDecimal("2.50"), null, 2.5m),
+                ("INTEGER, integer 2", SqlTypeName.INTEGER, java.lang.Integer.valueOf(2), null, 2L),
+                ("BOOLEAN, boolean true", SqlTypeName.BOOLEAN, java.lang.Boolean.TRUE, null, true),
+                ("VARCHAR, string '30'", SqlTypeName.VARCHAR, "30", null, "30"),
+                ("VARCHAR, string '1E+20'", SqlTypeName.VARCHAR, "1E+20", null, "1E+20"),
+            };
+
+            using var scope = new AssertionScope();
+            foreach (var (name, type, held, length, sent) in cases)
+                BindAs(type, held, length).Should().Be(sent, name);
+        }
+
+        /// <summary>
+        /// A value Calcite cannot convert to the parameter's type fails the statement by name, as Calcite's own plan fails
+        /// reading it: a NaN bound to a <c>BIGINT</c> or a <c>DOUBLE</c> parameter, an infinity bound to a <c>DOUBLE</c>,
+        /// a string that spells no number bound to a <c>BIGINT</c>, and a string bound to a <c>BOOLEAN</c>.
+        /// </summary>
+        [Fact]
+        public void AValueCalciteCannotConvertFailsByName()
+        {
+            var cases = new (SqlTypeName Type, object Held, string Raised)[]
+            {
+                (SqlTypeName.BIGINT, java.lang.Double.valueOf(double.NaN), "NumberFormatException"),
+                (SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.NaN), "NumberFormatException"),
+                (SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.NegativeInfinity), "NumberFormatException"),
+                (SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.PositiveInfinity), "NumberFormatException"),
+                (SqlTypeName.BIGINT, "x", "NumberFormatException"),
+                (SqlTypeName.BOOLEAN, "true", "ClassCastException"),
+            };
+
+            using var scope = new AssertionScope();
+            foreach (var (type, held, raised) in cases)
+                FluentActions.Invoking(() => BindAs(type, held)).Should().Throw<CosmosExecutionException>()
+                    .WithMessage($"Parameter ?0 cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({raised}: *");
+        }
+
+        /// <summary>
+        /// The conversion comes before the type's length holds a string and before a bound is written from it, and a slot of
+        /// a type Calcite reads as it is, or of none, sends the value as it arrived.
+        /// </summary>
+        [Fact]
+        public void TheConvertedValueIsHeldToItsLengthAndAnyPassesAsItIs()
+        {
+            BindAs(SqlTypeName.VARCHAR, java.lang.Long.valueOf(30L), length: 1).Should().Be("3", "the text '30' held to one unit");
+            BindAs(SqlTypeName.ANY, java.lang.Long.valueOf(30L)).Should().Be(30L, "an ANY parameter is read as the class it holds");
+            BindAs(SqlTypeName.ANY, "30").Should().Be("30");
+            BindAs(null, "2").Should().Be("2", "a slot made without a type binds the value as it arrives");
+            BindAs(SqlTypeName.BIGINT, null).Should().BeNull("a null is no value to convert");
+
+            var bounded = CosmosQueries.Bind(
+                Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = SqlTypeName.VARCHAR, Bound = CosmosAnchorBound.Lower })),
+                new Context(("?0", java.lang.Long.valueOf(30L))));
+            bounded.Parameters[0].Value.Should().Be(CosmosServiceOrder.LowerBound("30"), "the bound is written from the converted text");
         }
 
         // -- A geography ---------------------------------------------------------------------------

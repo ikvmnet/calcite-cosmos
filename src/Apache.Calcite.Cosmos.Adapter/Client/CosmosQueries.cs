@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using Apache.Calcite.Cosmos.Adapter.Internal;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 
+using org.apache.calcite.runtime;
+using org.apache.calcite.sql.type;
+
 namespace Apache.Calcite.Cosmos.Adapter.Client
 {
 
@@ -221,11 +224,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
-        /// Reads one dynamic parameter's value out of the data context.
+        /// Reads whether one dynamic parameter holds a value: <c>true</c> where it does, <c>null</c> where it does not.
+        /// </summary>
+        static object? Present(org.apache.calcite.DataContext root, CosmosDynamicValue slot) =>
+            root.get(slot.VariableName) is null ? null : true;
+
+        /// <summary>
+        /// Reads one dynamic parameter's value out of the data context, converted to the parameter's type.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Into the same shapes <see cref="CosmosRexLiterals.GetLiteralValue"/> produces, so that a value
+        /// <b>The value is first converted as Calcite converts it</b> (<see cref="Converted"/>): what the data context
+        /// holds is the caller's class through Calcite's own driver, and the value Calcite compares is that value of the
+        /// parameter's type.
+        /// </para>
+        /// <para>
+        /// Then into the same shapes <see cref="CosmosRexLiterals.GetLiteralValue"/> produces, so that a value
         /// arriving late is indistinguishable from one written into the statement: every integer width
         /// as a <c>long</c>, every approximate one as a <c>double</c>, and an exact one as
         /// <see cref="CosmosRexLiterals.TryGetExactNumberValue"/> sends it — a decimal, or a long
@@ -247,23 +261,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <para>
         /// <b>Left alone it was the geometry itself</b>, and the SDK's serializer wrote the IKVM
         /// object graph — <c>$0</c>-keyed, assembly-qualified, three kilobytes for a point — which the
-        /// service got in place of a shape (#154). Switching on the value's class rather than on a
-        /// declared type is what every case here does, and is right for the same reason: what the
-        /// context hands over is a Java object, and which one it is decides what it means.
+        /// service got in place of a shape (#154). Once converted, the value is in the class Calcite holds
+        /// its type in, so switching on that class is switching on the type, and a slot made without a type,
+        /// or of one Calcite reads as it stands, is shaped by the class it arrived in.
         /// </para>
         /// </remarks>
         /// <param name="root">The data context.</param>
-        /// <param name="value">The ordinal to read.</param>
+        /// <param name="value">The ordinal to read, and the type it is converted to.</param>
         /// <returns>The bound value.</returns>
-        /// <summary>
-        /// Reads whether one dynamic parameter holds a value: <c>true</c> where it does, <c>null</c> where it does not.
-        /// </summary>
-        static object? Present(org.apache.calcite.DataContext root, CosmosDynamicValue slot) =>
-            root.get(slot.VariableName) is null ? null : true;
-
+        /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the parameter's type.</exception>
         static object? Value(org.apache.calcite.DataContext root, CosmosDynamicValue value)
         {
-            return root.get(value.VariableName) switch
+            return Converted(root.get(value.VariableName), value) switch
             {
                 string text when value.Length is int length => Held(text, length, value.Padded),
                 null => null,
@@ -279,6 +288,69 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 org.locationtech.jts.geom.Geometry g => CosmosJson.ToGeoJsonValue(g),
                 var other => other,
             };
+        }
+
+        /// <summary>
+        /// Converts the value the data context holds for a parameter to the parameter's type, as Calcite's generated code
+        /// converts it when a row reads the parameter.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Calcite's own driver hands the caller's class through, and Calcite converts it when the row's code reads
+        /// it</b> (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>): a long bound to a <c>DOUBLE</c> parameter is
+        /// compared as its double, past 2^53 another number; a long bound to an <c>INTEGER</c> one wraps; a double bound to
+        /// a <c>BIGINT</c> one is cut to its whole part; a number bound to a text one is compared as its text, and a string
+        /// bound to a number as the number it spells. The ADO.NET driver converts each value to the placeholder's type
+        /// before Calcite sees it, so through it the conversion finds the type's own class and changes nothing. Sent as the
+        /// data context held it, the value was compared by the service as another value than Calcite's.
+        /// </para>
+        /// <para>
+        /// <b>The conversion is Calcite's own code, called, so it cannot drift from it.</b>
+        /// <c>RexToLixTranslator.visitDynamicParam</c> reads a parameter of a numeric type through <c>java.lang.Number</c>,
+        /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the type's class's
+        /// own <c>…Value()</c>; one of a character type through the object's <c>toString()</c>; a <c>BOOLEAN</c> through a
+        /// cast to <c>java.lang.Boolean</c>. Every other type, <c>ANY</c> among them, is read as the class the data context
+        /// holds, and passes as it is. A parameter's type is always nullable, the validator making every one so, so the
+        /// conversion is the boxed one: an integer past its type wraps, as <c>BigDecimal.intValue()</c> does, rather than
+        /// raise as the unboxed <c>intValueExact()</c> would.
+        /// </para>
+        /// <para>
+        /// <b>A value Calcite cannot convert fails the statement by name</b>, as Calcite's own plan fails reading it: a
+        /// string that spells no number bound to a numeric parameter, a NaN or an infinite double bound to any numeric one
+        /// (<c>toBigDecimal</c> refuses both), anything but a boolean bound to a <c>BOOLEAN</c> one. Calcite fails only
+        /// once a row reaches the parameter's reading, and answers no rows over an input that holds none; the bind fails
+        /// whatever the input holds (TODO.md).
+        /// </para>
+        /// </remarks>
+        /// <param name="held">The value the data context holds, or <c>null</c>.</param>
+        /// <param name="slot">The parameter, and the type it is converted to.</param>
+        /// <returns>The value of the parameter's type, in the class Calcite holds the type in; <c>null</c> for <c>null</c>.</returns>
+        /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the type.</exception>
+        static object? Converted(object? held, CosmosDynamicValue slot)
+        {
+            if (held is null || slot.TypeName is not SqlTypeName type)
+                return held;
+
+            try
+            {
+                return type switch
+                {
+                    _ when type == SqlTypeName.TINYINT => java.lang.Byte.valueOf(SqlFunctions.toBigDecimal(held).byteValue()),
+                    _ when type == SqlTypeName.SMALLINT => java.lang.Short.valueOf(SqlFunctions.toBigDecimal(held).shortValue()),
+                    _ when type == SqlTypeName.INTEGER => java.lang.Integer.valueOf(SqlFunctions.toBigDecimal(held).intValue()),
+                    _ when type == SqlTypeName.BIGINT => java.lang.Long.valueOf(SqlFunctions.toBigDecimal(held).longValue()),
+                    _ when type == SqlTypeName.REAL => java.lang.Float.valueOf(SqlFunctions.toBigDecimal(held).floatValue()),
+                    _ when type == SqlTypeName.FLOAT || type == SqlTypeName.DOUBLE => java.lang.Double.valueOf(SqlFunctions.toBigDecimal(held).doubleValue()),
+                    _ when type == SqlTypeName.DECIMAL => SqlFunctions.toBigDecimal(held),
+                    _ when type == SqlTypeName.CHAR || type == SqlTypeName.VARCHAR => java.lang.String.valueOf(held),
+                    _ when type == SqlTypeName.BOOLEAN => ((java.lang.Class)typeof(java.lang.Boolean)).cast(held),
+                    _ => held,
+                };
+            }
+            catch (java.lang.RuntimeException e)
+            {
+                throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({e.GetType().Name}: {e.getMessage()}), so the statement fails as Calcite's own plan fails.", e);
+            }
         }
 
         /// <summary>

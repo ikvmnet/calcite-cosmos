@@ -17,11 +17,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// </para>
     /// <para>
     /// The ordinal is what is carried, because the ordinal is what the plan knows of the value. What
-    /// the value will be is the caller's, and what type it is the plan already decided — which is why
-    /// nothing here records one, but for the length a sized text type holds a string to
-    /// (<see cref="Length"/>), which changes what Calcite reads. The other additions are what the plan
-    /// chose from the comparison the value sits in: a spelling taken from the path it is compared with,
-    /// which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>).
+    /// the value will be is the caller's; what type it is the plan already decided, and the slot carries
+    /// that type (<see cref="TypeName"/>) and the length a sized text type holds a string to
+    /// (<see cref="Length"/>), because both change what Calcite reads. The other additions are what the
+    /// plan chose from the comparison the value sits in: a spelling taken from the path it is compared
+    /// with, which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>).
     /// </para>
     /// </remarks>
     /// <param name="Ordinal">The dynamic parameter's index, as <c>RexDynamicParam</c> numbers them.</param>
@@ -91,6 +91,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <c>CHAR(n)</c>.
         /// </summary>
         public bool Padded { get; init; }
+
+        /// <summary>
+        /// Gets the parameter's SQL type, as Calcite types the <c>RexDynamicParam</c>, or <c>null</c> for a slot made
+        /// without one, whose value is bound as it arrives.
+        /// </summary>
+        /// <remarks>
+        /// Calcite compares a value of this type, whatever the caller bound. Its own JDBC driver hands the caller's class
+        /// to the data context — a long for a <c>DOUBLE</c> parameter, a string for an integer one — and its generated code
+        /// converts the value to the type when a row reads it (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>). So
+        /// the slot carries the type, and <see cref="Client.CosmosQueries.Bind"/> converts the value as that code does
+        /// before it is sent.
+        /// </remarks>
+        public org.apache.calcite.sql.type.SqlTypeName? TypeName { get; init; }
 
         /// <summary>
         /// Gets the name Calcite binds the value under in the data context.
