@@ -421,6 +421,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
+        /// Returns the type a join compares its keys in: the type of its equality's two operands, after Calcite's casts.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite casts the narrower of two keys of different types to their common type before its <c>=</c>, and beneath
+        /// an equi-join it casts the key column itself, so the equality's operands are both of that type
+        /// (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>: <c>=($1, $3)</c> over <c>CAST($t2):BIGINT</c> for an
+        /// <c>INTEGER</c> 7 beside a <c>BIGINT</c> 7). The lookup compares every key it reads, on both sides, as that type
+        /// compares it (<see cref="CosmosLookup.Normalize"/>), and binds it as a parameter of it.
+        /// </para>
+        /// <para>
+        /// The operands are the two key columns the condition names, and their common type is read by Calcite's own
+        /// <c>leastRestrictive</c>: the type both already hold, but for nullability, where Calcite cast them, and the one
+        /// its <c>=</c> would have cast them to in a plan built without the cast. Two types with none answer <c>null</c>,
+        /// and the lookup then compares a number as its own box's type does.
+        /// </para>
+        /// </remarks>
+        /// <param name="join">The join, logical or the lookup it became.</param>
+        /// <returns>The comparison type, or <c>null</c> where the keys have none.</returns>
+        internal static SqlTypeName? ComparisonType(Join join)
+        {
+            if (GetKeys(join) is not (int build, int probe))
+                return null;
+
+            var operands = new java.util.ArrayList(2);
+            operands.add(((org.apache.calcite.rel.type.RelDataTypeField)join.getLeft().getRowType().getFieldList().get(build)).getType());
+            operands.add(((org.apache.calcite.rel.type.RelDataTypeField)join.getRight().getRowType().getFieldList().get(probe)).getType());
+
+            return join.getCluster().getTypeFactory().leastRestrictive(operands)?.getSqlTypeName();
+        }
+
+        /// <summary>
         /// Creates a rule instance.
         /// </summary>
         /// <remarks>

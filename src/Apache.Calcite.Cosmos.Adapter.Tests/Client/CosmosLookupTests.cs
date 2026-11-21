@@ -13,6 +13,9 @@ using Apache.Calcite.Extensions.Runtime;
 using FluentAssertions;
 
 using Microsoft.Azure.Cosmos;
+
+using org.apache.calcite.sql.type;
+
 using Xunit;
 
 
@@ -257,11 +260,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             rows.Should().Equal("7/7");
         }
 
+        /// <summary>
+        /// A number is reduced to the form its comparison type compares it in: an integer type a <see cref="long"/>,
+        /// <c>DECIMAL</c> its value, and an approximate type a <see cref="double"/>; with no comparison type, the type its
+        /// own box holds.
+        /// </summary>
         [Fact]
-        public void NormalizeReducesEveryNumberToTheSameForm()
+        public void NormalizeReducesANumberToItsComparisonTypesForm()
         {
+            CosmosLookup.Normalize(7, SqlTypeName.INTEGER).Should().BeOfType<long>().Which.Should().Be(7L);
+            CosmosLookup.Normalize(9007199254740993L, SqlTypeName.BIGINT).Should().NotBe(CosmosLookup.Normalize(9007199254740992L, SqlTypeName.BIGINT));
+            CosmosLookup.Normalize(9007199254740993L, SqlTypeName.DOUBLE).Should().Be(CosmosLookup.Normalize(9007199254740992L, SqlTypeName.DOUBLE));
+            CosmosLookup.Normalize(new java.math.BigDecimal("1.0"), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize(new java.math.BigDecimal("1.00"), SqlTypeName.DECIMAL));
+            CosmosLookup.Normalize(new java.math.BigDecimal("0.00"), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize(0, SqlTypeName.DECIMAL));
+            CosmosLookup.Normalize(1.5f, SqlTypeName.REAL).Should().Be(1.5d);
+
             CosmosLookup.Normalize(7).Should().Be(CosmosLookup.Normalize(7L));
-            CosmosLookup.Normalize(7d).Should().Be(CosmosLookup.Normalize((decimal)7));
+            CosmosLookup.Normalize(7d).Should().BeOfType<double>();
+            CosmosLookup.Normalize((decimal)7).Should().Be(new java.math.BigDecimal("7"));
             CosmosLookup.Normalize("7").Should().NotBe(CosmosLookup.Normalize(7));
             CosmosLookup.Normalize(null).Should().BeNull();
         }
@@ -280,17 +296,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(7));
             CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(java.lang.Long.valueOf(7L)));
-            CosmosLookup.Normalize(java.lang.Short.valueOf((short)7)).Should().BeOfType<double>().Which.Should().Be(7d);
+            CosmosLookup.Normalize(java.lang.Short.valueOf((short)7)).Should().BeOfType<long>().Which.Should().Be(7L);
             CosmosLookup.Normalize(java.lang.Double.valueOf(7.5d)).Should().Be(7.5d);
-            CosmosLookup.Normalize(new java.math.BigDecimal("7")).Should().Be(CosmosLookup.Normalize(7));
+            CosmosLookup.Normalize(new java.math.BigDecimal("7"), SqlTypeName.BIGINT).Should().Be(CosmosLookup.Normalize(7, SqlTypeName.BIGINT));
+            CosmosLookup.Normalize(new java.math.BigDecimal("7.00")).Should().Be(CosmosLookup.Normalize((decimal)7));
             CosmosLookup.Normalize(java.lang.Boolean.TRUE).Should().Be(true);
             CosmosLookup.Normalize(java.lang.Boolean.FALSE).Should().Be(CosmosLookup.Normalize(false));
         }
 
         /// <remarks>
         /// What reaches the service is the normalised key, so a key read out of a row is bound as a
-        /// CLR number, which the SDK writes as a JSON number, and matches across the widths the two
-        /// sides read it as.
+        /// CLR number of the join's comparison type, which the SDK writes as a JSON number, and matches across the
+        /// widths the two sides read it as.
         /// </remarks>
         [Fact]
         public async Task AJavaBoxedKeyIsBoundAsANumberAndMatchesAcrossWidths()
@@ -307,10 +324,117 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 b => b,
                 element => java.lang.Long.valueOf(element.GetProperty("n").GetInt64()),
                 p => p,
-                (b, p) => $"{b}/{p}"));
+                (b, p) => $"{b}/{p}",
+                comparison: SqlTypeName.BIGINT));
 
             rows.Should().Equal("7/7");
-            Keys(executor.Executed[0]).Should().AllBeOfType<double>().And.Equal(7d, 7d, 7d);
+            Keys(executor.Executed[0]).Should().AllBeOfType<long>().And.Equal(7L, 7L, 7L);
+        }
+
+        // ── A key compared as Calcite's = compares it ─────────────────────────────
+
+        /// <summary>Joins number keys to documents holding <c>n</c>, read by <paramref name="read"/>, under a comparison type.</summary>
+        static Task<List<string>> NumberJoin(object[] build, RecordingExecutor executor, Func<JsonElement, object> read, SqlTypeName comparison) =>
+            Collect(CosmosLookup.Join<object, object, string>(
+                new ListCursor<object>(build),
+                executor,
+                null!,
+                Query(),
+                "@k",
+                3,
+                b => b,
+                element => read(element.GetProperty("n")),
+                p => p,
+                (b, p) => $"{b}/{p}",
+                comparison: comparison));
+
+        static readonly string[] AroundTwoTo53 = ["""{"n":9007199254740992}""", """{"n":9007199254740993}"""];
+
+        /// <summary>
+        /// Keys 2^53 and 2^53 + 1 are two keys under <c>BIGINT</c> and one under <c>DOUBLE</c>, as Calcite's own join
+        /// keeps them (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>), and each is bound as a number of the type: the
+        /// long exactly, which a double would have sent as 2^53.
+        /// </summary>
+        [Fact]
+        public async Task KeysPastTwoTo53JoinApartUnderBigintAndTogetherUnderDouble()
+        {
+            var exact = new RecordingExecutor(AroundTwoTo53);
+            var rows = await NumberJoin([java.lang.Long.valueOf(9007199254740993L)], exact, n => java.lang.Long.valueOf(n.GetInt64()), SqlTypeName.BIGINT);
+
+            rows.Should().Equal("9007199254740993/9007199254740993");
+            Keys(exact.Executed.Single()).Should().AllBeOfType<long>().And.AllBeEquivalentTo(9007199254740993L);
+
+            var approximate = new RecordingExecutor(AroundTwoTo53);
+            rows = await NumberJoin([java.lang.Double.valueOf(9007199254740992d)], approximate, n => java.lang.Double.valueOf(n.GetDouble()), SqlTypeName.DOUBLE);
+
+            rows.Should().HaveCount(2, "one double holds both");
+            Keys(approximate.Executed.Single()).Should().AllBeOfType<double>().And.AllBeEquivalentTo(9007199254740992d);
+
+            // A BIGINT key a join compares as DOUBLE is the double Calcite casts it to.
+            rows = await NumberJoin([java.lang.Long.valueOf(9007199254740993L)], new RecordingExecutor(AroundTwoTo53), n => java.lang.Double.valueOf(n.GetDouble()), SqlTypeName.DOUBLE);
+            rows.Should().HaveCount(2);
+        }
+
+        /// <summary>
+        /// A <c>BIGINT</c> key matches a probe row reading <c>7</c> as an <c>INTEGER</c>, each the long Calcite casts it to.
+        /// </summary>
+        [Fact]
+        public async Task ABigintKeyMatchesAProbesInteger()
+        {
+            var executor = new RecordingExecutor("""{"n":7}""", """{"n":8}""");
+
+            var rows = await NumberJoin([java.lang.Long.valueOf(7L)], executor, n => java.lang.Integer.valueOf(n.GetInt32()), SqlTypeName.BIGINT);
+
+            rows.Should().Equal("7/7");
+            Keys(executor.Executed.Single()).Should().AllBeEquivalentTo(7L);
+        }
+
+        /// <summary>
+        /// A <c>DECIMAL</c> key matches its value written to another scale, and two such keys are one key of the batch,
+        /// fetched once; zero at any scale is zero. A decimal is bound as the number the service compares as it.
+        /// </summary>
+        [Fact]
+        public async Task ADecimalKeyMatchesItsValueAtAnotherScale()
+        {
+            var executor = new RecordingExecutor("""{"n":1.00}""", """{"n":0.000}""");
+
+            var rows = await NumberJoin([new java.math.BigDecimal("1.0"), new java.math.BigDecimal("1"), new java.math.BigDecimal("0.0")], executor,
+                n => new java.math.BigDecimal(n.GetRawText()), SqlTypeName.DECIMAL);
+
+            rows.Should().Equal("1.0/1.00", "1/1.00", "0.0/0.000");
+            Keys(executor.Executed.Single()).Should().Equal(1m, 0m, 0m);
+        }
+
+        /// <summary>
+        /// A <c>DOUBLE</c> key <c>-0.0</c> matches a probe row reading <c>0</c>, as <c>=</c> does, where Calcite's merge join
+        /// leaves it unmatched; beside <c>0.0</c> it is one key of the batch.
+        /// </summary>
+        [Fact]
+        public async Task ANegativeZeroKeyMatchesZeroAsEqualityDoes()
+        {
+            var executor = new RecordingExecutor("""{"n":0}""");
+
+            var rows = await NumberJoin([java.lang.Double.valueOf(-0d), java.lang.Double.valueOf(0d)], executor, n => java.lang.Double.valueOf(n.GetDouble()), SqlTypeName.DOUBLE);
+
+            rows.Should().HaveCount(2, "each key matches the document holding 0");
+            // One key, padded by repeating it; two would have sent 0.0 after it.
+            Keys(executor.Executed.Single()).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Should().Equal(Enumerable.Repeat(BitConverter.DoubleToInt64Bits(-0d), 3), "-0.0 and 0.0 are one key");
+        }
+
+        /// <summary>
+        /// A <c>DECIMAL</c> key is bound as <c>CosmosQueries</c> binds a decimal parameter, a decimal where its double is
+        /// right and a long where the double is another whole number; where neither serves, as its double, which the
+        /// service holds such a number as; and beyond a double's range it fails by name.
+        /// </summary>
+        [Fact]
+        public void ADecimalKeyIsBoundAsTheNumberTheServiceComparesAsIt()
+        {
+            object?[] Bound(params string[] keys) => Keys(CosmosLookup.Bind(Query(), "@k", keys.Length, [.. keys.Select(k => (object?)CosmosLookup.Normalize(new java.math.BigDecimal(k), SqlTypeName.DECIMAL))]));
+
+            Bound("1.50", "9007199254740993", "100000000000000000001").Should().Equal(1.5m, 9007199254740993L, 1e20d);
+
+            var beyond = () => Bound("1e400");
+            beyond.Should().Throw<CosmosExecutionException>().WithMessage("*beyond the range of a double*");
         }
 
         /// <summary>
@@ -757,6 +881,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 null,
                 null,
                 null,
+                org.apache.calcite.sql.type.SqlTypeName.VARCHAR,
                 CancellationToken.None));
 
             rows.Should().Equal("bikes/bikes");

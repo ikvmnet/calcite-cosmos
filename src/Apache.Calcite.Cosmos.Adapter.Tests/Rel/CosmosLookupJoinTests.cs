@@ -406,8 +406,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// a <see cref="java.lang.Integer"/> — and was bound as that box, which the SDK writes as an
         /// object the service matches nothing against; nor did it equal the build side's key of
         /// another width in process. Measured on the emulator, this join returned no rows where the
-        /// in-process join returned two (review probe I4). The keys go down as numbers now, and the
-        /// rows fetched are paired.
+        /// in-process join returned two (review probe I4). The keys go down as numbers now, of the join's comparison
+        /// type, <c>INTEGER</c> here and so a long, and the rows fetched are paired.
         /// </remarks>
         [Fact]
         public async Task ANumericKeyIsBoundAsANumberAndPairsWhatItFetched()
@@ -429,8 +429,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             rows.Should().BeEquivalentTo(new object[] { "1", "3" });
 
             var keys = Keys(_productsExecutor.Executed.Should().ContainSingle().Which);
-            keys.Should().AllBeOfType<double>("a key is bound as the number it is, which the SDK writes as a JSON number");
-            keys.Distinct().Should().BeEquivalentTo(new object?[] { 120d, 80d });
+            keys.Should().AllBeOfType<long>("a key is bound as a number of the join's comparison type, which the SDK writes as a JSON number");
+            keys.Distinct().Should().BeEquivalentTo(new object?[] { 120L, 80L });
+        }
+
+        /// <remarks>
+        /// Keys are compared as the join compares them, after Calcite's cast to its comparison type, <c>BIGINT</c> here:
+        /// 2^53 + 1 matches the document holding 2^53 + 1 and not the one holding 2^53, which one double holds alike and
+        /// every number used to be compared as. The key is bound as that long, exactly.
+        /// </remarks>
+        [Fact]
+        public async Task KeysPastTwoTo53AreMatchedAsTheJoinsComparisonType()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"low","n":9007199254740992}""",
+                    """{"id":"high","n":9007199254740993}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (7), (9007199254740993)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING BIGINT) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "high" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { 7L, 9007199254740993L });
         }
 
         // ── Over a traversal ──────────────────────────────────────────────────────

@@ -92,6 +92,19 @@ outer join keeps every row of the small side unmatched. So a condition in the sm
 fails the statement, with a schema or without, where Calcite's own semi-join reads the empty container
 side first, never evaluates the small side and answers no rows (Chapter 23).
 
+### How keys are matched
+
+Keys are matched as `=` matches them, after Calcite's cast to the type the join compares in. An `INTEGER`
+key beside a `BIGINT` one is compared as a `BIGINT`; two `BIGINT` keys past 2^53 that one double holds are
+told apart, as Calcite tells them apart, unless the join compares `DOUBLE`s, which hold both as one
+number; a `DECIMAL` `1.0` matches `1.00`; and a `DOUBLE` `-0.0` matches `0.0`. Each key is sent to Cosmos
+as a number of that type.
+
+Calcite's own plan of the same join in process is a merge join, which parts from `=` in two of those
+cases: it matches `-0.0` with nothing, and `DECIMAL` keys equal in value and written to different scales
+only some of the time. Over a small side holding such keys the lookup join answers every row `=` makes,
+which can be more rows than Calcite's merge join answers.
+
 ### Which side is fetched by key
 
 The side whose keys are collected is read normally; the container on the other side is fetched by

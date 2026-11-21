@@ -6429,8 +6429,29 @@ bound to a `java.lang.Integer` 120, and a lookup on a numeric key, on a `_ts` re
 on a boolean and on a `_ts` through a traversal each returned no rows where the in-process join returned
 them (review probes I4, I12, I13 and K9). In process the box equalled only a key of its own width, so
 even rows fetched would not have paired across an `INTEGER` and a `BIGINT`. Every `java.lang.Number` is
-now a `double` and a `java.lang.Boolean` a `bool`, the forms `CosmosQueries` binds a statement's own
-parameters as. The rule always admitted these keys; it was the batch that could not carry them.
+now a number of the join's comparison type and a `java.lang.Boolean` a `bool`, the forms `CosmosQueries`
+binds a statement's own parameters as. The rule always admitted these keys; it was the batch that could not
+carry them.
+
+**A key is compared as Calcite's `=` compares it, after Calcite's cast to the join's comparison type.**
+Unboxing every number to a `double` let two `BIGINT` keys past 2^53 that one double holds join each other's
+rows. How Calcite's own plan matches keys was measured first (`Calcite.AnEquiJoinMatchesKeysAsEquality`):
+it casts the narrower of two keys to their common type beneath the join, so the equality's operands are of
+one type, and it keeps `BIGINT` 2^53 and 2^53 + 1 apart where `DOUBLE`, one double for both, matches them.
+`CosmosLookupJoinRule.ComparisonType` reads that type off the equality's two operands, by Calcite's own
+`leastRestrictive`, and `CosmosLookup.Normalize` reduces every key on both sides to it by Calcite's own
+conversion of a number: an integer type to a `long`, `DECIMAL` to a `BigDecimal` stripped of its trailing
+zeros, an approximate type to a `double`. The batch's distinct keys, the probe rows and the match all read
+it. A key is bound as a number of that type, a decimal as a statement's decimal parameter is
+(`CosmosRexLiterals.TryGetExactNumberValue`), or as its double where none serves, which is how the service
+holds such a number; the join's own comparison then leaves out whatever else that double fetched.
+
+**Calcite's merge join parts from `=` in two cases, and the lookup follows `=`.** Calcite plans an
+equi-join of two in-process inputs as a merge join over its sorted keys, which matches `-0.0` with nothing,
+not even itself, and `DECIMAL` keys equal by value and written to different scales only along its sort's
+diagonal; the comparison join `ON a.v <= b.v AND a.v >= b.v` matches every pair of each, as `=` does. The
+lookup answers what the condition says rather than what one of Calcite's physical joins happens to, and
+`TODO.md` records the two. The probe side never holds `-0.0`, which the service reads back as `0`.
 
 **A traversal on the probe side is restricted per document, and the binding walk has to know both of
 its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it

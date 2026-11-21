@@ -3447,6 +3447,27 @@ across documents* and *A join of a container to itself* is the record.
   same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
+- **Calcite's merge join leaves out two kinds of key match that `=` makes, and the lookup join makes them** — *small,
+  more rows than one of Calcite's plans answers; recorded, not planned.* Calcite plans an equi-join of two in-process
+  inputs as a merge join over its sorted keys, and in two cases that join parts from `=`
+  (`Calcite.AnEquiJoinMatchesKeysAsEquality`): a `DOUBLE` build side holding `-0.0` beside `0.0`, where the merge join
+  matches `0.0` with `0.0` alone and `-0.0` with nothing, not even `-0.0`; and `DECIMAL` keys equal by value and written
+  to different scales, `1.0` beside `1.00`, which it matches one pair each, along its sort's diagonal. The same join
+  written `ON a.v <= b.v AND a.v >= b.v` matches every pair of each, as `=` does. `CosmosLookup.Normalize` compares a
+  key as `=` compares it after Calcite's cast to the join's comparison type, so over such a build side the lookup join
+  answers the rows `=` makes where Calcite's own merge join answers fewer. The probe side never holds `-0.0`, which the
+  service reads back as `0` (`Service.IntegralNumbersReadBackAsHeld`). Following the merge join would answer by the plan
+  Calcite chose rather than by the condition the query wrote.
+- **The lookup join's restriction leaves out a document whose typed column reads a number as another** — *medium, a
+  wrong answer, older than the key match; the restriction asked of the rendering graph, which Stage 3's parameter work
+  plans, settles it.* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), sending
+  each key as a number of the join's comparison type to `path IN (@k0, …)`, which the service compares by value with
+  the number a document holds (`Service.NumbersBeyondLongCompareAsDoubles`). A typed column reads some numbers as
+  another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL` column the float nearest a stored `0.1`, whose
+  double the stored `0.1` is not; a `DOUBLE` column a stored `9007199254740993` as 2^53, which the stored integer is
+  not; and a `BIGINT` column a stored `9007199254740993.0` as 2^53, which Azure holds as the integer written. A key
+  equal to what the column reads is then sent as a number the document does not hold, and the document Calcite joins
+  is never fetched. Found reading the bind for the key match; the match is not its cause and does not change it.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a statement whose WHERE holds one
   is sent. Finer rules where rows exist. A `COALESCE` is a call too: `COALESCE(c."id", 'none') IS NULL` and its kin

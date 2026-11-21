@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 using Apache.Calcite.Cosmos.Adapter.Sql;
 using Apache.Calcite.Extensions.Runtime;
 
+using org.apache.calcite.runtime;
+using org.apache.calcite.sql.type;
+
 namespace Apache.Calcite.Cosmos.Adapter.Client
 {
 
@@ -35,7 +38,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
     {
 
         /// <summary>
-        /// Reduces a key to a form two sides of a join can be compared in.
+        /// Reduces a key to the form in which two keys are equal exactly where Calcite's <c>=</c> finds them equal,
+        /// after Calcite's cast to the join's comparison type.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -45,8 +49,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// silently drop matching rows, which is the worst kind of wrong answer this could give.
         /// </para>
         /// <para>
-        /// Every number is therefore compared as a <see cref="double"/>. That is what Cosmos stores —
-        /// JSON has one numeric type — so it loses nothing the service was preserving.
+        /// <b>So a number is compared as the join's comparison type compares it</b>, the type Calcite casts both keys to
+        /// before its <c>=</c> (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>): an integer type as a <see cref="long"/>,
+        /// <c>DECIMAL</c> by its value, as a <see cref="java.math.BigDecimal"/> stripped of its trailing zeros so that
+        /// <c>1.0</c> and <c>1.00</c> are one key, and an approximate type as a <see cref="double"/>. Each key reaches the
+        /// type by Calcite's own conversion of a number (<c>SqlFunctions.toLong</c>, <c>toBigDecimal</c> and
+        /// <c>toDouble</c>), which is the identity for a key Calcite has already cast. Every number used to be compared as a
+        /// double, so two <c>BIGINT</c> keys past 2^53 that one double holds joined each other's rows, where Calcite keeps
+        /// them apart. A join with no comparison type compares a number as its own box's type does.
+        /// </para>
+        /// <para>
+        /// <b>Calcite's merge join parts from <c>=</c> in two cases, and this follows <c>=</c>.</b> Calcite plans an
+        /// equi-join of two in-process inputs as a merge join over its sorted keys, which leaves <c>-0.0</c> unmatched
+        /// beside <c>0.0</c> and matches <c>DECIMAL</c> keys equal by value and written to different scales only along its
+        /// sort's diagonal; the comparison join, and <c>=</c> itself, match every pair of each. A <see cref="double"/>
+        /// <c>-0.0</c> equals <c>0.0</c> here as it does under <c>=</c>, hashing alike; <c>TODO.md</c> records the two.
         /// </para>
         /// <para>
         /// <b>Java's boxes as well as the CLR's, and the Java ones are the ordinary case.</b> A
@@ -60,8 +77,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>120</c> found the bike and bound to a <see cref="java.lang.Integer"/> 120 found nothing,
         /// and a lookup on a numeric key, a <c>_ts</c> and a boolean returned no rows where the
         /// in-process join returned them (review probes I4, I12 and I13). Unboxed here, a key is a
-        /// CLR <see cref="double"/>, <see cref="bool"/> or <see cref="string"/> on both sides and on
-        /// the wire — the same values <c>CosmosQueries</c> binds a statement's parameters as.
+        /// CLR <see cref="long"/>, <see cref="double"/>, <see cref="bool"/> or <see cref="string"/>, or a
+        /// <see cref="java.math.BigDecimal"/>, on both sides, and <see cref="Bind"/> sends each as
+        /// <c>CosmosQueries</c> sends a statement's parameter of its type.
         /// </para>
         /// <para>
         /// A <c>UUID</c> is compared as a <see cref="Guid"/>. Calcite boxes one as
@@ -72,21 +90,96 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </para>
         /// </remarks>
         /// <param name="key">The key as either side produced it.</param>
+        /// <param name="comparison">
+        /// The type the join compares its keys in (<c>CosmosLookupJoinRule.ComparisonType</c>), or <c>null</c> to compare a
+        /// number as its own box's type.
+        /// </param>
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
-        public static object? Normalize(object? key)
+        public static object? Normalize(object? key, SqlTypeName? comparison = null)
         {
             return key switch
             {
                 null => null,
                 string or bool or Guid => key,
-                sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
-                    => Convert.ToDouble(key, CultureInfo.InvariantCulture),
                 java.lang.Boolean flag => flag.booleanValue(),
-                java.lang.Number number => number.doubleValue(),
                 org.apache.calcite.util.UuidValue uuid => Guid.Parse(uuid.toString()),
                 java.util.UUID uuid => Guid.Parse(uuid.toString()),
+                _ when Boxed(key) is java.lang.Number number => (comparison?.getName() ?? BoxType(number)) switch
+                {
+                    "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => SqlFunctions.toLong(number),
+                    "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
+                    "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number),
+                    _ => key,
+                },
                 _ => key,
             };
+        }
+
+        /// <summary>
+        /// Returns a number in the Java box Calcite holds a value of its type in, so that one conversion of Calcite's
+        /// reaches every key; or <c>null</c> for anything but a number.
+        /// </summary>
+        static java.lang.Number? Boxed(object key) => key switch
+        {
+            java.lang.Number number => number,
+            sbyte value => java.lang.Byte.valueOf(unchecked((byte)value)),
+            short value => java.lang.Short.valueOf(value),
+            int value => java.lang.Integer.valueOf(value),
+            long value => java.lang.Long.valueOf(value),
+            byte value => java.lang.Short.valueOf(value),
+            ushort value => java.lang.Integer.valueOf(value),
+            uint value => java.lang.Long.valueOf(value),
+            ulong value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),
+            float value => java.lang.Float.valueOf(value),
+            double value => java.lang.Double.valueOf(value),
+            decimal value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),
+            _ => null,
+        };
+
+        /// <summary>The type a number's own box holds, the comparison type of two keys no join casts.</summary>
+        static string BoxType(java.lang.Number number) => number switch
+        {
+            java.lang.Byte or java.lang.Short or java.lang.Integer or java.lang.Long => "BIGINT",
+            java.lang.Float or java.lang.Double => "DOUBLE",
+            _ => "DECIMAL",
+        };
+
+        /// <summary>
+        /// Returns the value a normalised key is bound as: a <c>DECIMAL</c> key as <c>CosmosQueries</c> sends a decimal
+        /// parameter, and every other key as it is.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A decimal reaches the service as a JSON number, so it is sent as the value the service compares as that number
+        /// (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>): a decimal where its double is right, a
+        /// <see cref="long"/> where the double would be another whole number, which an <c>int64</c> the service holds is
+        /// compared with by value (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
+        /// </para>
+        /// <para>
+        /// <b>Where that answers none, the key is sent as its double</b>, where a statement's parameter fails: a whole
+        /// number beyond an <c>int64</c> or a fraction beyond a <see cref="decimal"/>, each of which the service holds as
+        /// its correctly rounded double, which a key equal to it rounds to as well. The restriction has only to keep every
+        /// document the key could match, since the join compares every fetched key itself, so a document another key
+        /// rounds alike to is fetched and left unmatched. A key beyond a double's range is no number the service holds,
+        /// and fails the batch by name rather than be sent as an infinity.
+        /// </para>
+        /// </remarks>
+        /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
+        /// <returns>The value bound.</returns>
+        /// <exception cref="CosmosExecutionException">A decimal key is beyond the range of a double.</exception>
+        internal static object? Sent(object? key)
+        {
+            if (key is not java.math.BigDecimal value)
+                return key;
+
+            if (CosmosRexLiterals.TryGetExactNumberValue(value) is { } exact)
+                return exact;
+
+            var approximate = value.doubleValue();
+            if (double.IsInfinity(approximate))
+                throw new CosmosExecutionException($"The lookup key {value} is beyond the range of a double, and no number the service holds is equal to it.");
+
+            return approximate;
         }
 
         /// <summary>
@@ -127,13 +220,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Padded to the number of parameters the statement was rendered with, by repeating a key it
         /// already carries. <c>k IN (a, b, b, b)</c> selects what <c>k IN (a, b)</c> selects, so the
         /// padding costs a longer statement and changes no answer — where re-rendering per batch would
-        /// mean a statement that varies with the data.
+        /// mean a statement that varies with the data. Each key is bound as a parameter of the join's comparison type,
+        /// which <see cref="Normalize"/> made it, written as <see cref="Sent"/> writes it.
         /// </remarks>
         /// <param name="query">The statement, rendered with <paramref name="parameterCount"/> key parameters.</param>
         /// <param name="prefix">The key parameters' name prefix.</param>
         /// <param name="parameterCount">How many key parameters the statement carries.</param>
         /// <param name="keys">The batch's distinct keys, at most <paramref name="parameterCount"/> of them.</param>
         /// <returns>The statement with every parameter bound.</returns>
+        /// <exception cref="CosmosExecutionException">A decimal key is beyond the range of a double.</exception>
         public static CosmosQuery Bind(CosmosQuery query, string prefix, int parameterCount, IReadOnlyList<object?> keys)
         {
             if (keys.Count == 0 || keys.Count > parameterCount)
@@ -143,7 +238,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             parameters.AddRange(query.Parameters);
 
             for (var i = 0; i < parameterCount; i++)
-                parameters.Add(new CosmosParameter(prefix + i.ToString(CultureInfo.InvariantCulture), keys[i < keys.Count ? i : keys.Count - 1]));
+                parameters.Add(new CosmosParameter(prefix + i.ToString(CultureInfo.InvariantCulture), Sent(keys[i < keys.Count ? i : keys.Count - 1])));
 
             return query with { Parameters = parameters };
         }
@@ -202,6 +297,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Writes a normalised key as the value its parameter is bound to, or <c>null</c> where the key is
         /// bound as it is. A key spelled as <c>null</c> names no document and is not fetched.
         /// </param>
+        /// <param name="comparison">
+        /// The type the join compares its keys in, after Calcite's cast (<c>CosmosLookupJoinRule.ComparisonType</c>), which
+        /// every key on both sides is normalised by (<see cref="Normalize"/>); or <c>null</c> to compare a number as its
+        /// own box's type.
+        /// </param>
         /// <returns>The joined rows.</returns>
         /// <exception cref="ArgumentNullException">Any required argument is <c>null</c>.</exception>
         public static IClrCursor<TResult> Join<TBuild, TProbe, TResult>(
@@ -218,7 +318,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             int cacheSize = 0,
             CosmosLookupCache? shared = null,
             Func<TBuild, TResult>? unmatched = null,
-            Func<object, object?>? spell = null)
+            Func<object, object?>? spell = null,
+            SqlTypeName? comparison = null)
         {
             if (build is null)
                 throw new ArgumentNullException(nameof(build));
@@ -244,7 +345,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (query.SendsNothing == false)
                 query = CosmosQueries.Bind(query, root);
 
-            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
+            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell, comparison);
         }
 
         /// <summary>
@@ -269,9 +370,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             CosmosLookupCache? shared,
             Func<TBuild, TResult>? unmatched,
             Func<object, object?>? spell,
+            SqlTypeName? comparison,
             CancellationToken cancellationToken)
         {
-            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell);
+            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell, comparison);
         }
 
         /// <summary>
@@ -294,6 +396,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             readonly CosmosLookupCache? _shared;
             readonly Func<TBuild, TResult>? _unmatched;
             readonly Func<object, object?>? _spell;
+            readonly SqlTypeName? _comparison;
 
             // Held for the length of this join and no longer. A cache that outlived one execution
             // would have to answer for staleness, and this one cannot be stale in a way the join was
@@ -335,7 +438,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 int cacheSize,
                 CosmosLookupCache? shared,
                 Func<TBuild, TResult>? unmatched,
-                Func<object, object?>? spell)
+                Func<object, object?>? spell,
+                SqlTypeName? comparison)
             {
                 _build = build;
                 _executor = executor;
@@ -350,6 +454,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 _shared = shared;
                 _unmatched = unmatched;
                 _spell = spell;
+                _comparison = comparison;
                 _cache = cacheSize > 0 ? new Dictionary<object, List<TProbe>>() : null;
                 _statement = shared is null ? null : CosmosLookupCache.Statement(query);
                 _batch = new List<TBuild>(batchSize);
@@ -436,7 +541,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     if (_row >= _batch.Count)
                         return false;
 
-                    if (Normalize(_buildKey(_batch[_row])) is object key && _lookup.TryGetValue(key, out var matches) && matches.Count > 0)
+                    if (Normalize(_buildKey(_batch[_row]), _comparison) is object key && _lookup.TryGetValue(key, out var matches) && matches.Count > 0)
                     {
                         _matches = matches;
                         _match = 0;
@@ -478,7 +583,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                 foreach (var row in _batch)
                 {
-                    if (Normalize(_buildKey(row)) is not object key || seen.Add(key) == false)
+                    if (Normalize(_buildKey(row), _comparison) is not object key || seen.Add(key) == false)
                         continue;
 
                     if (_cache is not null && _cache.TryGetValue(key, out var remembered))
@@ -539,7 +644,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     {
                         var element = cursor.Current;
                         var probe = _rowBuilder(element);
-                        if (Normalize(_probeKey(probe)) is not object key)
+                        if (Normalize(_probeKey(probe), _comparison) is not object key)
                             continue;
 
                         if (fetched.TryGetValue(key, out var rows) == false)

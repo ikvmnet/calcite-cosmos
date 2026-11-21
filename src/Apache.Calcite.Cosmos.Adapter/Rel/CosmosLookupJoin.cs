@@ -360,6 +360,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                     ? UnmatchedSelector(physType, buildPhysType, buildType)
                     : Expression.Constant(null, typeof(Func<,>).MakeGenericType(buildType, physType.RowType)),
                 Expression.Constant(spell, typeof(Func<object, object?>)),
+                Expression.Constant(CosmosLookupJoinRule.ComparisonType(this), typeof(org.apache.calcite.sql.type.SqlTypeName)),
             ]);
         }
 
