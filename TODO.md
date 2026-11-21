@@ -2018,8 +2018,9 @@ INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1) keeps its `WHERE` above its t
 document (section 10, *A `WHERE` the correlate rule leaves above an `UNNEST` or a lateral that Calcite evaluates sends
 none of its conjuncts of the document*). Reading `items` at `Each`, `prefixItems` at `Index`, `minItems`, `maxItems`,
 `uniqueItems` and `contains` is about 180 to 220 lines, 300 of tests and four claims, and no rule. What a traversal
-written `WITH ORDINALITY` yields is Java's rendering of an element, which what `items` states must not reach; it reads
-nothing while no row names that form (section 10, *An element of a type or a form no row measures reads nothing*).
+written `WITH ORDINALITY` yields is Java's rendering of an element, which what `items` states must not reach unless the
+element is read through a reading of that rendering; it reads nothing while no row names that form (section 10, *An
+element of a type or a form no row measures reads nothing*).
 
 **A geography's proof is the one reader that asks now.** `CosmosGeographyForms` reads a subschema's
 `minItems`, `maxItems`, `prefixItems`/`items` and its elements' `minimum` and `maximum` itself, a second
@@ -3130,13 +3131,14 @@ across documents* and *A join of a container to itself* is the record.
   `kind = 'A' AND (kind = 'B' OR u.o = 1)` over `UNNEST(…) WITH ORDINALITY AS u(t, o)` (frord) reads every document,
   and `kind = 'A' AND kind = 'B' AND u.o = 1` (frordkk) sends a request that reads every document where frkk, which
   compares the element of a plain traversal, sends none, declared and not, under both targets
-  (`CosmosDeclaredFactPlanningTests`). Calcite numbers the ordinal from 1 and never leaves it null
-  (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject` pins 1, 2 and
-  3), so such a comparison never fails in process. Reading it wants a term of its own beside `Yield`, stated by a
-  measured row an integer from 1 that is never null, bound by the walk to its traversal, read by the loader as typed,
-  and given a reading for a comparison and a cast of it; and that term needs a step beside the yielded one, through the
-  segment, the document path, the theory's spelling and every writer's refusal. About 60 to 100 lines and 100 of tests,
-  built with the `WITH ORDINALITY` row above or on its own.
+  (`CosmosDeclaredFactPlanningTests`). Calcite numbers the ordinal from 1 on every row the traversal yields
+  (`CalciteUnnestMeasurementTests.ATraversalWithOrdinalityYieldsEveryElementAndRaisesOnlyOverAnObject` pins 1, 2 and 3),
+  and a `LEFT` correlate pads it with null where the array yields nothing, as it pads the element, so such a comparison
+  never fails in process. Reading it wants a term of its own beside `Yield`, stated by a measured row an integer from 1
+  or the null a `LEFT` correlate pads with, bound by the walk to its traversal, read by the loader as typed, and given a
+  reading for a comparison and a cast of it; and that term needs a step beside the yielded one, through the segment, the
+  document path, the theory's spelling and every writer's refusal. About 60 to 100 lines and 100 of tests, built with
+  the `WITH ORDINALITY` row above or on its own.
 - **The facts graph reads no call, and no comparison of two places** — *small, a cost: a request that reads every
   document.* `u.t = CAST(CAST(body AS INTEGER) AS VARCHAR)` (w13) and `CAST(u.t AS INTEGER) = CHAR_LENGTH(body)` (p1)
   give no atom, so a test that asks one may raise, w13's under every declaration. The reading is the one *A comparison

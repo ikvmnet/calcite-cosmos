@@ -10943,17 +10943,18 @@ it is. So the question is given the element, as a path of its own.
   reference, so an accessor over the element, `JSON_VALUE(u.t, '$.a')` or `'$'`, is opaque.
 - **Why a path of its own.** The element a condition reads cannot be a number, while an element of the array can, so it
   is not `Each(p)`; what is declared of every element must still reach it, which the instance rule carries, where the
-  traversal yields the element itself, as `ARRAY` and `MULTISET` do, and not the rendering a traversal written `WITH
+  traversal yields the element itself and not the rendering a traversal written `WITH
   ORDINALITY` yields (below); and two traversals of one array yield elements apart. Read as one path, `u.t = '1' AND
   v.s = '2'` over two traversals of `tags` would be one atom over one path: harmless to a question that assumes nothing,
   as this one does, and a contradiction to any node that assumes the conjuncts. So the binding numbers each traversal in
   its walk's order, alike for one plan shape, so that a repeated shape finds the oracle's memo, and one traversal is one
   path wherever its column surfaces.
 - **Why narrowing is sound.** A term over the element is evaluated, in either of Calcite's plans, only on an element the
-  traversal yielded. On a document whose array holds anything else the traversal raises in both plans on every document
-  that reaches it, and a moved conjunct can only keep a document from reaching it. So the traversal's raise is never
-  newly evaluated, and a term judged over strings and nulls alone is judged exactly on what is evaluated. Nothing makes
-  a `Yield` present, so a narrowing to no kind makes it absent, never contradictory.
+  traversal yielded, or on the null a `LEFT` correlate pads with, which the row names too. On a document whose array
+  holds anything else the traversal raises in both plans on every document that reaches it, and a moved conjunct can
+  only keep a document from reaching it. So the traversal's raise is never newly evaluated, and a term judged over
+  strings and nulls alone is judged exactly on what is evaluated. Nothing makes a `Yield` present, so a narrowing to no
+  kind makes it absent, never contradictory.
 - **A traversal the service runs.** The row is Calcite's in-process traversal. Through the README's connection, which
   pushes the traversal, the rule asks nothing. In the host Chapter 21 describes, the statements whose requests the pins
   hold keep their traversal in Calcite
@@ -10976,8 +10977,9 @@ it is. So the question is given the element, as a path of its own.
   narrowing nor the raise the narrowing's soundness rests on holds of it; and a reading of an element that is no string
   reads the text of its Java rendering, which over an object or an array the text accessor does not read. That
   rendering is no element of the array, so before a row names the form, what `items` states of every element must be
-  kept from it (`TODO.md`, *An element of a type or a form no row measures reads nothing*); while none does, nothing
-  reads what the instance rule carries to it. `StringToArray`'s element is no plain `JSON_QUERY`'s and stays unbound.
+  kept from it, or the element read through a reading of that rendering (`TODO.md`, *An element of a type or a form no
+  row measures reads nothing*); while none does, nothing reads what the instance rule carries to it. `StringToArray`'s
+  element is no plain `JSON_QUERY`'s and stays unbound.
   What `items` declares is not read yet (`TODO.md`, *Facts about array elements*), so `Each(p)` carries nothing and a
   cast of an element may raise under every declaration; once it is read, the instance rule carries it.
 - **Checked.** `JsonRulesTests` and `PredicateVocabularyTests` state facts by hand on `$.tags[*]`: a comparison, a
