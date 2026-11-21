@@ -11,6 +11,11 @@ docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/az
 Connect to `http://localhost:8081/` with the emulator's well-known key, `"connectionMode":
 "gateway"` (Chapter 5) and `"serviceTarget": "emulator"` (Chapter 4).
 
+An emulator that has run for hours can start answering with a 500 from the Postgres beneath it where it
+used to answer otherwise (E.2). One that answered every repeated insert so kept doing it after a restart,
+and answered 409 once it was made afresh from its image: `docker rm -f cosmos-emu`, then the command
+above.
+
 ## E.2 How the emulator differs from Azure
 
 The emulator is convenient and **not a substitute for the service**. It has been found both to accept
@@ -36,6 +41,8 @@ statements Azure rejects and to reject features Azure implements:
 | a string holding U+0000 or U+FDD0 | stored as U+FDD0 followed by `0` or `1`, a member's name too, and compared with what it is sent unescaped: the adapter sends a compared value — a literal, a parameter, a lookup key — in that spelling, so `=`, `IN`, `<>` and `STARTSWITH` answer exactly, and queries an `id` or key holding either rather than reading or routing on it; a constant or parameter anywhere else, a path or a selected column named with either, is computed in process, a raw U+0000 returned being a 500; a `DELETE` or `UPDATE` stops, raising, at a row whose `id` or key holds either, whose point write would answer another document or none (Chapter 13); sorts and compares in that spelling, U+0000 after every character from U+0001 to U+FDCF, so a text sort, `MIN`, `MAX` or ordering over text that may hold U+0000, or against a parameter, runs in process (Chapters 8.7, 9.3, 10); and `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
 | `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500 `PostgresError(E22P05)`; so does a `CONCAT` of one | replaces with it as written |
 | `REPLICATE` past 10,000 code points | repeats on | undefined |
+| an `INSERT` of an `id` its partition already holds | refused, the first document untouched, but at times with a 500 from the Postgres beneath it rather than a 409: "cannot drop portal ... while it is being set up", or `SqlState(E24000)`. A fresh emulator did so once; two that had run for hours did on every repeat, across a restart | refused, 409 |
+| deleting a database or a container | an emulator that had run for 15 hours answered every delete with a 500, `SqlState(E58P01)`, and kept what it was asked to delete | deleted |
 | a container's document count | always zero | the count, lagging recent writes |
 | request charges | not representative | real |
 
