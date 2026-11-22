@@ -645,6 +645,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// A batch fetched without the restriction reads every document the probe side keeps, as Calcite's own join reads
+        /// them, so it fails where that join fails on one of them: here a column the probe side projects, which reads a
+        /// stored <c>2.5</c> as an <c>INTEGER</c>. A restricted batch reads only the documents its keys fetch, and answers
+        /// where such a document is not among them (<c>TODO.md</c>).
+        /// </remarks>
+        [Fact]
+        public async Task AnInfiniteKeysBatchFailsWhereCalcitesOwnJoinFailsOnADocument()
+        {
+            var products = new[] { """{"id":"pinf","n":1e39,"q":1}""", """{"id":"p15","n":1.5,"q":2}""", """{"id":"pfrac","n":7,"q":2.5}""" };
+            const string sql = "SELECT t.\"id\", t.\"q\" FROM (VALUES (1, CAST('Infinity' AS REAL)), (2, CAST(1.5 AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\", JSON_VALUE(c.\"DOC\", '$.q' RETURNING INTEGER) AS \"q\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var own = Plan(sql, lookup: false);
+            RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+            var calcites = await FluentActions.Awaiting(() => Execute(own)).Should().ThrowAsync<CosmosMaterializationException>();
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var plan = Plan(sql);
+            RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+            (await FluentActions.Awaiting(() => Execute(plan)).Should().ThrowAsync<CosmosMaterializationException>())
+                .Which.Message.Should().Be(calcites.Which.Message);
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the batch holds an infinity, which the restriction cannot name");
+        }
+
+        /// <remarks>
         /// A batch fetched without the restriction pairs every document the probe keeps with a key by its own plan's
         /// reading, and the <c>REAL</c>, <c>DOUBLE</c> and <c>FLOAT</c> plans of one probe render one restricted statement
         /// but read a stored number differently: a <c>REAL</c> column reads <c>16777217</c> as <c>16777216</c>, <c>0.1</c> as

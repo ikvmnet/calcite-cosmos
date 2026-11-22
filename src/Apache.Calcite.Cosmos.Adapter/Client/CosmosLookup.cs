@@ -210,9 +210,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// SDK writes one as the string <c>"Infinity"</c>, <c>"-Infinity"</c> or <c>"NaN"</c>, which no stored number
         /// equals. That is an approximate key that is not finite, and a decimal beyond a double's range. The restriction
         /// cannot name it, so the batch holding it is fetched without the restriction and the join's own comparison of
-        /// every document the probe keeps answers it, which rests on nothing about what a document may hold. That costs
-        /// request units, for a batch holding such a key, and what the batch fetched is remembered for its own execution
-        /// alone, since it pairs each document with a key by its own plan's reading.
+        /// every document the probe keeps answers it, which rests on nothing about what a document may hold. Reading every
+        /// one of them, the batch costs request units and fails where Calcite's own join fails on one, and what it fetched
+        /// is remembered for its own execution alone, since it pairs each document with a key by its own plan's reading.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
