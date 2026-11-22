@@ -385,6 +385,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 .Should().Throw<CosmosExecutionException>().Which.Message.Should().NotEndWith(":").And.NotEndWith(": ");
         }
 
+        /// <summary>
+        /// A key that is an infinity or NaN under a <c>DECIMAL</c> comparison fails by name, as Calcite's conversion of it to a
+        /// decimal fails, where it raised that conversion's <c>NumberFormatException</c> unnamed while every integer type named
+        /// its failure. A batch holding one fails before any request. Only a direct caller compares a <c>DECIMAL</c>.
+        /// </summary>
+        [Fact]
+        public async Task ADecimalKeyThatIsNotFiniteFailsByName()
+        {
+            foreach (var key in new object[] { java.lang.Double.valueOf(double.NaN), java.lang.Double.valueOf(double.PositiveInfinity), double.NaN, float.NegativeInfinity })
+            {
+                var thrown = FluentActions.Invoking(() => CosmosLookup.Normalize(key, SqlTypeName.DECIMAL)).Should().Throw<CosmosExecutionException>($"{key} has no decimal value").Which;
+                thrown.Message.Should().Contain("cannot be cast to DECIMAL");
+                thrown.InnerException.Should().BeOfType<java.lang.NumberFormatException>();
+            }
+
+            FluentActions.Invoking(() => org.apache.calcite.runtime.SqlFunctions.toBigDecimal(java.lang.Double.valueOf(double.NaN)))
+                .Should().Throw<java.lang.NumberFormatException>("Calcite's own conversion fails on it");
+
+            var executor = new RecordingExecutor("""{"n":7}""");
+            await FluentActions.Awaiting(() => NumberJoin([double.NaN], executor, n => new java.math.BigDecimal(n.GetRawText()), SqlTypeName.DECIMAL))
+                .Should().ThrowAsync<CosmosExecutionException>();
+            executor.Executed.Should().BeEmpty();
+        }
+
         /// <remarks>
         /// What reaches the service is the normalised key, so a key read out of a row is bound as a
         /// CLR number of the join's comparison type, which the SDK writes as a JSON number, and matches across the

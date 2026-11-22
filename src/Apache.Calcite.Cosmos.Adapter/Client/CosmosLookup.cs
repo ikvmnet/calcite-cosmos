@@ -103,8 +103,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </param>
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
         /// <exception cref="CosmosExecutionException">
-        /// Calcite's cast of the key to an integer comparison type fails, or a Java number Calcite holds no value in has no
-        /// decimal value.
+        /// Calcite's conversion of the key to the comparison type fails, as its cast to an integer type fails on a number
+        /// outside the type's range and its conversion to <c>DECIMAL</c> on an infinity or NaN, or a Java number Calcite holds
+        /// no value in has no decimal value.
         /// </exception>
         public static object? Normalize(object? key, SqlTypeName? comparison = null)
         {
@@ -121,7 +122,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     "SMALLINT" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.SHORT, comparison!),
                     "INTEGER" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.INT, comparison!),
                     "BIGINT" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.LONG, comparison!),
-                    "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
+                    "DECIMAL" => Exact(number, comparison!),
                     // Plus zero, which = cannot tell from minus zero, so that a batch sends the 0 the service reads back.
                     "FLOAT" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
                     "REAL" => (double)SqlFunctions.toFloat(number) + 0d,
@@ -157,9 +158,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             }
             catch (java.lang.RuntimeException e)
             {
-                throw new CosmosExecutionException($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {(string.IsNullOrEmpty(e.getMessage()) ? e.getClass().getName() : e.getMessage())}", e);
+                throw Uncast(number, type, e);
             }
         }
+
+        /// <summary>
+        /// Returns a number as a <c>DECIMAL</c> comparison compares it, Calcite's conversion of it stripped of its trailing
+        /// zeros, and fails by name where that conversion fails, as it does on an infinity or NaN.
+        /// </summary>
+        /// <param name="number">The key in its Java box.</param>
+        /// <param name="type">The type the join compares in, which the failure names.</param>
+        /// <returns>The key's value.</returns>
+        /// <exception cref="CosmosExecutionException">Calcite's conversion of the number to a decimal fails.</exception>
+        static java.math.BigDecimal Exact(java.lang.Number number, SqlTypeName type)
+        {
+            try
+            {
+                return SqlFunctions.toBigDecimal(number).stripTrailingZeros();
+            }
+            catch (java.lang.RuntimeException e)
+            {
+                throw Uncast(number, type, e);
+            }
+        }
+
+        /// <summary>
+        /// Names the failure of Calcite's conversion of a lookup key to the type the join compares in, with Calcite's own
+        /// exception, or its class where it says nothing.
+        /// </summary>
+        static CosmosExecutionException Uncast(java.lang.Number number, SqlTypeName type, java.lang.RuntimeException e) =>
+            new($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {(string.IsNullOrEmpty(e.getMessage()) ? e.getClass().getName() : e.getMessage())}", e);
 
         /// <summary>
         /// Returns a number in the Java box Calcite holds a value of its type in, so that one conversion of Calcite's
