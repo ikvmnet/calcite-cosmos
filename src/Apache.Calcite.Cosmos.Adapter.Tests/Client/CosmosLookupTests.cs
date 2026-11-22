@@ -357,32 +357,105 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(java.lang.Boolean.FALSE, SqlTypeName.BOOLEAN).Should().Be(CosmosLookup.Normalize(false, SqlTypeName.BOOLEAN));
         }
 
+        /// <summary>A <c>DoubleAdder</c> holding <paramref name="value"/>, a Java number Calcite holds no value in.</summary>
+        static java.util.concurrent.atomic.DoubleAdder Adder(double value)
+        {
+            var adder = new java.util.concurrent.atomic.DoubleAdder();
+            adder.add(value);
+            return adder;
+        }
+
         /// <summary>
-        /// A Java number Calcite holds no value in, a <see cref="java.math.BigInteger"/> or an
-        /// <see cref="java.util.concurrent.atomic.AtomicLong"/>, is read as its decimal value, which Calcite's cast to an
-        /// integer type takes: within the type's range it is the value, and outside it fails by name. Handed over as it was,
-        /// it failed the cast to <c>BIGINT</c> with an internal assertion, Calcite's cast never meeting one.
+        /// Calcite's cast to <c>BIGINT</c> has no answer for a Java number Calcite holds no value in, a
+        /// <see cref="java.math.BigInteger"/> or an <see cref="java.util.concurrent.atomic.AtomicLong"/> a direct caller
+        /// hands over, and raises an internal assertion. There alone the key is read by its decimal value, which the cast
+        /// takes: within the range it is the value, exactly, outside it the key fails by name, and a number whose text is no
+        /// decimal, a <c>DoubleAdder</c> holding NaN, fails as the cast of a <see cref="java.lang.Double"/> NaN fails.
         /// </summary>
         [Fact]
-        public void AJavaNumberCalciteHoldsNoValueInIsReadAsItsDecimalValue()
+        public void ACastToBigintReadsAJavaNumberCalciteHoldsNoValueInByItsDecimalValue()
         {
+            FluentActions.Invoking(() => org.apache.calcite.linq4j.tree.Primitive.integerCast(org.apache.calcite.linq4j.tree.Primitive.LONG, java.math.BigInteger.valueOf(7)))
+                .Should().Throw<java.lang.AssertionError>("Calcite's own cast to BIGINT has no answer for a BigInteger");
+
             CosmosLookup.Normalize(java.math.BigInteger.valueOf(7), SqlTypeName.BIGINT).Should().BeOfType<long>().Which.Should().Be(7L);
             CosmosLookup.Normalize(new java.util.concurrent.atomic.AtomicLong(7), SqlTypeName.BIGINT).Should().Be(7L);
-            CosmosLookup.Normalize(java.math.BigInteger.valueOf(7), SqlTypeName.INTEGER).Should().Be(7L);
-            CosmosLookup.Normalize(java.math.BigInteger.valueOf(7), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize(new java.math.BigDecimal("7.00"), SqlTypeName.DECIMAL));
-            CosmosLookup.Normalize(new java.math.BigInteger("9007199254740993"), SqlTypeName.DOUBLE).Should().Be(9007199254740992d);
+            CosmosLookup.Normalize(new java.math.BigInteger("9007199254740993"), SqlTypeName.BIGINT).Should().Be(9007199254740993L);
+            CosmosLookup.Normalize(new java.util.concurrent.atomic.AtomicLong(9007199254740993L), SqlTypeName.BIGINT).Should().Be(9007199254740993L);
 
             var past = new java.math.BigInteger("18446744073709551623");
             FluentActions.Invoking(() => CosmosLookup.Normalize(past, SqlTypeName.BIGINT)).Should().Throw<CosmosExecutionException>("2^64 + 7 is outside BIGINT");
 
-            // One whose text is no decimal fails by name too.
-            var nan = new java.util.concurrent.atomic.DoubleAdder();
-            nan.add(double.NaN);
-            FluentActions.Invoking(() => CosmosLookup.Normalize(nan, SqlTypeName.DOUBLE)).Should().Throw<CosmosExecutionException>("NaN is no decimal");
+            // One whose text is no decimal fails as Calcite's cast fails on a Double NaN.
+            var nan = FluentActions.Invoking(() => CosmosLookup.Normalize(Adder(double.NaN), SqlTypeName.BIGINT)).Should().Throw<CosmosExecutionException>().Which;
+            nan.Message.Should().Contain("cannot be cast to BIGINT");
+            nan.InnerException.Should().BeOfType<java.lang.NumberFormatException>();
+            FluentActions.Invoking(() => org.apache.calcite.linq4j.tree.Primitive.integerCast(org.apache.calcite.linq4j.tree.Primitive.LONG, java.lang.Double.valueOf(double.NaN)))
+                .Should().Throw<java.lang.NumberFormatException>();
 
             // A failure whose Java exception says nothing is named by the exception's class rather than ending in a colon.
             FluentActions.Invoking(() => CosmosLookup.Normalize(java.lang.Double.valueOf(double.NaN), SqlTypeName.BIGINT))
                 .Should().Throw<CosmosExecutionException>().Which.Message.Should().NotEndWith(":").And.NotEndWith(": ");
+        }
+
+        /// <summary>
+        /// A Java number Calcite holds no value in, which a direct caller may hand over, reaches every comparison type but
+        /// <c>BIGINT</c> by Calcite's own conversion of it, as any other number does, and where that conversion fails the key
+        /// fails by name; with no comparison type it comes back as it was. Read by its decimal text instead, a
+        /// <c>DoubleAdder</c> 0.1 was the <c>DECIMAL</c> 0.1 where Calcite's conversion makes it the double's exact value, an
+        /// <c>AtomicLong</c> 2^53 + 1 was 2^53 + 1 where Calcite's conversion makes it 2^53, and a <c>DoubleAdder</c> holding
+        /// NaN failed under every type, and under none, where Calcite reads it as NaN, or as 0 cast to <c>INTEGER</c>.
+        /// </summary>
+        [Fact]
+        public void AJavaNumberCalciteHoldsNoValueInIsConvertedAsCalciteConvertsIt()
+        {
+            static object Integer(java.lang.Number number, org.apache.calcite.linq4j.tree.Primitive primitive) =>
+                ((java.lang.Number)org.apache.calcite.linq4j.tree.Primitive.integerCast(primitive, number)).longValue();
+
+            var conversions = new (SqlTypeName Type, Func<java.lang.Number, object> Calcite)[]
+            {
+                (SqlTypeName.TINYINT, n => Integer(n, org.apache.calcite.linq4j.tree.Primitive.BYTE)),
+                (SqlTypeName.SMALLINT, n => Integer(n, org.apache.calcite.linq4j.tree.Primitive.SHORT)),
+                (SqlTypeName.INTEGER, n => Integer(n, org.apache.calcite.linq4j.tree.Primitive.INT)),
+                (SqlTypeName.DECIMAL, n => org.apache.calcite.runtime.SqlFunctions.toBigDecimal(n).stripTrailingZeros()),
+                (SqlTypeName.REAL, n => (double)org.apache.calcite.runtime.SqlFunctions.toFloat(n)),
+                (SqlTypeName.FLOAT, n => org.apache.calcite.runtime.SqlFunctions.toDouble(n)),
+                (SqlTypeName.DOUBLE, n => org.apache.calcite.runtime.SqlFunctions.toDouble(n)),
+            };
+
+            foreach (var number in new java.lang.Number[]
+            {
+                java.math.BigInteger.valueOf(7),
+                new java.math.BigInteger("9007199254740993"),
+                new java.math.BigInteger("18446744073709551623"),
+                new java.util.concurrent.atomic.AtomicLong(9007199254740993L),
+                new java.util.concurrent.atomic.AtomicInteger(-7),
+                Adder(0.1),
+                Adder(1e39),
+                Adder(double.NaN),
+                Adder(double.PositiveInfinity),
+            })
+            {
+                var name = $"{number.getClass().getName()} {number}";
+                CosmosLookup.Normalize(number).Should().BeSameAs(number, $"{name} under no type is handed back as it came");
+
+                foreach (var (type, calcite) in conversions)
+                {
+                    object expected;
+                    try
+                    {
+                        expected = calcite(number);
+                    }
+                    catch (java.lang.RuntimeException e)
+                    {
+                        FluentActions.Invoking(() => CosmosLookup.Normalize(number, type)).Should().Throw<CosmosExecutionException>($"Calcite's conversion of {name} to {type} fails")
+                            .Which.InnerException.Should().BeOfType(e.GetType());
+                        continue;
+                    }
+
+                    CosmosLookup.Normalize(number, type).Should().Be(expected, $"{name} under {type} is Calcite's conversion of it");
+                }
+            }
         }
 
         /// <summary>

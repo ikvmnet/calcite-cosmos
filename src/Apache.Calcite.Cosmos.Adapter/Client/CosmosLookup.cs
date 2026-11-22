@@ -104,8 +104,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
         /// <exception cref="CosmosExecutionException">
         /// Calcite's conversion of the key to the comparison type fails, as its cast to an integer type fails on a number
-        /// outside the type's range and its conversion to <c>DECIMAL</c> on an infinity or NaN, or a Java number Calcite holds
-        /// no value in has no decimal value.
+        /// outside the type's range and its conversion to <c>DECIMAL</c> on an infinity or NaN.
         /// </exception>
         public static object? Normalize(object? key, SqlTypeName? comparison = null)
         {
@@ -140,10 +139,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// where that cast fails.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <c>Primitive.integerCast</c> is what Calcite's generated code calls for a cast of a number to an integer type,
         /// here with Calcite's default rounding, toward zero, and <paramref name="primitive"/> is the Java type Calcite holds
         /// a value of the type in. It raises on a number outside the type's range, where <c>SqlFunctions.toLong</c> wrapped
         /// one, so that a key 2^64 + 7 under <c>BIGINT</c> was compared as 7.
+        /// </para>
+        /// <para>
+        /// Its cast to <c>BIGINT</c> alone has no answer for a Java number Calcite never holds a value in, a
+        /// <see cref="java.math.BigInteger"/> or an <c>AtomicLong</c> a direct caller hands over, and raises an internal
+        /// assertion naming the class. There, and only there, the key is read by its decimal value, which the cast takes, so
+        /// that it is cast as Calcite casts a <see cref="java.math.BigDecimal"/> of the same value; every other conversion of
+        /// Calcite's takes such a number as it is.
+        /// </para>
         /// </remarks>
         /// <param name="number">The key in its Java box.</param>
         /// <param name="primitive">The Java type a value of <paramref name="type"/> is held in.</param>
@@ -154,12 +162,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             try
             {
-                return ((java.lang.Number)org.apache.calcite.linq4j.tree.Primitive.integerCast(primitive, number)).longValue();
+                try
+                {
+                    return Cast(number);
+                }
+                catch (java.lang.AssertionError)
+                {
+                    return Cast(new java.math.BigDecimal(number.toString()));
+                }
             }
             catch (java.lang.RuntimeException e)
             {
                 throw Uncast(number, type, e);
             }
+
+            long Cast(java.lang.Number value) => ((java.lang.Number)org.apache.calcite.linq4j.tree.Primitive.integerCast(primitive, value)).longValue();
         }
 
         /// <summary>
@@ -194,22 +211,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// reaches every key; or <c>null</c> for anything but a number.
         /// </summary>
         /// <remarks>
-        /// <para>
         /// A CLR <see cref="byte"/> is Calcite's <c>TINYINT</c>, as <see cref="CosmosJson"/> reads one: a Java byte is
         /// signed and IKVM surfaces it as a CLR byte, so a small side Calcite computes hands <c>-1</c> over as <c>0xFF</c>,
         /// which is boxed as the Java byte it is rather than read as 255.
-        /// </para>
-        /// <para>
-        /// A Java number Calcite holds no value in, a <see cref="java.math.BigInteger"/> or an <c>AtomicLong</c> a direct
-        /// caller hands over, is read as its decimal value, as a CLR <see cref="ulong"/> and <see cref="decimal"/> are, which
-        /// Calcite's cast to an integer type takes. Handed over as it was, Calcite's cast to <c>BIGINT</c>, which never
-        /// meets one, failed on it with an internal assertion.
-        /// </para>
         /// </remarks>
         static java.lang.Number? Boxed(object key) => key switch
         {
-            java.lang.Byte or java.lang.Short or java.lang.Integer or java.lang.Long or java.lang.Float or java.lang.Double or java.math.BigDecimal => (java.lang.Number)key,
-            java.lang.Number number => Decimal(number),
+            java.lang.Number number => number,
             sbyte value => java.lang.Byte.valueOf(unchecked((byte)value)),
             short value => java.lang.Short.valueOf(value),
             int value => java.lang.Integer.valueOf(value),
@@ -223,24 +231,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             decimal value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),
             _ => null,
         };
-
-        /// <summary>
-        /// Returns a Java number's decimal value, read from its decimal text, and fails by name where its text is none.
-        /// </summary>
-        /// <param name="number">A Java number Calcite holds no value in.</param>
-        /// <returns>The number's value.</returns>
-        /// <exception cref="CosmosExecutionException">The number's text is not a decimal, as a <c>DoubleAdder</c>'s NaN is not.</exception>
-        static java.math.BigDecimal Decimal(java.lang.Number number)
-        {
-            try
-            {
-                return new java.math.BigDecimal(number.toString());
-            }
-            catch (java.lang.NumberFormatException e)
-            {
-                throw new CosmosExecutionException($"A lookup key {number} of {number.getClass().getName()} has no decimal value it can be compared by.", e);
-            }
-        }
 
         /// <summary>
         /// Returns the value a normalised key is bound as: a <c>DECIMAL</c> key as <c>CosmosQueries</c> sends a decimal
