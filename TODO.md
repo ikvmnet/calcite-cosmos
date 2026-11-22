@@ -3456,21 +3456,26 @@ across documents* and *A join of a container to itself* is the record.
   holding `0`, which Calcite's own join leaves unmatched. The container side never holds `-0.0`, which the service reads
   back as `0` (`Service.IntegralNumbersReadBackAsHeld`). Following Calcite's joins would answer by the plan Calcite
   chose rather than by the condition the query wrote.
+- **The lookup join's restriction leaves out a document whose typed column reads its number as another value** —
+  *medium, a wrong answer, older than the key match; settled when the rendering graph is asked for the restriction
+  (3B).* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), and the restriction
+  `path IN (@k0, …)` names each key's number, which the service compares by value with the number a document holds. A
+  typed column reads some stored numbers as another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL`
+  column reads a stored `0.1` as the float nearest it, a `DOUBLE` column a stored integer past 2^53 as its double, and,
+  inferred from the rows and not run, a `BIGINT` column on Azure a number written with a point as its double, where the
+  service holds the integer written. A key equal to what the column reads is sent as a number the document does not
+  hold, so the document Calcite's own join matches is never fetched. On the emulator a `REAL` key `0.1` lost the
+  document holding `0.1`, and a `BIGINT` key 2^53 joined to a `DOUBLE` column the one holding `9007199254740993`, in a
+  planned lookup and through an `IN` sub-query; against a stub returning every document the same joins agree. `main`
+  sends the same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the bare
+  equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
+  its tests should hold a `REAL` key `0.1` against a stored `0.1`, a `DOUBLE` key 2^53 against a stored
+  `9007199254740993`, and a `BIGINT` key 2^53 against a stored `9007199254740993.0` under Production.
 - **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, upkeep.*
   `CosmosLookup.Sent` sends a decimal key by `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value`
   sends a decimal parameter, and adds the key's double where that conversion has no exact answer, which the join's
   comparison of every fetched key makes safe. One place should decide how a value of a type is sent: once a
   statement's parameter is converted by its SQL type, `Sent` should call that conversion and keep only its double.
-- **The lookup join's restriction leaves out a document whose typed column reads a number as another** — *medium, a
-  wrong answer, older than the key match; the restriction asked of the rendering graph, which Stage 3's parameter work
-  plans, settles it.* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), sending
-  each key as a number of the join's comparison type to `path IN (@k0, …)`, which the service compares by value with
-  the number a document holds (`Service.NumbersBeyondLongCompareAsDoubles`). A typed column reads some numbers as
-  another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL` column the float nearest a stored `0.1`, whose
-  double the stored `0.1` is not; a `DOUBLE` column a stored `9007199254740993` as 2^53, which the stored integer is
-  not; and a `BIGINT` column a stored `9007199254740993.0` as 2^53, which Azure holds as the integer written. A key
-  equal to what the column reads is then sent as a number the document does not hold, and the document Calcite joins
-  is never fetched. Found reading the bind for the key match; the match is not its cause and does not change it.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a statement whose WHERE holds one
   is sent. Finer rules where rows exist. A `COALESCE` is a call too: `COALESCE(c."id", 'none') IS NULL` and its kin
