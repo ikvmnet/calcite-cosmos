@@ -1455,6 +1455,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// A weakening over a view's typed or text column is pushed once, where a filter beneath the view applies it already.
+        /// </summary>
+        /// <remarks>
+        /// The transpose carries the filter beneath the view, where the split pushes its weakening, and the filter left over
+        /// the view asks the same weakening over the view's column. What the filter beneath applies is also read over the
+        /// view's own columns, where they carry everything it reads, so the column is one term above and beneath the view:
+        /// read only over the scan, a <c>RETURNING DOUBLE</c> or a text accessor is its accessor there and a field of the view
+        /// here, and the weakening was sent in two filters.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t WHERE NOT (t.\"n\" > 10) OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t WHERE NOT (t.\"n\" > 10) OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') = '30' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "IS_NUMBER(c.price)")]
+        public void ShouldPushAWeakeningOverAViewsTypedColumnOnce(bool trimmed, string sql, string once)
+        {
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var plan = RelOptUtil.toString(best);
+
+            System.Text.RegularExpressions.Regex.Matches(plan, "CosmosFilter").Count.Should().Be(1, "the weakening is pushed in one filter: " + plan);
+
+            var sent = Sent(best).Should().ContainSingle(plan).Which;
+            System.Text.RegularExpressions.Regex.Matches(sent, System.Text.RegularExpressions.Regex.Escape(once)).Count.Should().Be(1, "and sent once: {0}", sent);
+        }
+
+        /// <summary>
         /// Renders the statement each pushed subtree of a plan sends.
         /// </summary>
         List<string> Sent(RelNode best)

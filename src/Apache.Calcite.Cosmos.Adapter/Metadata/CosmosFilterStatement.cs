@@ -770,8 +770,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// it is read through (<see cref="IsApplied"/>).
         /// </summary>
         /// <param name="Conjunct">The conjunct, over the relation's rows.</param>
-        /// <param name="Relation">The relation the conjunct reads, the projection's input, compared by reference: two
-        /// projections over one input read one set of rows.</param>
+        /// <param name="Relation">The relation the conjunct reads, compared by reference: the projection's input, or, where
+        /// it is written over the projection's columns, the relation the projection is met in. Two projections over one
+        /// input read one set of rows.</param>
         /// <param name="Fields">The ordinal-to-path binding of that relation.</param>
         /// <param name="Readings">How each of those fields is read.</param>
         internal readonly record struct BoundConjunct(RexNode Conjunct, object Relation, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings);

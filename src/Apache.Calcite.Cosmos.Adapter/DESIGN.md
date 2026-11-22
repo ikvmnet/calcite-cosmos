@@ -1493,7 +1493,10 @@ is more: `IS_DEFINED(c.id)`, which a comparison over `id` implies, is true of ev
 statement, and pushed it filtered nothing while making a filter a host could plan in process, where the service's
 test has no body. What lies beneath includes what a filter beneath a projection applies, each conjunct read over the
 relation it reads (`CosmosPredicateLoader.Loading.Through`), with what the loader cannot read numbered beside that
-relation's reader, so that a term means one thing within the question.
+relation's reader, so that a term means one thing within the question. Where the projection's columns carry everything
+a conjunct reads, it is also written over them and read as the statement reads those columns, so that a typed or text
+column, a field above the projection and an accessor beneath it, is one term
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce`).
 
 #### How the oracle is checked: population D
 

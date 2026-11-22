@@ -651,6 +651,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// beneath a filter there is crossed once, and one met beneath it the same way with its own input; one set of
         /// what was seen keeps a graph finite, and reads a filter once, in <c>Own</c> where the first walk met it.
         /// </para>
+        /// <para>
+        /// <b>And over the projection's own columns.</b> Where the projection's columns carry everything a conjunct reads, it
+        /// is also written over them, as Calcite writes a condition back over a projection, and holds of every row the
+        /// projection returns: beside the relation the projection is met in, read through that relation's binding, it reads
+        /// a column as a weakening over that binding reads it. Read only over the projection's input, a typed or text column
+        /// is its accessor there and a field here, two terms, and a weakening the transpose had pushed beneath was found not
+        /// applied and pushed again: <c>NOT (t."n" &gt; 10) OR INITCAP(…) = 'Steel'</c> over a view's <c>RETURNING DOUBLE</c>
+        /// column sent its weakening in two filters (<c>CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce</c>).
+        /// </para>
         /// </remarks>
         internal static (IReadOnlyList<RexNode> Own, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct> Across) AlreadyApplied(RelNode? node)
         {
@@ -688,34 +697,51 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
                 Collect(member);
 
-            // Beneath a projection, each conjunct beside the relation it reads and that relation's binding.
-            void Beneath(RelNode? candidate, RelNode relation, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings)
+            // Beneath a projection, every conjunct the filters there apply, over the rows the projection reads.
+            void Beneath(RelNode? candidate, RelNode relation, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, List<RexNode> conjuncts)
             {
                 if (candidate is Project project)
-                    Cross(project);
+                    Cross(project, relation, fields, readings);
 
                 if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
-                foreach (var conjunct in Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()))
-                    across.Add(new(conjunct, relation, fields, readings));
+                conjuncts.AddRange(Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()));
 
                 foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
-                    Beneath(member, relation, fields, readings);
+                    Beneath(member, relation, fields, readings, conjuncts);
             }
 
-            // Each projection once, over its input's binding; one whose input binds nothing gives nothing.
-            void Cross(Project project)
+            // Each projection once, over its input's binding, one whose input binds nothing giving nothing: each conjunct beside
+            // the relation it reads, and where the projection's columns carry everything it reads, written over them beside the
+            // rows the projection returns, which the relation it is met in reads, and read through that relation's binding.
+            void Cross(Project project, RelNode? outer, IReadOnlyList<CosmosPath?> outerFields, IReadOnlyList<CosmosReading> outerReadings)
             {
-                if (seen.Add(project) == false || CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _) == false)
+                var input = project.getInput();
+                if (seen.Add(project) == false || CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _) == false)
                     return;
 
-                foreach (var member in Rel.CosmosPlanMembers.Of(project.getInput()))
-                    Beneath(member, project.getInput(), fields, readings);
+                var conjuncts = new List<RexNode>();
+                foreach (var member in Rel.CosmosPlanMembers.Of(input))
+                    Beneath(member, input, fields, readings, conjuncts);
+
+                foreach (var conjunct in conjuncts)
+                {
+                    across.Add(new(conjunct, input, fields, readings));
+
+                    var columns = new Columns(project, project.getCluster().getRexBuilder());
+                    var carried = (RexNode)conjunct.accept(columns);
+                    if (outer is not null && columns.Unread == false)
+                        across.Add(new(carried, outer, outerFields, outerReadings));
+                }
             }
 
-            foreach (var project in projections)
-                Cross(project);
+            if (projections.Count > 0)
+            {
+                var bound = CosmosImplementor.TryBindOutput(node, out var fields, out var readings, out _);
+                foreach (var project in projections)
+                    Cross(project, bound ? node : null, fields, readings);
+            }
 
             return (applied, across);
         }
