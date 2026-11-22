@@ -42,10 +42,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// applied beneath, compared as Calcite compares expressions. The inner is wholly renderable; the outer holds no
     /// term of a conjunct sent, or is the condition kept whole above the half sent, so split again it pushes only
     /// weakenings not yet applied, or nothing new, and stops. What is applied beneath is read through a projection
-    /// too (<see cref="AlreadyApplied"/>), so a filter over a projection weakens as any other does: a weakening the
-    /// transpose or the residual projection has already pushed beneath it is found applied over the rows the filter
-    /// there reads, and is pushed once. Reading beneath a projection only adds what is assumed, so it can take a push
-    /// away and never add one.
+    /// too (<see cref="AlreadyApplied"/>): a weakening the transpose or the residual projection has already pushed
+    /// beneath it is found applied over the rows the filter there reads, and is pushed once. Reading beneath a
+    /// projection only adds what is assumed, so it can take a push away and never add one.
     /// </para>
     /// <para>
     /// <b>The outer is the conjuncts the inner does not decide, as written</b>, or what Calcite's simplification of
@@ -214,11 +213,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return;
 
             // Legality: the pair leaves the filter's input beneath what Calcite evaluates, and a projection there the service
-            // selects is read for every row the half returns, where Calcite computes it only for the rows the condition keeps.
-            // A column whose reading can refuse a value, and which what is left above does not read, then failed the statement
-            // over a row that condition drops, where Calcite answers (ReadsWhatCanRefuse). The transpose still carries the filter
-            // beneath such a projection, where it is split over the rows the projection reads.
-            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput(), left))
+            // selects is read for every row the half returns, where Calcite computes a column only for the rows that reach it.
+            // A computed column whose reading can refuse a value then failed the statement over a row the condition drops, where
+            // Calcite answers, whatever the condition reads: a CASE branch, COALESCE's later operands among them, is computed only
+            // for the rows that reach it (ReadsWhatCanRefuse). The transpose still carries the filter beneath such a projection,
+            // where it is split over the rows the projection reads.
+            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput()))
                 return;
 
             if (left.isAlwaysTrue())
@@ -318,32 +318,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <summary>
         /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter
-        /// there, holds a column whose reading can refuse a value that a condition kept above it does not read.
+        /// there, holds a computed column whose reading can refuse a value.
         /// </summary>
         /// <remarks>
         /// <para>
         /// A filter and a projection commute in what they answer, not in what they raise: the service's projection is read
-        /// for every row the statement returns, and Calcite computes a column only for the rows the filter above keeps. A
-        /// reading that can refuse a value (<see cref="Client.CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>:
-        /// 1.5 as an <c>INTEGER</c>, text that is no date) then fails the statement over a row the condition drops, where
-        /// Calcite answers. Measured: <c>SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER)
-        /// AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'</c>, split over the view's
-        /// projection, selected the column under <c>WHERE IS_DEFINED(c.name)</c> and failed over <c>{"n":1.5,"name":true}</c>,
-        /// which Calcite drops on <c>INITCAP</c> before it computes the column
+        /// for every row the statement returns, and Calcite computes a column only for the rows that reach it. A reading that
+        /// can refuse a value (<see cref="Client.CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>: 1.5 as an
+        /// <c>INTEGER</c>, text that is no date) then fails the statement over a row the condition above drops, where Calcite
+        /// answers. Measured: <c>SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n" FROM
+        /// products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'</c>, split over the view's projection,
+        /// selected the column under <c>WHERE IS_DEFINED(c.name)</c> and failed over <c>{"n":1.5,"name":true}</c>, which
+        /// Calcite drops on <c>INITCAP</c> before it computes the column
         /// (<c>CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess</c>).
         /// </para>
         /// <para>
-        /// The question <see cref="CosmosProjectResidualRule"/> asks of the projection it moves beneath a filter kept in
-        /// process, with its exception: a column the condition reads is computed by Calcite for every row it tests, so the
-        /// reader refuses only where Calcite raises. A bare reference is read by the scan either way. A projection Calcite
-        /// implements is its own evaluation, not the service's.
+        /// <b>Whatever the condition reads.</b> Calcite computes a <c>CASE</c> branch, and so a later operand of
+        /// <c>COALESCE</c>, only for the rows that reach it, so a column the condition reads there is not computed for every
+        /// row it tests: <c>… AND COALESCE(JSON_VALUE(t."DOC", '$.s'), CAST(t."n" AS VARCHAR)) = 'a'</c> over the same view
+        /// selected the column and failed over <c>{"n":1.5,"name":"x","s":"q"}</c>, which Calcite drops without reading it.
+        /// </para>
+        /// <para>
+        /// <b>Asked of the column's type alone</b>, as <see cref="CosmosProjectResidualRule"/> asks it of the projection it
+        /// moves (<c>TODO.md</c>, section 7). Implementation reads a column of every type that can refuse as that type, its
+        /// other readings being of text and of the document, which refuse nothing; the walk's reading is not implementation's,
+        /// since it reads a <c>JSON_QUERY</c> returning an <c>INTEGER ARRAY</c> as JSON text where implementation reads the
+        /// array and refuses <c>[1.5]</c>. A bare reference is read by the scan either way. A projection Calcite implements is
+        /// its own evaluation, not the service's.
         /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
-        /// <param name="kept">The condition left above, over the input's row.</param>
-        static bool ReadsWhatCanRefuse(RelNode? node, RexNode kept)
+        static bool ReadsWhatCanRefuse(RelNode? node)
         {
-            var read = RelOptUtil.InputFinder.bits(kept);
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             bool Holds(RelNode? candidate)
@@ -366,15 +372,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             bool Refuses(Project project)
             {
-                if (CosmosImplementor.TryBindOutput(project, out _, out var readings, out _) == false)
-                    return false;
-
                 var projects = project.getProjects();
                 for (var i = 0; i < projects.size(); i++)
                 {
                     var expression = (RexNode)projects.get(i);
-                    if (expression is not RexInputRef && i < readings.Count && readings[i] == CosmosReading.Typed
-                        && Client.CosmosJson.CanRefuse(expression.getType()) && read.get(i) == false)
+                    if (expression is not RexInputRef && Client.CosmosJson.CanRefuse(expression.getType()))
                         return true;
                 }
 

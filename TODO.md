@@ -2619,7 +2619,9 @@ across documents* and *A join of a container to itself* is the record.
 - **Whether a reading can refuse is asked by its type alone** — *small; it decides how often a filter in
   process reads whole documents.* A typed reading that can refuse a value (`CosmosJson.CanRefuse`: an
   integral width, a date or time, a UUID, GeoJSON, base64) is no longer moved beneath a filter that stays in
-  process, since there it was read for rows the filter drops and failed the statement where Calcite answers.
+  process, nor selected beneath one by the split's pair over a view's projection
+  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), since there it was read for rows the filter drops and failed the
+  statement where Calcite answers.
   The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
   (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
   did before #210. A path the schema declares an integer within the width's bounds, or a `date-time`

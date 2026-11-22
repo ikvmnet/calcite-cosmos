@@ -1423,15 +1423,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
-        /// Not a view's column whose reading can refuse a value, under a condition a split over the view leaves in process
-        /// that does not read it: the statement selects no such column, under the <c>WHERE</c> it sends where the split
-        /// pushes beneath the view.
+        /// Not a view's column whose reading can refuse a value, under a condition a split over the view leaves in process,
+        /// whatever that condition reads: the statement selects no such column, under the <c>WHERE</c> it sends where the
+        /// split pushes beneath the view.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The view's projection, the statement's <c>SELECT</c> beneath the condition kept in process, is read for every row
-        /// the service returns, and Calcite computes the column only for the rows the condition keeps: a stored 1.5 read as
-        /// an <c>INTEGER</c> is refused, and over a document whose name the case fold drops the statement failed where Calcite
+        /// the service returns, and Calcite computes the column only for the rows that reach it: a stored 1.5 read as an
+        /// <c>INTEGER</c> is refused, and over a document whose name the case fold drops the statement failed where Calcite
         /// answers.
+        /// </para>
+        /// <para>
+        /// A condition that reads the column only in a <c>CASE</c> branch, or in a later operand of <c>COALESCE</c>, does not
+        /// read it for every row, so it was selected there too and failed; and a <c>JSON_QUERY</c> returning an
+        /// <c>INTEGER ARRAY</c> refuses <c>[1.5]</c>, though the walk reads it as JSON text.
+        /// </para>
         /// </remarks>
         [Theory]
         [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
@@ -1439,6 +1446,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "((c.type = @p0) AND IS_DEFINED(c.name))")]
         [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, ViewOfARefusingReading + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN t.\"n\" > 10 ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND (c.n > @p0))")]
+        [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "IS_DEFINED(c.name)")]
         public void ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(bool trimmed, string sql, string where)
         {
@@ -1450,8 +1465,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             from.Should().BePositive("{0}", sent);
             conditions.Should().BeGreaterThan(from, "{0}", sent);
 
-            System.Text.RegularExpressions.Regex.IsMatch(sent[..from], @"c\.n\b").Should().BeFalse("the INTEGER the condition kept in process does not read is not selected beneath it: {0}", sent);
+            System.Text.RegularExpressions.Regex.IsMatch(sent[..from], @"c\.n\b").Should().BeFalse("the view's reading that can refuse is not selected beneath the condition kept in process: {0}", sent);
             sent[(conditions + " WHERE ".Length)..].Should().Be(where, "the split beneath the view sends what it pushes: {0}", sent);
+        }
+
+        /// <summary>
+        /// A view whose projection holds the document and an <c>INTEGER</c> read from it, filtered above.
+        /// </summary>
+        const string ViewOfARefusingReading =
+            "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE ";
+
+        /// <summary>
+        /// Over a document the condition kept in process drops, and whose value at the view's column its reading refuses, the
+        /// plan answers as Calcite does: no row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Planned bare, with the engine's rules and the calc pass, and run over the stub, which serves the document as the
+        /// statement selects it: the item whole. Calcite drops the document on the case fold, or reads the column only in a
+        /// branch or an operand it never reaches there, so it never reads the 1.5 or the 11.5 at <c>n</c>, and a statement that
+        /// selected the column beneath the condition failed with "A JSON number of '1.5' is not a whole number and cannot be
+        /// read as INTEGER".
+        /// </remarks>
+        [Theory]
+        [InlineData(ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": 1.5, \"name\": \"x\" }")]
+        [InlineData(ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "{ \"id\": \"x1\", \"n\": 1.5, \"name\": \"x\", \"s\": \"q\" }")]
+        [InlineData(ViewOfARefusingReading + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN t.\"n\" > 10 ELSE FALSE END",
+            "{ \"id\": \"x1\", \"n\": 11.5, \"name\": \"x\" }")]
+        [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": [1.5], \"name\": \"x\" }")]
+        public async Task ShouldAnswerAsCalciteOverAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(string sql, string document)
+        {
+            Given(document);
+
+            var best = PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+            sent.Should().StartWith("SELECT VALUE c ", "the statement selects the item whole, which the stub serves: {0}", sent);
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops the document without reading the view's column: {0}", sent);
         }
 
         /// <summary>
