@@ -46,12 +46,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <para>
     /// <b>What it asserts holds in every host time zone.</b> Two readings depend on the zone the host's JVM defaults to,
     /// whatever the session's: <c>CAST … AS TIMESTAMP FORMAT</c> before 1582-10-16, which is asked only from that day on,
-    /// and <c>PARSE_DATETIME</c> over a time of day the zone skips at a daylight-saving change, which the canonical cases
-    /// keep clear of and <see cref="EveryListedFormatReadsTheCanonicalStringsOfItsForm"/> asks against the host's own
-    /// zone. Measured in fresh processes, the zone set before any connection opened: under America/Chicago and
-    /// America/Los_Angeles the cast reads <c>0001-01-01</c> as <c>0002-01-01</c> and <c>1582-10-15</c> as
-    /// <c>1582-10-05</c>, and under UTC as the rest of the family does; from 1582-10-16 on it reads as the rest under
-    /// those three, Asia/Tokyo and Pacific/Kiritimati. A zone set while the process runs is not a measurement: what a
+    /// and <c>PARSE_DATETIME</c> over a time of day the zone skips, at a daylight-saving change or any other change of
+    /// its offset, which the canonical cases keep clear of and
+    /// <see cref="EveryListedFormatReadsTheCanonicalStringsOfItsForm"/> asks against the host's own zone. Measured in
+    /// fresh processes, the zone set before any connection opened: under America/Chicago and America/Los_Angeles the
+    /// cast reads <c>0001-01-01</c> as <c>0002-01-01</c> and <c>1582-10-15</c> as <c>1582-10-05</c>, and under UTC as
+    /// the rest of the family does; from 1582-10-16 on it reads as the rest under those three, Asia/Tokyo and
+    /// Pacific/Kiritimati. Under America/Chicago the parse reads 02:30 on 2024-03-10, a daylight-saving change, and on
+    /// 1936-03-01, when Chicago moved from Central to Eastern Standard Time, as 03:30. A zone set while the process runs is not a measurement: what a
     /// connection opened after it reads is shifted by the zone the process began in.
     /// </para>
     /// </remarks>
@@ -511,12 +513,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// Every listed format reads the canonical strings of its form as Calcite's literal of the same spelling, through
         /// the parse family, <c>CAST … AS TIMESTAMP FORMAT</c> asked from 1582-10-16 on; and over a time of day the host's
-        /// default time zone skips at a daylight-saving change, whatever the session's zone, <c>PARSE_DATETIME</c> reads
-        /// the time the zone moves it to and the cast reads it as spelled.
+        /// default time zone skips, at a daylight-saving change or any other change of its offset, whatever the session's
+        /// zone, <c>PARSE_DATETIME</c> reads the time the zone moves it to and the cast reads it as spelled.
         /// </summary>
         /// <remarks>
-        /// The skipped time is 02:30 on 2024-03-10, the spring change where a zone keeps the second Sunday of March, and
-        /// what the host's zone moves it to is asked of that zone, so the assertion holds in every zone: under one that
+        /// The skipped times are 02:30 on 2024-03-10, the spring change where a zone keeps the second Sunday of March, and
+        /// 02:30 on 1936-03-01, when America/Chicago changed its standard time from Central to Eastern, no daylight saving.
+        /// What the host's zone moves each to is asked of that zone, so the assertion holds in every zone: under one that
         /// skips nothing there, both read it as spelled.
         /// </remarks>
         [Fact, CosmosPins("Calcite.ParseSpellingsReadTheirShapes")]
@@ -527,9 +530,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             canonical.Should().NotBeEmpty();
             string.Join(Environment.NewLine, Disagreements(canonical)).Should().BeEmpty("a canonical string reads as the literal of its own spelling");
 
-            const string Spelled = "2024-03-10 02:30:00";
-            var moved = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                .format(java.time.LocalDateTime.of(2024, 3, 10, 2, 30).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+            var instant = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            var skipped = new[] { java.time.LocalDateTime.of(2024, 3, 10, 2, 30), java.time.LocalDateTime.of(1936, 3, 1, 2, 30) }
+                .Select(t => (Spelled: instant.format(t), Moved: instant.format(t.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime())))
+                .ToArray();
 
             var problems = new List<string>();
             foreach (var session in new[] { string.Empty, ";timeZone=UTC" })
@@ -538,18 +542,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 connection.Open();
 
                 foreach (var form in Forms.Where(f => f.Family is Family.Instant or Family.Minutes))
-                {
-                    var stored = form.Write(form.Family == Family.Instant ? "2024-03-10T02:30:00" : "2024-03-10T02:30", "000");
-                    var table = MaterialisedTable.Of([Document(stored)]);
+                    foreach (var (spelled, moved) in skipped)
+                    {
+                        var fields = spelled.Replace(' ', 'T');
+                        var stored = form.Write(form.Family == Family.Instant ? fields : fields[..16], "000");
+                        var table = MaterialisedTable.Of([Document(stored)]);
 
-                    foreach (var format in CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(form.Pattern)!.Value))
-                        foreach (var (conversion, reads) in new[] { (Conversion.ParseDatetime, moved), (Conversion.CastFormatTimestamp, Spelled) })
-                            if (table.Ask(connection, $"({Expression(conversion, format)}) = {Literal("TIMESTAMP", reads, "000")}")[0] != "T")
-                                problems.Add($"{form.Name} {conversion} '{format}' over '{stored}' (session '{session}'): expected {reads}, read {table.Values(connection, $"CAST({Expression(conversion, format)} AS VARCHAR)")[0]}");
-                }
+                        foreach (var format in CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(form.Pattern)!.Value))
+                            foreach (var (conversion, reads) in new[] { (Conversion.ParseDatetime, moved), (Conversion.CastFormatTimestamp, spelled) })
+                                if (table.Ask(connection, $"({Expression(conversion, format)}) = {Literal("TIMESTAMP", reads, "000")}")[0] != "T")
+                                    problems.Add($"{form.Name} {conversion} '{format}' over '{stored}' (session '{session}'): expected {reads}, read {table.Values(connection, $"CAST({Expression(conversion, format)} AS VARCHAR)")[0]}");
+                    }
             }
 
-            string.Join(Environment.NewLine, problems).Should().BeEmpty($"the parse reads a time the host's zone, {java.time.ZoneId.systemDefault()}, skips as {moved}, and the cast as spelled");
+            string.Join(Environment.NewLine, problems).Should().BeEmpty(
+                $"the parse reads a time the host's zone, {java.time.ZoneId.systemDefault()}, skips as {string.Join(" and ", skipped.Select(t => t.Spelled + " as " + t.Moved))}, and the cast as spelled");
         }
 
         /// <summary>
