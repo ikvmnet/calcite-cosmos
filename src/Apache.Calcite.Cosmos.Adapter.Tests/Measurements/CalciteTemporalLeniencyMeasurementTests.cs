@@ -364,6 +364,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             _ => "TIMESTAMP",
         };
 
+        /// <summary>The halves of an instant the type a conversion answers holds.</summary>
+        static CosmosTemporalParts PartsOf(Conversion conversion) => TypeOf(conversion) switch
+        {
+            "DATE" => CosmosTemporalParts.Date,
+            "TIME" => CosmosTemporalParts.Time,
+            _ => CosmosTemporalParts.Instant,
+        };
+
         /// <summary>The conversion of the document's text with a format, written as a query writes it.</summary>
         static string Expression(Conversion conversion, string format)
         {
@@ -579,6 +587,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// gap's ten days applied to the day that results: <c>1582-10-14T24:00:00</c> is <c>1582-10-15</c>.
         /// <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
         /// </summary>
+        /// <remarks>
+        /// <see cref="CosmosStoredForms.ParsesExactly"/>, the claim the rewrite, the order family and the projection
+        /// writer ask before a parse is lowered, is held to it for every form, listed format and conversion measured.
+        /// </remarks>
         [Fact, CosmosPins("Calcite.ParsesReadTheirFieldsLeniently")]
         public void EveryListedFormatRollsAFieldPastItsRange()
         {
@@ -586,6 +598,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             rolled.Should().NotBeEmpty();
             string.Join(Environment.NewLine, Disagreements(rolled)).Should().BeEmpty("a field past its range rolls into the next");
+
+            var claims = Forms
+                .SelectMany(f => CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(f.Pattern)!.Value)
+                    .SelectMany(format => ConversionsOf(f.Family).Select(c => (Form: f, Format: format, Parts: PartsOf(c)))))
+                .ToArray();
+
+            claims.Should().HaveCount(112, "every listed format, through every conversion its form's fields are claimed into");
+            claims
+                .Where(c => CosmosStoredForms.ParsesExactly(CosmosStoredForms.Recognise(c.Form.Pattern)!.Value, c.Format, c.Parts))
+                .Select(c => $"{c.Form.Name} '{c.Format}' into {c.Parts}")
+                .Should().BeEmpty("no listed format reads its form one for one, into any type it is read into");
         }
 
         /// <summary>
