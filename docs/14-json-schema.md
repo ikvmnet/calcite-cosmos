@@ -369,8 +369,9 @@ conversion reads every string the pattern admits as the value it spells.** Each 
 `2017-01-01T00:00:00Z`, and a parse reads the two as one instant (Chapter 15.2): the strings' equality
 and order are not the parse's, so the instant forms license no comparison through one. Their text
 still compares and sorts at the service as text. A calendar date read with a plain cast compares and
-sorts as the date, except day `00`, which the cast reads as the month before's last day: the one case
-the adapter does not yet hold to this rule (Chapters 15.3 and 23).
+sorts as the date, except day `00`, which the cast reads as the month before's last day: the one string
+the cast reads as another value, a case the adapter does not yet hold to this rule (Chapters 15.3
+and 23).
 
 **A form is recognised by the strings a pattern admits, not by how it is spelled.** The pattern is
 parsed, by the same reader that reads its characters (14.4), and it is a form where the strings it
