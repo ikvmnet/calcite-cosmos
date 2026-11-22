@@ -1996,7 +1996,7 @@ row reaches the parameter's reading, so two cases part from it:
   parameter, Calcite answers the rows the other arms decide, through its own driver with any value it cannot convert and
   through the ADO.NET driver with a NaN (`Calcite.AParameterIsConvertedToItsTypeWhenRead`);
 - **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
-  without binding anything, where Calcite's own plan, reading the container's rows, fails.
+  without reading the value, where Calcite's own plan, reading the container's rows, fails.
 
 **The proper fix** is the request decision reading the bound value, so that a statement over no row answers none and
 one over any row fails. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and

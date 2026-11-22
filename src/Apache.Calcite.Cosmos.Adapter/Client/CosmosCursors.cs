@@ -70,9 +70,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             // A statement whose WHERE keeps no document the declaration admits and fails on none is answered as the
             // service would answer it, with no row, and not sent: decided when the plan was implemented, for every value a
             // parameter may take, so before anything is bound. What sending it could have raised at the service is not
-            // raised (docs/14.2).
+            // raised (docs/14.2). A row count is still read, as Calcite's limit reads it whatever the rows.
             if (query.SendsNothing)
+            {
+                CosmosQueries.ReadCounts(query, root);
                 return None<TRow>();
+            }
 
             // The statement is the same object every execution; what differs is the values a prepared
             // one left open, which is the only thing read off the context here.

@@ -2668,7 +2668,8 @@ it, a fraction among them. So `CosmosRowLimit.Rows` writes the count's ceiling f
 `LIMIT` the statement writes beside an `OFFSET` alone for no limit at all; both rest on no request reading more rows
 than that. A parameter's slot carries its clause and the policy, the bind reads the value so when it arrives, and a
 value the limit refuses — a string, a NaN, a negative count or a null — fails the statement by name, as Calcite's plan
-fails.
+fails. The limit reads its count when the plan is bound, whatever the rows, so a statement the facts graph decides not
+to send reads its counts too (`CosmosQueries.ReadCounts`), and no other value.
 
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =

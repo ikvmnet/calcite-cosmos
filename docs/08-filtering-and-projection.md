@@ -542,7 +542,7 @@ or an infinity bound to a numeric one, anything but a value of its type bound to
 a date or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading:
 over a container holding no row it answers no rows, and where no row takes the `CASE` arm that reads the
 parameter it answers what the other arms decide, where the adapter fails before anything is sent. Where
-the plan has already proved the statement keeps no document (Chapter 14.2), nothing is bound and it
+the plan has already proved the statement keeps no document (Chapter 14.2), the value is not read and it
 answers no rows, where Calcite fails reading a row.
 
 **A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in

@@ -172,6 +172,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             executor.Executed.Should().BeEmpty("nothing is sent, and no context is asked for the value left open");
         }
 
+        /// <summary>
+        /// A statement that sends nothing still reads its row count, as Calcite's limit reads it whatever the rows
+        /// (<c>Calcite.ARowCountIsTakenToItsCeiling</c>): a count the limit refuses fails it by name, by either open, and
+        /// one it takes answers no row; neither opens a request.
+        /// </summary>
+        [Fact]
+        public async Task AStatementThatSendsNothingStillReadsItsRowCount()
+        {
+            var executor = new StubExecutor("1", "2");
+            var query = new CosmosQuery("SELECT VALUE c.n FROM c WHERE (c.n = @p0) OFFSET 0 LIMIT @p1",
+                [new CosmosParameter("@p0", new CosmosDynamicValue(0)), new CosmosParameter("@p1", new CosmosDynamicValue(1) { RowCount = "FETCH" })], SendsNothing: true);
+
+            foreach (var refused in new object?[] { java.lang.Long.valueOf(-1L), null, "2" })
+            {
+                var root = new Context(("?0", "x"), ("?1", refused));
+                await FluentActions.Awaiting(async () => await CosmosCursors.OpenAsync(executor, root, query, Number, CancellationToken.None)).Should()
+                    .ThrowAsync<CosmosExecutionException>().WithMessage("Parameter ?1 cannot be read as the FETCH count, as Calcite's limit reads it *");
+                FluentActions.Invoking(() => CosmosCursors.Open(executor, root, query, Number)).Should()
+                    .Throw<CosmosExecutionException>().WithMessage("Parameter ?1 cannot be read as the FETCH count, as Calcite's limit reads it *");
+            }
+
+            var taken = new Context(("?0", "x"), ("?1", java.lang.Long.valueOf(2L)));
+            (await ListCursor.CollectAsync(await CosmosCursors.OpenAsync(executor, taken, query, Number, CancellationToken.None), TestContext.Current.CancellationToken)).Should().BeEmpty();
+
+            executor.Executed.Should().BeEmpty("nothing is sent, whatever the count");
+        }
+
+        /// <summary>A data context holding the values a test names.</summary>
+        sealed class Context(params (string Name, object? Value)[] values) : org.apache.calcite.DataContext
+        {
+
+            public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;
+
+            public org.apache.calcite.adapter.java.JavaTypeFactory getTypeFactory() => null!;
+
+            public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
+
+            public object get(string name) => values.FirstOrDefault(v => v.Name == name).Value!;
+
+        }
+
         // ── Reading ───────────────────────────────────────────────────────────────
 
         [Fact]

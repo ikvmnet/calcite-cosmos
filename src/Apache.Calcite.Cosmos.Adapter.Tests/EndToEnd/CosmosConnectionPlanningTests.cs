@@ -159,6 +159,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A row count beside a request the facts graph decides not to send is read as Calcite's limit reads it, whatever
+        /// the rows (<c>Calcite.ARowCountIsTakenToItsCeiling</c>): a negative count or a null fails the statement by name, as
+        /// Calcite's own plan fails over the same documents, and a count the limit takes answers no rows; nothing is sent.
+        /// </summary>
+        /// <remarks>
+        /// Read only once the request was sent, the count was never read beside one decided unsent, and the statement
+        /// answered no rows where Calcite fails.
+        /// </remarks>
+        [Fact]
+        public void ARowCountBesideARequestDecidedUnsentIsReadAsCalcitesLimitReadsIt()
+        {
+            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.kind') = 'C' FETCH FIRST ? ROWS ONLY""";
+            Explain(Sql, declared: true).Should().Contain("CosmosToClrCursorConverter(sends=[nothing])");
+
+            var sent = new System.Collections.Generic.List<string>();
+            using var source = Open(Schema, new RecordingExecutor(sent), null);
+            int Rows(object? count)
+            {
+                using var connection = source.OpenConnection();
+                using var command = connection.CreateCommand();
+                command.CommandText = Sql.Replace(" items AS ", " \"items\" AS ");
+                var parameter = command.CreateParameter();
+                parameter.Value = count ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+
+                var rows = 0;
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    rows++;
+
+                return rows;
+            }
+
+            foreach (var refused in new object?[] { -1L, null })
+            {
+                var failure = FluentActions.Invoking(() => Rows(refused)).Should().Throw<Exception>().Which;
+                Chain(failure).OfType<CosmosExecutionException>().Should().ContainSingle()
+                    .Which.Message.Should().StartWith("Parameter ?0 cannot be read as the FETCH count, as Calcite's limit reads it");
+            }
+
+            Rows(2L).Should().Be(0);
+            sent.Should().BeEmpty("the request is decided unsent, whatever the count");
+
+            static System.Collections.Generic.IEnumerable<Exception> Chain(Exception e)
+            {
+                for (Exception? x = e; x is not null; x = x.InnerException)
+                    yield return x;
+            }
+        }
+
+        /// <summary>
         /// A scalar sub-query in a select list nothing above reads: the host's field trimmer drops its column and keeps the
         /// correlation variable its projection declares, and no rule converted a projection declaring one, Calcite's merge
         /// refusing it too, so the statement did not plan, declared or not, and through the reduce's empty answer only

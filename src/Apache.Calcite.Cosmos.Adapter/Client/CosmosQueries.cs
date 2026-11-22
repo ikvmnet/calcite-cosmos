@@ -97,6 +97,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         }
 
         /// <summary>
+        /// Reads every row count a statement carries as Calcite's limit reads it, and no other value: what a statement
+        /// answered without being sent (<see cref="CosmosQuery.SendsNothing"/>) still reads.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's limit reads its count when the plan is bound, whatever the rows
+        /// (<c>Calcite.ARowCountIsTakenToItsCeiling</c>), so a count it refuses fails the statement over no row too, and the
+        /// statement is failed by name as <see cref="Bind"/> fails it. A value is read only where a row reaches it, and
+        /// over no row it is not (TODO.md).
+        /// </remarks>
+        /// <param name="query">The statement as the plan built it.</param>
+        /// <param name="root">The data context the execution supplies.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="root"/> is <c>null</c> and a count is wanted.</exception>
+        /// <exception cref="CosmosExecutionException">Calcite's limit refuses a count.</exception>
+        public static void ReadCounts(CosmosQuery query, org.apache.calcite.DataContext root)
+        {
+            foreach (var parameter in query.Parameters)
+                if (parameter.Value is CosmosDynamicValue { RowCount: string clause } slot)
+                    Counted(root ?? throw new ArgumentNullException(nameof(root), "The statement carries a row count whose value belongs to the execution."), slot, clause);
+        }
+
+        /// <summary>
         /// Reads a string parameter's value and writes the bound its comparison's fallback compares against in its place.
         /// </summary>
         /// <remarks>

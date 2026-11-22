@@ -457,7 +457,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// Calcite's limit reads a <c>FETCH</c> or an <c>OFFSET</c> count, a literal's or a parameter's, as a decimal, and
         /// takes or skips rows while their index is below it, so a fraction is taken to its ceiling and a count past an
-        /// <c>INTEGER</c> takes every row; a count that is no number, a NaN, a negative count or a null fails.
+        /// <c>INTEGER</c> takes every row; a count that is no number, a NaN, a negative count or a null fails, whatever the
+        /// rows.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -473,6 +474,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// and a null (<c>IllegalArgumentException</c>), and a NaN (<c>NumberFormatException</c>).
         /// </para>
         /// <para>
+        /// <b>The limit reads its count whatever the rows</b>, when the plan is bound: a negative count and a null fail over a
+        /// table holding no row, and beneath a filter no row passes, through either driver, where a count it takes answers
+        /// no rows.
+        /// </para>
+        /// <para>
         /// <b>The ADO.NET driver converts the value to a <c>DECIMAL</c> before Calcite sees it</b>, the type Calcite
         /// gives a row count's parameter, so the string <c>'2'</c> takes two rows, and it refuses a NaN before the
         /// statement runs; the limit reads the rest as through Calcite's own driver.
@@ -482,6 +488,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         public void ARowCountIsTakenToItsCeiling()
         {
             var four = MaterialisedTable.Of(SqlTypeName.INTEGER, ["0", "1", "2", "3"]);
+            var none = MaterialisedTable.Of(SqlTypeName.INTEGER, []);
             const string Fetch = "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
             const string Offset = "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET ? ROWS";
 
@@ -517,6 +524,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "null: rows [0, 1, 2, 3]", "null: rows [0, 1, 2, 3]"),
                 new("OFFSET 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 2.5 ROWS", _ => { }, null,
                     "null: rows [3]", "null: rows [3]"),
+                new("FETCH ?, long -1, no row", none, Fetch, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null, no row", none, Fetch, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, long -1, no row", none, Offset, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, long -1, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("FETCH ?, long 2, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
             };
 
             using var drivers = new Drivers();
