@@ -45,7 +45,7 @@ SELECT c."id"
 FROM "events" AS c
 WHERE PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at'))
       > TIMESTAMP '2024-02-01 00:00:00'
-→ SELECT VALUE c FROM events c
+→ SELECT VALUE { "DOC": c, "id": c.id } FROM events c
   In process: the comparison, over every document
 
 SELECT PARSE_DATETIME('%Y-%m-%d''T''%H:%M:%S''Z''', JSON_VALUE(c."DOC", '$.at')) AS "At"
