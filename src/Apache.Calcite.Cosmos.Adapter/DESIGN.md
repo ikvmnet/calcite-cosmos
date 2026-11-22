@@ -534,14 +534,15 @@ unchanged. It was measured over canonical samples alone, and that is where it wa
 **Measured over every string a form admits, no format reads its form one for one**
 (`Calcite.ParsesReadTheirFieldsLeniently`). A form's language is a run of digits per field, and
 each listed format, through the conversions the form's fields are read into, reads a field past its
-range as the value its fields make once carried over, raising over none of these: `2016-12-31T24:00:00Z`,
-`2016-12-31T23:60:00Z` and `2016-12-31T23:59:60Z` are `2017-01-01T00:00:00Z`'s instant, 30 February is
-2 March, 29 February of 1900 or 2100 1 March, month 13 the next January, day and month `00` the last of
-the ones before, and a day of 1582's gap ten days on. Before 1582-10-15 the family carries a field
-over by the Julian calendar, which holds every fourth year leap, counts a year before year one by its
-year of the era, and reads the date that makes as a proleptic Gregorian day, raising where there is
-none: `1000-02-30` is 1 March, `0000-01-01` is `0001-01-01`, `0000-00-00` is `0002-11-30`, and
-29 February of 0100 or of 1500, and `0100-03-00`, raise. Into `TIME` the clock
+range as the value its fields make once carried over, raising over none of these:
+`2016-12-31T24:00:00Z`, `2016-12-31T23:60:00Z` and `2016-12-31T23:59:60Z` are `2017-01-01T00:00:00Z`'s
+instant, 30 February of a common year is 2 March and of a leap year 1 March, 29 February of 1900 or 2100
+1 March, month 13 the next January, day and month `00` the last of the ones before, and a day of 1582's
+gap ten days on. Before 1582-10-15 the family carries a field over by the Julian calendar, which holds
+every fourth year leap, counts a year before year one by its year of the era, and reads the date that
+makes as a proleptic Gregorian day, raising where there is none: `1000-02-30` is 1 March, `0000-01-01`
+is `0001-01-01`, `0000-00-00` is `0002-11-30`, and 29 February of 0100 or of 1500, and `0100-03-00`,
+raise. Into `TIME` the clock
 wraps at a day: `24:00:00` is midnight and `99:99:99` is 04:40:39. `CAST … AS TIMESTAMP FORMAT` before
 1582-10-16, and `PARSE_DATETIME` over a time of day that zone skips, at a daylight-saving change or any
 other change of its offset, read what the host's default time zone makes of them, whatever the
