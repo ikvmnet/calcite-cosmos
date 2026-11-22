@@ -21,8 +21,11 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             : string.CompareOrdinal(Type, other.Type) is var byType and not 0 ? byType
             : string.CompareOrdinal(string.Join(",", Kinds), string.Join(",", other.Kinds));
 
-        /// <summary>The evaluator spelled by its name, and its type in parentheses where it takes one.</summary>
-        public override string ToString() => Type.Length == 0 ? Evaluator.ToString() : Evaluator + "(" + Type + ")";
+        /// <summary>
+        /// The evaluator spelled by its name, its type in parentheses where it takes one, and its kinds in braces where it
+        /// holds any, so two that differ in their kinds alone are spelled apart, as the theory's digest reads them.
+        /// </summary>
+        public override string ToString() => (Type.Length == 0 ? Evaluator.ToString() : Evaluator + "(" + Type + ")") + (Kinds.Count == 0 ? "" : "{" + string.Join(",", Kinds) + "}");
 
     }
 

@@ -2341,10 +2341,10 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   process on `main`; with the grouping reading the rows the filter kept, the `DISTINCT` pushes, and Volcano prefers
   one routed query with it to the batch. The rows are the same. Pricing `ReadMany` below a query where it reads a few
   ids would bring the batch back; nothing measured says which is cheaper for two documents.
-- **The atom's readers are strings** — *small, no behaviour.* `typed:T` and `cast:T:inner` are parsed back by
-  `Reading.Parse`, restating the IR's `SqlValue`, because the rules carry a reader as a string value. A reader
-  registered as a record value would state it once. (What a conversion does is read off its target once, in
-  `NumberCast`'s constructor: saturation, rounding, a parse that raises, a decimal's exact parse.)
+- **The atom's readers are strings** — *small, no behaviour.* `typed:T` and `cast:T:inner` are strings the rules carry,
+  and a column, a typed reading's type and a cast's target are parsed back out of them (`PredicateAtom.ColumnOf`,
+  `Columnless`, `Outermost`; `CosmosRendering.ReadReaderKinds`), restating the IR's `SqlValue`; a reader registered as a
+  record value would state them once. No evaluator is chosen by the spelling: a row names it and its type.
 - **A `DISTINCT`'s key binding reads the declaration** — *small, and it waits on the statement node.* The binding is
   asked by the sort's rule on its own walk and again at implementation, so only what holds of every document answers
   alike on both; a key only the filter proves present binds nothing, and a sort over the `DISTINCT` stays in process
@@ -4228,10 +4228,10 @@ across documents* and *A join of a container to itself* is the record.
   S's rules read (G8)*); `structureonly` is the `query` reading's `calcitereads` since h15,
   and `measuredcast` on the cast targets' (below),
   and G6 the D class's `Defined`, which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
-  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
-  `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
-  the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
-  first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
+  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose. A cast of the text to `VARCHAR` or `CHAR`,
+  or of the raw value to `CHAR`, owes none while the loader writes none: no row names an evaluator for one, so it reads
+  nothing (DESIGN.md, *Which evaluator reads a reading is its rows'*); a cast of the text to an unbounded `VARCHAR` is
+  the text itself to the loader, and one to `CHAR` pads or cuts, so its row is a measurement first.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
@@ -4293,13 +4293,16 @@ across documents* and *A join of a container to itself* is the record.
   `LIKE` moves for it: the corpus's patterns beyond one affix, `_ike_`, `_prin_` and `A__B`, run over strings that may
   hold U+0000 or a line terminator and stay in process as at h15, and the two emulator statements in the census that
   hold an affix call and move do so for another conjunct, the call byte-equal.
-- **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
-  reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
-  text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
-  reading's own evaluator where no alias row names one, a lookup with a default. An evaluator that is a function of the
-  rows alone, with the casts owed above as rows, finishes G7. It waits past the switch because the audit's plan puts the
-  rest of G7 there, before 3B closes (§3): which evaluator reads a row is provenance, never an answer, and the switch
-  read the rows as they stand.
+- **The typed and parse evaluators read their type as C#** — *medium, G7's last sites, a bridge until its own pull
+  request, before 3B closes as the audit's plan puts the rest of G7 (§3).* A row names the evaluator that reads a
+  reading's rows, the type it evaluates a value of and the kinds that type holds (DESIGN.md, *Which evaluator reads a
+  reading is its rows'*), but what `Typed` and `NumberCast` do with that type is theirs: which compare doubles, floats
+  or booleans, which `RETURNING` reads an int's box or a long's, which raise over digits, which parse saturates, rounds
+  from a double's whole unit or parses a decimal, and that `BIGINT` reads a timestamp's text; `Rendered` cuts at 2^53,
+  `Window` at 2^52, and `Text.FirstUnit` places every number's rendering by a first unit no row states. Each is the
+  audit's number placement (re-audit 2, P4 and P5): modes as rows the evaluator reads as parameters (`NumberReads`,
+  `FirstUnits`, `Saturates`, `RoundsFrom`), each re-pinned by its measurement, finish G7. Byte-equal where the rows say
+  what the branches do. Until then a row naming `NumberCast` of another target needs its mode first.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
   keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
   `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`, which `REPLACE`'s search and `SUBSTRING`'s length name

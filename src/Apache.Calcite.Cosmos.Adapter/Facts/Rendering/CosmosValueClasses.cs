@@ -36,6 +36,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             CosmosValueClass.Number, CosmosValueClass.String, CosmosValueClass.Object, CosmosValueClass.Array);
 
         /// <summary>
+        /// Every class a cell is keyed by where the readings rules say which reading reads it: each of <see cref="Kinds"/>, and
+        /// <see cref="CosmosValueClass.None"/> for a cell of no one class, as a key with no literal is keyed.
+        /// </summary>
+        public static ValueSet<CosmosValueClass> Cells { get; } = Kinds.Add(CosmosValueClass.None);
+
+        /// <summary>
         /// The JSON type of each class of value, which says two classes are of one type: <c>true</c> and <c>false</c> are
         /// both booleans. The readings vocabulary's <c>classtype</c>, in both graphs, which the raw rules compare (G5).
         /// </summary>

@@ -304,6 +304,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 ? e.Reader.Substring(PredicateAtom.TypedReaders.Length + 1) : PredicateAtom.Outermost(e.Reader).Substring("cast:".Length)));
             evaluators.Except(takesType).Should().OnlyContain(e => e.Evaluator.Type.Length == 0 && e.Evaluator.Kinds.Count == 0);
 
+            // A parse's modes place these targets alone (TODO.md, "The typed and parse evaluators read their type as C#").
+            takesType.Where(e => e.Evaluator.Evaluator == CalciteEvaluator.NumberCast).Select(e => e.Evaluator.Type).Should().BeSubsetOf(["DECIMAL", "INTEGER", "BIGINT", "DOUBLE"],
+                "the number cast places no other target until the modes are rows");
+
+            // A reading a row reads as another is read as it only where a row names the other's evaluator.
+            CosmosAxiomRows.ReadCalciteReadAs(all).Should().OnlyContain(r => evaluators.Any(e => e.Reader == r.As),
+                "an alias to a reading no row names an evaluator for would be read by nothing rather than refused");
+
             // Each typed reading holds the kinds of value Calcite's type system says its type holds, read off the type's family:
             // an integer type a whole number, any other numeric type any number, BOOLEAN a boolean. A type no family holds would
             // read every scalar as a raise, so none is named.

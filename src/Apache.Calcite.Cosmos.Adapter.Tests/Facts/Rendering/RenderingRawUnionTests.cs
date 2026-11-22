@@ -225,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var theory = RenderingTheory.Define(ProbeRows.Measured with { Columns = RawColumnRows.None });
             var empty = theory.Theory.Get(theory.RawUnion.Of());
             empty.Should().Be(RawTruths.Empty);
-            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty, ReadingTable.Empty).Should().Be(T | F | U | R);
+            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty, theory.Theory.Get(theory.ReaderRows.Of())).Should().Be(T | F | U | R);
             GC.KeepAlive(theory);
         }
 

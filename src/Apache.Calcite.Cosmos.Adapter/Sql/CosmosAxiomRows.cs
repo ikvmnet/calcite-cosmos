@@ -237,7 +237,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
-            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
+            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadCalciteEvaluators(axioms),
+                ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
                 Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms), ReadYieldKinds(axioms), ReadYieldReads(axioms), ReadColumns(axioms),
                 CosmosValueClasses.Types, ReadParametersAs(axioms));
