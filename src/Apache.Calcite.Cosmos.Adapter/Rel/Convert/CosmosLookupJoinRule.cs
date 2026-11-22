@@ -186,15 +186,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether restricting the stored value at a key column's path fetches every
-        /// document whose key, as the column reads it, a batch could match.
+        /// Determines whether the rule restricts the stored value at a key column's path.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>The restriction is on the raw value and the join compares the column.</b>
         /// <c>GenerateLookupQuery</c> writes <c>path IN (@k…)</c>, and the fetched rows are matched to
         /// the build side's keys in process, by the key as the column reads it. So the fetch may bring
-        /// back more than matches, and nothing else: a document the restriction leaves out is a row the
+        /// back more than matches: a document the restriction leaves out is a row the
         /// join loses. Whether that can happen is decided by the column's reading, which the binding
         /// derives beside the path for exactly this kind of question (#83), and the question is
         /// <see cref="CosmosRexTranslator.IsReadAsStored"/> — the one a grouping key and a sort key ask.
@@ -242,7 +241,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="readings">How each of the subtree's columns is read.</param>
         /// <param name="container">The container the subtree reads, found by the walk that bound it.</param>
         /// <param name="facts">What every row of the subtree is known to satisfy.</param>
-        /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
+        /// <returns>
+        /// <c>true</c> where the rule takes the restriction: a column read as declared outright, any other where
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/> answers so. <c>TODO.md</c> records what a typed column's
+        /// restriction still leaves out.
+        /// </returns>
         static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, JsonFactSet facts)
         {
             if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) == CosmosReading.Typed)
