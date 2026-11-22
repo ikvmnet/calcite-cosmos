@@ -4125,7 +4125,8 @@ across documents* and *A join of a container to itself* is the record.
 - **An item of a `RETURNING VARIANT` is read as the raw value beneath it** — *small, soundness.* `CosmosRexPaths`
   resolves an item chain over any accessor it resolves, `RETURNING VARIANT` among them, so the translator, the loader and
   the binding read `JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT)['a']` as the raw value at `c.x.a`, where Calcite's is
-  null over an object at `x`, since the accessor holds what it reads in no box, and raises over a scalar. `IS NULL` of it
+  null over an object at `x`, since the accessor is null where the path holds an object
+  (`Calcite.VariantEqualsOnlyItsOwnBox`), and raises over a scalar. `IS NULL` of it
   sends `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, which drops `{"x":{"a":1}}` where Calcite keeps it, written in the
   filter or read from a view's column. The proper fix is the resolver's: no path for an item over a base
   `CosmosRexShapes.IsVariantReturningJsonValue` names, so that a filter over it is Calcite's; it moves the translator's

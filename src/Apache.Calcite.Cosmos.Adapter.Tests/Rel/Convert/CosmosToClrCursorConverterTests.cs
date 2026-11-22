@@ -1507,14 +1507,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
-        /// A weakening over a view's typed or text column is pushed once, where a filter beneath the view applies it already.
+        /// A weakening over a projection's typed or text column, a view's or the query's own select list, is pushed once,
+        /// where a filter beneath the projection applies it already.
         /// </summary>
         /// <remarks>
-        /// The transpose carries the filter beneath the view, where the split pushes its weakening, and the filter left over
-        /// the view asks the same weakening over the view's column. What the filter beneath applies is also read over the
-        /// view's own columns, where they carry everything it reads, so the column is one term above and beneath the view:
-        /// read only over the scan, a <c>RETURNING DOUBLE</c> or a text accessor is its accessor there and a field of the view
-        /// here, and the weakening was sent in two filters.
+        /// The transpose or the residual projection carries the filter beneath the projection, where the split pushes its
+        /// weakening, and the filter left over the projection asks the same weakening over the projection's column. What the
+        /// filter beneath applies is also read over the projection's own columns, where they carry everything it reads, so the
+        /// column is one term above and beneath it: read only over the scan, a <c>RETURNING DOUBLE</c> or a text accessor is
+        /// its accessor there and a field of the projection here, and the weakening was sent in two filters.
         /// </remarks>
         [Theory]
         [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t WHERE NOT (t.\"n\" > 10) OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",

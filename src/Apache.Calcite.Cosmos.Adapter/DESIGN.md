@@ -11598,7 +11598,8 @@ nothing it would select beneath the condition can refuse: over a view that renam
 `INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's
 projection of the document the split offers the plan whose `SELECT` is that projection beneath the
 residual, which the converter's width prefers where the condition kept in process reads the document
-anyway; in the corpus such statements moved their `SELECT` alone, their `WHERE` unchanged.
+anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such statements moved
+their `SELECT` alone, their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what
