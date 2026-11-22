@@ -6444,18 +6444,20 @@ one type, and it keeps `BIGINT` 2^53 and 2^53 + 1 apart where `DOUBLE`, one doub
 on both sides to it by Calcite's own conversion of a number: an integer type to a `long` by Calcite's cast
 to it, which fails by name on a key outside the type's range as the cast does; a CLR `byte` read as the
 signed Java byte Calcite holds a `TINYINT` in; `DECIMAL` to a `BigDecimal` stripped of its trailing zeros;
-an approximate type to a `double`. No planned lookup compares a `DECIMAL`, since no container column
-reads one; that arm serves a direct caller of `CosmosLookup.Join`. The batch's distinct keys, the probe rows
-and the match all read it. A key is bound as a number of that type, a decimal as a statement's decimal
-parameter is (`CosmosRexLiterals.TryGetExactNumberValue`), or as its double where that has no exact answer,
-which is how the service holds such a number; the join's own comparison then leaves out whatever else that
-double fetched. A key whose double is an infinity or NaN, an approximate key that is not finite or a
-decimal beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a
-string no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the
-probe's own statement without the restriction, rendered beside the restricted one, and the join's own
-comparison answers every key of it, which rests on nothing about what a document may hold and costs
-request units only. The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo`
-counts as an equi key too, matches a null key with a null one, which no fetch by key finds.
+an approximate type to a `double`, a `REAL` by way of the float Calcite holds it in, so that its cast rounds
+16777217 to 16777216, where `FLOAT` and `DOUBLE` compare doubles (`CalciteColumnReadingMeasurementTests`).
+No planned lookup compares a `DECIMAL`, since no container column reads one; that arm serves a
+direct caller of `CosmosLookup.Join`. The batch's distinct keys, the probe rows and the match all
+read it. A key is bound as a number of that type, a decimal as a statement's decimal parameter is
+(`CosmosRexLiterals.TryGetExactNumberValue`), or as its double where that has no exact answer, which is
+how the service holds such a number; the join's own comparison then leaves out whatever else that double
+fetched. A key whose double is an infinity or NaN, an approximate key that is not finite or a decimal
+beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a string
+no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the probe's
+own statement without the restriction, rendered beside the restricted one, and the join's own comparison
+answers every key of it, which rests on nothing about what a document may hold and costs request units only.
+The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi key too,
+matches a null key with a null one, which no fetch by key finds.
 
 **Calcite's own join never matches `-0.0` with `0.0`, and the lookup follows `=`.** Calcite's equi-join in
 process, a hash join for the lookup's own shape and a merge join between in-process tables, never matches a
