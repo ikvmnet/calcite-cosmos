@@ -220,6 +220,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// A slot of a type whose class Calcite's type factory does not answer from the type's name alone, a <c>ROW</c>,
+        /// fails the statement by name, whatever is bound, as the slot cannot be converted as Calcite converts it.
+        /// </summary>
+        /// <remarks>
+        /// Asked before the conversion, the factory's own failure, a cast to a record type, escaped unnamed.
+        /// </remarks>
+        [Fact]
+        public void ASlotWhoseClassItsTypesNameDoesNotGiveFailsByName()
+        {
+            foreach (var held in new object[] { java.lang.Long.valueOf(1L), "x" })
+                FluentActions.Invoking(() => BindAs(SqlTypeName.ROW, held)).Should().Throw<CosmosExecutionException>()
+                    .WithMessage("Parameter ?0 is of type ROW, for which Calcite's type factory answers no class from the type's name alone (*");
+        }
+
+        /// <summary>
         /// The conversion comes before the type's length holds a string and before a bound is written from it, and a slot of
         /// a type Calcite reads as it is, or of none, sends the value as it arrived.
         /// </summary>

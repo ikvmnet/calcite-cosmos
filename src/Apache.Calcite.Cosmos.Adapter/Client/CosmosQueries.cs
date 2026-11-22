@@ -387,7 +387,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (held is null || slot.TypeName is not SqlTypeName type)
                 return held;
 
-            var boxed = JavaClassOf(type);
+            var boxed = JavaClassOf(type, slot);
 
             object read;
             try
@@ -445,12 +445,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Answers the class Calcite holds a parameter of a type in: its own type factory's answer for the nullable type,
         /// the validator making every parameter's type nullable.
         /// </summary>
+        /// <remarks>
+        /// Asked from the type's name alone, which is what the slot carries, the factory answers every type a parameter
+        /// takes but a <c>ROW</c>, whose class it reads off the row's fields: it fails casting a type made from the name to
+        /// a record type. Calcite reads such a parameter as its row's class, which the slot cannot name, so the statement
+        /// fails by name, as the adapter's failure and not Calcite's.
+        /// </remarks>
         /// <param name="type">The parameter's type.</param>
+        /// <param name="slot">The parameter, which a failure names.</param>
         /// <returns>The class.</returns>
-        static java.lang.Class JavaClassOf(SqlTypeName type)
+        /// <exception cref="CosmosExecutionException">The type factory answers no class for the type from its name alone.</exception>
+        static java.lang.Class JavaClassOf(SqlTypeName type, CosmosDynamicValue slot)
         {
             var factory = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
-            return (java.lang.Class)factory.getJavaClass(factory.createTypeWithNullability(factory.createSqlType(type), true));
+            try
+            {
+                return (java.lang.Class)factory.getJavaClass(factory.createTypeWithNullability(factory.createSqlType(type), true));
+            }
+            catch (Exception e) when (e is java.lang.RuntimeException or InvalidCastException)
+            {
+                throw new CosmosExecutionException($"Parameter {slot.VariableName} is of type {type.getName()}, for which Calcite's type factory answers no class from the type's name alone ({e.GetType().Name}: {e.Message}), so it cannot be converted as Calcite converts it and the statement fails.", e);
+            }
         }
 
     }
