@@ -59,7 +59,7 @@ answer a full join would:
   '$.category')` is the text key of the rule above, so it qualifies only where the container's schema
   declares `category` a string (Chapter 14). To keep a lookup on the partition key, declare it; without
   a declaration the join reads the container. A typed accessor over a number or a boolean —
-  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — qualifies as it is: the keys are sent as numbers.
+  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — qualifies as it is.
   On the emulator, which stores U+0000 and U+FDD0 in another spelling
   (Appendix E), a text key is sent in the stored one, so it finds what it names; Azure is sent each
   key as written.
