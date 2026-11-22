@@ -156,12 +156,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// compared with by value (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
         /// </para>
         /// <para>
-        /// <b>Where that answers none, the key is sent as its double</b>, where a statement's parameter fails: a whole
-        /// number beyond an <c>int64</c> or a fraction beyond a <see cref="decimal"/>, each of which the service holds as
-        /// its correctly rounded double, which a key equal to it rounds to as well. The restriction has only to keep every
-        /// document the key could match, since the join compares every fetched key itself, so a document another key
-        /// rounds alike to is fetched and left unmatched. A key beyond a double's range is no number the service holds,
-        /// and fails the batch by name rather than be sent as an infinity.
+        /// <b>Where that answers none, or a decimal that is not the key, the key is sent as its double</b>: a whole number
+        /// beyond an <c>int64</c>, a fraction beyond a <see cref="decimal"/>, or one past its 28 places, which the decimal
+        /// rounds (<c>1E-30</c> to 0). The service holds a number written so as its correctly rounded double, which a key
+        /// equal to it rounds to as well. The restriction has only to keep every document the key could match, since the
+        /// join compares every fetched key itself, so a document another key rounds alike to is fetched and left
+        /// unmatched. A key beyond a double's range is no number the service holds, and fails the batch by name rather
+        /// than be sent as an infinity.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
@@ -172,7 +173,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (key is not java.math.BigDecimal value)
                 return key;
 
-            if (CosmosRexLiterals.TryGetExactNumberValue(value) is { } exact)
+            if (CosmosRexLiterals.TryGetExactNumberValue(value) is { } exact && (exact is not decimal held || new java.math.BigDecimal(held.ToString(CultureInfo.InvariantCulture)).compareTo(value) == 0))
                 return exact;
 
             var approximate = value.doubleValue();

@@ -430,18 +430,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// A <c>DECIMAL</c> key is bound as <c>CosmosQueries</c> binds a decimal parameter, a decimal where its double is
-        /// right and a long where the double is another whole number; where neither serves, as its double, which the
-        /// service holds such a number as; and beyond a double's range it fails by name.
+        /// right and a long where the double is another whole number; where neither serves, or where the decimal would round
+        /// the key past its 28 places, as its double, which the service holds such a number as; and beyond a double's range
+        /// it fails by name.
         /// </summary>
         [Fact]
-        public void ADecimalKeyIsBoundAsTheNumberTheServiceComparesAsIt()
+        public async Task ADecimalKeyIsBoundAsTheNumberTheServiceComparesAsIt()
         {
-            object?[] Bound(params string[] keys) => Keys(CosmosLookup.Bind(Query(), "@k", keys.Length, [.. keys.Select(k => (object?)CosmosLookup.Normalize(new java.math.BigDecimal(k), SqlTypeName.DECIMAL))]));
+            // The keys each statement is sent, the build side holding one row per key, joined under DECIMAL.
+            static async Task<object?[]> Bound(params string[] keys)
+            {
+                var executor = new RecordingExecutor();
+                await Collect(CosmosLookup.Join<object, object, string>(
+                    new ListCursor<object>([.. keys.Select(k => (object)new java.math.BigDecimal(k))]),
+                    executor,
+                    null!,
+                    Query(),
+                    "@k",
+                    keys.Length,
+                    b => b,
+                    element => element,
+                    p => p,
+                    (b, p) => $"{b}/{p}",
+                    SqlTypeName.DECIMAL));
 
-            Bound("1.50", "9007199254740993", "100000000000000000001").Should().Equal(1.5m, 9007199254740993L, 1e20d);
+                return Keys(executor.Executed.Single());
+            }
+
+            (await Bound("1.50", "0.1", "9007199254740993", "100000000000000000001")).Should().Equal(1.5m, 0.1m, 9007199254740993L, 1e20d);
+
+            // A decimal holds 28 places, and rounds a key past them to another number: 1E-30 to 0, which no document holding
+            // 1E-30 equals. Each is sent as its double, which the stored number is held as.
+            (await Bound("1E-30", "1.23456789E-25", "1.2345678901234567E-13")).Should().Equal(1e-30d, 1.23456789E-25d, 1.2345678901234567E-13d);
 
             var beyond = () => Bound("1e400");
-            beyond.Should().Throw<CosmosExecutionException>().WithMessage("*beyond the range of a double*");
+            await beyond.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*beyond the range of a double*");
         }
 
         /// <summary>

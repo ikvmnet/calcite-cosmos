@@ -3458,6 +3458,11 @@ across documents* and *A join of a container to itself* is the record.
   answers the rows `=` makes where Calcite's own merge join answers fewer. The probe side never holds `-0.0`, which the
   service reads back as `0` (`Service.IntegralNumbersReadBackAsHeld`). Following the merge join would answer by the plan
   Calcite chose rather than by the condition the query wrote.
+- **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, upkeep.*
+  `CosmosLookup.Sent` sends a decimal key by `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value`
+  sends a decimal parameter, and adds the key's double where that conversion has no exact answer, which the join's
+  comparison of every fetched key makes safe. One place should decide how a value of a type is sent: once a
+  statement's parameter is converted by its SQL type, `Sent` should call that conversion and keep only its double.
 - **The lookup join's restriction leaves out a document whose typed column reads a number as another** — *medium, a
   wrong answer, older than the key match; the restriction asked of the rendering graph, which Stage 3's parameter work
   plans, settles it.* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), sending
