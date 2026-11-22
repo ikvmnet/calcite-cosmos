@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         CalciteSchema _rootSchema = null!;
         JavaTypeFactoryImpl _typeFactory = null!;
 
-        void Given(string[] orders, string[] products, CosmosContainerMetadata? declared = null)
+        void Given(string[] orders, string[] products, CosmosContainerMetadata? declared = null, CosmosLookupCache? cache = null)
         {
             _typeFactory = new JavaTypeFactoryImpl();
 
@@ -116,7 +116,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _productsExecutor = new StubExecutor(products);
 
             _orders = new CosmosTable(Orders, _ordersExecutor);
-            _products = new CosmosTable(declared ?? Products, _productsExecutor);
+            _products = new CosmosTable(declared ?? Products, _productsExecutor, cache);
 
             _rootSchema = CalciteSchema.createRootSchema(false);
             _rootSchema.add("orders", _orders);
@@ -642,6 +642,65 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var sent = _productsExecutor.Executed.Should().ContainSingle().Which;
             sent.Sql.Should().NotContain(CosmosLookupJoin.KeyPrefix, "an infinity has no number the restriction could name");
             Keys(sent).Should().BeEmpty();
+        }
+
+        /// <remarks>
+        /// A batch fetched without the restriction pairs every document the probe keeps with a key by its own plan's
+        /// reading, and the <c>REAL</c>, <c>DOUBLE</c> and <c>FLOAT</c> plans of one probe render one restricted statement
+        /// but read a stored number differently: a <c>REAL</c> column reads <c>16777217</c> as <c>16777216</c>, <c>0.1</c> as
+        /// the float nearest it, <c>±1e-50</c> as zero and <c>1e39</c> as an infinity. So what such a batch fetched is
+        /// remembered for its own execution alone. Remembered across executions under the restricted statement, it gave a
+        /// <c>DOUBLE</c> or <c>FLOAT</c> plan after a <c>REAL</c> plan whose batch held an infinity the <c>REAL</c> plan's
+        /// rows, and a <c>REAL</c> plan of an infinity after a <c>DOUBLE</c> plan's infinity batch nothing, where Calcite's
+        /// own join and the same plan over a fresh cache answer otherwise.
+        /// </remarks>
+        [Fact]
+        public async Task ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone()
+        {
+            var products = new[]
+            {
+                """{"id":"p2p24","n":16777216}""", """{"id":"p2p24p1","n":16777217}""", """{"id":"p01","n":0.1}""", """{"id":"p0","n":0}""",
+                """{"id":"pm1em50","n":-1e-50}""", """{"id":"p1em50","n":1e-50}""", """{"id":"pinf","n":1e39}""",
+            };
+
+            string Sql(string values, string type) => $"SELECT t.\"id\" FROM (VALUES {values}) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING {type}) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            var realInfinity = Sql("(1, CAST('Infinity' AS REAL)), (2, CAST(16777216 AS REAL)), (3, CAST(0.1 AS REAL)), (4, CAST(0 AS REAL))", "REAL");
+            var doubleInfinity = Sql("(1, CAST('Infinity' AS DOUBLE)), (2, 16777216e0)", "DOUBLE");
+
+            foreach (var (first, second, answer) in new (string, string, object[])[]
+            {
+                (realInfinity, Sql("(2, 16777216e0), (3, 0.10000000149011612e0), (4, 0e0)", "DOUBLE"), ["p2p24", "p0"]),
+                (realInfinity, Sql("(2, CAST(16777216 AS FLOAT)), (3, CAST(0.10000000149011612e0 AS FLOAT)), (4, CAST(0 AS FLOAT))", "FLOAT"), ["p2p24", "p0"]),
+                // A REAL column reads the stored 1e39 as the infinity a DOUBLE column does not.
+                (doubleInfinity, Sql("(1, CAST('Infinity' AS REAL))", "REAL"), ["pinf"]),
+            })
+            {
+                var cache = new CosmosLookupCache(1000, TimeSpan.FromMinutes(10));
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: cache);
+                var plan = Plan(first);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                await Execute(plan);
+                Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the batch holds an infinity, which the restriction cannot name");
+                var remembered = cache.Rows;
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: cache);
+                plan = Plan(second);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan)).Should().BeEquivalentTo(answer, second);
+                _productsExecutor.Executed.Should().ContainSingle("the first execution left nothing to answer it from");
+                remembered.Should().Be(0, "what a batch fetched without the restriction pairs is its own plan's reading");
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: new CosmosLookupCache(1000, TimeSpan.FromMinutes(10)));
+                (await Execute(Plan(second)))
+                    .Should().BeEquivalentTo(answer, "a fresh cache answers the same: " + second);
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(second, lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own)).Should().BeEquivalentTo(answer, "Calcite's own join answers the same: " + second);
+            }
         }
 
         /// <remarks>

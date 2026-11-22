@@ -211,7 +211,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// equals. That is an approximate key that is not finite, and a decimal beyond a double's range. The restriction
         /// cannot name it, so the batch holding it is fetched without the restriction and the join's own comparison of
         /// every document the probe keeps answers it, which rests on nothing about what a document may hold. That costs
-        /// request units, for a batch holding such a key.
+        /// request units, for a batch holding such a key, and what the batch fetched is remembered for its own execution
+        /// alone, since it pairs each document with a key by its own plan's reading.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
@@ -335,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </param>
         /// <param name="shared">
         /// The container's cache across executions, or <c>null</c> where none is configured. Consulted
-        /// beneath the per-join cache and populated by every fetch; see <c>DESIGN.md</c> under
+        /// beneath the per-join cache and populated by every restricted fetch; see <c>DESIGN.md</c> under
         /// <em>The lookup join's caches</em>.
         /// </param>
         /// <param name="unmatched">
@@ -700,7 +701,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                 // What crossed the wire for each key, kept only where a shared cache will remember
                 // it. The elements are already standalone: the executor clones what it yields.
-                var elements = _shared is null ? null : new Dictionary<object, List<JsonElement>>();
+                //
+                // Only a restricted fetch is remembered across executions. Its entries are named by the restricted
+                // statement, and a batch fetched without the restriction pairs every document with a key by this plan's
+                // reading, which another plan rendering that statement may read otherwise: a REAL column reads a stored
+                // 16777217 as 16777216 where a DOUBLE column does not. So such a batch answers its keys for this execution
+                // alone, through the per-join cache, which this plan's reading both writes and reads.
+                var elements = _shared is null || unnamed ? null : new Dictionary<object, List<JsonElement>>();
 
                 // Every document the probe keeps, where the restriction cannot name a key of the batch; the join's own
                 // comparison below then answers every key of it.
@@ -756,8 +763,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     if (_cache is not null && _cache.Count < _cacheSize)
                         _cache[key] = rows;
 
-                    if (_shared is not null)
-                        _shared.Set(_statement!, key, elements!.TryGetValue(key, out var held) ? held : Array.Empty<JsonElement>());
+                    if (elements is not null)
+                        _shared!.Set(_statement!, key, elements.TryGetValue(key, out var held) ? held : Array.Empty<JsonElement>());
                 }
 
                 return true;

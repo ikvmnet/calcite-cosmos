@@ -6455,7 +6455,8 @@ fetched. A key whose double is an infinity or NaN, an approximate key that is no
 beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a string
 no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the probe's
 own statement without the restriction, rendered beside the restricted one, and the join's own comparison
-answers every key of it, which rests on nothing about what a document may hold and costs request units only.
+answers every key of it, which rests on nothing about what a document may hold. It costs request units, and
+is remembered for its own execution alone (*The lookup join's caches*).
 The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi key too,
 matches a null key with a null one, which no fetch by key finds.
 
@@ -6532,6 +6533,15 @@ no request units at all. Its decisions:
   shape cannot cross. The values are the ones the execution bound, not the slots a prepared
   statement carries: named by its slots, every execution of one plan would share answers whatever
   values it was run with. Rows are rebuilt from JSON per execution, which is the price of sharing.
+- **Only a restricted fetch is remembered.** A batch holding a key with no number to be sent as is fetched
+  without the restriction (*What the lookup join reaches*), and pairs every document the probe keeps with a
+  key by its own plan's reading. The `REAL`, `DOUBLE` and `FLOAT` plans of one probe render one restricted
+  statement and read a stored number differently: a `REAL` column reads `16777217` as `16777216` and `1e39`
+  as an infinity, where a `DOUBLE` column does not. Remembered under that statement, a `REAL` plan's batch
+  answered a later `DOUBLE` or `FLOAT` plan with its own rows, and a `DOUBLE` plan's batch answered a `REAL`
+  plan's infinity as absent, each where Calcite's own join and a fresh cache answer otherwise
+  (`CosmosLookupJoinTests.ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone`). So such a
+  batch answers its keys for its own execution alone, through the cache within it.
 - **Expire-after-write, and expiry is the only eviction.** A full cache purges what has expired and
   otherwise declines new entries — the same fill-to-bound honesty as the inner cache, with the TTL
   providing turnover. The bound counts rows, with an absence entry counting as one.
