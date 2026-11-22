@@ -568,11 +568,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Two routings recorded as measured (<c>TODO.md</c>, <em>A number pins no partition unless the declaration
-        /// leaves the key one value</em>), each as on <c>main</c>: which listed value a comparison of the key through the
-        /// cast of the text to <c>DOUBLE</c> pins, beside what <c>RETURNING DOUBLE</c> sends; and, over a key the
-        /// declaration fixes to one value, which comparisons are sent with no <c>WHERE</c> and pin nothing, which keep their
-        /// <c>WHERE</c> and pin, which stay in Calcite over a request that pins nothing, and that one beside the rest of a
-        /// <c>WHERE</c> leaves the request pinned.
+        /// leaves the key one value</em>): which listed value a comparison of the key through the cast of the text to
+        /// <c>DOUBLE</c> pins, beside what <c>RETURNING DOUBLE</c> sends; and, over a key the declaration fixes to one
+        /// value, which comparisons are sent with no <c>WHERE</c> and pin nothing, which keep their <c>WHERE</c> and pin,
+        /// those the facts graph reads coarsely among them, which are never deleted, which stay in Calcite over a request
+        /// that pins nothing, and that one beside the rest of a <c>WHERE</c> leaves the request pinned.
         /// </summary>
         [Fact]
         public void ACastOfTheKeyToDoublePinsAListedFractionBesideANumberAndNoValueTheKeyIsFixedTo()
@@ -612,9 +612,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 query.Sql.Should().Contain("WHERE", kept);
             }
 
-            var decimalParse = Planned("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.ref' RETURNING DECIMAL) = 5""", five);
-            decimalParse.PartitionKeyValues.Should().BeNull("RETURNING DECIMAL raises over no number, so the equality is proved over a key fixed to 5, and dropped");
-            decimalParse.Sql.Should().NotContain("WHERE");
+            foreach (var coarse in new[] { """JSON_VALUE(c."DOC", '$.ref' RETURNING DECIMAL) = 5""", """CAST(JSON_VALUE(c."DOC", '$.ref') AS DOUBLE) = 5""" })
+            {
+                var query = Planned($"""SELECT c."id" FROM items AS c WHERE {coarse}""", five);
+                query.PartitionKeyValues.Should().Equal(new object?[] { 5L }, $"{coarse} is proved over a key fixed to 5, but the facts graph reads it coarsely, so it stays and pins");
+                query.Sql.Should().EndWith("WHERE (c.ref = @p0)", coarse);
+            }
 
             foreach (var (fixedTo, inCalcite, literal) in new[]
             {
@@ -635,15 +638,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             {
                 var container = Declaring($$"""{ "type": "object", "required": ["ref"], "properties": { "ref": {{fixedTo}} } }""");
                 var implied = Planned(string.Format(Cast, "5.5"), container);
-                implied.PartitionKeyValues.Should().BeNull($"the equality is implied by {fixedTo}, and dropped");
-                implied.Sql.Should().NotContain("WHERE", fixedTo);
+                implied.PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"the equality is implied by {fixedTo}, but read coarsely, so it stays and pins");
+                implied.Sql.Should().EndWith("WHERE (c.ref = @p0)", fixedTo);
 
                 Planned(string.Format(Returning, "5.5"), container).PartitionKeyValues.Should().Equal(new object?[] { 5.5d }, $"RETURNING DOUBLE over {fixedTo}");
             }
 
             var besideRest = Planned("""SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.ref') AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'""", five);
             besideRest.PartitionKeyValues.Should().Equal(new object?[] { 5L }, "beside the rest of a WHERE the request is still pinned");
-            besideRest.Sql.Should().EndWith("WHERE (c.k = @p0)");
+            besideRest.Sql.Should().EndWith("WHERE ((c.ref = @p0) AND (c.k = @p1))");
 
             var required = Declaring("""{ "type": "object", "required": ["ref"], "properties": { "ref": { "const": "bikes" } } }""");
             Planned(Text, required).PartitionKeyValues.Should().BeNull("the equality is implied, and dropped");

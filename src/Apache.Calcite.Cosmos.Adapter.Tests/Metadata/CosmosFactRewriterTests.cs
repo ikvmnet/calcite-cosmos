@@ -420,9 +420,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// true wherever they are.
         /// </summary>
         /// <remarks>
-        /// The old tautology test was an equality the declaration alone guaranteed, and missed this; the oracle's is any
-        /// conjunct every sibling and the declaration make always true, asked one at a time so that two conjuncts implying
-        /// each other do not both go. <c>CosmosDifferentialTests</c> holds the deletion to Calcite's answer.
+        /// The old tautology test was an equality the declaration alone guaranteed, and missed this; the oracle's is
+        /// any conjunct the facts graph reads exactly that the declaration and every sibling it reads exactly make
+        /// always true, asked one at a time so that two conjuncts implying each other do not both go.
+        /// <c>CosmosDifferentialTests</c> holds the deletion to Calcite's answer.
         /// </remarks>
         [Fact]
         public void AConjunctItsSiblingsImplyIsDeleted()

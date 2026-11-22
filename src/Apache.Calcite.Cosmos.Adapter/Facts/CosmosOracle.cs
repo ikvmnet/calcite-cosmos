@@ -26,8 +26,8 @@ namespace Apache.Calcite.Cosmos.Facts
     /// <item>the declaration's frozen context, which is what holds of every document (L0);</item>
     /// <item>beneath it, one stratum per round of admission: the conjuncts that first rendered in the stratum above,
     /// assumed, and what they establish (L2, and the last of them L1);</item>
-    /// <item>and beside them, children of the declaration holding every conjunct but one (L3), or the pins of a point
-    /// read.</item>
+    /// <item>and beside them, children of the declaration holding, of every conjunct but one, those the facts graph
+    /// reads exactly (L3), or the pins of a point read.</item>
     /// </list>
     /// <para>
     /// Each holds the statement's terms and their verdicts, and mentions, for a split, only what it assumes. A question

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -33,6 +34,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         static readonly JsonDocumentPath Id = P("id");
         static readonly JsonDocumentPath X = P("x");
         static readonly JsonDocumentPath B = P("b");
+        static readonly JsonDocumentPath Ref = P("ref");
 
         /// <summary>The service's facts alone: the theory of every container that declares no schema.</summary>
         static readonly JsonFactTheory Undeclared = TestReasoning.Bind(new JsonFactTheory(CosmosServiceFacts.Rules));
@@ -225,6 +227,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         }
 
         /// <summary>
+        /// Of two conjuncts that imply each other, one read coarsely and one exactly, neither goes, in either order: the
+        /// text's null test is never deleted beside a typed one, which it may not lean on, and the typed one, decided
+        /// always true beside it, is not deleted either, its own verdict being no more measured than what it establishes.
+        /// </summary>
+        [Fact]
+        public void OfTwoConjunctsThatImplyEachOtherNeitherGoesWhereOneIsReadCoarsely()
+        {
+            var (coarse, exact) = (IsNull(Typed(X, "INTEGER")), IsNull(Text(X)));
+
+            (FactsReadings.ReadExactly(coarse), FactsReadings.ReadExactly(exact)).Should().Be((false, true));
+            Declared(Theory(), coarse, exact).Decide(0, OracleLicence.DeleteConjunct(0)).Should().Be(Truth.Always, "beside the exact test its verdict says so");
+            Declared(Theory(), coarse, exact).RedundantConjuncts().Should().BeEmpty("only a conjunct the facts graph reads exactly is deleted");
+            Declared(Theory(), exact, coarse).RedundantConjuncts().Should().BeEmpty();
+        }
+
+        /// <summary>
         /// A predicate given is a predicate decided, whatever the atoms in it can be said to mean: an opaque one, and an
         /// equality of two numbers the oracle declines to call equal across numeric types.
         /// </summary>
@@ -257,6 +275,87 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             Given(Eq(Text(Kind), "a")).Decide(In(Text(Kind), "a", "b"), OracleLicence.Kept).Should().Be(Truth.Always);
             Given(In(Text(Kind), "a", "b")).Decide(Eq(Text(Kind), "a"), OracleLicence.Kept).Should().NotBe(Truth.Always);
             Given(In(Text(Kind), "a", "b")).Decide(Eq(Text(Kind), "c"), OracleLicence.Kept).Should().Be(Truth.Never);
+        }
+
+        /// <summary>
+        /// A deletion, a lowering and an arm assume only the siblings the facts graph reads exactly: a typed
+        /// <c>INTEGER</c> kind = 5, which it reads coarsely, makes nothing beside it redundant, though where kind is 5 the
+        /// label is there. What the filter keeps, and the reduce, still assume every conjunct.
+        /// </summary>
+        /// <remarks>
+        /// <c>Kept</c>'s facts know the label present where only the coarse kind can say so — asked of a statement without
+        /// the label's own test, which beside it would say so whatever the kind is read as.
+        /// </remarks>
+        [Fact]
+        public void TheDeletionAndTheLoweringAssumeOnlyTheSiblingsTheFactsGraphReadsExactly()
+        {
+            var theory = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Integer)), When(Kind, 5m, Label, Present), When(Kind, 5m, Label, Type(JsonType.String)));
+            var (coarse, label) = (Eq(Typed(Kind, "INTEGER"), 5m), IsNotNull(Text(Label)));
+            var scope = Declared(theory, coarse, label, Opaque(0));
+
+            (FactsReadings.ReadExactly(coarse), FactsReadings.ReadExactly(label), FactsReadings.ReadExactly(Opaque(0))).Should().Be((false, true, true));
+            scope.AssumedIn(OracleLicence.DeleteConjunct(1)).Should().Equal(2);
+            scope.AssumedIn(OracleLicence.Siblings(1)).Should().Equal(2);
+            scope.AssumedIn(OracleLicence.Arm(1, [])).Should().Equal(2);
+            scope.AssumedIn(OracleLicence.Kept).Should().Equal(0, 1, 2);
+            scope.AssumedIn(OracleLicence.Reduce).Should().Equal(0, 1, 2);
+            scope.Decide(1, OracleLicence.DeleteConjunct(1)).Should().Be(Truth.Unknown);
+            scope.RedundantConjuncts().Should().BeEmpty();
+            Knows(scope.Facts(OracleLicence.Siblings(1)), Label, Present).Should().BeFalse();
+            Knows(Declared(theory, coarse, Opaque(0)).Facts(OracleLicence.Kept), Label, Present).Should().BeTrue("routing and the rows kept still read the coarse kind");
+        }
+
+        /// <summary>
+        /// A fact a coarse reading wrongly establishes reaches no deletion: planted, a typed number equal to 5 holds the
+        /// number 5 alone, as the facts graph read it before it kept the literal's rounding window, so that beside kind 5
+        /// the label is there; but a stored 5.0000000000000001 reads as 5 and need not carry the label, and its test is
+        /// still sent.
+        /// </summary>
+        [Fact]
+        public void AFactACoarseReadingWronglyEstablishesReachesNoDeletion()
+        {
+            var theory = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Number)), When(Kind, 5m, Label, Present), When(Kind, 5m, Label, Type(JsonType.String)));
+            var kindAlone = new PredicateStatement([Eq(Typed(Kind, "INTEGER"), 5m)]);
+            (Knows(Narrowed(theory).Admit(kindAlone).Facts(OracleLicence.Kept), Label, Present), Knows(Oracle(theory).Admit(kindAlone).Facts(OracleLicence.Kept), Label, Present))
+                .Should().Be((true, false), "the plant is live: beside kind 5 alone the label is there, and without it not");
+
+            var scope = Narrowed(theory).Admit(new PredicateStatement([Eq(Typed(Kind, "INTEGER"), 5m), IsNotNull(Text(Label))]));
+            scope.RedundantConjuncts().Should().BeEmpty("a stored 5.0000000000000001 reads as 5 and its label may be absent");
+            Knows(scope.Facts(OracleLicence.DeleteConjunct(1)), Label, Present).Should().BeFalse();
+        }
+
+        /// <summary>
+        /// Nor does it reach a lowering: planted as above, kind 2 alone reads a UUID ref's canonical lower-case form; but a
+        /// stored 2.0000000000000001 reads as 2 and its ref may be spelled in upper case, so the comparison is not lowered
+        /// onto the form.
+        /// </summary>
+        [Fact]
+        public void AFactACoarseReadingWronglyEstablishesReachesNoLowering()
+        {
+            var theory = Theory(Outright(Kind, Present), Outright(Kind, Type(JsonType.Number)), When(Kind, 2m, Ref, Type(JsonType.String)),
+                When(Kind, 2m, Ref, new JsonClaim.Represents(CosmosUuidForms.CanonicalLower)));
+            var scope = Narrowed(theory).Admit(new PredicateStatement([Eq(Typed(Kind, "INTEGER"), 2m), Eq(Text(Ref), "123e4567-e89b-12d3-a456-426614174000")]));
+
+            scope.Facts(OracleLicence.Kept).RepresentationOf(Ref).Should().NotBeNull("the plant is live: beside kind 2 alone the form is read");
+            scope.Facts(OracleLicence.Siblings(1)).RepresentationOf(Ref).Should().BeNull("a stored 2.0000000000000001 reads as 2 and its ref may be spelled in upper case");
+        }
+
+        /// <summary>
+        /// An oracle over the predicate rules of a graph of the test's own, with a rule planted beside the right ones: a
+        /// typed number held equal to a number holds that number alone, the narrow reading a coarse sibling once had.
+        /// </summary>
+        static CosmosOracle Narrowed(JsonFactTheory theory)
+        {
+            var generations = new JsonFactGenerations(CosmosReasoning.Rows, long.MaxValue);
+            var rules = PredicateRules.Of(generations.Current.Contexts);
+            rules.Establish.DefineRule("planted: a typed number equal to a number holds that number alone", r =>
+            {
+                var (e, p, a) = r.Vars<Pred, JPath, PredicateAtom>("e", "p", "a");
+                r.When(rules.Holds.Of(e, true), rules.Atom.Of(e, p, a));
+                r.Where(a, atom => atom.Reader.StartsWith("typed:", StringComparison.Ordinal) && atom.Test == PredicateAtom.Equal && atom.Operand is { } o && JsonValues.IsNumber(o));
+                r.Then(rules.Json.Dom.Of(p).Is(Compute.Of(a, atom => ValueSet.Of(atom.Operand!))));
+            });
+            return new CosmosOracle(theory, generations);
         }
 
         /// <summary>
@@ -334,15 +433,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// the question a weakening beneath asks, whose answer must never be no for want of a run, or the same weakening
         /// is pushed under itself for ever.
         /// </summary>
+        /// <remarks>
+        /// A run that does not complete reads nothing exactly, so a rewrite inside a conjunct leans on no sibling there.
+        /// </remarks>
         [Fact]
         public void WhatAScopeAssumesIsAlwaysTrueThereHoweverItsRunEnds()
         {
             var oracle = new CosmosOracle(Theory(), new JsonFactGenerations(CosmosReasoning.Rows), new RunOptions { StopOnContradiction = true, IterationLimit = 1 });
             var weakening = And(Opaque(0), Opaque(1));
             var scope = oracle.Admit(new PredicateStatement(new[] { Opaque(0), Opaque(1), Eq(Text(A), "x"), weakening }));
+            var beneath = OracleLicence.Applied(new[] { Opaque(0), Opaque(1) });
 
-            scope.Decide(3, OracleLicence.Siblings(3)).Should().Be(Truth.Always);
-            scope.Decide(And(Opaque(0), Opaque(2)), OracleLicence.Siblings(3)).Should().NotBe(Truth.Always, "opaque#2 is not assumed");
+            scope.Decide(weakening, beneath).Should().Be(Truth.Always);
+            scope.Decide(And(Opaque(0), Opaque(2)), beneath).Should().NotBe(Truth.Always, "opaque#2 is not assumed");
+            scope.AssumedIn(OracleLicence.Siblings(3)).Should().BeEmpty("no run completes, so no sibling is read exactly");
         }
 
         [Fact]

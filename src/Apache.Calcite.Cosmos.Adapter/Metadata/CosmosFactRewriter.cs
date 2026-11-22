@@ -197,9 +197,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             var conjuncts = statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition);
 
-            // A conjunct the rest of the filter implies decides nothing, so the text sent is the one
-            // without it -- asked of its siblings and never of itself, and one at a time, so that two
-            // conjuncts implying each other do not both go.
+            // A conjunct the facts graph reads exactly, implied by the siblings it reads exactly, decides
+            // nothing, so the text sent is the one without it -- asked of its siblings and never of itself,
+            // and one at a time, so that two conjuncts implying each other do not both go.
             var redundant = rendered ? statement?.Redundant ?? Array.Empty<int>() : Array.Empty<int>();
             var paths = new CosmosRexPaths(fields, spelled: false);
 
@@ -293,8 +293,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             public string RootAlias { get; }
 
             /// <summary>
-            /// Gets what the rewrite may lean on: every sibling of its conjunct, and the conditions of
-            /// the arms it is inside.
+            /// Gets what the rewrite may lean on: the siblings of its conjunct the facts graph reads exactly,
+            /// and the conditions of the arms it is inside up to the first it reads coarsely.
             /// </summary>
             public JsonFactSet Known => _known ??= _statement is null ? JsonFactSet.Empty
                 : _conditions.Count == 0 ? _statement.Siblings(_conjunct)
@@ -302,10 +302,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Gets whether the arm the rewrite is inside is never read, and may be written <c>FALSE</c>:
-            /// its conditions contradict what every sibling establishes, a deleted one among them, and
-            /// nothing in the WHERE as written raises, so neither the evaluation the <c>FALSE</c> removes
-            /// nor a deletion beside it removes a failure. The rendering form's alone: the <c>FALSE</c> is written only
-            /// into the text sent.
+            /// its conditions, up to the first the facts graph reads coarsely, contradict what the siblings it reads
+            /// exactly establish, a deleted one among them, and nothing in the WHERE as written raises, so neither
+            /// the evaluation the <c>FALSE</c> removes nor a deletion beside it removes a failure. The rendering
+            /// form's alone: the <c>FALSE</c> is written only into the text sent.
             /// </summary>
             public bool NeverRead => _rendered && _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
 

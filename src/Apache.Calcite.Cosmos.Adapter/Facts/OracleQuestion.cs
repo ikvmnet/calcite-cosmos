@@ -12,13 +12,13 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether a conjunct can be deleted: the conjuncts kept beside it, never itself, and of those, where it reaches the
-        /// service, only the ones that reach it too (L3).
+        /// service, only the ones that reach it too (L3); of them, only what the facts graph reads exactly.
         /// </summary>
         DeleteConjunct,
 
         /// <summary>
         /// What a rewrite inside a conjunct may lean on, a comparison lowered onto its stored form: every sibling, never
-        /// the conjunct itself (L3).
+        /// the conjunct itself (L3); of them, only what the facts graph reads exactly.
         /// </summary>
         Siblings,
 
