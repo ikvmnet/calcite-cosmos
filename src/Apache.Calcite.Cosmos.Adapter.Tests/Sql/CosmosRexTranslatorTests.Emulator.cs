@@ -135,9 +135,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             }
 
             /// <summary>
-            /// A parameter that is a list is not spelled when it is bound, so outside a compared position it is refused:
-            /// <c>MEMBER OF ?</c> is <c>ARRAY_CONTAINS(@p, ...)</c>, whose elements the service compares with the stored path.
-            /// A service-only function given a text parameter fails the statement there, having no body in process.
+            /// A parameter that is a list is never sent, under either target, as no literal of one is
+            /// (<c>CosmosRexLiterals.IsNeverSent</c>): <c>MEMBER OF ?</c> would be <c>ARRAY_CONTAINS(@p, ...)</c>, whose
+            /// numbers the SDK writes as objects. A service-only function given a text parameter fails the statement under
+            /// the emulator, having no body in process.
             /// </summary>
             [Fact]
             public void AListParameterAndAServiceOnlyFunctionsTextParameterAreRefused()
@@ -147,7 +148,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 var regex = _t.Call(CosmosOperators.RegexMatch, Name, Param);
 
                 Translator(CosmosServiceTarget.Emulator).TryTranslate(member, out _).Should().BeFalse();
-                Translator(CosmosServiceTarget.Azure).TryTranslate(member, out _).Should().BeTrue();
+                Translator(CosmosServiceTarget.Azure).TryTranslate(member, out _).Should().BeFalse("a collection parameter is never sent, under either target");
                 Translator(CosmosServiceTarget.Emulator).TryTranslate(regex, out _).Should().BeFalse();
                 Translator(CosmosServiceTarget.Azure).TryTranslate(regex, out _).Should().BeTrue();
             }

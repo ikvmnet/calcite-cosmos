@@ -25,8 +25,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Converts a Calcite literal into the CLR value to bind.
         /// </summary>
         /// <remarks>
-        /// Temporal literals are refused, Cosmos JSON having no date or time type, and so is a literal of a type no value the
-        /// service holds is (<see cref="HasNoServiceValue"/>) and an exact number the service would read as another number
+        /// Temporal literals are refused, Cosmos JSON having no date or time type, and so is a literal of a type
+        /// <see cref="IsNeverSent"/> names and an exact number the service would read as another number
         /// (<see cref="TryGetExactNumberValue"/>). A geometry is bound as the GeoJSON object a geometry
         /// parameter is (#156).
         /// </remarks>
@@ -38,7 +38,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             var type = literal.getTypeName();
 
-            if (HasNoServiceValue(type))
+            if (IsNeverSent(type))
                 throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
 
             if (type == SqlTypeName.BOOLEAN)
@@ -88,10 +88,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Whether no value the service holds is a value of a type, so that neither a literal nor a parameter of it is sent:
-        /// an interval, which Calcite holds as a count of its smallest unit; and a <c>UUID</c>, a <c>BINARY</c> or a
-        /// <c>VARBINARY</c>, which Calcite holds as a Java object (<c>UuidValue</c>, <c>ByteString</c>) the SDK writes as a
-        /// JSON object.
+        /// Whether neither a literal nor a parameter of a type is sent, the value Calcite holds one in being no value the
+        /// service compares as Calcite compares it: an interval, a count of its smallest unit; a <c>UUID</c>, a
+        /// <c>BINARY</c> or a <c>VARBINARY</c>, a Java object (<c>UuidValue</c>, <c>ByteString</c>) the SDK writes as a
+        /// JSON object; and a collection or a row, a Java list, map or row whose numbers the SDK writes as JSON objects,
+        /// and whose comparison at the service nobody has shown to be Calcite's.
         /// </summary>
         /// <remarks>
         /// Read by <see cref="GetLiteralValue"/> and by the translator's parameter (<c>CosmosRexTranslator.WriteDynamicParam</c>),
@@ -99,9 +100,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// one is written in that spelling, through a slot of its own (<c>CosmosRexTranslator.TryWriteStoredUuidParameter</c>).
         /// </remarks>
         /// <param name="type">The type of the literal or the parameter.</param>
-        /// <returns><c>true</c> where no value the service holds is one.</returns>
-        internal static bool HasNoServiceValue(SqlTypeName type) =>
-            SqlTypeName.INTERVAL_TYPES.contains(type) || type == SqlTypeName.UUID || type == SqlTypeName.BINARY || type == SqlTypeName.VARBINARY;
+        /// <returns><c>true</c> where neither is sent.</returns>
+        internal static bool IsNeverSent(SqlTypeName type) =>
+            SqlTypeName.INTERVAL_TYPES.contains(type)
+            || type == SqlTypeName.UUID || type == SqlTypeName.BINARY || type == SqlTypeName.VARBINARY
+            || type == SqlTypeName.ARRAY || type == SqlTypeName.MULTISET || type == SqlTypeName.MAP || type == SqlTypeName.ROW;
 
         /// <summary>
         /// Converts an exact number into the CLR value the service compares as that number, or answers <c>null</c> where

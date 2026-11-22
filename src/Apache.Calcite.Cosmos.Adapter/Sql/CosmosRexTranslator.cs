@@ -795,21 +795,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// the container whole rather than taking a point read.
         /// </para>
         /// <para>
-        /// <b>A parameter of an interval, a <c>UUID</c> or a binary type is refused, as a literal of one is</b>
-        /// (<see cref="CosmosRexLiterals.HasNoServiceValue"/>): no value the service holds is one. Sent, a null test of a
-        /// cast to an interval, which Calcite's planning leaves as a test of the parameter itself, was answered from the count
-        /// Calcite holds the interval in, where Calcite's plan answers otherwise; and a <c>RETURNING UUID</c> or a binary
-        /// <c>RETURNING</c> compared with one, bound as the Java object Calcite holds the value in, was answered where
-        /// Calcite's plan fails reading the path (<c>CosmosConnectionPlanningTests</c>).
+        /// <b>A parameter of an interval, a <c>UUID</c>, a binary, a collection or a row type is refused, as a literal
+        /// of one is</b> (<see cref="CosmosRexLiterals.IsNeverSent"/>): the value Calcite holds it in is no value the
+        /// service compares as Calcite compares it. Sent, a null test of a cast to an interval, which Calcite's planning
+        /// leaves as a test of the parameter itself, was answered from the count Calcite holds the interval in, where
+        /// Calcite's plan answers otherwise; a <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with one,
+        /// bound as the Java object Calcite holds the value in, was answered where Calcite's plan fails reading the path;
+        /// and a <c>RETURNING</c> array's <c>&lt;&gt;</c>, bound as the Java list of boxes Calcite holds the array in,
+        /// whose numbers the SDK writes as objects, kept the document Calcite drops (<c>CosmosConnectionPlanningTests</c>).
         /// </para>
         /// </remarks>
         /// <param name="builder">The statement under construction.</param>
         /// <param name="parameter">The parameter to write.</param>
-        /// <exception cref="CosmosTranslationException">A parameter of a type no value the service holds is, or one the emulator stores escaped.</exception>
+        /// <exception cref="CosmosTranslationException">A parameter of a type no literal of which is sent, or one the emulator stores escaped.</exception>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
-            if (parameter.getType()?.getSqlTypeName() is SqlTypeName type && CosmosRexLiterals.HasNoServiceValue(type))
-                throw new CosmosTranslationException($"A parameter of type '{type.getName()}' is computed in process: no value the service holds is one, and no literal of one is sent either.");
+            if (parameter.getType()?.getSqlTypeName() is SqlTypeName type && CosmosRexLiterals.IsNeverSent(type))
+                throw new CosmosTranslationException($"A parameter of type '{type.getName()}' is computed in process, as a literal of one is: the value Calcite holds it in is no value the service compares as Calcite compares it.");
 
             if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
                 throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
@@ -857,14 +859,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Whether a parameter of a type may arrive as text or holding text: a character type, one that holds any value,
-        /// or a collection or row, whose elements the binding does not spell (<c>CosmosQueries.Bind</c>).
+        /// Whether a parameter of a type may arrive as text or holding text: a character type, or one that holds any value.
+        /// A collection or a row is never sent (<see cref="CosmosRexLiterals.IsNeverSent"/>).
         /// </summary>
         static bool MayHoldText(org.apache.calcite.rel.type.RelDataType? type) =>
             type?.getSqlTypeName() is not SqlTypeName name
             || name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.ANY || name == SqlTypeName.VARIANT
-            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN
-            || name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET || name == SqlTypeName.MAP || name == SqlTypeName.ROW;
+            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN;
 
         /// <summary>
         /// Returns the slot a parameter's value is bound into: its ordinal, its type, and the length its type holds a

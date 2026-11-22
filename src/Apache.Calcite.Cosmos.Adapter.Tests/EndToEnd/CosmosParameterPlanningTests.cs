@@ -332,6 +332,32 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
         }
 
+        /// <summary>
+        /// A parameter of a collection type is never sent, as no literal of one is: Calcite holds its value as a Java list
+        /// or map, whose numbers the SDK writes as objects, and nobody has shown the service's comparison of one to be
+        /// Calcite's. A comparison with one is computed in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_QUERY(… RETURNING INTEGER ARRAY) &lt;&gt; ?</c> was sent as <c>c.a != @p0</c>, bound to the
+        /// <c>java.util.List</c> of <c>java.lang.Integer</c> Calcite holds the array in, which the SDK writes as an array
+        /// of objects no stored array equals, so the statement kept the document Calcite drops
+        /// (<see cref="CosmosConnectionPlanningTests"/>).
+        /// </remarks>
+        [Theory]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING INTEGER ARRAY) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING INTEGER MULTISET) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING DOUBLE ARRAY) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""? <> JSON_QUERY(c."DOC", '$.v' RETURNING VARCHAR ARRAY) OR c."id" = 'a'""", false)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.m' RETURNING MAP<VARCHAR, INTEGER>) <> ? AND c."id" = 'a'""", true)]
+        public void ACollectionParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the collection: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
         /// <remarks>
         /// Which is the whole of the fix. Nothing here has a value to record, and the ordinal is what
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL

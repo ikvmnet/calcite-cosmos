@@ -304,6 +304,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>RETURNING</c> collection compared with a parameter answers as Calcite's own plan answers over the same
+        /// documents, an <c>int[]</c>, a <c>double[]</c> or a <c>string[]</c> bound: nothing sent holds the parameter, and
+        /// the comparison is computed in process, over a container whose every request answers both documents, whatever its
+        /// <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the <c>java.util.List</c> of Java boxes Calcite holds the collection in,
+        /// which the SDK writes as an array of objects no stored array equals, so <c>&lt;&gt;</c> kept the document
+        /// Calcite drops.
+        /// </remarks>
+        [Fact]
+        public void ACollectionParametersComparisonAnswersAsCalcitesPlan()
+        {
+            string[] documents = ["""{"id":"a","a":[5,7],"d":[1.5,2.5],"v":["x","y"]}""", """{"id":"b","a":[1],"d":[3.5],"v":["z"]}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+
+            foreach (var (reading, bound) in new (string, object)[]
+            {
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER ARRAY) <> ?""", new[] { 5, 7 }),
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER ARRAY) <> ?""", new[] { 1 }),
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER MULTISET) <> ?""", new[] { 5, 7 }),
+                ("""JSON_QUERY({d}, '$.d' RETURNING DOUBLE ARRAY) <> ?""", new[] { 1.5, 2.5 }),
+                ("""JSON_QUERY({d}, '$.v' RETURNING VARCHAR ARRAY) <> ?""", new[] { "x", "y" }),
+            })
+            {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Rows(calcite, $"SELECT JSON_VALUE(\"d\", '$.id') FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\""), [bound]);
+                Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\""), documents, [bound], sent)
+                    .Should().Equal(expected, $"bound to {bound.GetType().Name}, the statement answers as Calcite's plan: " + reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
+            }
+        }
+
+        /// <summary>
         /// A scalar sub-query in a select list nothing above reads: the host's field trimmer drops its column and keeps the
         /// correlation variable its projection declares, and no rule converted a projection declaring one, Calcite's merge
         /// refusing it too, so the statement did not plan, declared or not, and through the reduce's empty answer only

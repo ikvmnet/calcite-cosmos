@@ -485,9 +485,9 @@ foreach (var value in new object[] { "bikes", 1000, 20, 10 })
 
 A parameter is sent as a Cosmos parameter, exactly as a literal of the same type would be. That
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
-prepared statement serves every page. A parameter of an interval, a `UUID` or a binary type is never
-sent, no Cosmos value being one: what reads it is computed in process. A `UUID` compared with a property
-declared to spell one is the exception, sent in that spelling (Chapter 14.2).
+prepared statement serves every page. A parameter of an interval, a `UUID`, a binary type, an array, a
+multiset or a map is never sent, as no literal of one is: what reads it is computed in process. A `UUID`
+compared with a property declared to spell one is the exception, sent in that spelling (Chapter 14.2).
 
 **A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
 as a double, and keeps a stored integer exact. So a whole number beyond 2^53
@@ -609,7 +609,7 @@ documents it has to read.
 | `POSITION` whose pattern is not proved a string of ASCII that holds something — a literal, or a `required` path whose `enum` lists only such strings; a literal beside a path in `CONCAT` or `\|\|` that is empty or holds anything beyond ASCII, but on Azure one in `CONCAT` holding U+0000 or characters from U+E000 up; `REPEAT` of a literal string; on the emulator, `REPEAT` of a count of 0 | the service's answers were measured with such patterns, literals, subjects and counts alone (Appendix B.2) |
 | `SUBSTRING` of a length below 0 | Calcite raises, where the service answers the empty string (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
-| on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text — a list among them — anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern, `MEMBER OF ?` | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
+| on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
 | on the emulator, a property or a selected column whose name holds U+0000 or U+FDD0 | the emulator stores a name in that spelling too, so the name written as it is reads nothing; read over the whole document. A table column so named cannot be read there at all |
 | on the emulator, `CHAR_LENGTH`, `LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, `POSITION`, `REPLACE`, `\|\|`, `REPEAT`, and a `LIKE` whose pattern holds `_`, `0` or `1` beyond a prefix, over a string that may hold U+0000, U+FDD0 or another character from U+E000 up | the emulator's functions work on the two units it stores each escape as, and count, cut and match them as two (Appendix B.2) |
 | a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |
