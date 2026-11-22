@@ -550,8 +550,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// <remarks>
         /// A <c>REAL</c>, <c>FLOAT</c> or <c>DOUBLE</c> <c>-0.0</c> on the small side matches the container's <c>0</c> as
         /// <c>=</c> does, alone, beside a <c>0.0</c> or in a left join, where Calcite's own join of the same statement, a
-        /// hash join once the lookup is not offered, leaves it unmatched: the one place the lookup answers a row Calcite's
-        /// own join does not (<c>TODO.md</c>).
+        /// hash join once the lookup is not offered, leaves it unmatched: a row the lookup answers and Calcite's own join
+        /// does not (<c>TODO.md</c>).
         /// </remarks>
         [Theory]
         [InlineData("REAL")]
