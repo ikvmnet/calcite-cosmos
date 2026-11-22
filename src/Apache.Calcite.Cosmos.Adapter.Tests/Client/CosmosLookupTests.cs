@@ -413,7 +413,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
-        /// A <c>DOUBLE</c> key <c>-0.0</c> matches a probe row reading <c>0</c>, as <c>=</c> does, where Calcite's merge join
+        /// A <c>DOUBLE</c> key <c>-0.0</c> matches a probe row reading <c>0</c>, as <c>=</c> does, where Calcite's own join
         /// leaves it unmatched; beside <c>0.0</c> it is one key of the batch.
         /// </summary>
         [Fact]

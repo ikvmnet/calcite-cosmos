@@ -3447,11 +3447,11 @@ across documents* and *A join of a container to itself* is the record.
   same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
-- **Calcite's own join never matches a `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches it as `=` does** —
-  *small, more rows than Calcite's own join answers; recorded, not planned.* Calcite's equi-join in process, a hash join
-  for the lookup join's own shape and a merge join between two in-process tables, never matches `-0.0` with `0.0`, alone
-  or beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot`,
-  `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
+- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches
+  it as `=` does** — *small, more rows than Calcite's own join answers; recorded, not planned.* Calcite's equi-join in
+  process, a hash join for the lookup join's own shape and a merge join between two in-process tables, never matches
+  `-0.0` with `0.0`, alone or beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot`
+  over each of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
   compares it after Calcite's cast to the join's comparison type, so a small side's `-0.0` is joined to the documents
   holding `0`, which Calcite's own join leaves unmatched. The container side never holds `-0.0`, which the service reads
   back as `0` (`Service.IntegralNumbersReadBackAsHeld`). Following Calcite's joins would answer by the plan Calcite

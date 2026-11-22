@@ -6457,10 +6457,11 @@ key too, matches a null key with a null one, which no fetch by key finds.
 
 **Calcite's own join never matches `-0.0` with `0.0`, and the lookup follows `=`.** Calcite's equi-join in
 process, a hash join for the lookup's own shape and a merge join between in-process tables, never matches a
-`DOUBLE` `-0.0` with `0.0`, where `=`, measured on every pair of a cross join, and the comparison join
-`ON a.v <= b.v AND a.v >= b.v` match them. The lookup answers what the condition says rather than what one
-of Calcite's physical joins happens to, and `TODO.md` records it. The container side never holds `-0.0`,
-which the service reads back as `0`, so what departs is a small side's `-0.0` joined to a stored `0`.
+`REAL`, `FLOAT` or `DOUBLE` `-0.0` with `0.0`, where `=`, measured on every pair of a cross join, and the
+comparison join `ON a.v <= b.v AND a.v >= b.v` match them. The lookup answers what the condition says rather
+than what one of Calcite's physical joins happens to, and `TODO.md` records it. The container side never
+holds `-0.0`, which the service reads back as `0`, so what departs is a small side's `-0.0` joined to a
+stored `0`.
 
 **A traversal on the probe side is restricted per document, and the binding walk has to know both of
 its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it
