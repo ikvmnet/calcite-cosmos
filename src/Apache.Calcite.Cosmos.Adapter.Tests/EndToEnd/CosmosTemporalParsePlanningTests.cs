@@ -24,16 +24,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
     /// <summary>
     /// What a declared shape changes about a plan whose temporal type comes from a <c>PARSE_</c> call
-    /// rather than from a cast, end to end.
+    /// or a cast carrying a format rather than from a plain cast, end to end: nothing it sends.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>A chain rather than a cast, which is the whole difference.</b> A cast says only that the
+    /// <b>A chain rather than a cast, and the chain reads leniently.</b> A cast says only that the
     /// text is to be read as an instant, and the declared shape answers whether comparing the stored
     /// strings answers what comparing the instants answers. A parse says <em>how</em> the text is to
-    /// be read, in a format string — so the same declared shape licenses nothing until the format is
-    /// known to read it. <c>CalciteTemporalParseMeasurementTests</c> is where that is measured; this
-    /// is where the plan is asked whether it acted on it.
+    /// be read, in a format string, and the shape would license the stored strings in its place only
+    /// if the format read every string the shape admits as the instant it denotes. Measured, none
+    /// does: a shape is a run of digits per field, and every parse rolls a field past its range onto
+    /// another instant, <c>2016-12-31T24:00:00Z</c> onto <c>2017-01-01T00:00:00Z</c> and
+    /// <c>2016-11-61T00:00:00Z</c> onto 31 December, raising over none
+    /// (<c>Calcite.ParsesReadTheirFieldsLeniently</c>, <c>CalciteTemporalLeniencyMeasurementTests</c>).
+    /// So a comparison, a sort or a projection through a parse is computed in process over every
+    /// shape and format, and this is where the plan is asked whether it left them there.
     /// </para>
     /// <para>
     /// <b>The harness chains the function libraries and the shared one does not</b>, which is why this
@@ -162,17 +167,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         static string PlanText(RelNode rel) => RelOptUtil.toString(rel).Trim().Replace("\r\n", "\n");
 
         /// <summary>
-        /// A range over a parsed instant reaches the statement, with the literal written in the
-        /// container's own spelling.
+        /// A range over a parsed instant stays in process, over a shape the format reads.
         /// </summary>
         /// <remarks>
-        /// The whole predicate leaves as one statement. A <c>ClrCursorFilter</c> above the
-        /// converter would mean the comparison was rechecked in process, which is what happened before
-        /// the chain was recognised — and before it, the statement asked only <c>IS_DEFINED</c> and
-        /// the container came back whole.
+        /// The format reads the shape's canonical strings as the instants they spell, and the shape is
+        /// fixed, so those strings order as their instants. The rest of the shape's strings do not:
+        /// <c>2016-11-61T00:00:00Z</c> sorts before <c>2016-12-01T00:00:00Z</c> and is 31 December to
+        /// the parse. So no literal is written in the container's spelling, and the
+        /// <c>ClrCursorFilter</c> above the converter is the comparison computed where Calcite reads it.
         /// </remarks>
         [Fact]
-        public void ARangeOverAParsedInstantReachesTheStatement()
+        public void ARangeOverAParsedInstantStaysInProcess()
         {
             var container = Container(SecondsPattern);
 
@@ -182,41 +187,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Contain("c.at > @", "the parse is dropped and the comparison is the stored strings': " + query.Sql);
+            query.Sql.Should().NotContain("c.at > ", "the stored strings do not order as the instants the parse reads: " + query.Sql);
 
-            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00Z",
-                "and the literal is written in the shape the container stores");
+            query.Parameters.Select(p => p.Value?.ToString()).Should().NotContain("2024-02-01T00:00:00Z",
+                "and no literal is written in the shape the container stores");
 
-            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorFilter", "the comparison is computed in process: " + PlanText(best));
         }
 
         /// <summary>
-        /// An equality over a parsed instant lowers on the other bit, and both orientations of the
-        /// comparison lower.
+        /// No comparison through a parse lowers, in either orientation, the equality among them.
         /// </summary>
         /// <remarks>
-        /// The reversed orientation is the case that would be silently wrong rather than merely
-        /// unpushed: read backwards without reversing the operator, <c>&lt; PARSE_DATETIME(…)</c>
-        /// selects the complement. It goes through the same machinery the cast spelling does, so this
-        /// pins that the chain did not find a way around it.
+        /// The equality is the measured witness. Over <c>2017-01-01T00:00:00Z</c>,
+        /// <c>2016-12-31T24:00:00Z</c> and <c>2016-12-31T23:60:00Z</c>, all three strings of the
+        /// declared shape, Calcite keeps all three for <c>= TIMESTAMP '2017-01-01 00:00:00'</c>, where
+        /// the stored strings' equality, which this once sent as <c>c.at = @p0</c>, kept the first
+        /// alone. The reversed orientation asks the same licence, and stays in process with it.
         /// </remarks>
         [Fact]
-        public void BothOrientationsLower()
+        public void NoComparisonThroughAParseLowers()
         {
             var container = Container(SecondsPattern);
 
-            var best = PlanToCosmos(
+            var reversed = PlanToCosmos(
                 $"""SELECT c."DOC" FROM items AS c WHERE TIMESTAMP '2024-02-01 00:00:00' < PARSE_DATETIME({Seconds}, {At})""",
                 container);
 
-            Query(FindCosmos(best), container).Sql.Should().Contain("c.at > @",
-                "reading the operands backwards reverses the operator");
+            Query(FindCosmos(reversed), container).Sql.Should().NotContain("c.at > ",
+                "reading the operands backwards licenses nothing either");
+            PlanText(reversed).Should().Contain("ClrCursorFilter", PlanText(reversed));
 
             var equal = PlanToCosmos(
-                $"""SELECT c."DOC" FROM items AS c WHERE PARSE_DATETIME({Seconds}, {At}) = TIMESTAMP '2024-02-01 00:00:00'""",
+                $"""SELECT c."DOC" FROM items AS c WHERE PARSE_DATETIME({Seconds}, {At}) = TIMESTAMP '2017-01-01 00:00:00'""",
                 container);
 
-            Query(FindCosmos(equal), container).Sql.Should().Contain("c.at = @", "and the equality lowers on its own bit");
+            Query(FindCosmos(equal), container).Sql.Should().NotContain("c.at = ",
+                "and the equality keeps what Calcite keeps only where Calcite reads it");
+            PlanText(equal).Should().Contain("ClrCursorFilter", PlanText(equal));
         }
 
         /// <summary>
@@ -232,7 +240,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// The control beside it is a format that <em>is</em> a spelling, of a different shape: the
         /// milliseconds format over a seconds path raises for every document rather than mis-reading
-        /// one, and is refused by the same test rather than by a second one.
+        /// one.
+        /// </para>
+        /// <para>
+        /// Every parse is declined now, a format that reads the shape included
+        /// (<c>Calcite.ParsesReadTheirFieldsLeniently</c>); these keep their reasons for any later
+        /// reading of a parse.
         /// </para>
         /// </remarks>
         [Fact]
@@ -258,8 +271,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// And the same range over an unconfined path stays in process however the format is written.
         /// </summary>
         /// <remarks>
-        /// The control that makes the pushed case a licence rather than an accident: the format is one
-        /// this knows, and without a declared shape there is nothing for it to read.
+        /// The format is one this knows, and without a declared shape there is nothing for it to read,
+        /// leniently or not.
         /// </remarks>
         [Fact]
         public void ARangeOverAnUnconfinedShapeStaysInProcess()
@@ -275,24 +288,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Ordering by a parsed instant reaches the service, which is the larger of the two changes.
+        /// Ordering by a parsed instant stays in process, and so does the parsed column.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Two things had to happen and the first is easy to miss. The projection has to render, or
-        /// there is no <c>CosmosProject</c> under the sort to record the binding on — and Calcite does
-        /// not transpose a sort through a projection whose key is a function call, the way it does
-        /// through a cast, so the sort cannot get past it either. Measured before: a
-        /// <c>ClrCursorSort</c> over a <c>ClrCursorProject</c> over the bare accessor, with
-        /// the whole container read to feed it.
+        /// The stored strings order as the canonical strings' instants and not as the parse orders
+        /// the rest: <c>2016-11-61T00:00:00Z</c> sorts before <c>2016-12-01T00:00:00Z</c> and is
+        /// 31 December to the parse. So the service is asked for no order.
         /// </para>
         /// <para>
-        /// The second is the binding itself, which is the same two-bit question a cast's sort asks
-        /// with the format's question added to it.
+        /// And the parsed column is not rendered as the guarded path for the reader to convert, which
+        /// is what once put a <c>CosmosProject</c> under the sort: the reader would answer its own
+        /// reading of a string that rolls, not the parse's. The text goes down, and the parse is
+        /// computed over it in process.
         /// </para>
         /// </remarks>
         [Fact]
-        public void AParsedInstantCarriesTheSort()
+        public void AParsedInstantLeavesTheSortInProcess()
         {
             var container = Container(SecondsPattern);
 
@@ -302,22 +314,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Contain("ORDER BY c.at", "the stored order is the order the parse answers: " + query.Sql);
-            query.Sql.Should().Contain("(IS_PRIMITIVE(c.at) ? c.at : null)", "and the column is the guarded path: " + query.Sql);
+            query.Sql.Should().NotContain("ORDER BY", "the stored order is not the order the parse answers: " + query.Sql);
+            query.Sql.Should().NotContain("\"at\": (IS_PRIMITIVE(c.at)", "and the parsed column is not the guarded path: " + query.Sql);
 
-            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left to sort in process: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorSort", "the sort is computed in process: " + PlanText(best));
+            PlanText(best).Should().Contain("PARSE_DATETIME", "and so is the column it sorts by, over the text sent down: " + PlanText(best));
         }
 
         /// <summary>
-        /// And the page goes with it, which is the number that makes the entry worth having.
+        /// And the page stays in process with the sort.
         /// </summary>
         /// <remarks>
-        /// A sort left in process is a container read whole to produce twenty rows. Pushed, the
-        /// service orders and pages and sends twenty documents — the same difference the rendered
-        /// <c>UUID</c> column bought for a catalog page, and the shape <c>README.md</c> shows.
+        /// A page over a sort the service cannot give is a page of the whole container, sorted in
+        /// process; the service is asked for neither.
         /// </remarks>
         [Fact]
-        public void AParsedInstantCarriesThePageWithTheSort()
+        public void AParsedInstantLeavesThePageInProcessWithTheSort()
         {
             var container = Container(SecondsPattern);
 
@@ -327,15 +339,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Contain("ORDER BY c.at", "the sort is the service's: " + query.Sql);
-            query.Sql.Should().Contain("LIMIT 20", "and so is the page: " + query.Sql);
+            query.Sql.Should().NotContain("ORDER BY", "the sort is not the service's: " + query.Sql);
+            query.Sql.Should().NotContain("LIMIT 20", "and neither is the page: " + query.Sql);
 
-            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left in process: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorSort", "both are computed in process: " + PlanText(best));
         }
 
         /// <summary>
-        /// The control: without the declaration the same sort stays in process.
+        /// Without the declaration the same sort stays in process.
         /// </summary>
+        /// <remarks>
+        /// It was the control of a sort the declaration pushed; every parse is declined now, and this
+        /// keeps its reason for any later reading of a parse.
+        /// </remarks>
         [Fact]
         public void TheSortNeedsTheDeclaration()
         {
@@ -354,10 +370,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// is as sortable as ever.
         /// </summary>
         /// <remarks>
-        /// The row that separates the two conditions. The container declares a fixed shape, so
-        /// <c>PreservesOrder</c> holds and a cast's sort over the same path would push; what declines
-        /// this one is only that the format reads the strings as some other instants, whose order is
-        /// not theirs.
+        /// The row that separated the two conditions. The container declares a fixed shape, so
+        /// <c>PreservesOrder</c> holds; the format reads the strings as some other instants, whose order
+        /// is not theirs. Every parse is declined now, a format that reads the shape included, and this
+        /// keeps its reason for any later reading of a parse.
         /// </remarks>
         [Fact]
         public void AFormatThatDoesNotReadTheShapeCarriesNoSort()
@@ -379,7 +395,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>PARSE_DATE</c> over a path storing a full instant reads the format faithfully and then
         /// throws the clock away, so every instant on a day shares one value. Lowering the comparison
         /// onto the stored strings would ask a finer question than the query did, and ordering by them
-        /// would order within a day where the key does not.
+        /// would order within a day where the key does not. Every parse is declined now, and this keeps
+        /// its reason for any later reading of a parse.
         /// </remarks>
         [Fact]
         public void AParseThatTruncatesIsRefused()
@@ -400,11 +417,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A date shape parsed as a date pushes both, which is the row that says the refusal above is
-        /// about the truncation rather than about <c>PARSE_DATE</c>.
+        /// A date shape parsed as a date pushes neither the comparison nor the sort, though the
+        /// <c>DATE</c> holds all the shape carries.
         /// </summary>
+        /// <remarks>
+        /// So the refusal above is no longer about the truncation alone. A calendar date is two digits
+        /// a field as well, and <c>PARSE_DATE</c> reads <c>2024-03-00</c> as 29 February and
+        /// <c>2024-02-30</c> as 1 March, so the stored strings answer for the parse no more than an
+        /// instant's do.
+        /// </remarks>
         [Fact]
-        public void ADateShapeParsedAsADatePushesBoth()
+        public void ADateShapeParsedAsADatePushesNeither()
         {
             var container = Container("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
 
@@ -413,35 +436,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 container);
 
             var query = Query(FindCosmos(filtered), container);
-            query.Sql.Should().Contain("c.at > @", "the format reads the shape and the DATE holds it: " + query.Sql);
-            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01");
+            query.Sql.Should().NotContain("c.at > ", "the format rolls the shape's other strings: " + query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().NotContain("2024-02-01");
+            PlanText(filtered).Should().Contain("ClrCursorFilter", PlanText(filtered));
 
             var sorted = PlanToCosmos(
                 $"""SELECT PARSE_DATE('%Y-%m-%d', {At}) AS "on" FROM items AS c ORDER BY 1""",
                 container);
 
-            Query(FindCosmos(sorted), container).Sql.Should().Contain("ORDER BY c.at");
+            Query(FindCosmos(sorted), container).Sql.Should().NotContain("ORDER BY");
+            PlanText(sorted).Should().Contain("ClrCursorSort", PlanText(sorted));
         }
 
         /// <summary>
-        /// The parse pushes and the cast beside it does not, over one container and one shape.
+        /// Over an instant neither the parse nor the plain cast beside it pushes, over one container
+        /// and one shape.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// <b>This is the whole argument for the parse in one row.</b> Both queries ask the same
-        /// question of the same path in the same container, and the declared shape gives both the
-        /// same two bits. What separates them is whether Calcite can evaluate the expression: it
-        /// reads a format it was given, and it raises on <c>CAST(&lt;iso&gt; AS TIMESTAMP)</c> —
-        /// measured, <c>Invalid DATE value</c>, for every ISO-8601 instant.
-        /// </para>
-        /// <para>
-        /// A pushdown has to answer what the engine would have answered. Over the cast there is no
-        /// such answer, so pushing it would not be an optimisation — it would hand the caller rows
-        /// their query cannot produce. The parse has an answer, and the pushed plan gives that one.
-        /// </para>
+        /// Both queries ask the same question of the same path in the same container, and the declared
+        /// shape gives both the same two bits; neither has an answer the stored strings give. The cast
+        /// raises over every ISO-8601 instant, <c>Invalid DATE value</c>, and the parse reads a field
+        /// past its range as another instant. So the cast stays in process where it raises, and the
+        /// parse where it rolls.
         /// </remarks>
         [Fact]
-        public void TheParsePushesWhereTheCastBesideItCannot()
+        public void NeitherTheParseNorTheCastBesideItPushesAnInstant()
         {
             var container = Container(SecondsPattern);
 
@@ -455,13 +474,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 $"""SELECT c."DOC" FROM items AS c WHERE {Cast} > TIMESTAMP '2024-02-01 00:00:00'""",
                 container);
 
-            Query(FindCosmos(parsed), container).Sql.Should().Contain("c.at > @",
-                "the format names a reading the engine performs, so the service can be asked for the same rows");
+            Query(FindCosmos(parsed), container).Sql.Should().NotContain("c.at > @",
+                "the format reads the shape's other strings as other instants, so the stored strings answer for nothing");
 
             Query(FindCosmos(cast), container).Sql.Should().NotContain("c.at > @",
-                "and the cast names one it raises on, so there are no rows to ask for");
+                "and the cast names a reading it raises on, so there are no rows to ask for");
 
-            PlanText(parsed).Should().NotContain("ClrCursorFilter");
+            PlanText(parsed).Should().Contain("ClrCursorFilter");
             PlanText(cast).Should().Contain("ClrCursorFilter");
         }
 
@@ -486,6 +505,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Query(FindCosmos(best), container).Sql.Should().NotContain("\"at\": c.at",
                 "the engine cannot read the string into a TIMESTAMP, so the column stays where it raises");
+        }
+
+        /// <summary>
+        /// Nor does an accessor typed <c>TIME</c> over a declared time of day go down as a column.
+        /// </summary>
+        /// <remarks>
+        /// <c>RETURNING TIME</c> asserts the extracted type rather than converting to it, and raises over
+        /// every string, <c>12:30:00</c> as surely as <c>24:00:00</c>
+        /// (<c>Calcite.ReturningReadsNoStoredString</c>). The bare path read back by <c>CosmosJson</c>
+        /// answered a time where the query raises, so the accessor is computed in process, where it
+        /// raises.
+        /// </remarks>
+        [Fact]
+        public void AnAccessorTypedTimeOverADeclaredClockIsNotSentDownAsAColumn()
+        {
+            var container = Container("^[0-9]{2}:[0-9]{2}:[0-9]{2}$");
+
+            var best = PlanToCosmos(
+                """SELECT JSON_VALUE(c."DOC", '$.at' RETURNING TIME) AS "at" FROM items AS c""",
+                container);
+
+            Query(FindCosmos(best), container).Sql.Should().NotContain("\"at\": c.at",
+                "the engine raises over every string read into a TIME, so the column stays where it raises");
         }
 
         /// <summary>
@@ -549,24 +591,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A cast carrying a format is the same parse, and a range over one reaches the statement
-        /// with no function library enabled.
+        /// A cast carrying a format is the same parse, and a range over one stays in process with no
+        /// function library enabled.
         /// </summary>
         /// <remarks>
         /// <para>
         /// This is the spelling ikvmnet/calcite-cosmos#170 asked for. A model view is analyzed under
         /// Calcite's default configuration whatever the connection's <c>fun</c> says, so
-        /// <c>PARSE_DATETIME</c> fails to validate inside one and a view had no instant that pushed.
-        /// <c>CAST … FORMAT</c> is in the core operator table, which is why the harness runs without
-        /// the libraries here.
+        /// <c>PARSE_DATETIME</c> fails to validate inside one. <c>CAST … FORMAT</c> is in the core
+        /// operator table, which is why the harness runs without the libraries here.
         /// </para>
         /// <para>
-        /// The format is read against the declared shape by the same table the <c>PARSE_</c> family
-        /// uses — <c>CalciteTemporalParseMeasurementTests</c> measures every spelling through both.
+        /// It reads its format with the model the <c>PARSE_</c> family does, and rolls a field past
+        /// its range as they do (<c>CalciteTemporalLeniencyMeasurementTests</c> measures every
+        /// spelling through both), so a range over one is computed in process as a parse's is.
         /// </para>
         /// </remarks>
         [Fact]
-        public void ACastWithAFormatReachesTheStatementWithoutTheLibraries()
+        public void ACastWithAFormatStaysInProcessWithoutTheLibraries()
         {
             var container = Container(SecondsPattern);
 
@@ -577,25 +619,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Contain("c.at > @", "the cast is dropped and the comparison is the stored strings': " + query.Sql);
-            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00Z");
+            query.Sql.Should().NotContain("c.at > ", "the stored strings do not order as the instants the cast reads: " + query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().NotContain("2024-02-01T00:00:00Z");
 
-            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorFilter", "the comparison is computed in process: " + PlanText(best));
         }
 
         /// <summary>
-        /// The millisecond shape the issue was about pushes through a cast whose type holds the
-        /// fraction, and not through one whose type does not.
+        /// The millisecond shape the issue was about stays in process through a cast whose type holds
+        /// the fraction, as through one whose type does not.
         /// </summary>
         /// <remarks>
         /// A bare <c>TIMESTAMP</c> is <c>TIMESTAMP(0)</c>, so a cast into one promises a value with no
         /// fraction whatever its format read, and every stored instant within a second is promised
-        /// the same one. Calcite's runtime keeps the milliseconds anyway, measured — but the plan
-        /// widens the cast back to <c>TIMESTAMP(3)</c> to compare it, and what a pushdown has to agree
-        /// with is what the query says rather than what the runtime happens to do.
+        /// the same one. <c>TIMESTAMP(3)</c> holds what <c>FF3</c> reads, and that no longer separates
+        /// the two: the cast still rolls a field past its range, so the equality is computed in process
+        /// into either type.
         /// </remarks>
         [Fact]
-        public void ACastWithAFormatReadsTheMillisecondShapeIntoATypeThatHoldsIt()
+        public void ACastWithAFormatLeavesTheMillisecondShapeInProcessWhateverItsType()
         {
             var container = Container(MillisecondsPattern);
 
@@ -608,8 +650,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(held), container);
 
-            query.Sql.Should().Contain("c.at = @", "FF3 reads a three-digit fraction exactly and TIMESTAMP(3) holds it: " + query.Sql);
-            query.Parameters.Select(p => p.Value?.ToString()).Should().Contain("2024-02-01T00:00:00.123Z");
+            query.Sql.Should().NotContain("c.at = ", "TIMESTAMP(3) holds what FF3 reads, and the cast rolls the shape's other strings: " + query.Sql);
+            query.Parameters.Select(p => p.Value?.ToString()).Should().NotContain("2024-02-01T00:00:00.123Z");
+            PlanText(held).Should().Contain("ClrCursorFilter", PlanText(held));
 
             var truncated = PlanToCosmos(
                 $"""SELECT c."DOC" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP FORMAT {Format}) = TIMESTAMP '2024-02-01 00:00:00.123'""",
@@ -622,10 +665,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// And the cast carries the sort, as the parse does.
+        /// And the cast leaves the sort in process, as the parse does.
         /// </summary>
         [Fact]
-        public void ACastWithAFormatCarriesTheSort()
+        public void ACastWithAFormatLeavesTheSortInProcess()
         {
             var container = Container(SecondsPattern);
 
@@ -636,10 +679,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var query = Query(FindCosmos(best), container);
 
-            query.Sql.Should().Contain("ORDER BY c.at", "the stored order is the order the cast answers: " + query.Sql);
-            query.Sql.Should().Contain("(IS_PRIMITIVE(c.at) ? c.at : null)", "and the column is the guarded path: " + query.Sql);
+            query.Sql.Should().NotContain("ORDER BY", "the stored order is not the order the cast answers: " + query.Sql);
+            query.Sql.Should().NotContain("\"at\": (IS_PRIMITIVE(c.at)", "and the cast column is not the guarded path: " + query.Sql);
 
-            PlanText(best).Should().NotContain("ClrCursorSort", "with nothing left to sort in process: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorSort", "the sort is computed in process: " + PlanText(best));
+            PlanText(best).Should().Contain("ClrCursorProject", "and so is the column it sorts by, over the text sent down: " + PlanText(best));
         }
 
         /// <summary>
@@ -708,54 +752,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// The slot a statement leaves for a parameter written in a stored form.
+        /// The slots a statement leaves for a parameter written in a stored form.
         /// </summary>
-        static Adapter.Sql.CosmosDynamicValue Slot(CosmosQuery query) =>
-            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Single(slot => slot.Form is not null);
+        static System.Collections.Generic.IEnumerable<Adapter.Sql.CosmosDynamicValue> StoredSlots(CosmosQuery query) =>
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Where(slot => slot.Form is not null);
 
         /// <summary>
-        /// The statement as it runs with <c>?0</c> holding the given value.
-        /// </summary>
-        static object? Bound(CosmosQuery query, object value) =>
-            Adapter.Client.CosmosQueries.Bind(query, new Context(value)).Parameters.Single(p => p.Value is string).Value;
-
-        /// <summary>
-        /// The epoch milliseconds Calcite's runtime holds a <c>TIMESTAMP</c> parameter in.
-        /// </summary>
-        static java.lang.Long Millis(string utc) =>
-            java.lang.Long.valueOf(System.DateTimeOffset.Parse(utc, System.Globalization.CultureInfo.InvariantCulture).ToUnixTimeMilliseconds());
-
-        /// <summary>
-        /// The comparison #182 reported: a stored instant read through the cast the issue names, against
-        /// <c>CAST(? AS TIMESTAMP)</c>, pushes — and the value is written in the stored spelling when it
-        /// arrives.
+        /// The comparison #182 reported, a stored instant read through the cast the issue names against
+        /// <c>CAST(? AS TIMESTAMP)</c>, stays in process, and no slot is left for the value to be written
+        /// into the stored spelling.
         /// </summary>
         /// <remarks>
-        /// <c>CAST(? AS TIMESTAMP)</c> compared with a <c>TIMESTAMP(3)</c> is
-        /// <c>CAST(CAST(?0):TIMESTAMP(0)):TIMESTAMP(3)</c> by the time it is planned, and the casts change
-        /// nothing at run time — <c>CalciteTemporalParameterMeasurementTests</c> measures that the
-        /// milliseconds survive the <c>TIMESTAMP(0)</c> — so the value written is the one the parameter
-        /// carries.
+        /// The cast carries a format, so it is a parse, and rolls a field past its range as every parse
+        /// does: the stored strings answer for it against a parameter no more than against a literal.
         /// </remarks>
         [Fact]
-        public void AComparisonAgainstAParameterReachesTheStatement()
+        public void AComparisonAgainstAParameterStaysInProcess()
         {
             var (query, plan) = PlanParameter($"{CastMilliseconds} > CAST(? AS TIMESTAMP)", MillisecondsPattern);
 
-            query.Sql.Should().Contain("(c.at > @p0)", "the comparison is the stored strings': " + query.Sql);
-            plan.Should().NotContain("ClrCursorFilter", "with nothing left to recheck: " + plan);
+            query.Sql.Should().NotContain("(c.at > @p0)", "the stored strings do not order as the instants the cast reads: " + query.Sql);
+            plan.Should().Contain("ClrCursorFilter", "the comparison is computed in process: " + plan);
 
-            var slot = Slot(query);
-            slot.Ordinal.Should().Be(0);
-            slot.Form.Should().Be(CosmosTemporalForms.Iso8601UtcMilliseconds, "the slot carries the spelling to write the value in");
-
-            Bound(query, Millis("2026-08-02T12:00:00.123Z")).Should().Be("2026-08-02T12:00:00.123Z",
-                "and the value is written in it when the statement runs");
+            StoredSlots(query).Should().BeEmpty("no value is written in the stored spelling");
         }
 
         /// <summary>
-        /// Every comparison lowers on its own bit, and reading the parameter on the left reverses the
-        /// operator — the case that would select the complement rather than merely not push.
+        /// No comparison against a parameter lowers, whichever side the parameter is read on.
         /// </summary>
         [Theory]
         [InlineData("{0} = ?", "(c.at = @p0)")]
@@ -764,43 +787,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("{0} < CAST(? AS TIMESTAMP(3))", "(c.at < @p0)")]
         [InlineData("? < {0}", "(c.at > @p0)")]
         [InlineData("? >= {0}", "(c.at <= @p0)")]
-        public void EveryComparisonAgainstAParameterLowers(string shape, string rendered)
+        public void NoComparisonAgainstAParameterLowers(string shape, string rendered)
         {
             var (query, plan) = PlanParameter(string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, CastMilliseconds), MillisecondsPattern);
 
-            query.Sql.Should().Contain(rendered, query.Sql);
-            plan.Should().NotContain("ClrCursorFilter", plan);
+            query.Sql.Should().NotContain(rendered, query.Sql);
+            plan.Should().Contain("ClrCursorFilter", plan);
         }
 
         /// <summary>
-        /// A value between two stored spellings is rounded onto the form in the direction the comparison
-        /// does not see, so the statement answers what the comparison against the value answers.
+        /// A parameter compared with a parsed seconds shape is written into no spelling, whatever the
+        /// comparison, and the comparison is computed in process.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// Against a seconds shape, half a second past noon. Nothing is stored between <c>12:00:00Z</c>
-        /// and <c>12:00:01Z</c>, so <c>&gt;</c> keeps what <c>&gt; 12:00:00Z</c> keeps and <c>&gt;=</c>
-        /// what <c>&gt;= 12:00:01Z</c> does; an equality is true of no stored value and an inequality of
-        /// every one, which the value written in full — at a precision no spelling has — gives both.
-        /// </para>
-        /// <para>
-        /// A literal that does not land is refused instead, and its comparison stays in process; a
-        /// parameter's statement is already written by the time its value is known.
-        /// </para>
+        /// These comparisons were where a value between two stored spellings was rounded onto the form
+        /// in the direction the comparison does not see. With no comparison through a parse lowered,
+        /// no value is rounded or written for one.
         /// </remarks>
         [Theory]
-        [InlineData(">", "2026-08-02T12:00:00Z")]
-        [InlineData("<=", "2026-08-02T12:00:00Z")]
-        [InlineData(">=", "2026-08-02T12:00:01Z")]
-        [InlineData("<", "2026-08-02T12:00:01Z")]
-        [InlineData("=", "2026-08-02T12:00:00.5000000Z")]
-        [InlineData("<>", "2026-08-02T12:00:00.5000000Z")]
-        public void AParameterBetweenTwoSpellingsIsRoundedTheWayTheComparisonNeeds(string op, string written)
+        [InlineData(">")]
+        [InlineData("<=")]
+        [InlineData(">=")]
+        [InlineData("<")]
+        [InlineData("=")]
+        [InlineData("<>")]
+        public void AParameterComparedWithAParseIsWrittenIntoNoSpelling(string op)
         {
-            var (query, _) = PlanParameter($"{CastSeconds} {op} CAST(? AS TIMESTAMP)", SecondsPattern);
+            var (query, plan) = PlanParameter($"{CastSeconds} {op} CAST(? AS TIMESTAMP)", SecondsPattern);
 
-            Bound(query, Millis("2026-08-02T12:00:00.500Z")).Should().Be(written);
-            Bound(query, Millis("2026-08-02T12:00:00.000Z")).Should().Be("2026-08-02T12:00:00Z", "and a value that lands is written as it is");
+            StoredSlots(query).Should().BeEmpty("no value is written in the stored spelling for " + op);
+            plan.Should().Contain("ClrCursorFilter", plan);
         }
 
         /// <summary>
@@ -819,15 +835,94 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A <c>DATE</c> parameter against a calendar date lowers too, the days Calcite holds it in
-        /// written as the date.
+        /// A <c>DATE</c> parameter against a calendar date parsed with a format stays in process too, and
+        /// is written into no spelling.
         /// </summary>
+        /// <remarks>
+        /// The cast's format reads <c>2024-03-00</c> as 29 February, as every parse of the date shape
+        /// does.
+        /// </remarks>
         [Fact]
-        public void ADateParameterIsWrittenAsTheStoredDate()
+        public void ADateParameterAgainstAParsedDateStaysInProcess()
         {
             var (query, plan) = PlanParameter("""CAST(JSON_VALUE(c."DOC", '$.at') AS DATE FORMAT 'YYYY-MM-DD') = CAST(? AS DATE)""", "^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
 
-            query.Sql.Should().Contain("(c.at = @p0)", query.Sql);
+            query.Sql.Should().NotContain("(c.at = @p0)", query.Sql);
+            plan.Should().Contain("ClrCursorFilter", plan);
+
+            StoredSlots(query).Should().BeEmpty("no value is written in the stored spelling");
+        }
+
+        /// <summary>The declared calendar date, which a plain cast reads.</summary>
+        const string DatePattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
+
+        /// <summary>
+        /// The statement as it runs with <c>?0</c> holding the given value: the stored slot's value as written.
+        /// </summary>
+        static object? Bound(CosmosQuery query, object value) =>
+            Adapter.Client.CosmosQueries.Bind(query, new Context(value)).Parameters.Single(p => p.Value is string).Value;
+
+        /// <summary>The epoch milliseconds Calcite's runtime holds a <c>TIMESTAMP</c> parameter in.</summary>
+        static java.lang.Long EpochMillis(string utc) =>
+            java.lang.Long.valueOf(System.DateTimeOffset.Parse(utc, System.Globalization.CultureInfo.InvariantCulture).ToUnixTimeMilliseconds());
+
+        /// <summary>
+        /// A calendar date read with a plain cast, compared with a literal on the left, is sent with the operator reversed:
+        /// read backwards and kept as written, <c>&lt;</c> would select the complement.
+        /// </summary>
+        /// <remarks>
+        /// The plain cast is what still lowers onto the stored strings, so it carries the pins the parse used to. The 15th
+        /// is no month's last day, where the day zero parts the strings from the dates
+        /// (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>).
+        /// </remarks>
+        [Fact]
+        public void ADateCastWithTheLiteralOnTheLeftIsSentWithTheOperatorReversed()
+        {
+            var container = Container(DatePattern);
+
+            var best = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE DATE '2024-01-15' < CAST({At} AS DATE)""", container);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().Contain("(c.at > @p0)", "reading the operands backwards reverses the operator: " + query.Sql);
+            query.Parameters.Select(p => p.Value).Should().Contain("2024-01-15", "the literal is written as the stored date");
+            PlanText(best).Should().NotContain("ClrCursorFilter", "with nothing left to recheck");
+        }
+
+        /// <summary>
+        /// A <c>TIMESTAMP</c> parameter against a calendar date read with a plain cast is rounded onto the date in the
+        /// direction the comparison does not see, and written as the stored date when the statement runs.
+        /// </summary>
+        /// <remarks>
+        /// Noon of the 15th lies between the 15th's spelling and the 16th's: <c>&gt;</c> keeps what <c>&gt; 15th</c>
+        /// keeps and <c>&gt;=</c> what <c>&gt;= 16th</c> does. A value that lands is written as it is.
+        /// </remarks>
+        [Theory]
+        [InlineData(">", "(c.at > @p0)", "2024-01-15")]
+        [InlineData("<=", "(c.at <= @p0)", "2024-01-15")]
+        [InlineData(">=", "(c.at >= @p0)", "2024-01-16")]
+        [InlineData("<", "(c.at < @p0)", "2024-01-16")]
+        public void AParameterAgainstADateCastIsRoundedTheWayTheComparisonNeeds(string op, string rendered, string written)
+        {
+            var (query, plan) = PlanParameter($"""CAST({At} AS TIMESTAMP) {op} CAST(? AS TIMESTAMP)""", DatePattern);
+
+            query.Sql.Should().Contain(rendered, query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+            StoredSlots(query).Single().Form.Should().Be(CosmosTemporalForms.Iso8601Date, "the slot carries the spelling to write the value in");
+
+            Bound(query, EpochMillis("2024-01-15T12:00:00Z")).Should().Be(written);
+            Bound(query, EpochMillis("2024-01-15T00:00:00Z")).Should().Be("2024-01-15", "and a value that lands is written as it is");
+        }
+
+        /// <summary>
+        /// A <c>DATE</c> parameter against a calendar date read with a plain cast is written as the stored date, from the
+        /// days since the epoch Calcite holds it in.
+        /// </summary>
+        [Fact]
+        public void ADateParameterAgainstADateCastIsWrittenAsTheStoredDate()
+        {
+            var (query, plan) = PlanParameter($"""CAST({At} AS DATE) < CAST(? AS DATE)""", DatePattern);
+
+            query.Sql.Should().Contain("(c.at < @p0)", query.Sql);
             plan.Should().NotContain("ClrCursorFilter", plan);
 
             Bound(query, java.lang.Integer.valueOf((int)(new System.DateTime(2026, 8, 2) - System.DateTime.UnixEpoch).TotalDays))

@@ -920,8 +920,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// epoch milliseconds. So the pushed sort ordered rows for a query that raises.
         /// </para>
         /// <para>
-        /// What carries the sort now is the parse — <c>CosmosTemporalParsePlanningTests</c>,
-        /// <c>AParsedInstantCarriesTheSort</c> — which names a format the engine reads.
+        /// Nor does a parse carry it, reading the shape's other strings as other instants —
+        /// <c>CosmosTemporalParsePlanningTests</c>, <c>AParsedInstantLeavesTheSortInProcess</c>. An
+        /// instant sort is computed in process however it is written.
         /// </para>
         /// </remarks>
         [Fact]
@@ -956,9 +957,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// strings answered rows where the query raises.
         /// </para>
         /// <para>
-        /// The parse is what reaches the statement now — see
-        /// <c>CosmosTemporalParsePlanningTests.ARangeOverAParsedInstantReachesTheStatement</c>, whose
-        /// assertions are the ones this row used to make.
+        /// Nor does a parse reach the statement, reading the shape's other strings as other instants —
+        /// see <c>CosmosTemporalParsePlanningTests.ARangeOverAParsedInstantStaysInProcess</c>. An instant
+        /// comparison is computed in process however it is written.
         /// </para>
         /// </remarks>
         /// <remarks>

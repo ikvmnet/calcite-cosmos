@@ -316,6 +316,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
             plan.Should().NotContain("ClrCursorSort", "and not again in process:\n" + plan);
         }
 
+        /// <summary>
+        /// A change time compared with a parameter is computed in process (#182): the view reads the stored instant with a
+        /// cast carrying a format, which is a parse, and a parse reads a field past its range as another instant.
+        /// </summary>
+        /// <remarks>
+        /// The plan that <c>CosmosSelfJoinTests.AChangeTimeComparedWithAParameterIsComparedInProcess</c> runs on a service,
+        /// planned here without one, so that an offline run holds it too.
+        /// </remarks>
+        [Theory]
+        [InlineData(">")]
+        [InlineData(">=")]
+        [InlineData("<")]
+        [InlineData("=")]
+        [InlineData("<>")]
+        public void AChangeTimeComparedWithAParameterIsComparedInProcess(string op)
+        {
+            var instant = DateTime.SpecifyKind(new DateTime(2026, 8, 2, 12, 0, 0), DateTimeKind.Utc);
+
+            var (plan, _) = Explain($"""SELECT "l"."Id" FROM "V"."Link" AS "l" WHERE "l"."ChangeUtcTime" {op} CAST(? AS TIMESTAMP)""", instant);
+
+            (plan.Contains("ClrCursorFilter") || plan.Contains("$condition")).Should().BeTrue("the comparison through the parse is Calcite's:\n" + plan);
+        }
+
     }
 
 }
