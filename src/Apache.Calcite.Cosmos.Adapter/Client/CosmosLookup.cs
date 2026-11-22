@@ -112,8 +112,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     // Plus zero, which = cannot tell from minus zero, so that a batch sends the 0 the service reads back.
                     "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
 
-                    // No number arrives under any other type, or under none: Calcite cast both keys to the join's
-                    // comparison type, which the join always passes, and a UUID parameter read by this is no number.
+                    // No number arrives under any other type: the rule passes the type Calcite cast both keys to. Under
+                    // none, a number read for a UUID parameter passes through, and is refused there by name.
                     _ => key,
                 },
                 _ => key,
