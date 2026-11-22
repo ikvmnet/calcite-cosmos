@@ -4819,6 +4819,14 @@ across documents* and *A join of a container to itself* is the record.
   the evaluator tosses a coin on — a cast of a raw value or of text to a number, a typed `DECIMAL` — and none is beneath a
   stratum. The pull request's 30 trials meet none (line 2). Modelling those readings in `IrEval`, beside the raw orderings above, would
   measure them.
+- **Source A's evaluator throws on some bundles the loader builds** — *small.* `IrEval` compares no cast of a raw value
+  to `BOOLEAN` with a boolean over a stored number, though `CAST(c."$.category" AS BOOLEAN) = TRUE` loads to that
+  comparison; no raw value, nor its cast, on the left of another reading or a function's value, since it takes the
+  right side as a literal; and no type or presence test over a function's value. Each throws an exception other than
+  `NotSupportedException`, so source A (`RenderingSoundnessTests.Generated`) would fail on such a bundle rather than
+  count it unmeasured. The pull request's run meets none, and judging those statements' forms in process found nothing.
+  Modelling the three in `IrEval`, or raising `NotSupportedException` where it models none, would let the soundness line
+  read them or say that it did not.
 - **The service-backed fixtures name their service** — *small.* A fixture that plans against the account the tests run on
   (the differential, the connection, lookup and self-join tests) names the emulator (`serviceTarget`) wherever the
   endpoint is this machine's, so the emulator legs plan under the emulator's set and the probe account's run under
