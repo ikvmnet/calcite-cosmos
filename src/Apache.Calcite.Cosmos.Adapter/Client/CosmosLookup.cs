@@ -53,11 +53,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// before its <c>=</c> (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>): an integer type as a <see cref="long"/>,
         /// <c>DECIMAL</c> by its value, as a <see cref="java.math.BigDecimal"/> stripped of its trailing zeros so that
         /// <c>1.0</c> and <c>1.00</c> are one key, and an approximate type as a <see cref="double"/>, a <c>REAL</c> by way of
-        /// the float Calcite holds it in. Each key reaches the type by Calcite's own conversion of a number
-        /// (<c>SqlFunctions.toLong</c>, <c>toBigDecimal</c>, <c>toFloat</c> and <c>toDouble</c>), which is the identity for a
-        /// key Calcite has already cast. Every number used to be compared as a
-        /// double, so two <c>BIGINT</c> keys past 2^53 that one double holds joined each other's rows, where Calcite keeps
-        /// them apart.
+        /// the float Calcite holds it in. Each key reaches the type by Calcite's own conversion of a number (its cast to an
+        /// integer type, <see cref="Integral"/>, which fails by name on a number outside the type's range as the cast does,
+        /// and <c>SqlFunctions.toBigDecimal</c>, <c>toFloat</c> and <c>toDouble</c>), which is the identity for a key Calcite
+        /// has already cast. Every number used to be compared as a double, so two <c>BIGINT</c> keys past 2^53 that one
+        /// double holds joined each other's rows, where Calcite keeps them apart.
         /// </para>
         /// <para>
         /// <b>Calcite's own join never matches <c>-0.0</c> with <c>0.0</c>, and this follows <c>=</c>, which does.</b> Its
@@ -97,6 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// is given, as <c>CosmosQueries</c> reads a <c>UUID</c> parameter by this.
         /// </param>
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
+        /// <exception cref="CosmosExecutionException">Calcite's cast of the key to an integer comparison type fails.</exception>
         public static object? Normalize(object? key, SqlTypeName? comparison = null)
         {
             return key switch
@@ -108,7 +109,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 java.util.UUID uuid => Guid.Parse(uuid.toString()),
                 _ when Boxed(key) is java.lang.Number number => comparison?.getName() switch
                 {
-                    "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => SqlFunctions.toLong(number),
+                    "TINYINT" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.BYTE, comparison!),
+                    "SMALLINT" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.SHORT, comparison!),
+                    "INTEGER" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.INT, comparison!),
+                    "BIGINT" => Integral(number, org.apache.calcite.linq4j.tree.Primitive.LONG, comparison!),
                     "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
                     // Plus zero, which = cannot tell from minus zero, so that a batch sends the 0 the service reads back.
                     "FLOAT" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
@@ -120,6 +124,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 },
                 _ => key,
             };
+        }
+
+        /// <summary>
+        /// Returns a number as Calcite's cast to an integer type makes it, held as a <see cref="long"/>, and fails by name
+        /// where that cast fails.
+        /// </summary>
+        /// <remarks>
+        /// <c>Primitive.integerCast</c> is what Calcite's generated code calls for a cast of a number to an integer type,
+        /// here with Calcite's default rounding, toward zero, and <paramref name="primitive"/> is the Java type Calcite holds
+        /// a value of the type in. It raises on a number outside the type's range, where <c>SqlFunctions.toLong</c> wrapped
+        /// one, so that a key 2^64 + 7 under <c>BIGINT</c> was compared as 7.
+        /// </remarks>
+        /// <param name="number">The key in its Java box.</param>
+        /// <param name="primitive">The Java type a value of <paramref name="type"/> is held in.</param>
+        /// <param name="type">The integer type the join compares in, which the failure names.</param>
+        /// <returns>The value Calcite's cast gives.</returns>
+        /// <exception cref="CosmosExecutionException">Calcite's cast of the number to the type fails.</exception>
+        static long Integral(java.lang.Number number, org.apache.calcite.linq4j.tree.Primitive primitive, SqlTypeName type)
+        {
+            try
+            {
+                return ((java.lang.Number)org.apache.calcite.linq4j.tree.Primitive.integerCast(primitive, number)).longValue();
+            }
+            catch (java.lang.RuntimeException e)
+            {
+                throw new CosmosExecutionException($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {e.getMessage()}", e);
+            }
         }
 
         /// <summary>

@@ -299,6 +299,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// A number outside the range of the integer type the join compares in fails by name, as Calcite's cast to that type
+        /// fails, where it used to wrap: a key 2^64 + 7 under <c>BIGINT</c> was compared as 7 and joined to the documents
+        /// holding 7. Within the range a key is cast as Calcite casts it, a fraction toward zero. Only a direct caller hands
+        /// the join a key not yet cast.
+        /// </summary>
+        [Fact]
+        public async Task AKeyOutsideItsIntegerTypesRangeFailsByName()
+        {
+            foreach (var (key, type) in new (object, SqlTypeName)[]
+            {
+                (java.lang.Integer.valueOf(300), SqlTypeName.TINYINT),
+                (java.lang.Integer.valueOf(-32769), SqlTypeName.SMALLINT),
+                (java.lang.Long.valueOf(4294967303L), SqlTypeName.INTEGER),
+                (new java.math.BigDecimal("18446744073709551623"), SqlTypeName.BIGINT),
+                (100000000000000000000m, SqlTypeName.BIGINT),
+                (ulong.MaxValue, SqlTypeName.BIGINT),
+                (java.lang.Double.valueOf(1e20), SqlTypeName.BIGINT),
+            })
+                FluentActions.Invoking(() => CosmosLookup.Normalize(key, type)).Should().Throw<CosmosExecutionException>($"{key} is outside {type}");
+
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(127), SqlTypeName.TINYINT).Should().Be(127L);
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(-32768), SqlTypeName.SMALLINT).Should().Be(-32768L);
+            CosmosLookup.Normalize(new java.math.BigDecimal("9223372036854775807"), SqlTypeName.BIGINT).Should().Be(long.MaxValue);
+            CosmosLookup.Normalize(java.lang.Double.valueOf(7.9d), SqlTypeName.BIGINT).Should().Be(7L);
+            CosmosLookup.Normalize(java.lang.Double.valueOf(-7.9d), SqlTypeName.BIGINT).Should().Be(-7L);
+
+            // A batch holding one fails by name and asks the container nothing.
+            var executor = new RecordingExecutor("""{"n":7}""");
+            await FluentActions.Awaiting(() => NumberJoin([new java.math.BigDecimal("18446744073709551623")], executor, n => java.lang.Long.valueOf(n.GetInt64()), SqlTypeName.BIGINT))
+                .Should().ThrowAsync<CosmosExecutionException>();
+            executor.Executed.Should().BeEmpty();
+        }
+
+        /// <summary>
         /// Java's boxes reduce to the same forms as the CLR's, because they are what a row carries.
         /// </summary>
         /// <remarks>

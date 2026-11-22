@@ -645,6 +645,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// A key not yet cast to the join's integer comparison type, as a direct caller may hand one over, is read as
+        /// Calcite's cast to that type reads the same value: the value Calcite's cast gives, or, where the cast fails on a
+        /// number outside the type's range, a failure by name.
+        /// </remarks>
+        [Theory]
+        [InlineData("300", "TINYINT")]
+        [InlineData("127", "TINYINT")]
+        [InlineData("CAST(-32769 AS INTEGER)", "SMALLINT")]
+        [InlineData("CAST(4294967303 AS BIGINT)", "INTEGER")]
+        [InlineData("CAST(9223372036854775808 AS DECIMAL(19, 0))", "BIGINT")]
+        [InlineData("CAST(9223372036854775807 AS DECIMAL(19, 0))", "BIGINT")]
+        [InlineData("1e20", "BIGINT")]
+        [InlineData("7.9e0", "BIGINT")]
+        [InlineData("-7.9e0", "BIGINT")]
+        public async Task AKeyIsReadAsCalcitesCastToTheIntegerComparisonTypeReadsIt(string value, string type)
+        {
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>());
+
+            var key = (await Execute(Plan($"SELECT t.x FROM (VALUES ({value})) AS t(x)", lookup: false))).Single();
+
+            object? cast;
+            try
+            {
+                cast = (await Execute(Plan($"SELECT CAST(t.x AS {type}) FROM (VALUES ({value})) AS t(x)", lookup: false))).Single();
+            }
+            catch (Exception e)
+            {
+                cast = e;
+            }
+
+            var comparison = org.apache.calcite.sql.type.SqlTypeName.valueOf(type);
+            if (cast is Exception failure)
+                FluentActions.Invoking(() => CosmosLookup.Normalize(key, comparison)).Should().Throw<CosmosExecutionException>($"Calcite's cast fails: {failure.Message}");
+            else
+                CosmosLookup.Normalize(key, comparison).Should().Be(cast switch
+                {
+                    java.lang.Number number => number.longValue(),
+                    byte held => unchecked((sbyte)held),
+                    _ => System.Convert.ToInt64(cast, System.Globalization.CultureInfo.InvariantCulture),
+                });
+        }
+
+        /// <remarks>
         /// No container column reads a <c>DECIMAL</c>: the translator leaves <c>RETURNING DECIMAL</c> to the engine, which
         /// parses what the path holds. So no key is ever compared as a <c>DECIMAL</c> by a planned lookup, and a small side's
         /// <c>DECIMAL</c> key meets a container's number cast to the container's type, a <c>DOUBLE</c> here.
