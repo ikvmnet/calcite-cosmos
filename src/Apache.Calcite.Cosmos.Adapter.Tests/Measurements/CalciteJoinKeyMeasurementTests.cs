@@ -23,7 +23,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <remarks>
     /// No service: two tables whose column holds what the adapter's reader makes of each value, joined through the
     /// connection, <c>ON a.v = b.v</c> and, beside it, <c>ON a.v &lt;= b.v AND a.v &gt;= b.v</c>, which Calcite cannot plan
-    /// as an equi-join and so evaluates as a comparison. A pair is the two rows' keys, left then right.
+    /// as an equi-join and so evaluates as a comparison; and <c>=</c> itself, projected for every pair of a cross join, so
+    /// that no join condition holds it. A pair is the two rows' keys, left then right.
     /// </remarks>
     public class CalciteJoinKeyMeasurementTests
     {
@@ -33,14 +34,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         const string Compared = "a.\"v\" <= b.\"v\" AND a.\"v\" >= b.\"v\"";
 
         /// <summary>
-        /// Calcite plans the equi-join as a merge join over its sorted keys, and the comparison as a join that evaluates
-        /// it. Both keep <c>BIGINT</c> 2^53 and 2^53 + 1 apart and match <c>DOUBLE</c> 2^53 and 2^53 + 1, one double;
-        /// both match <c>VARCHAR</c> by its units and <c>BOOLEAN</c> as itself; and across types both match an
-        /// <c>INTEGER</c> 7 with a <c>BIGINT</c> 7 and a <c>BIGINT</c> 2^53 + 1 with a <c>DOUBLE</c> 2^53, Calcite casting
-        /// the narrower key to the join's comparison type. Two cases part the merge join from <c>=</c>: the comparison
-        /// matches <c>DOUBLE</c> −0.0 with 0.0 and <c>DECIMAL</c> 1.0 with 1.00, every pair of each, where the merge join
-        /// matches 0.0 with 0.0 alone and −0.0 with nothing, not even itself, and of 1.0 and 1.00 one pair each, along its
-        /// sort's diagonal: keys its sort ranks equal and its equality does not.
+        /// Calcite plans the equi-join as a merge join over its sorted keys, the comparison as a join that evaluates it, and
+        /// <c>=</c> projected over a cross join as a nested-loop join under a calc. The comparison and <c>=</c> match the
+        /// same pairs in every case: <c>BIGINT</c> 2^53 and 2^53 + 1 apart and <c>DOUBLE</c> 2^53 and 2^53 + 1 together,
+        /// one double; <c>VARCHAR</c> by its units and <c>BOOLEAN</c> as itself; across types an <c>INTEGER</c> 7 with a
+        /// <c>BIGINT</c> 7 and a <c>BIGINT</c> 2^53 + 1 with a <c>DOUBLE</c> 2^53, Calcite casting the narrower key to the
+        /// join's comparison type; and <c>DOUBLE</c> and <c>REAL</c> −0.0 with 0.0 and <c>DECIMAL</c> 1.0 with 1.00,
+        /// every pair of each. The merge join matches what they match but for two kinds of pair: it never matches −0.0
+        /// with 0.0, alone or beside one, and of 1.0 and 1.00 it matches one pair each, along its sort's diagonal.
         /// </summary>
         [Fact, CosmosPins("Calcite.AnEquiJoinMatchesKeysAsEquality")]
         public void AnEquiJoinMatchesKeysAsEquality()
@@ -80,27 +81,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             flag.Equi.Should().Equal("(0,1)", "(1,0)");
             flag.Compared.Should().Equal("(0,1)", "(1,0)");
 
-            // Where the merge join parts from =: −0.0 beside 0.0, and one DECIMAL value written to two scales.
+            // Where the merge join parts from =: −0.0 beside 0.0, −0.0 alone against 0.0, and one DECIMAL value written to
+            // two scales. = itself, evaluated on each pair, matches every pair of each.
             var zero = Join(connection, SqlTypeName.DOUBLE, ["-0.0", "0.0", "1.5"], SqlTypeName.DOUBLE, ["0.0", "-0.0", "1.5"]);
             zero.Equi.Should().Equal("(1,0)", "(2,2)");
             zero.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
             zero.EquiPlan.Should().Contain("ClrCursorMergeJoin");
+
+            var lone = Join(connection, SqlTypeName.DOUBLE, ["-0.0"], SqlTypeName.DOUBLE, ["0.0"]);
+            lone.Equi.Should().BeEmpty();
+            lone.Compared.Should().Equal("(0,0)");
+
+            var real = Join(connection, SqlTypeName.REAL, ["-0.0", "0.0", "1.5"], SqlTypeName.REAL, ["0.0", "-0.0", "1.5"]);
+            real.Equi.Should().Equal("(1,0)", "(2,2)");
+            real.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
 
             var scaled = Join(connection, SqlTypeName.DECIMAL, ["1.0", "1.00", "2"], SqlTypeName.DECIMAL, ["1.00", "1.0", "2.0"]);
             scaled.Equi.Should().Equal("(0,0)", "(1,1)", "(2,2)");
             scaled.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
             scaled.EquiPlan.Should().Contain("ClrCursorMergeJoin");
 
-            // The comparison is never planned as an equi-join: it evaluates <= and >= on each pair it is offered.
-            foreach (var measured in new[] { bigint, dbl, widened, approximate, text, flag, zero, scaled })
+            foreach (var measured in new[] { zero, lone, real, scaled })
+                measured.EqualPlan.Should().Contain("=($t1, $t3)");
+
+            // The comparison is never planned as an equi-join: it evaluates <= and >= on each pair it is offered. = is
+            // evaluated on every pair of the cross join, and is true on exactly the pairs the comparison matches.
+            foreach (var measured in new[] { bigint, dbl, widened, approximate, text, flag, zero, lone, real, scaled })
             {
                 measured.EquiPlan.Should().Contain("ClrCursorMergeJoin");
                 measured.ComparedPlan.Should().NotContain("MergeJoin").And.Contain("AND(<=(");
+                measured.EqualPlan.Should().Contain("ClrCursorNestedLoopJoin(condition=[true]").And.NotContain("MergeJoin");
+                measured.Equal.Should().Equal(measured.Compared);
             }
         }
 
-        /// <summary>The pairs each join matches, in order, and the plan Calcite chose for each.</summary>
-        sealed record Measured(string[] Equi, string[] Compared, string EquiPlan, string ComparedPlan);
+        /// <summary>
+        /// The pairs each join matches, and the pairs on which <c>=</c> is true, in order, and the plan Calcite chose for
+        /// each.
+        /// </summary>
+        sealed record Measured(string[] Equi, string[] Compared, string[] Equal, string EquiPlan, string ComparedPlan, string EqualPlan);
 
         static Measured Join(DbConnection connection, SqlTypeName leftType, string?[] left, SqlTypeName rightType, string?[] right)
         {
@@ -109,7 +128,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             string Sql(string on) => $"SELECT a.\"k\", b.\"k\" FROM \"{a}\" a JOIN \"{b}\" b ON {on}";
 
-            return new Measured(Pairs(connection, Sql(Equi)), Pairs(connection, Sql(Compared)), Plan(connection, Sql(Equi)), Plan(connection, Sql(Compared)));
+            var equal = $"SELECT a.\"k\", b.\"k\", a.\"v\" = b.\"v\" FROM \"{a}\" a CROSS JOIN \"{b}\" b";
+
+            return new Measured(
+                Pairs(connection, Sql(Equi)), Pairs(connection, Sql(Compared)), Truths(connection, equal),
+                Plan(connection, Sql(Equi)), Plan(connection, Sql(Compared)), Plan(connection, equal));
+        }
+
+        /// <summary>The pairs on which a statement's third column is true, failing on any it holds unknown.</summary>
+        static string[] Truths(DbConnection connection, string sql)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+
+            var pairs = new List<string>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                reader.IsDBNull(2).Should().BeFalse("no key is null, so = is never unknown");
+                if (reader.GetBoolean(2))
+                    pairs.Add(string.Create(CultureInfo.InvariantCulture, $"({reader.GetValue(0)},{reader.GetValue(1)})"));
+            }
+
+            return [.. pairs.Order(StringComparer.Ordinal)];
         }
 
         static string[] Pairs(DbConnection connection, string sql)
