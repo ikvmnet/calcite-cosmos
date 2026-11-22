@@ -64,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 bound[i] = parameters[i] with { Value = slot.Presence ? Present(root, slot) : slot.RowCount is string clause ? Counted(root, slot, clause) : slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
 
                 // In the stored spelling of the target, the emulator's, where the service compares the value with a path
-                // (Service.EmulatorComparesTheSpellingItIsSent): after Held's truncation, Calcite truncating what it was
+                // (Service.EmulatorComparesTheSpellingItIsSent): after the length's truncation, Calcite truncating what it was
                 // given, and before the encoder is asked, which the spelling cannot change the answer of.
                 // A list or an object holding either character is not sent: its elements are not spelled, and the
                 // statement fails rather than compare their raw spelling with a stored one.
@@ -314,7 +314,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         {
             return Converted(root.get(value.VariableName), value) switch
             {
-                string text when value.Length is int length => Held(text, length, value.Padded),
                 null => null,
                 java.lang.Byte b => (long)unchecked((sbyte)b.byteValue()),
                 java.lang.Short s => (long)s.shortValue(),
@@ -349,16 +348,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <para>
         /// <b>The dispatch is <c>RexToLixTranslator.visitDynamicParam</c>'s, over Calcite's own list and classes.</b> A
         /// type in Calcite's numeric family (<c>SqlTypeName.NUMERIC_TYPES</c>) is read through <c>java.lang.Number</c>,
-        /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the conversion to the
-        /// class Calcite holds the type in: the box's own <c>…Value()</c>, as linq4j's <c>Primitive.number</c> converts it,
-        /// the decimal itself, or <c>UnsignedType</c>'s for an unsigned type. Any other type is read as the class Calcite holds it in, as its own type factory answers
-        /// (<c>JavaTypeFactoryImpl.getJavaClass</c>): a <c>String</c> through the object's <c>toString()</c>, any other
-        /// class through a cast, which <c>Object</c>, an <c>ANY</c>'s or a <c>VARIANT</c>'s class, passes as it is. The
-        /// leaf conversions and the classes are Calcite's, called; the dispatch between them is written here, and the
-        /// measurement, and a test against the code Calcite generates for a parameter of each type
-        /// (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), hold it to Calcite's. A parameter's type is always nullable, the validator making every one so,
-        /// so the conversion is the boxed one: an integer past its type wraps, as <c>BigDecimal.intValue()</c> does,
-        /// rather than raise as the unboxed <c>intValueExact()</c> would.
+        /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the conversion to
+        /// the class Calcite holds the type in: the box's own <c>…Value()</c>, as linq4j's <c>Primitive.number</c>
+        /// converts it, the decimal itself, or <c>UnsignedType</c>'s for an unsigned type. Any other type is read as the
+        /// class Calcite holds it in, as its own type factory answers (<c>JavaTypeFactoryImpl.getJavaClass</c>): a
+        /// <c>String</c> through the object's <c>toString()</c>, any other class through a cast, which <c>Object</c>, an
+        /// <c>ANY</c>'s or a <c>VARIANT</c>'s class, passes as it is. A parameter's type is always nullable, the validator
+        /// making every one so, so the conversion is the boxed one: an integer past its type wraps, as
+        /// <c>BigDecimal.intValue()</c> does, rather than raise as the unboxed <c>intValueExact()</c> would.
+        /// </para>
+        /// <para>
+        /// <b>Then the step the generated code takes after it</b> (<c>RexToLixTranslator.checkExpressionPadTruncate</c>):
+        /// a text or a binary type of a length holds the value to it, truncated, and padded where
+        /// <see cref="CosmosDynamicValue.Padded"/> says (<c>SqlFunctions.truncate</c> and <c>truncateOrPad</c>, called);
+        /// and an interval, held in a number of its smallest unit, is multiplied by its end unit's multiplier, as the
+        /// generated code multiplies a number read into one (<c>RexImpTable.multiplyDivide</c>). The leaf conversions, the
+        /// classes and the multipliers are Calcite's; the dispatch between them is written here, and a test holds it to
+        /// the code Calcite generates for a parameter of the numeric, character, binary, boolean, datetime, interval,
+        /// <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c> types
+        /// (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), beside the measurement.
         /// </para>
         /// <para>
         /// <b>A value Calcite cannot convert fails the statement by name</b>, as Calcite's own plan fails reading it: a
@@ -381,31 +389,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             var boxed = JavaClassOf(type);
 
+            object read;
             try
             {
-                if (SqlTypeName.NUMERIC_TYPES.contains(type))
-                {
-                    var number = SqlFunctions.toBigDecimal(held);
-                    if (org.apache.calcite.linq4j.tree.Primitive.ofBox(boxed) is { } primitive)
-                        return primitive.number(number);
-
-                    return boxed switch
-                    {
-                        _ when boxed == (java.lang.Class)typeof(org.joou.UByte) => org.apache.calcite.linq4j.tree.UnsignedType.toUByte(number),
-                        _ when boxed == (java.lang.Class)typeof(org.joou.UShort) => org.apache.calcite.linq4j.tree.UnsignedType.toUShort(number),
-                        _ when boxed == (java.lang.Class)typeof(org.joou.UInteger) => org.apache.calcite.linq4j.tree.UnsignedType.toUInteger(number),
-                        _ when boxed == (java.lang.Class)typeof(org.joou.ULong) => org.apache.calcite.linq4j.tree.UnsignedType.toULong(number),
-                        _ => number,
-                    };
-                }
-
-                return boxed == (java.lang.Class)typeof(string) ? java.lang.String.valueOf(held) : boxed.cast(held);
+                read = SqlTypeName.NUMERIC_TYPES.contains(type) ? Number(SqlFunctions.toBigDecimal(held), boxed)
+                    : boxed == (java.lang.Class)typeof(string) ? java.lang.String.valueOf(held)
+                    : boxed.cast(held);
             }
             catch (Exception e) when (e is java.lang.RuntimeException or InvalidCastException)
             {
                 throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({e.GetType().Name}: {e.Message}), so the statement fails as Calcite's own plan fails.", e);
             }
+
+            return read switch
+            {
+                string text when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(text, length) : SqlFunctions.truncate(text, length),
+                org.apache.calcite.avatica.util.ByteString bytes when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(bytes, length) : SqlFunctions.truncate(bytes, length),
+                java.lang.Long units when SqlTypeName.INTERVAL_TYPES.contains(type) => java.lang.Long.valueOf(unchecked(units.longValue() * EndUnit(type))),
+                java.lang.Integer units when SqlTypeName.INTERVAL_TYPES.contains(type) => java.lang.Integer.valueOf(unchecked(units.intValue() * EndUnit(type))),
+                _ => read,
+            };
         }
+
+        /// <summary>
+        /// Converts a decimal to the class Calcite holds a numeric type in: linq4j's conversion to a box,
+        /// <c>UnsignedType</c>'s to an unsigned one, or the decimal itself.
+        /// </summary>
+        /// <param name="number">The decimal <c>toBigDecimal</c> read.</param>
+        /// <param name="boxed">The class Calcite holds the type in.</param>
+        /// <returns>The number in that class.</returns>
+        static object Number(java.math.BigDecimal number, java.lang.Class boxed)
+        {
+            if (org.apache.calcite.linq4j.tree.Primitive.ofBox(boxed) is { } primitive)
+                return primitive.number(number);
+
+            return boxed switch
+            {
+                _ when boxed == (java.lang.Class)typeof(org.joou.UByte) => org.apache.calcite.linq4j.tree.UnsignedType.toUByte(number),
+                _ when boxed == (java.lang.Class)typeof(org.joou.UShort) => org.apache.calcite.linq4j.tree.UnsignedType.toUShort(number),
+                _ when boxed == (java.lang.Class)typeof(org.joou.UInteger) => org.apache.calcite.linq4j.tree.UnsignedType.toUInteger(number),
+                _ when boxed == (java.lang.Class)typeof(org.joou.ULong) => org.apache.calcite.linq4j.tree.UnsignedType.toULong(number),
+                _ => number,
+            };
+        }
+
+        /// <summary>
+        /// Answers what Calcite multiplies an interval read from a number by: its end unit's multiplier, in the
+        /// milliseconds or the months the interval is held in (<c>SqlTypeName.getEndUnit</c>).
+        /// </summary>
+        /// <param name="type">An interval type.</param>
+        /// <returns>The multiplier.</returns>
+        static int EndUnit(SqlTypeName type) => type.getEndUnit().multiplier.intValueExact();
 
         /// <summary>
         /// Answers the class Calcite holds a parameter of a type in: its own type factory's answer for the nullable type,
@@ -418,17 +452,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             var factory = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
             return (java.lang.Class)factory.getJavaClass(factory.createTypeWithNullability(factory.createSqlType(type), true));
         }
-
-        /// <summary>
-        /// Holds a string to the length its parameter's type holds, as Calcite does: truncated by code unit, and padded
-        /// with spaces where the type is a <c>CHAR</c> (<c>SqlFunctions.truncate</c> and <c>truncateOrPad</c>).
-        /// </summary>
-        /// <param name="text">The value.</param>
-        /// <param name="length">The type's length.</param>
-        /// <param name="padded">Whether a shorter value is padded.</param>
-        /// <returns>The value as Calcite reads it.</returns>
-        static string Held(string text, int length, bool padded) =>
-            text.Length > length ? text.Substring(0, length) : padded ? text.PadRight(length) : text;
 
     }
 

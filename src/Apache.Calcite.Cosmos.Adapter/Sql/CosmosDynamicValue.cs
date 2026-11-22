@@ -76,8 +76,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public bool Presence { get; init; }
 
         /// <summary>
-        /// Gets the length in UTF-16 code units the parameter's type holds a string to — its <c>CHAR(n)</c> or
-        /// <c>VARCHAR(n)</c> — or <c>null</c> for a type that holds any.
+        /// Gets the length the parameter's type holds a value to — the UTF-16 code units of its <c>CHAR(n)</c> or
+        /// <c>VARCHAR(n)</c>, or the bytes of its <c>BINARY(n)</c> or <c>VARBINARY(n)</c> — or <c>null</c> for a type that
+        /// holds any.
         /// </summary>
         /// <remarks>
         /// What the value is, in Calcite, and so what the service has to be sent: Calcite's generated code truncates a
@@ -87,8 +88,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public int? Length { get; init; }
 
         /// <summary>
-        /// Gets whether a string shorter than <see cref="Length"/> is padded to it with spaces, as Calcite pads a
-        /// <c>CHAR(n)</c>.
+        /// Gets whether a value shorter than <see cref="Length"/> is padded to it, as Calcite pads a <c>CHAR(n)</c>
+        /// parameter with spaces; it pads no binary one.
         /// </summary>
         public bool Padded { get; init; }
 

@@ -2634,16 +2634,19 @@ read off the `RexDynamicParam` beside its length, a stored form's slot as a valu
 value by calling what Calcite's generated code calls (`RexToLixTranslator.visitDynamicParam`, through
 `EnumUtils.convert`): for a type in Calcite's numeric family, `SqlFunctions.toBigDecimal` and the conversion to the
 class Calcite holds the type in; for any other, the object's `toString()` where that class is a string, and otherwise a
-cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is. The classes come from Calcite's own
-type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the
-measurement, and a test against the code Calcite generates for a parameter of each type, hold it to Calcite's. The
-conversion is the boxed one, which wraps an integer past its type, since the validator makes every parameter's type
-nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number, a string or a
-`java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A presence slot
-reads only whether a value is bound, so it is not converted, and a row count is read as Calcite's limit reads it, below.
-Calcite fails only once a row reaches the parameter's reading, which leaves a statement over no row, or one no row of
-which takes the `CASE` arm reading the parameter, failing where Calcite answers, and one the facts graph decides not to
-send answering where Calcite fails; `TODO.md` records both.
+cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is; then the step that code takes after it
+(`checkExpressionPadTruncate`), holding a text or a binary value to its type's length (`SqlFunctions.truncate`, and
+`truncateOrPad` for a `CHAR`) and multiplying an interval by its end unit's multiplier. The classes come from Calcite's
+own type factory and the leaf conversions and the multipliers are Calcite's, called; the dispatch between them is
+written here, and the measurement, and a test against the code Calcite generates for a parameter of the numeric,
+character, binary, boolean, datetime, interval, `UUID`, geometry, collection, `ANY` and `VARIANT` types, hold it to
+Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the validator makes every
+parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number,
+a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A
+presence slot reads only whether a value is bound, so it is not converted, and a row count is read as Calcite's limit
+reads it, below. Calcite fails only once a row reaches the parameter's reading, which leaves a statement over no row, or
+one no row of which takes the `CASE` arm reading the parameter, failing where Calcite answers, and one the facts graph
+decides not to send answering where Calcite fails; `TODO.md` records both.
 
 **A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
 either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the

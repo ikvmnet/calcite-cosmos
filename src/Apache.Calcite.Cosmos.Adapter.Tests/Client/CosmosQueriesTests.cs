@@ -252,17 +252,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
-        /// The conversion is the code Calcite generates for a dynamic parameter: over every type a parameter takes without
-        /// a length, and over the classes a caller of Calcite's own driver binds, it answers what Calcite's code for a
-        /// <c>RexDynamicParam</c> of the type answers, the value in the same class, or fails where that code fails, with
-        /// the same exception.
+        /// The conversion is the code Calcite generates for a dynamic parameter: over a parameter of the numeric, character,
+        /// binary, boolean, datetime, interval, <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c> types, each
+        /// slotted as the translator slots it, and over the classes a caller of Calcite's own driver binds, it answers what
+        /// Calcite's code for a <c>RexDynamicParam</c> of the type answers, the value in the same class, or fails where that
+        /// code fails, with the same exception.
         /// </summary>
         /// <remarks>
-        /// The leaf conversions and the classes are Calcite's, called, and the dispatch between them is written in C#
-        /// (<c>CosmosQueries.Converted</c>), so this holds the dispatch to what Calcite's code generator makes of the same
-        /// parameter (<c>RexExecutorImpl.getExecutable</c>), wherever a later Calcite moves it. A type with a length is
-        /// left out: holding the text to its length comes after the conversion
-        /// (<see cref="TheConvertedValueIsHeldToItsLengthAndAnyPassesAsItIs"/>).
+        /// The leaf conversions and the classes are Calcite's, called, and the dispatch between them, the length a slot
+        /// carries and what it holds a value to are written in C# (<c>CosmosRexTranslator.SlotOf</c>,
+        /// <c>CosmosQueries.Converted</c>), so this holds them to what Calcite's code generator makes of the same parameter
+        /// (<c>RexExecutorImpl.getExecutable</c>), wherever a later Calcite moves it: a type's length, a <c>CHAR</c>'s
+        /// padding, and an interval's multiplier among it. Left out at 16 types, the binary types and every interval that
+        /// does not end in a month were bound as another value than Calcite reads, the bytes uncut and the number
+        /// unmultiplied.
         /// </remarks>
         [Fact]
         public void TheConversionIsTheCodeCalciteGeneratesForAParameter()
@@ -270,38 +273,73 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var types = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
             var rex = new org.apache.calcite.rex.RexBuilder(types);
 
-            var typed = new[]
+            var typed = new List<org.apache.calcite.rel.type.RelDataType>
             {
                 types.createSqlType(SqlTypeName.TINYINT),
                 types.createSqlType(SqlTypeName.SMALLINT),
                 types.createSqlType(SqlTypeName.INTEGER),
                 types.createSqlType(SqlTypeName.BIGINT),
+                types.createSqlType(SqlTypeName.UTINYINT),
+                types.createSqlType(SqlTypeName.USMALLINT),
+                types.createSqlType(SqlTypeName.UINTEGER),
+                types.createSqlType(SqlTypeName.UBIGINT),
                 types.createSqlType(SqlTypeName.DECIMAL),
                 types.createSqlType(SqlTypeName.DECIMAL, 10, 2),
                 types.createSqlType(SqlTypeName.REAL),
                 types.createSqlType(SqlTypeName.FLOAT),
                 types.createSqlType(SqlTypeName.DOUBLE),
+                types.createSqlType(SqlTypeName.CHAR),
+                types.createSqlType(SqlTypeName.CHAR, 3),
                 types.createSqlType(SqlTypeName.VARCHAR),
+                types.createSqlType(SqlTypeName.VARCHAR, 2),
+                types.createSqlType(SqlTypeName.BINARY),
+                types.createSqlType(SqlTypeName.BINARY, 2),
+                types.createSqlType(SqlTypeName.VARBINARY),
+                types.createSqlType(SqlTypeName.VARBINARY, 2),
                 types.createSqlType(SqlTypeName.BOOLEAN),
-                types.createSqlType(SqlTypeName.TIMESTAMP, 3),
                 types.createSqlType(SqlTypeName.DATE),
+                types.createSqlType(SqlTypeName.TIME),
+                types.createSqlType(SqlTypeName.TIME, 3),
+                types.createSqlType(SqlTypeName.TIMESTAMP),
+                types.createSqlType(SqlTypeName.TIMESTAMP, 3),
+                types.createSqlType(SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE, 3),
                 types.createSqlType(SqlTypeName.UUID),
+                types.createSqlType(SqlTypeName.GEOMETRY),
+                types.createArrayType(types.createSqlType(SqlTypeName.INTEGER), -1),
+                types.createMapType(types.createSqlType(SqlTypeName.VARCHAR), types.createSqlType(SqlTypeName.INTEGER)),
+                types.createMultisetType(types.createSqlType(SqlTypeName.INTEGER), -1),
                 types.createSqlType(SqlTypeName.ANY),
                 types.createSqlType(SqlTypeName.VARIANT),
             };
 
+            // Every interval, from its start and end units.
+            foreach (var name in SqlTypeName.INTERVAL_TYPES.toArray())
+            {
+                var interval = (SqlTypeName)name;
+                var end = interval.getEndUnit() == interval.getStartUnit() ? null : interval.getEndUnit();
+                typed.Add(types.createSqlIntervalType(new org.apache.calcite.sql.SqlIntervalQualifier(interval.getStartUnit(), end, org.apache.calcite.sql.parser.SqlParserPos.ZERO)));
+            }
+
+            var list = new java.util.ArrayList();
+            list.add(java.lang.Integer.valueOf(1));
+            var map = new java.util.HashMap();
+            map.put("a", java.lang.Integer.valueOf(1));
+
             var held = new object?[]
             {
                 java.lang.Long.valueOf(4294967298L), java.lang.Long.valueOf(-129L), java.lang.Long.valueOf(9007199254740993L), java.lang.Long.valueOf(long.MinValue),
-                java.lang.Integer.valueOf(70000), java.lang.Short.valueOf((short)300), java.lang.Byte.valueOf(unchecked((byte)(sbyte)-7)),
+                java.lang.Long.valueOf(7L), java.lang.Integer.valueOf(70000), java.lang.Integer.valueOf(7), java.lang.Integer.valueOf(int.MinValue),
+                java.lang.Short.valueOf((short)300), java.lang.Byte.valueOf(unchecked((byte)(sbyte)-7)),
                 java.lang.Double.valueOf(1.9), java.lang.Double.valueOf(-1.9), java.lang.Double.valueOf(1e20), java.lang.Double.valueOf(0.1), java.lang.Double.valueOf(-0.0),
                 java.lang.Double.valueOf(4.9e-324), java.lang.Double.valueOf(1e300), java.lang.Double.valueOf(double.NaN), java.lang.Double.valueOf(double.PositiveInfinity),
                 java.lang.Float.valueOf(0.1f), java.lang.Float.valueOf(3.4e38f), java.lang.Float.valueOf(-0.0f),
                 new java.math.BigDecimal("2.555"), new java.math.BigDecimal("1E+3"), new java.math.BigDecimal("123456789012345678901234567890.5"), new java.math.BigDecimal("-0.000"),
                 new java.math.BigInteger("18446744073709551617"),
-                " 7 ", "2.5e1", "x", "1e400", "-1e-400", "+3", "NaN", "Infinity", "0x10", "", "true",
+                " 7 ", "2.5e1", "x", "ab", "abcd", "a😀", "1e400", "-1e-400", "+3", "NaN", "Infinity", "0x10", "", "true",
                 java.lang.Boolean.TRUE, java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"),
                 org.apache.calcite.util.UuidValue.fromString("123e4567-e89b-12d3-a456-426614174000"), java.lang.Character.valueOf('7'),
+                new org.apache.calcite.avatica.util.ByteString([1]), new org.apache.calcite.avatica.util.ByteString([1, 2]), new org.apache.calcite.avatica.util.ByteString([1, 2, 3]),
+                list, map, Point(),
             };
 
             using var scope = new AssertionScope();
@@ -309,7 +347,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             {
                 var parameter = rex.makeDynamicParam(types.createTypeWithNullability(type, true), 0);
                 var code = org.apache.calcite.rex.RexExecutorImpl.getExecutable(rex, java.util.Collections.singletonList(parameter), types.builder().build());
-                var slot = new CosmosDynamicValue(0) { TypeName = type.getSqlTypeName() };
+                var slot = CosmosRexTranslator.SlotOf(parameter);
 
                 foreach (var value in held)
                 {
@@ -585,7 +623,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         public void AStoredParameterIsSentInTheStoredSpellingAfterItsLengthHoldsIt()
         {
             var query = new CosmosQuery("SELECT VALUE c.id FROM c WHERE (c.s = @p0) AND (c.t = @p1)",
-                [new("@p0", new CosmosDynamicValue(0) { Length = 3 }), new("@p1", new CosmosDynamicValue(1))], Stored: ["@p0"]);
+                [new("@p0", new CosmosDynamicValue(0) { TypeName = SqlTypeName.VARCHAR, Length = 3 }), new("@p1", new CosmosDynamicValue(1))], Stored: ["@p0"]);
 
             var bound = CosmosQueries.Bind(query, new Context(("?0", "\0﷐\0x"), ("?1", "a\0")));
             bound.Parameters[0].Value.Should().Be("﷐0﷐1﷐0", "truncated to three units, then each escaped");

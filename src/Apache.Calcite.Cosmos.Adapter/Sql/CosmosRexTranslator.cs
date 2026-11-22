@@ -856,25 +856,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>
         /// Returns the slot a parameter's value is bound into: its ordinal, its type, and the length its type holds a
-        /// string to.
+        /// value to.
         /// </summary>
         /// <remarks>
         /// Calcite reads a parameter as its type (<c>RexToLixTranslator.visitDynamicParam</c>): its generated code
         /// converts the value the data context holds to the type, and a <c>CHAR(n)</c> or a <c>VARCHAR(n)</c> holds a
-        /// string to <c>n</c> code units, truncated, and padded for a <c>CHAR</c>. The validator gives a parameter the
-        /// type of what it is compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to <c>'xa'</c>
-        /// compares with <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept the rows
-        /// holding <c>'x'</c>. And a long bound to a <c>DOUBLE</c> parameter through Calcite's own driver compares as
-        /// its double. So the slot carries the type and the length, and <see cref="Client.CosmosQueries.Bind"/> converts
-        /// the value and holds it to the length.
+        /// string to <c>n</c> code units and a <c>BINARY(n)</c> or a <c>VARBINARY(n)</c> its bytes to <c>n</c>, truncated
+        /// (<c>checkExpressionPadTruncate</c>). Only a <c>CHAR</c> is padded: that step pads where what it holds
+        /// is text of no length, which a parameter's string is, and a parameter's bytes are not. The validator gives a
+        /// parameter the type of what it is compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to
+        /// <c>'xa'</c> compares with <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept
+        /// the rows holding <c>'x'</c>. And a long bound to a <c>DOUBLE</c> parameter through Calcite's own driver compares
+        /// as its double. So the slot carries the type and the length, and <see cref="Client.CosmosQueries.Bind"/>
+        /// converts the value and holds it to the length.
         /// </remarks>
-        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
+        internal static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
         {
             var type = parameter.getType();
             var name = type?.getSqlTypeName();
             var slot = new CosmosDynamicValue(parameter.getIndex()) { TypeName = name };
 
-            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR) && type!.getPrecision() >= 0
+            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.BINARY || name == SqlTypeName.VARBINARY) && type!.getPrecision() >= 0
                 ? slot with { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
                 : slot;
         }
