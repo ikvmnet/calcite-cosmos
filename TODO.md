@@ -3461,16 +3461,15 @@ across documents* and *A join of a container to itself* is the record.
   (3B).* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), and the restriction
   `path IN (@k0, …)` names each key's number, which the service compares by value with the number a document holds. A
   typed column reads some stored numbers as another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL`
-  column reads a stored `0.1` as the float nearest it, a `DOUBLE` column a stored integer past 2^53 as its double, and,
-  inferred from the rows and not run, a `BIGINT` column on Azure a number written with a point as its double, where the
-  service holds the integer written. A key equal to what the column reads is sent as a number the document does not
+  column reads a stored `0.1` as the float nearest it, and a `DOUBLE` column a stored integer past 2^53 as its double. A
+  key equal to what the column reads is sent as a number the document does not
   hold, so the document Calcite's own join matches is never fetched. On the emulator a `REAL` key `0.1` lost the
   document holding `0.1`, and a `BIGINT` key 2^53 joined to a `DOUBLE` column the one holding `9007199254740993`, in a
   planned lookup; against a stub returning every document the same joins agree. `main`
   sends the same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the bare
   equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
-  its tests should hold a `REAL` key `0.1` against a stored `0.1`, a `DOUBLE` key 2^53 against a stored
-  `9007199254740993`, and a `BIGINT` key 2^53 against a stored `9007199254740993.0` under Production.
+  its tests should hold a `REAL` key `0.1` against a stored `0.1` and a `DOUBLE` key 2^53 against a stored
+  `9007199254740993`.
 - **The lookup join answers where Calcite's own join fails on a document no key fetches** — *medium, an answer where
   Calcite fails, older than the key match; left for a change of its own after "fail like Calcite", with "A filter above
   a lookup join".* `CosmosLookupJoin` reads only the documents its keys fetch, where Calcite's own join reads every
