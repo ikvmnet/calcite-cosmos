@@ -59,11 +59,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// them apart.
         /// </para>
         /// <para>
-        /// <b>Calcite's merge join parts from <c>=</c> in two cases, and this follows <c>=</c>.</b> Calcite plans an
-        /// equi-join of two in-process inputs as a merge join over its sorted keys, which leaves <c>-0.0</c> unmatched
-        /// beside <c>0.0</c> and matches <c>DECIMAL</c> keys equal by value and written to different scales only along its
-        /// sort's diagonal; the comparison join, and <c>=</c> itself, match every pair of each. A <see cref="double"/>
-        /// <c>-0.0</c> equals <c>0.0</c> here as it does under <c>=</c>, hashing alike; <c>TODO.md</c> records the two.
+        /// <b>Calcite's own join never matches <c>-0.0</c> with <c>0.0</c>, and this follows <c>=</c>, which does.</b> Its
+        /// equi-join in process, a hash join or a merge join, leaves a <c>DOUBLE</c> <c>-0.0</c> unmatched against
+        /// <c>0.0</c>, where the comparison join and <c>=</c> itself match them. A <see cref="double"/> <c>-0.0</c> equals
+        /// <c>0.0</c> here as it does under <c>=</c>, hashing alike; <c>TODO.md</c> records the departure.
         /// </para>
         /// <para>
         /// <b>Java's boxes as well as the CLR's, and the Java ones are the ordinary case.</b> A

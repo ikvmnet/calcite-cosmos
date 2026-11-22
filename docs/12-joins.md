@@ -98,13 +98,11 @@ side first, never evaluates the small side and answers no rows (Chapter 23).
 Keys are matched as `=` matches them, after Calcite's cast to the type the join compares in. An `INTEGER`
 key beside a `BIGINT` one is compared as a `BIGINT`; two `BIGINT` keys past 2^53 that one double holds are
 told apart, as Calcite tells them apart, unless the join compares `DOUBLE`s, which hold both as one
-number; a `DECIMAL` `1.0` matches `1.00`; and a `DOUBLE` `-0.0` matches `0.0`. Each key is sent to Cosmos
-as a number of that type.
+number; and a `DOUBLE` `-0.0` matches `0.0`. Each number key is sent to Cosmos as a number of that type.
 
-Calcite's own plan of the same join in process is a merge join, which parts from `=` in two of those
-cases: it matches `-0.0` with nothing, and `DECIMAL` keys equal in value and written to different scales
-only some of the time. Over a small side holding such keys the lookup join answers every row `=` makes,
-which can be more rows than Calcite's merge join answers.
+Calcite's own join of the same statement in process parts from `=` in one of those cases: it never
+matches `-0.0` with `0.0`. So a small side's `-0.0` is joined to the documents holding `0`, a row
+Calcite's own join leaves out.
 
 ### Which side is fetched by key
 
