@@ -421,7 +421,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         /// <remarks>
         /// A lambda of its own rather than the result selector over a null container row, because a
-        /// container row of one column is the column's own type, which may be a value and has no null.
+        /// container row of one column is the column's own type, which may be a value and has no null. The
+        /// build's fields are written as <see cref="ResultSelector"/> writes them.
         /// </remarks>
         LambdaExpression UnmatchedSelector(ClrPhysType physType, ClrPhysType buildPhysType, Type buildType)
         {
@@ -430,15 +431,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var fields = new List<Expression>();
 
             for (var i = 0; i < getLeft().getRowType().getFieldCount(); i++)
-            {
-                var field = buildPhysType.FieldReference(b, i);
-                fields.Add(field.Type == typeof(object) ? field : Expression.Convert(field, typeof(object)));
-            }
+                fields.Add(buildPhysType.FieldReference(b, i, physType.FieldType(fields.Count)));
 
             for (var i = 0; i < getRight().getRowType().getFieldCount(); i++)
                 fields.Add(Expression.Constant(null, typeof(object)));
 
-            return Expression.Lambda(Expression.NewArrayInit(typeof(object), fields), b);
+            return Expression.Lambda(physType.Record(fields), b);
         }
 
     }

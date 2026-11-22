@@ -171,6 +171,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             ("a filter over both sides", 1, c => $"SELECT v.x, t.\"id\" FROM {Small(c)} JOIN {Probe} AS t ON v.k = t.\"id\" WHERE v.x > {c.First} OR t.\"n\" = 7"),
             ("a second lookup", 2, c => $"SELECT v.x, t.\"id\", u.\"id\" AS o FROM {Small(c)} JOIN {Probe} AS t ON v.k = t.\"id\" JOIN (SELECT o.\"id\" FROM orders AS o) AS u ON v.k = u.\"id\""),
             ("a hash join on it", 1, c => $"SELECT v.x, t.\"id\", w.name FROM {Small(c)} JOIN {Probe} AS t ON v.k = t.\"id\" JOIN (VALUES ({c.First}, 'p7', 'one'), ({c.Second}, 'p8', 'two')) AS w(x, id, name) ON v.x = w.x AND t.\"id\" = w.id"),
+            ("a left join's unmatched row sorted by it", 1, c => $"SELECT v.x, t.\"id\" FROM {Small(c, unmatched: true)} LEFT JOIN {Probe} AS t ON v.k = t.\"id\" ORDER BY v.x, v.k"),
+            ("a left join's unmatched row computed over", 1, c => $"SELECT {c.Compute} AS y, v.x, t.\"id\" FROM {Small(c, unmatched: true)} LEFT JOIN {Probe} AS t ON v.k = t.\"id\""),
             ("a window ordered by it", 1, c => $"SELECT v.x, t.\"id\", ROW_NUMBER() OVER (ORDER BY v.x DESC) AS r FROM {Small(c)} JOIN {Probe} AS t ON v.k = t.\"id\" ORDER BY r"),
             ("a sub-query over it", 1, c => $"SELECT v.x, t.\"id\" FROM {Small(c)} JOIN {Probe} AS t ON v.k = t.\"id\" WHERE v.x IN (SELECT w.x FROM (VALUES ({c.Second})) AS w(x))"),
         ];
