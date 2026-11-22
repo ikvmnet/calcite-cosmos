@@ -80,7 +80,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>Held to <see cref="int.MaxValue"/></b>, the most the statement writes for no limit at all, the
         /// <c>LIMIT</c> beside an <c>OFFSET</c> alone (<see cref="CosmosQueryBuilder"/>): a count past it reads the rows
-        /// that one does, and both rest on no request reading more rows than that.
+        /// that one does, and both rest on no request reading more rows than that, an assumption nothing measures
+        /// (TODO.md).
         /// </para>
         /// </remarks>
         /// <param name="value">The count, as the plan holds a literal's or the data context a parameter's.</param>

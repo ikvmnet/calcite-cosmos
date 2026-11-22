@@ -2022,6 +2022,15 @@ which Calcite's conversion refuses, so through it the two agree wherever a row r
 **The proper fix** is the request decision reading the bound value, which could keep in Calcite whatever reads such a
 value, and answer a statement over no row with none. No stage plans it.
 
+### A row count past 2,147,483,647 is sent as 2,147,483,647 — *small, an assumption*
+
+The statement writes `LIMIT 2147483647` for no limit beside an `OFFSET` alone (`CosmosQueryBuilder`), and sends a
+`FETCH` or an `OFFSET` count past 2,147,483,647, a literal's or a parameter's, as 2,147,483,647 (`CosmosRowLimit.Rows`),
+where Calcite takes or skips rows by the whole count (`Calcite.ARowCountIsTakenToItsCeiling`). Both rest on no request
+reading or skipping more documents than that, which nothing measures: over more, the statement stops where Calcite
+goes on. How large a count the service and the SDK accept is not measured either; measured, a count up to that bound
+could be sent as it is.
+
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
 A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical
