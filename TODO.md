@@ -3493,8 +3493,8 @@ across documents* and *A join of a container to itself* is the record.
   `TINYINT` one over 300 and a `BIGINT` one over 1e20 answer where Calcite fails on the range, as do a second
   container's `BIGINT` key over 7.5 and an `INTEGER` key cast to `BIGINT` over 2.5; and a lookup by `id` projecting
   `JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER)`, over a document no key names holding 1.5, answers where Calcite
-  fails, as does a `BIGINT` key beside a price of 3000000000. `main` answers each the same. The fix wants the lookup join
-  offered only where nothing the probe side reads can fail on a document its declaration admits, asked of the facts
+  fails, as does a `BIGINT` key beside a price of 3000000000. `main` answers each the same. The fix wants the lookup
+  join offered only where nothing the probe side reads can fail on a document its declaration admits, asked of the facts
   graph, or such a probe side read whole, which fails as Calcite does: the fix "A filter above a lookup join" wants.
   When the restriction is asked of the rendering graph (3B), its tests should hold a `BIGINT` key over a path holding
   1.5.
