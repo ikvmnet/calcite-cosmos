@@ -105,13 +105,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Runs a statement over a container declared nothing whose every request is answered with the same documents: the
-        /// plan implemented, each <c>?</c> bound in order to a value of <paramref name="parameters"/>, and its first
-        /// column read; each request sent is kept in <paramref name="sent"/>, where one is given.
+        /// Runs a statement over a container declared nothing, or declared <paramref name="schema"/>, whose every request
+        /// is answered with the same documents: the plan implemented, each <c>?</c> bound in order to a value of
+        /// <paramref name="parameters"/>, and its first column read; each request sent is kept in
+        /// <paramref name="sent"/>, where one is given.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null, System.Collections.Generic.List<CosmosQuery>? sent = null)
+        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null, System.Collections.Generic.List<CosmosQuery>? sent = null, string? schema = null)
         {
-            using var source = Open(null, new DocumentsExecutor(documents, sent), null);
+            using var source = Open(schema, new DocumentsExecutor(documents, sent), null);
             using var connection = source.OpenConnection();
             return Rows(connection, sql.Replace(" items AS ", " \"items\" AS "), parameters ?? []);
         }
@@ -293,13 +294,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 failure.Message.Should().Be(expected.Message, reading);
                 sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
             }
+        }
 
-            static Exception Innermost(Exception e)
+        /// <summary>The exception that failed a statement, beneath every one wrapping it.</summary>
+        static Exception Innermost(Exception e)
+        {
+            while (e.InnerException is not null)
+                e = e.InnerException;
+
+            return e;
+        }
+
+        /// <summary>
+        /// A <c>RETURNING DATE</c>, <c>TIMESTAMP</c> or <c>TIME</c> accessor over a path declared to spell one, compared
+        /// with a parameter, fails as Calcite's own plan fails over the same documents, which hold the spelling at the
+        /// path: nothing sent holds the parameter, and the comparison is computed in process, over a container whose
+        /// every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the count of days or milliseconds Calcite holds it in, which no stored string
+        /// equals, and the statement answered where Calcite fails reading the string as the accessor's type.
+        /// </remarks>
+        [Fact]
+        public void ADateOrTimeParametersComparisonFailsAsCalcitesPlan()
+        {
+            string[] dates = ["""{"id":"a","at":"2024-01-15"}""", """{"id":"b","at":"2024-01-16"}"""];
+            string[] times = ["""{"id":"a","at":"12:34:56"}""", """{"id":"b","at":"12:35:00"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+
+            foreach (var (pattern, documents, reading, bound) in new (string, string[], string, object)[]
             {
-                while (e.InnerException is not null)
-                    e = e.InnerException;
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING DATE) = ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING DATE) <> ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING TIMESTAMP) = ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{2}:[0-9]{2}:[0-9]{2}$", times, """JSON_VALUE({d}, '$.at' RETURNING TIME) = ?""", new TimeOnly(12, 34, 56)),
+            })
+            {
+                var schema = $$"""{ "type": "object", "required": ["at"], "properties": { "at": { "type": "string", "pattern": "{{pattern}}" } } }""";
+                var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Innermost(FluentActions.Invoking(() => Rows(calcite, $"SELECT \"k\" FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\""), [bound]))
+                    .Should().Throw<Exception>("Calcite's plan fails reading the string at the path as " + reading).Which);
+                var failure = Innermost(FluentActions.Invoking(() => Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\""), documents, [bound], sent, schema))
+                    .Should().Throw<Exception>("the statement fails as Calcite's plan: " + reading).Which);
 
-                return e;
+                failure.GetType().Should().Be(expected.GetType(), reading);
+                failure.Message.Should().Be(expected.Message, reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
             }
         }
 

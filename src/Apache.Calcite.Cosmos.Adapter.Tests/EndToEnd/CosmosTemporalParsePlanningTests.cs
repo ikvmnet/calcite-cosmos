@@ -835,6 +835,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A calendar date, declared.
+        /// </summary>
+        const string DatePattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
+
+        /// <summary>
+        /// A time of day to the second, declared.
+        /// </summary>
+        const string TimePattern = "^[0-9]{2}:[0-9]{2}:[0-9]{2}$";
+
+        /// <summary>
+        /// A <c>DATE</c>, <c>TIME</c> or <c>TIMESTAMP</c> parameter compared with a <c>RETURNING</c> accessor over a path
+        /// declared to spell one is never sent, as no literal of one is: Calcite holds it as a count of days or
+        /// milliseconds, which no stored spelling is. The comparison is computed in process, and a conjunct beside it is
+        /// still sent.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_VALUE(… RETURNING DATE) = ?</c> was sent as <c>c.at = @p0</c>, bound to the days Calcite holds the
+        /// date in, which no stored string equals, and <c>&lt;&gt;</c> kept every document, where Calcite's plan fails
+        /// reading the string (<see cref="CosmosConnectionPlanningTests"/>).
+        /// </remarks>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.at' RETURNING DATE) = ?""", DatePattern)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.at' RETURNING DATE) <> ?""", DatePattern)]
+        [InlineData("""? = JSON_VALUE(c."DOC", '$.at' RETURNING DATE) AND c."id" = 'a'""", DatePattern)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.at' RETURNING TIMESTAMP) IN (?, ?) AND c."id" = 'a'""", DatePattern)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.at' RETURNING TIME) = ? OR c."id" = 'a'""", TimePattern)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.at' RETURNING TIME) <> ? AND c."id" = 'a'""", TimePattern)]
+        public void ADateOrTimeParameterIsNeverSentAsTheCountCalciteHoldsItIn(string predicate, string pattern)
+        {
+            var (query, _) = PlanParameter(predicate, pattern);
+
+            query.Parameters.Select(p => p.Value).OfType<Adapter.Sql.CosmosDynamicValue>().Should().BeEmpty("no slot holds the count: " + query.Sql);
+            if (predicate.Contains(" AND ", System.StringComparison.Ordinal))
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
+        /// <summary>
+        /// A <c>DATE</c> or <c>TIMESTAMP</c> parameter compared with the cast of a path declared to spell a date is
+        /// written in that spelling, through a slot of its own: the parameter is never sent as its count, and the
+        /// comparison still is.
+        /// </summary>
+        [Theory]
+        [InlineData("""CAST(JSON_VALUE(c."DOC", '$.at') AS DATE) = ?""", "(c.at = @p0)")]
+        [InlineData("""CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP) <> ?""", "(c.at != @p0)")]
+        public void ADateParameterComparedWithTheDeclaredSpellingsCastIsWrittenInIt(string predicate, string rendered)
+        {
+            var (query, plan) = PlanParameter(predicate, DatePattern);
+
+            query.Sql.Should().Contain(rendered, query.Sql);
+            plan.Should().NotContain("ClrCursorFilter", plan);
+            Slot(query).Form.Should().Be(CosmosTemporalForms.Iso8601Date, "the slot carries the spelling to write the value in");
+        }
+
+        /// <summary>
         /// A data context holding the one value a run supplies.
         /// </summary>
         sealed class Context : org.apache.calcite.DataContext

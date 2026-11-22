@@ -795,14 +795,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// the container whole rather than taking a point read.
         /// </para>
         /// <para>
-        /// <b>A parameter of an interval, a <c>UUID</c>, a binary, a collection or a row type is refused, as a literal
-        /// of one is</b> (<see cref="CosmosRexLiterals.IsNeverSent"/>): the value Calcite holds it in is no value the
-        /// service compares as Calcite compares it. Sent, a null test of a cast to an interval, which Calcite's planning
-        /// leaves as a test of the parameter itself, was answered from the count Calcite holds the interval in, where
-        /// Calcite's plan answers otherwise; a <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with one,
-        /// bound as the Java object Calcite holds the value in, was answered where Calcite's plan fails reading the path;
-        /// and a <c>RETURNING</c> array's <c>&lt;&gt;</c>, bound as the Java list of boxes Calcite holds the array in,
-        /// whose numbers the SDK writes as objects, kept the document Calcite drops (<c>CosmosConnectionPlanningTests</c>).
+        /// <b>A parameter of an interval, a date or a time, a <c>UUID</c>, a binary, a collection or a row type is
+        /// refused, as a literal of one is</b> (<see cref="CosmosRexLiterals.IsNeverSent"/>): the value Calcite holds it
+        /// in is no value the service compares as Calcite compares it. Sent, a null test of a cast to an interval, which
+        /// Calcite's planning leaves as a test of the parameter itself, was answered from the count Calcite holds the
+        /// interval in, where Calcite's plan answers otherwise; a <c>RETURNING DATE</c>, <c>TIME</c> or <c>TIMESTAMP</c>
+        /// over a path declared to spell one, compared with one, bound as the count of days or milliseconds Calcite holds
+        /// it in, and a <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with one, bound as the Java object
+        /// Calcite holds the value in, were answered where Calcite's plan fails reading the path; and a
+        /// <c>RETURNING</c> array's <c>&lt;&gt;</c>, bound as the Java list of boxes Calcite holds the array in, whose
+        /// numbers the SDK writes as objects, kept the document Calcite drops (<c>CosmosConnectionPlanningTests</c>).
         /// </para>
         /// </remarks>
         /// <param name="builder">The statement under construction.</param>
