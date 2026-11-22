@@ -3472,10 +3472,14 @@ across documents* and *A join of a container to itself* is the record.
   `REAL` key `0.1` lost the document holding `0.1`, a `REAL` `0.0` the one holding `1e-50` and a `-0.0` the one
   holding `-1e-50`, and a `BIGINT` key 2^53 + 1, which the join casts to the double 2^53, joined to a `DOUBLE` column
   the one holding `9007199254740993`; against a stub returning every document the same joins agree, but for the `-0.0`
-  departure the entry above records. `main` sends the same numbers, so the key match neither causes nor changes it.
-  The rendering graph, asked of the bare equality the restriction is a disjunction of, leaves `REAL` unplaced and
-  declines a `DOUBLE` comparison past 2^53; its tests should hold a `REAL` key `0.1` against a stored `0.1` and a
-  `DOUBLE` key 2^53 against a stored `9007199254740993`.
+  departure the entry above records. A filter by an `IN` list of twenty or more numbers reaches it too, since Calcite
+  turns such a list into a join with its values, planned as a lookup: on the emulator a list of twenty holding
+  `9007199254740993` lost the document holding it from a `REAL` and from a `DOUBLE` column, and one holding `0.1` the
+  document holding `0.1` from a `REAL` column, where shorter lists, filtered in process, kept them. `main` sends the
+  same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the bare equality the
+  restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53; its tests should
+  hold a `REAL` key `0.1` against a stored `0.1` and a `DOUBLE` key 2^53 against a stored `9007199254740993`, and one of
+  them through an `IN` list.
 - **The lookup join answers where Calcite's own join fails on a document no key fetches** — *medium, an answer where
   Calcite fails, older than the key match; left for a change of its own after "fail like Calcite", with "A filter above
   a lookup join".* `CosmosLookupJoin` reads only the documents its keys fetch, where Calcite's own join reads every
