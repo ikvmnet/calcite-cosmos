@@ -407,11 +407,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Returns the single pair of key ordinals a join matches on, or <c>null</c>.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The probe ordinal is returned relative to the probe's own row rather than to the joined row,
         /// which is what <see cref="JoinInfo"/> already gives.
+        /// </para>
+        /// <para>
+        /// <b>The condition is <c>=</c> itself.</b> <see cref="JoinInfo"/> counts <c>IS NOT DISTINCT FROM</c> as an equi
+        /// key too, and it matches a null key with a null one, which the lookup never fetches or pairs: a batch carries no
+        /// null key, and no <c>IN (@k…)</c> keeps a document whose key is null or absent. Taken as an equality, it lost
+        /// every row Calcite's own join pairs on two nulls.
+        /// </para>
         /// </remarks>
         static (int Build, int Probe)? GetKeys(Join join)
         {
+            if (join.getCondition().getKind() != SqlKind.EQUALS)
+                return null;
+
             var info = join.analyzeCondition();
 
             if (info.isEqui() == false || info.leftKeys.size() != 1 || info.rightKeys.size() != 1)

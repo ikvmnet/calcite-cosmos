@@ -43,7 +43,8 @@ answer a full join would:
   unmatched documents, which a fetch by key never reads, so those, and semi and anti joins, are joined
   the ordinary way.
 - **On one equality, and nothing else in the condition.** A second condition would have to be applied
-  after the fetch, and is not.
+  after the fetch, and is not. `IS NOT DISTINCT FROM` is not an equality here: it matches a null key with
+  a null one, which a fetch by key never finds.
 - **The container's side of the key is a document path** — `p."id"`, or `JSON_VALUE(p."DOC", '$.x')` —
   so a `WHERE` can name it.
 - **And its value is the value stored there.** `JSON_VALUE` without `RETURNING` reads a value as

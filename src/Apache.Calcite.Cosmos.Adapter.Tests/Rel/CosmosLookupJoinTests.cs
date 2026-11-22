@@ -488,6 +488,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { -1L, 127L, -128L });
         }
 
+        /// <remarks>
+        /// <c>IS NOT DISTINCT FROM</c> matches a null key with a null one, which no fetch by key finds: taken as an equality,
+        /// the lookup answered the 7 alone and lost the two documents Calcite's own join pairs with the null key, one holding
+        /// null and one holding nothing. It is joined in process, over the container read whole.
+        /// </remarks>
+        [Fact]
+        public async Task IsNotDistinctFromIsJoinedInProcess()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"pnull","n":null}""",
+                    """{"id":"pabsent"}""",
+                    """{"id":"p7","n":7}""",
+                    """{"id":"p8","n":8}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (1, CAST(NULL AS BIGINT)), (2, CAST(7 AS BIGINT))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING BIGINT) AS \"n\" FROM products AS c) AS t ON v.k IS NOT DISTINCT FROM t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().NotContain("CosmosLookupJoin", "a fetch by key finds no null key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "pnull", "pabsent", "p7" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the container is read whole");
+        }
+
         // ── Over a traversal ──────────────────────────────────────────────────────
 
         /// <summary>
