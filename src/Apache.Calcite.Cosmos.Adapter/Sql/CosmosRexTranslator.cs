@@ -2240,7 +2240,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             // A parse of a path the container declared a shape the format reads exactly. The same
             // move as the UUID cast above and for the same reason -- the service holds the value in a
             // form the plan's type is a reading of -- and the reason to bother is the sort above it.
-            // See TryStoredInstantProjection.
+            // Measured, no format reads a shape exactly, so this declines every parse. See
+            // TryStoredInstantProjection.
             if (TryStoredInstantProjection(node, out var instant) && instant is not null)
             {
                 reading = CosmosReading.Typed;
@@ -2469,6 +2470,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// anything, which is <see cref="Metadata.CosmosStoredForms.ReadsBackAs"/>: the service sends
         /// the string it holds and <see cref="Client.CosmosJson"/> converts, so what the column
         /// answers is that conversion rather than the engine's parse, and the two have to agree.
+        /// </para>
+        /// <para>
+        /// <b>And measured over every string a shape admits, no format reads it exactly.</b> A parse
+        /// carries a field past its range over, <c>2016-12-31T24:00:00Z</c> being the next midnight to
+        /// it, so the first condition fails for every form and format and this declines every parse:
+        /// the column, and the sort above it, are computed in process.
         /// </para>
         /// <para>
         /// <b>The guard is the same one, for the same reason.</b> The parse reads a text accessor,

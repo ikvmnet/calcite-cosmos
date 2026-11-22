@@ -283,10 +283,11 @@ If the values are numbers in the documents, prefer `RETURNING` to `CAST`: it is 
 
 ### Text that spells a number, a UUID or a date
 
-A property holding `"00042"`, `"123e4567-…"` or `"2024-01-15T12:30:00Z"` is a string to Cosmos and a
-number, UUID or timestamp to the query. Comparing it as the latter has no Cosmos form — unless the
-container declares how the value is written. Chapter 14 (numbers and UUIDs) and Chapter 15 (dates and
-times) cover what to declare and what it unlocks.
+A property holding `"00042"`, `"123e4567-…"` or `"2024-01-15"` is a string to Cosmos and a number, UUID
+or date to the query. Comparing it as the latter has no Cosmos form — unless the container declares how
+the value is written. Chapter 14 (numbers and UUIDs) and Chapter 15 (dates and times) cover what to
+declare and what it unlocks; an instant such as `"2024-01-15T12:30:00Z"`, read through a parse, is
+compared in process whatever is declared (Chapter 15.2).
 
 ## 8.4 `NOT` and nulls
 
@@ -513,9 +514,7 @@ rechecks that conjunct whole, reading back what the service answered for the res
 the comparison is made in process, the service sent `IS_DEFINED(…)` for the path: a weaker comparison
 there would make the condition stronger. A grouping, a `DISTINCT` or a ranking over such a filter runs in
 process too, there being no row of the comparison's left to recheck. Comparisons with parameters
-over `_ts`, `_etag` and `RETURNING` accessors are exact already, and so is a comparison of a declared
-instant with a parameter — the value is written in the stored spelling when the statement runs
-(Chapter 15).
+over `_ts`, `_etag` and `RETURNING` accessors are exact already.
 
 On the emulator, which stores U+0000 as U+FDD0 `0` — above every character from U+0001 to U+FDCF, where
 SQL puts U+0000 first — and compares what it stores, a text ordering (`<`, `<=`, `>`, `>=`, `BETWEEN`) over

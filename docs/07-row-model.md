@@ -228,7 +228,9 @@ a missing property give `NULL` under every one. So:
   number: `= 2.5` is true of a stored 2. Where the documents hold whole numbers, `RETURNING INTEGER` is
   the spelling that pushes.
 - `RETURNING TIMESTAMP` expects the property to hold a **number of epoch milliseconds**, not an
-  ISO-8601 string. For instants stored as text, see Chapter 15.
+  ISO-8601 string; `RETURNING DATE` a number of days and `RETURNING TIME` one of milliseconds into the
+  day. Over a string, a declared calendar date or time of day included, each raises, in Calcite and so
+  here. For dates and instants stored as text, see Chapter 15.
 
 ### Arrays: use `JSON_QUERY … RETURNING … ARRAY`
 
@@ -337,8 +339,9 @@ Prefer these spellings in views:
 - **Arrays**: `JSON_QUERY … RETURNING <type> ARRAY`.
 - **Fallbacks**: `COALESCE(JSON_VALUE(…), …)`, not a `DEFAULT … ON EMPTY` clause, which keeps the
   column in process.
-- **UUIDs and instants stored as text**: see Chapters 14 and 15 — a declared stored form is what lets
-  those push.
+- **UUIDs and dates stored as text**: see Chapters 14 and 15 — a declared stored form is what lets
+  those push. Of the temporal values, only a calendar date pushes through its cast; an instant read
+  through a parse is computed in process, though its text compares at the service as text (Chapter 15).
 
 ## 7.8 Why there are no other columns
 

@@ -67,6 +67,7 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **A comparison through a cast to `DOUBLE`, through a connection that runs Calcite's default rules** — `CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500` through the README's connection with no schema | May fail to plan, with a `ClassCastException` from Calcite's simplifier (Chapters 7.3, 14.2). *Not done.* |
 | **A number compared through `RETURNING DECIMAL`; `LIKE` over an undeclared text with a pattern a number's text or a boolean's may match; a text equality a double renders as; a parameter compared over a path not declared a string; arithmetic inside an `OR` or a `NOT` not sent whole; on the emulator, a text ordering over a path nothing keeps U+0000 out of** | The property's presence is sent and the rest rechecked in process. *Not done: a form the service runs that is proved to mean the conversion, the pattern or the value.* |
 | **A comparison through a cast to `SMALLINT`, `TINYINT`, `REAL`, `FLOAT`, `DECIMAL(p, s)`, `DATE` or `UUID`, or through a cast Calcite widens around another; a typed reading compared with a fraction; an `AND` or an `OR` compared unequal to `TRUE`** | In process, nothing sent for it. *Not done: the proofs read each as one opaque value.* |
+| **A calendar date compared through a cast against a month's last day, or sorted on before another key, where a document stores day `00`** — `CAST(JSON_VALUE(c."DOC", '$.day') AS DATE) = DATE '2024-02-29'` over a stored `2024-03-00` | Sent, and answered on the stored strings: `=` and `<=` miss the document and `<>` and `>` keep it, where Calcite reads `2024-03-00` as 29 February; a sort before another key orders the two spellings apart (Chapter 15.3). *Not done: those comparisons are written on the stored strings rather than as a range of days.* |
 | **A `LIKE` with a `_` in a select list, over a string that may hold a line terminator** | Sent, and answered by the service, whose `_` matches a line terminator where Calcite's never does, so such a value reads true where Calcite reads false. In a filter the same `LIKE` runs in process (Chapter 8.2). *Not done: a select list's `LIKE` is written without asking what the string may hold.* |
 | **The partition key column cast to text in a select list or a `GROUP BY`** — `SELECT c."id", CAST(c."$.category" AS VARCHAR) …` | Pushed, and answered with the stored value's text, `30` or `true`, where Calcite answers `NULL` for a key that is no string (Chapter 7.3). Read the path instead: `JSON_VALUE(c."DOC", '$.category')`. *Not done: the select list writes the column's text without asking what the key may hold.* |
 | **A projection over an unnested element** | The element can be filtered at the service, but selecting it can bring the document along. *Not done.* |
@@ -80,7 +81,7 @@ deliberate choice, or work not done yet. The open work is tracked in
 | **`CHECK` constraints** | Refused by name. *Not done.* |
 | **Schema facts about arrays, ranges, decimals, nullable unions written as `type: [x, "null"]`** | Not read. *Not done.* |
 | **Schemas by reference** | A schema must be inline; `$ref` to another document is not fetched. *Deliberate (no network at model read); a file reference may come.* |
-| **Seven-digit fractions and mixed-shape instants** | No pushdown. *Calcite timestamps are milliseconds; mixed shapes do not sort.* |
+| **An instant stored as ISO-8601 text, compared, sorted or projected through a parse** — `PARSE_DATETIME`, `CAST … FORMAT`, under any declared shape — **and a time of day read as a `TIME`** | In process; the text itself, compared or sorted as a string, pushes (Chapter 15.2). *Not done: Calcite carries a field past its range over, `…T24:00:00Z` being the next midnight and `12:60:00` 13:00, and the stored strings do not compare that way; the reasoning has no reading of a parse.* |
 
 ## Full text, vector and geography
 
@@ -132,6 +133,9 @@ deliberate choice, or work not done yet. The open work is tracked in
 - `MAX(c."_etag")` pushes and `ORDER BY c."_etag"` does not: an aggregate scans, and an `ORDER BY`
   needs an index `_etag` never has (Chapter 9.2).
 - `CAST(<ISO-8601 text> AS TIMESTAMP)` raises in Calcite, and so is not pushed (Chapter 15).
+- `PARSE_DATETIME` reads `2016-12-31T24:00:00Z` as midnight on 1 January 2017, raising nothing, so a
+  comparison or a sort through it is computed in process however the container declares the shape
+  (Chapter 15.2).
 - Out-of-domain arithmetic (`SQRT(-1)`) fails the whole Cosmos statement rather than one row (Chapter 8).
 - A Cosmos query is not a snapshot: a long, paged read can see writes made while it runs. That is the
   service's behaviour for any query, with or without the adapter.

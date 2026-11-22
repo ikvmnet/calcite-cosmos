@@ -35,9 +35,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>And <c>CAST(&lt;text&gt; AS TIMESTAMP FORMAT '&lt;format&gt;')</c>, the standard spelling of
     /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and
     /// reads the format with the same model the <c>PARSE_</c> family does — measured, every spelling
-    /// <see cref="CosmosTemporalForms"/> lists reads its shape to the same instant either way, which is
-    /// what lets one table answer for both. What it has that the library functions do not is a place
-    /// in the core operator table, so it validates inside a model view, which Calcite analyzes under
+    /// <see cref="CosmosTemporalForms"/> lists reads its shape's canonical strings to the same instant
+    /// either way from 1582-10-16 on, the cast to <c>TIMESTAMP</c> parting from the rest before it,
+    /// which is what lets one table answer for both. What it has that the library functions do not is
+    /// a place in the core operator table, so it validates inside a model view, which Calcite analyzes under
     /// its default configuration whatever the connection enabled: a federation presenting containers
     /// through views has this spelling and no other.
     /// </para>

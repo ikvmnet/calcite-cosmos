@@ -1175,11 +1175,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// TIMESTAMP)</c> accepts only <c>yyyy-MM-dd HH:mm:ss</c> and raises on every ISO-8601 form a
         /// document stores, so what such a column reads back as is its own question.
         /// </para>
-        /// <para>
-        /// A temporal sort is not unavailable meanwhile: the <c>RETURNING TIMESTAMP</c> spelling binds
-        /// to the path directly and pushes, gated on the same bit — see
-        /// <c>AFixedIsoShapeCarriesATemporalSort</c>.
-        /// </para>
         /// </remarks>
         /// <summary>
         /// The control for it: without the declaration the same sort stays in process.

@@ -1053,7 +1053,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// an equivalence only where that format reads <em>this</em> shape faithfully — a format that
         /// reads it some other way maps the stored strings onto some other instants, and comparing the
         /// strings then answers a different question. <see cref="CosmosStoredForms.ParsesExactly"/> is
-        /// where that is decided and where the measurements behind it are recorded.
+        /// where that is decided and where the measurements behind it are recorded. Measured over
+        /// every string a shape admits, no format reads it faithfully — a parse carries a field past
+        /// its range over — so it answers <c>false</c> and no parse is lowered.
         /// </para>
         /// </remarks>
         static RexNode? TryLowerInstant(RexNode temporalNode, RexNode literalNode, SqlOperator comparison, Rewriting at)

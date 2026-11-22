@@ -3,8 +3,8 @@
 A container has no row schema, so the adapter cannot know what a document path holds — and that is
 what keeps some comparisons in process. Cosmos stores a UUID as a string; SQL has a `UUID` type; and
 without knowing *how* the string is written, the adapter cannot turn a comparison of UUIDs into a
-comparison of strings the service can make. The same is true of an instant stored as text, and of a
-number stored as text.
+comparison of strings the service can make. The same is true of a calendar date stored as text, and of
+a number stored as text.
 
 You can tell it, by giving a container a **JSON Schema** in the model. This chapter describes what to
 write, what it unlocks, and — because it is the one input that can change which rows a query returns —
@@ -355,14 +355,22 @@ them yields no stored form, though what it says of the characters a string holds
 | the same with a version digit or the variant nibble `[89ab]` pinned | ✔ | ✔ |
 | the same in uppercase throughout | ✔ | ✔ |
 | the same braced (`\{…\}`) or without hyphens | ✔ | ✔ |
-| `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` — ISO-8601 UTC, whole seconds | ✔ | ✔ |
-| the same with a fixed number of fraction digits, `\.[0-9]{n}`, and/or `\+00:00` or no zone in place of `Z` | ✔ | ✔ |
-| `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` — a calendar date | ✔ | ✔ |
+| `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$` — ISO-8601 UTC, whole seconds | ✘ through a parse | ✘ through a parse |
+| the same with a fixed number of fraction digits, `\.[0-9]{n}`, and/or `\+00:00` or no zone in place of `Z` | ✘ through a parse | ✘ through a parse |
+| `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` — a calendar date | ✔, but day `00` | ✔, but day `00` |
 | `^[0-9]{5}$` — digits at a fixed width | ✔ | ✔ |
 | `^(0\|[1-9][0-9]*)$`, `^[1-9][0-9]*$` — digits with no leading zero | ✔ | ✘ |
 | an `enum` of strings | ✔ | ✘ |
 | `^[0-9]+$`, `^\d+$`, anything signed | ✘ | ✘ |
 | any other pattern | ✘ | ✘ |
+
+**A date or an instant pattern licenses a comparison through a conversion only where Calcite's
+conversion reads every string the pattern admits as the value it spells.** Each field is a run of digits, so an instant pattern admits `2016-12-31T24:00:00Z` beside
+`2017-01-01T00:00:00Z`, and a parse reads the two as one instant (Chapter 15.2): the strings' equality
+and order are not the parse's, so the instant forms license no comparison through one. Their text
+still compares and sorts at the service as text. A calendar date read with a plain cast compares and
+sorts as the date, except day `00`, which the cast reads as the month before's last day: the one case
+the adapter does not yet hold to this rule (Chapters 15.3 and 23).
 
 **A form is recognised by the strings a pattern admits, not by how it is spelled.** The pattern is
 parsed, by the same reader that reads its characters (14.4), and it is a form where the strings it
@@ -417,7 +425,8 @@ adapter reads that property and, if it is off, withdraws the ordering claim from
 confine the first hex digit to `0`–`7` and the variant nibble. The adapter will not push a sort it
 cannot vouch for.
 
-Instants and dates are covered in Chapter 15, which also explains which *query* spellings reach them.
+Instants and dates are covered in Chapter 15, which also explains which *query* spellings of a date
+reach the service, and why a comparison through a parse does not.
 
 ## 14.4 Characters: what a `pattern` proves about order and string functions
 

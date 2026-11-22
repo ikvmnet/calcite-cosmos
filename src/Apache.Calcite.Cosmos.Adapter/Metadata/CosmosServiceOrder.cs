@@ -775,9 +775,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>A parse names how the text is read and is licensed by the format; a cast leaves it to the engine</b> and is
-        /// licensed only where the engine reads the form at all — measured, every ISO-8601 instant raises in a temporal
-        /// cast, so ordering by the stored strings would order rows for a query whose key raises. A conversion that names
+        /// <b>A parse names how the text is read and would be licensed by the format; a cast leaves it to the engine</b>
+        /// and is licensed only where the engine reads the form at all — measured, every ISO-8601 instant raises in a
+        /// temporal cast, so ordering by the stored strings would order rows for a query whose key raises. No format
+        /// licenses a parse: measured, every parse carries a field past its range over, so the stored strings do not
+        /// order as what it reads (<see cref="CosmosStoredForms.ParsesExactly"/>). A conversion that names
         /// neither is a UUID cast, which the engine performs (<c>Calcite.UuidOrderIsCanonicalOrdinal</c>).
         /// </para>
         /// <para>
@@ -789,7 +791,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>Exact needs equality as well as order.</b> <see cref="CosmosRepresentation"/> sets the two apart, and a form
         /// that keeps the order with two spellings of a value parts what Calcite ties: it refines, and stands last only.
-        /// No registered form is one; <c>CosmosServiceOrderModelTests</c> plants it.
+        /// No registered form is one by its bits; <c>CosmosServiceOrderModelTests</c> plants it. A calendar date read
+        /// through the cast is one at day <c>00</c>, which the cast reads as the month before's last day
+        /// (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>), and is answered exact all the same: <c>TODO.md</c>
+        /// records it, under the date cast's day zero.
         /// </para>
         /// </remarks>
         static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath? path, string? format, CosmosTemporalParts held)

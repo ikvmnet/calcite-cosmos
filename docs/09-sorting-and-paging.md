@@ -137,19 +137,22 @@ be mapped to a document path"*. So:
   `_ts` and `id` always — `id` checked for its characters as the rows arrive unless a `pattern` declares
   them (below); `JSON_VALUE(…)` read as text where the schema declares the path a string, and
   `JSON_VALUE(… RETURNING …)` of a number or a boolean where it declares the path that type (all below). Not `_etag`, which
-  the service leaves out of the index unless the policy names it (9.2). A date or a time read by `RETURNING` needs its stored form declared instead
-  (Chapter 15). Not `RETURNING DECIMAL` under any declaration: it parses a stored string, and so
+  the service leaves out of the index unless the policy names it (9.2). A date, a time or an instant read by `RETURNING` is
+  not sent: over a stored string the clause raises in Calcite, and in process here (Chapter 15.3). Not `RETURNING DECIMAL` under any declaration: it parses a stored string, and so
   orders `"10"` after `"9"` where the service orders the strings (Chapter 7).
 - **The promoted partition key column cannot be a sort key.** It is `VARIANT` (Chapter 7), and Calcite
   has no order for `VARIANT` values. Sort on `JSON_VALUE(c."DOC", '$.category')` instead, which pushes
   where the schema declares `category` a string.
 - **One exception:** a geodesic distance. `ORDER BY CLR_ST_GEOG_DISTANCE(…)` pushes, because the
   service accepts `ST_DISTANCE` in an `ORDER BY` — as the only key (Chapter 18).
-- **A declared stored form is the other route.** A column like `CAST(JSON_VALUE(…) AS UUID)` or a
-  parsed timestamp is computed, but if the container declares that the stored strings sort the way the
-  values do, the sort is sent on the underlying path (Chapters 14 and 15). Before another key it is sent
-  only where each value has one stored spelling, as every form the adapter recognises does: two spellings
-  of one value sort apart at the service where Calcite ties them for the next key to order.
+- **A declared stored form is the other route.** A column like `CAST(JSON_VALUE(…) AS UUID)`, or a
+  calendar date cast to `DATE`, is computed, but if the container declares that the stored strings sort
+  the way the values do, the sort is sent on the underlying path (Chapters 14 and 15), before another key
+  as well. Every form whose sort is sent spells a value one way but a calendar date, whose day `00`
+  the cast reads as the month before's last day: there the two spellings sort apart at the service where
+  Calcite ties them for the next key to order, which is not handled yet (Chapter 15.3). A parsed timestamp is not sent at all: a parse reads
+  strings the pattern admits as instants that sort elsewhere, so a sort on one runs in process
+  (Chapter 15.2).
 
 **A key read as text sorts at the service only over a declared string.** `JSON_VALUE` without
 `RETURNING` is text: Calcite orders the text, and the service orders the stored value — by JSON type
@@ -211,8 +214,8 @@ outright where the strings it orders cannot hold both kinds:
 - the schema's `pattern` rules them out — an identifier on `id`, a UUID in either case, or every
   character below U+D800 (Chapter 14.4);
 - the schema lists them — an `enum` or a `const` (Chapter 14);
-- the key is a declared stored form — a UUID or a timestamp, all of whose forms are ASCII (Chapters 14
-  and 15);
+- the key is a declared stored form — a UUID or a calendar date, all of whose forms are ASCII
+  (Chapters 14 and 15);
 - or the `WHERE` lists them: `WHERE c."id" IN ('a', 'b', 'c') ORDER BY c."id"` pushes, and so does a list in
   every arm of an `OR`.
 
@@ -306,8 +309,9 @@ FETCH NEXT 50 ROWS ONLY
 → … WHERE (c.seq > @p0) ORDER BY c.seq ASC OFFSET 0 LIMIT 50     -- where the schema declares seq an integer
 ```
 
-A keyset over a declared UUID or timestamp path works the same way once the stored form is declared
-(Chapter 14). **A keyset over `id` pushes too**:
+A keyset over a UUID or a calendar date read through its cast works the same way once the stored form
+is declared (Chapters 14 and 15); over an instant read through a parse it runs in process (Chapter
+15.2). **A keyset over `id` pushes too**:
 
 ```sql
 WHERE c."id" > ? ORDER BY c."id" FETCH NEXT 50 ROWS ONLY
@@ -385,7 +389,7 @@ settles, **use `DefaultNullCollation = "LOW"` or an explicit `NULLS FIRST`**.
    `WHERE` keeps. Anything less sorts in process. A
    `JSON_QUERY`, `DOC` or array key never sorts at the service.
 4. A string key, `id` included, pushes whatever its characters, checked as the rows arrive where nothing
-   declares them (9.3); a `pattern` (Chapter 14.4), an `enum` or `const`, a declared UUID or timestamp
+   declares them (9.3); a `pattern` (Chapter 14.4), an `enum` or `const`, a declared UUID or date
    form, or a `WHERE` listing the values proves it outright. A two-key sort led by a nullable key that some
    documents lack and others hold null in stays in process. On the emulator a string key that may hold
    U+0000 sorts in process whatever is checked (9.3, Appendix E).

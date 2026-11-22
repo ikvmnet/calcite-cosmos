@@ -428,6 +428,20 @@ numeric ones still do, which is what keeps the two bits independent:
 | an integer zero-padded to a fixed width | ✔ | ✔ |
 | an `enum` of strings | ✔ | ✘ |
 
+**The bits speak of the strings, and what a conversion reads of them is measured over all of them.** A
+bit says how the strings of a form compare as the values they spell: one string per value, and lexical
+order the value order, over the strings a writer of the form writes. The pattern's language is wider
+than that. A temporal form is a run of digits per field, so the instant forms admit
+`2016-12-31T24:00:00Z` and `2016-12-31T23:60:00Z` beside `2017-01-01T00:00:00Z`, and the calendar date
+admits `2024-03-00`. What licenses a comparison of the stored strings in place of a conversion is what
+the conversion reads of every string the language holds, and that is measured per conversion and form,
+never read off the bits: the `UUID` cast reads each string of a case-fixed form as the value it spells,
+and the integer casts each string of a digits form as the integer it spells or a raise past the type;
+the parse family reads no temporal form one for one, the `TIME` cast adds a clock's fields as they
+stand, and the date cast reads day `00` as the month before's last day (below). The temporal rows keep
+their bits, which are true of the strings; of the conversions that would read them, the parses and the
+`TIME` cast are refused by measurement, and the date cast is kept with its day zero recorded (below).
+
 **A family per file, because the three differ in kind.** `CosmosStoredForms` is the dispatcher and
 nothing else: it asks the reader of a pattern for the strings the pattern admits, once, and offers
 them to each family in turn. What it dispatches to does not share an implementation, only an output —
@@ -457,7 +471,10 @@ Calcite's own runtime:
 | `CAST(<s> AS TIMESTAMP)` | `2024-01-15T12:30:00Z`, any precision, any zone | raises `Invalid DATE value` |
 | `CAST(<s> AS TIMESTAMP)` | `2024-01-15 12:30:00` — space-separated | ✔, and it is the only instant it reads |
 | `CAST(<s> AS DATE)` / `AS TIMESTAMP` | `2024-01-15` | ✔ |
+| `CAST(<s> AS DATE)` / `AS TIMESTAMP` | `2024-03-00`, `0001-01-00` | the month before's last day: 29 February, and 0000-12-31, which no canonical string spells |
+| `CAST(<s> AS DATE)` / `AS TIMESTAMP` | `2023-02-29`, `2024-13-01`, `0000-06-15` | raises |
 | `CAST(<s> AS TIME)` | `12:30:00`, `12:30` | ✔ |
+| `CAST(<s> AS TIME)` | `12:60:00`, `12:30:60`, `24:00:00`, `99:99:99` | the fields added as they stand: 13:00:00, 12:31:00, and two clocks later than every time of day; no raise |
 | `CAST(<s> AS TIME)` | `12:30:00.123` | `12:30:00` — the fraction is dropped |
 | `CAST(<s> AS TIME)` | `20240115` | `09:37:03` — a value, silently wrong |
 | `JSON_VALUE(…, RETURNING TIMESTAMP)` | any string at all | raises |
@@ -470,24 +487,31 @@ number", and over text there is no shape it reads. The adapter had been treating
 
 **So the pushed plan answered where the query raises**, which is not an optimisation: it is a
 different query, and it hands a caller rows the engine cannot produce. `CosmosTemporalForms.EngineReads`
-is the condition now, it is three rows long, and every site that drops a conversion asks it — the
-comparison in `CosmosFactRewriter`, the sort and the ordering candidate in `CosmosServiceOrder`, which
-reads a conversion through it, and `CosmosRexTranslator.RequireTheEngineCouldRead`, which is the one
-place every clause reaches an accessor through and therefore catches the projection too. The other two
+is the condition now, one row long — a calendar date into `DATE` and `TIMESTAMP` — since the two times
+of day were withdrawn (below), and every site that drops a cast asks it — the comparison in
+`CosmosFactRewriter`, and the sort and the ordering candidate in `CosmosServiceOrder`, which reads a
+conversion through it. `CosmosRexTranslator.RequireTheEngineCouldRead`, the one place every clause
+reaches an accessor through, asked it too until the accessor was measured on its own (below). The other two
 families never had this problem and it is worth saying why: `UuidValue.fromString` and Calcite's
 integer cast were both measured against the engine when their rows were written, and the temporal
 rows never were.
 
-**What is left after the cut**, and it is the shape of the section from here: a calendar date and a
-time of day through a cast, and *everything else through a parse*, which names a reading the engine
-performs. A container of ISO-8601 instants has exactly one spelling that pushes, and it is
-`PARSE_DATETIME`.
+**What the cut left was a calendar date and a time of day through a cast, and *everything else
+through a parse*, which names a reading the engine performs; measured over the forms' whole
+languages, only the calendar date is left.** A container of ISO-8601 instants had exactly one spelling
+that pushed, `PARSE_DATETIME`, and the section below built it. Asked over every string a form admits
+rather than over canonical samples, the parse carries a field past its range over and the `TIME` cast
+adds a clock's fields as they stand, so neither reads its form one for one and neither pushes now. The
+calendar date's cast reads every string of its form as the date it spells or a raise, but one: day
+`00`.
 
-**A parse carries a format, and the format had to be measured rather than read.** Built:
-`CosmosTemporalParse` recognises `PARSE_DATE(<format>, <path>)` and its siblings, and
-`CosmosTemporalForms` carries, per shape, the formats that read it — so a comparison against one
-lowers exactly as a cast's does, and a sort over one binds the ordinal to the path the way a rendered
-`UUID` column already did. `CalciteTemporalParseMeasurementTests` is the record.
+**A parse carries a format, and the format had to be measured rather than read.** Built, and now
+declining every parse: `CosmosTemporalParse` recognises `PARSE_DATE(<format>, <path>)` and its
+siblings, and `CosmosTemporalForms` carries, per shape, the formats that read its canonical strings —
+so a comparison against one lowered exactly as a cast's does, and a sort over one bound the ordinal to
+the path the way a rendered `UUID` column already did, until the measurement below withdrew the claim
+both rest on. `CalciteTemporalParseMeasurementTests` and `CalciteTemporalLeniencyMeasurementTests` are
+the record.
 
 **An earlier version of this paragraph said these functions read `2024-01-02T03:04:05Z` "once the
 literal `T` and `Z` are given Java-style quoting", and that is wrong in the way that matters.** They
@@ -502,14 +526,65 @@ thrown.
 That is the difference between this table and every other form in the section. A stored shape is read
 out of a declared pattern by reasoning — the pattern *is* the language. A format has no such reading;
 what it means is whatever the engine's model makes of it, which changed under `TO_TIMESTAMP` once
-already. The claim a row makes is exactly what the rewrite needs and no more: over every string the
+already. The claim a row made was exactly what the rewrite needs and no more: over every string the
 shape admits, the parse answers the instant that string denotes, one for one. Injective and monotone
-follow, so the chain preserves whatever the shape preserves and the two bits answer for it unchanged.
+would follow, so the chain would preserve whatever the shape preserves and the two bits answer for it
+unchanged. It was measured over canonical samples alone, and that is where it was wrong.
 
-**What is spellable, measured.** The `%`-style and the `HH24`-style elements both work, quoting a
-literal `T` or `Z` as `'T'`, `'Z'`; a zero offset is `'+00:00'` or bare `+00:00`, its characters being
-literal either way. Mixed dialects are sound and are not generated, an unrecognised format costing a
-pushdown rather than an answer.
+**Measured over every string a form admits, no format reads its form one for one**
+(`Calcite.ParsesReadTheirFieldsLeniently`). A form's language is a run of digits per field, and
+each listed format, through the conversions the form's fields are read into, reads a field past its
+range as the value its fields make once carried over, raising over none of these: `2016-12-31T24:00:00Z`,
+`2016-12-31T23:60:00Z` and `2016-12-31T23:59:60Z` are `2017-01-01T00:00:00Z`'s instant, 30 February is
+2 March, 29 February of 1900 or 2100 1 March, month 13 the next January, day and month `00` the last of
+the ones before, and a day of 1582's gap ten days on. Before 1582-10-15 the family parts from that:
+`0000-01-01` is read as `0001-01-01` and `0001-01-00` as `0001-12-31`, and 29 February of 0100 and of
+1500, years the Julian calendar holds leap and the Gregorian does not, raises. Into `TIME` the clock
+wraps at a day: `24:00:00` is midnight and `99:99:99` is 04:40:39. `CAST … AS TIMESTAMP FORMAT` alone parts from the rest before 1582-10-16,
+reading `0001-01-01` as `0002-01-01` and `1582-10-15` as the day ten days before it. Through the
+adapter as it stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form
+was sent as `WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that string,
+`2016-12-31T24:00:00Z`, `2016-12-31T23:60:00Z`, `2016-11-61T00:00:00Z` and the next day's it kept one
+document where Calcite keeps three.
+
+So the chain preserves nothing the bits say, and `CosmosTemporalForms.ParsesExactly` answers `false`
+for every form, format and type. Its consumers — the rewrite's licence, `CosmosServiceOrder.ReadConversion`
+and `CosmosRexTranslator.TryStoredInstantProjection` — leave the parse to Calcite by that answer alone,
+and none of them changed. The formats stay in `ParseFormats` for the measurement, which runs each over
+the canonical strings and over the strings that roll. No profile of what a parse reads of a form
+exists, which the row says: a parse could reach the service again only as a reading the rendering
+graph proves a weaker comparison of, and `TODO.md` holds that.
+
+**The `TIME` cast was withdrawn on the same measurement** (`Calcite.TimeCastRollsAClocksFields`).
+`EngineTargets` claimed `iso8601-time-f0` and `iso8601-time-minutes` into `TIME`, and the cast reads
+their canonical strings as the times they spell but adds the fields of the rest as they stand, raising
+over none. No comparison is lowered through `TIME`, the rewrite reading a cast to `DATE` and
+`TIMESTAMP` alone, and with the rows gone no order is read through it either.
+
+**An accessor's `RETURNING` clause was asking the cast's table** (`Calcite.ReturningReadsNoStoredString`).
+`RequireTheEngineCouldRead` let an accessor typed `DATE`, `TIME` or `TIMESTAMP` down as the bare path
+where `EngineReads` said the plain cast reads the declared form, for `CosmosJson` to read the string
+back. But `RETURNING` is not the cast: it asserts the extracted type, and `RETURNING DATE`, `TIME` and
+`TIMESTAMP` raise over a string of every registered form, `2024-01-15` and `12:30:00` among them, and
+read only a JSON number. So over a declared calendar date or time of day the column, its sort, its
+extremes and its groups answered every row where the query raises. The accessor now asks
+`CosmosTemporalForms.ReturningReads`, which no form answers, and is computed in process, where it
+raises as Calcite does; `EngineTargets` is the cast's alone.
+
+**The calendar date's row stays, and its day zero is recorded rather than fixed**
+(`Calcite.DateCastReadsDayZeroAsTheMonthBefore`). The cast reads `2024-03-00` as 29 February and
+`0001-01-00` as 0000-12-31, a day no canonical string spells, and raises over every other field out of
+range. Where Calcite raises, a pushed plan's answer is set aside as it is for every reading; day `00`
+raises nothing, and it changes what `=`, `<>`, `<=` and `>` against a month's last day keep, and how a
+sort before another key orders, wherever they are written on the stored strings — by the rewrite
+against a literal and by the translator against a parameter. `<` and `>=` agree. Fixing it in place
+would take a list of operators in C#; the proper fix writes each of the four as a range over two days'
+spellings, `= v` as `x >= v AND x < w` with `w` the next day's, which keeps exactly Calcite's rows, and
+`TODO.md` holds it.
+
+**What is spellable, measured.** The `%`-style and the `HH24`-style elements both read a form's
+canonical strings, quoting a literal `T` or `Z` as `'T'`, `'Z'`; a zero offset is `'+00:00'` or bare
+`+00:00`, its characters being literal either way. Mixed dialects read as well and are not generated.
 
 | shape | reads | why |
 | --- | --- | --- |
@@ -520,33 +595,36 @@ pushdown rather than an answer.
 | a calendar date, basic or extended, and a year-month | ✔ | `%Y-%m-%d`, `YYYY-MM-DD`, and here `yyyy-MM-dd` too |
 | a time of day | ✔ | `%H:%M:%S`, `HH24:MI:SS` |
 
-The fourth row is why the shape Azure recommends — seven fraction digits — gets a sort and a range
-through a `CAST` or a `RETURNING` clause and gets nothing at all through a parse. Calcite's timestamps
-are milliseconds, so there is no spelling to add rather than one that was not looked for.
+The third row is why the shape Azure recommends — seven fraction digits — has no format at all.
+Calcite's timestamps are milliseconds, so there is no spelling to add rather than one that was not
+looked for.
 
 The fifth row is the measurement in a line: `yyyy-MM-dd` is a spelling for a *date* and for nothing
 else, a date having no minute to be mistaken for a month.
 
 **And the type the function answers is half the question.** `PARSE_DATE` over a path storing a full
 instant reads the format faithfully and then throws the clock away, so every instant on a day shares
-one value and the equality a rewrite would lower is finer than the one the query asked. The parse is
+one value and the equality a rewrite would lower is finer than the one the query asked. The parse was
 licensed only where the type holds everything the shape carries. A projection asks the converse as
 well — the column comes back as the stored text and `CosmosJson` converts it, so a *reader* filling a
 half the shape does not carry invents one, and a time of day read back as a `TIMESTAMP` acquires
-today's date where the engine's parse gives it the epoch's.
+today's date where the engine's parse gives it the epoch's. Both conditions stand for a reading of the
+parse, should one be built; neither licenses anything while the parse reads leniently.
 
 **`CAST(<text> AS TIMESTAMP(3) FORMAT '<format>')` is the same parse, and the one a model view can
 write.** Calcite plans it as a `CAST` carrying the format as a second operand and reads the format with
-the same model, so the table above answers for it unchanged — measured through both, every spelling.
+the same model, so the table above answers for its canonical strings — measured through both, every
+spelling — save that before 1582-10-16 the `TIMESTAMP` target parts from the library functions (above).
 It exists for a reason the library functions cannot meet: a model view is analyzed under Calcite's
 default configuration whatever the connection enabled (`ViewTableMacro.apply` →
 `MATERIALIZATION_CONNECTION`), so `PARSE_DATETIME` does not validate inside one and the cast, being in
 the core operator table, does. What a cast adds is a precision it names itself, and the same rule as
 the type applies one field finer: a bare `TIMESTAMP` is `TIMESTAMP(0)`, so a millisecond format into
-one promises a value with no fraction and is refused, even though Calcite's runtime keeps the
+one promises a value with no fraction and was refused, even though Calcite's runtime keeps the
 milliseconds today. That promise is what the plan widens from to compare against a `.123` literal and
-what a reader may round to — ikvmnet/calcite-cosmos#170 saw `.000` there — so the pushdown agrees
-with the declared type rather than with what the runtime happens to do.
+what a reader may round to — ikvmnet/calcite-cosmos#170 saw `.000` there — so the pushdown agreed
+with the declared type rather than with what the runtime happens to do. Every format into every
+precision is refused now, by the leniency above.
 
 **Two functions are recognised and deliberately go no further.** `PARSE_TIMESTAMP` answers
 `TIMESTAMP WITH LOCAL TIME ZONE`, so a comparison against a zone-less literal is a question about the
@@ -554,7 +632,7 @@ session's zone that no declared form answers, and `CosmosJson` has no reading fo
 `TO_DATE` and `TO_TIMESTAMP` are each *two* operators under one SQL name — Calcite registers `TO_DATE`
 beside `TO_DATE_PG` — and which one a query resolves to depends on the libraries the connection
 enabled, which a `RexCall`'s name does not say; only one of the two was measured. Both are in
-`TODO.md`.
+`TODO.md`, and both would meet the leniency next, as every parse does.
 
 #### A number spelled as a string, and what the spelling has to promise
 
@@ -2580,6 +2658,13 @@ parameter alike. So the translator writes `c.at > @p0` and binds the slot with t
 `CosmosQueries.Bind` writes the value in it when the statement runs, as the plan would have written the
 literal.
 
+**The comparison #182 reported is computed in process again, by measurement.** It read its instant
+through a parse, and a parse was since measured to carry a field past its range over (*A fact says
+which relations it preserves*), so `TryStoredInstant` declines it against a parameter as against a
+literal, and the statement carries no slot for the value. The move stands for the one temporal
+conversion that still reads its form, a calendar date through a plain cast compared with
+`CAST(? AS DATE)` or `CAST(? AS TIMESTAMP)`, whose slot carries the date's form — with the day zero that section records.
+
 **A UUID against a declared form is the same move (#207)**, and it was the costlier gap: every Entity
 Framework and OData key filter parameterises its id, so an id lookup over a declared UUID path read the
 container whole — 448 MB for one document, measured on an Azure container of 11,868. The decision is
@@ -2595,13 +2680,13 @@ Through Calcite's own driver and through the ADO.NET one alike, a `TIMESTAMP` pa
 data context as a `java.lang.Long` of epoch milliseconds — a .NET tick is gone on the way in — and a
 `DATE` as a `java.lang.Integer` of days (`CalciteTemporalParameterMeasurementTests`). And
 `CAST(? AS TIMESTAMP)`, which is `TIMESTAMP(0)`, keeps the milliseconds at run time: only its text is
-written to the declared precision. That sits against the section on casts with a format, which refuses
-a millisecond parse into `TIMESTAMP(0)` so that the pushdown agrees with the declared type rather than
-with the runtime. The two are not in conflict. Refusing leaves the answer where it was, which is
-always available to a plan and never to a parameter's statement once written; and between writing the
-value the runtime compares and writing a truncation of it, only the first leaves every query answering
-the rows it answered before it was pushed. If a release ever applies the precision at run time, the
-measurement fails and this has to follow it.
+written to the declared precision. That sat against the section on casts with a format, which refused
+a millisecond parse into `TIMESTAMP(0)` so that the pushdown agreed with the declared type rather than
+with the runtime, before every parse was refused. The two were not in conflict. Refusing leaves the
+answer where it was, which is always available to a plan and never to a parameter's statement once
+written; and between writing the value the runtime compares and writing a truncation of it, only the
+first leaves every query answering the rows it answered before it was pushed. If a release ever
+applies the precision at run time, the measurement fails and this has to follow it.
 
 **A value between two stored spellings cannot be refused, so it is rounded — exactly.** A literal
 finer than the form keeps its comparison in process. A parameter's statement is already written, and
@@ -2613,7 +2698,8 @@ true of no stored value and an inequality of every one, which the value written 
 a precision no spelling of the form has. The direction is fixed when the statement is written —
 `CosmosTemporalRounding` on the slot — and the value only decides how far. Against a form of
 millisecond precision or finer, which is the case #182 reported, every value lands and the rounding is
-never consulted.
+never consulted. With every parse refused, the one form this reaches is the calendar date read through
+a plain cast, where a value between two days is rounded as one between two seconds was.
 
 | comparison | `12:00:00.500` against a seconds form is written as |
 | --- | --- |
@@ -3091,9 +3177,10 @@ SQL:2016's answer where Calcite raises. Which test is the reading's, for every w
 is `CosmosRexTranslator.ReadingTests` — *What an accessor reads, stated once*. `DECIMAL` has none, being
 the one numeric clause that parses rather than asserts — a stored `"30"` is 30 to it
 (`EachNumericOrBooleanReturningAssertsItsClassButDecimal`) — so no type test is where it answers, and it
-addresses no path at all (*The document column*). A date or a time stays bare: it pushes only where the
-container declares a stored form the engine reads (`RequireTheEngineCouldRead`, above), and a stored
-form is a string, so the path holds nothing the guard would read null for. The guard costs a point
+addresses no path at all (*The document column*). A date or a time would stay bare: it pushes only
+where the container declares a stored form the clause reads (`RequireTheEngineCouldRead`, above), which
+is none, measured, and a stored form is a string, so the path would hold nothing the guard reads null
+for. The guard costs a point
 read whose columns include one, which runs as the routed query instead — see *Not every statement is
 a query* — and a sort, which orders a path and not the guard: see *Ordering a sort key the way it
 reads*.
