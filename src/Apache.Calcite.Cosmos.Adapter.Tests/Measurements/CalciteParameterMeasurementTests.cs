@@ -491,6 +491,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var none = MaterialisedTable.Of(SqlTypeName.INTEGER, []);
             const string Fetch = "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
             const string Offset = "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET ? ROWS";
+            const string FetchKept = "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
+            const string OffsetKept = "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" OFFSET ? ROWS";
 
             var cases = new Conversion[]
             {
@@ -518,6 +520,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.Double 2.5: rows [3]", "java.math.BigDecimal 2.5: rows [3]"),
                 new("OFFSET ?, long 3,000,000,000", four, Offset, s => s.setLong(1, 3000000000L), 3000000000L,
                     "java.lang.Long 3000000000: rows []", "java.math.BigDecimal 3000000000: rows []"),
+                new("OFFSET ?, string '2'", four, Offset, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows [2, 3]"),
+                new("OFFSET ?, double NaN", four, Offset, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("OFFSET ?, long -1", four, Offset, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("OFFSET ?, null", four, Offset, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
                 new("FETCH FIRST 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 2.5 ROWS ONLY", _ => { }, null,
                     "null: rows [0, 1, 2]", "null: rows [0, 1, 2]"),
                 new("FETCH FIRST 3,000,000,000", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 3000000000 ROWS ONLY", _ => { }, null,
@@ -530,11 +540,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "null: IllegalArgumentException", "null: IllegalArgumentException"),
                 new("OFFSET ?, long -1, no row", none, Offset, s => s.setLong(1, -1L), -1L,
                     "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
-                new("FETCH ?, long -1, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setLong(1, -1L), -1L,
-                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
-                new("FETCH ?, null, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setNull(1, java.sql.Types.INTEGER), null,
+                new("OFFSET ?, null, no row", none, Offset, s => s.setNull(1, java.sql.Types.INTEGER), null,
                     "null: IllegalArgumentException", "null: IllegalArgumentException"),
-                new("FETCH ?, long 2, no row kept", four, "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY", s => s.setLong(1, 2L), 2L,
+                new("FETCH ?, string '2', no row", none, Fetch, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, string '2', no row", none, Offset, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows []"),
+                new("FETCH ?, double NaN, no row", none, Fetch, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("OFFSET ?, double NaN, no row", none, Offset, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("FETCH ?, long 2, no row", none, Fetch, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, long 2, no row", none, Offset, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("FETCH ?, long -1, no row kept", four, FetchKept, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null, no row kept", four, FetchKept, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("FETCH ?, long 2, no row kept", four, FetchKept, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, long -1, no row kept", four, OffsetKept, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("OFFSET ?, null, no row kept", four, OffsetKept, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, long 2, no row kept", four, OffsetKept, s => s.setLong(1, 2L), 2L,
                     "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
             };
 
