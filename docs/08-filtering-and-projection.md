@@ -536,14 +536,14 @@ the value to the type before Calcite sees it, by rules of its own: it rounds `1.
 adapter sends the value Calcite compares, converted by Calcite's own conversion and truncated or padded
 the same way, so the service keeps the rows SQL does.
 
-**A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as
-Calcite's own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN
-or an infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`,
-a date or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading:
-over a container holding no row it answers no rows, and where no row takes the `CASE` arm that reads the
-parameter it answers what the other arms decide, where the adapter fails before anything is sent. Where
-the plan has already proved the statement keeps no document (Chapter 14.2), the value is not read and it
-answers no rows, where Calcite fails reading a row.
+**A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as Calcite's
+own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN or an
+infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`, a date
+or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading, so where
+the request reads the parameter the adapter fails before anything is sent where Calcite answers: no rows
+over a container holding none, and what the other arms decide where no row takes the `CASE` arm that
+reads it. Where the plan has already proved the statement keeps no document (Chapter 14.2), the value is
+not read and it answers no rows, where Calcite fails reading a row.
 
 **A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in
 the conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the

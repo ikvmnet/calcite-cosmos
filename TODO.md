@@ -1983,7 +1983,7 @@ on Azure, where it is a constant the service may or may not fold before it picks
 host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
 one, which is likely why nothing had reported it.
 
-### A parameter Calcite cannot convert fails where no row reaches it, and answers beside a request decided unsent — *small, and the fix is not planned*
+### A parameter Calcite cannot convert fails where no row reaches it, and answers beside a request decided unsent — *small, a bridge, and the fix is not planned*
 
 The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Bind`,
 `Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no number
@@ -1991,15 +1991,17 @@ bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anyth
 `BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a
 row reaches the parameter's reading, so two cases part from it:
 
-- **where no row reaches the parameter's reading**, the adapter fails where Calcite answers: over a container holding
-  no row, Calcite answers no rows; and where rows reach the statement but none takes the `CASE` arm that reads the
-  parameter, Calcite answers the rows the other arms decide, through its own driver with any value it cannot convert and
-  through the ADO.NET driver with a NaN (`Calcite.AParameterIsConvertedToItsTypeWhenRead`);
+- **where no row reaches the parameter's reading and the request reads it**, the adapter fails where Calcite answers:
+  over a container holding no row, Calcite answers no rows; and where rows reach the statement but none takes the `CASE`
+  arm that reads the parameter, Calcite answers the rows the other arms decide, through its own driver with any value it
+  cannot convert and through the ADO.NET driver with a NaN bound to a `DOUBLE` parameter
+  (`Calcite.AParameterIsConvertedToItsTypeWhenRead`);
 - **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
   without reading the value, where Calcite's own plan, reading the container's rows, fails.
 
-**The proper fix** is the request decision reading the bound value, so that a statement over no row answers none and
-one over any row fails. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
+**The proper fix** is the request decision reading the bound value, which could keep in Calcite whatever reads a value
+it cannot convert, so that the statement answers where no row reaches the parameter's reading and fails where one does,
+as Calcite's own plan does. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
 the ADO.NET driver refuses a string that spells no number bound to a `BIGINT`, and a NaN bound to a `BIGINT`, an
 `INTEGER` or a `DECIMAL`, before the statement runs (`Calcite.AParameterIsConvertedToItsTypeWhenRead`,
 `Calcite.ANonFiniteDoubleParameterRaises`).
