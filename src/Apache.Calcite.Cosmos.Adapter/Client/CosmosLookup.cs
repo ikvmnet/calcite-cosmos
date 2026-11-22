@@ -56,7 +56,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// type by Calcite's own conversion of a number (<c>SqlFunctions.toLong</c>, <c>toBigDecimal</c> and
         /// <c>toDouble</c>), which is the identity for a key Calcite has already cast. Every number used to be compared as a
         /// double, so two <c>BIGINT</c> keys past 2^53 that one double holds joined each other's rows, where Calcite keeps
-        /// them apart. A join with no comparison type compares a number as its own box's type does.
+        /// them apart.
         /// </para>
         /// <para>
         /// <b>Calcite's merge join parts from <c>=</c> in two cases, and this follows <c>=</c>.</b> Calcite plans an
@@ -91,8 +91,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="key">The key as either side produced it.</param>
         /// <param name="comparison">
-        /// The type the join compares its keys in (<c>CosmosLookupJoinRule.ComparisonType</c>), or <c>null</c> to compare a
-        /// number as its own box's type.
+        /// The type the join compares its keys in (<c>CosmosLookupJoinRule.ComparisonType</c>), or <c>null</c> where none
+        /// is given, as <c>CosmosQueries</c> reads a <c>UUID</c> parameter by this.
         /// </param>
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
         public static object? Normalize(object? key, SqlTypeName? comparison = null)
@@ -104,11 +104,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 java.lang.Boolean flag => flag.booleanValue(),
                 org.apache.calcite.util.UuidValue uuid => Guid.Parse(uuid.toString()),
                 java.util.UUID uuid => Guid.Parse(uuid.toString()),
-                _ when Boxed(key) is java.lang.Number number => (comparison?.getName() ?? BoxType(number)) switch
+                _ when Boxed(key) is java.lang.Number number => comparison?.getName() switch
                 {
                     "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => SqlFunctions.toLong(number),
                     "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
                     "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number),
+
+                    // No number arrives under any other type, or under none: Calcite cast both keys to the join's
+                    // comparison type, which the join always passes, and a UUID parameter read by this is no number.
                     _ => key,
                 },
                 _ => key,
@@ -139,14 +142,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             double value => java.lang.Double.valueOf(value),
             decimal value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),
             _ => null,
-        };
-
-        /// <summary>The type a number's own box holds, the comparison type of two keys no join casts.</summary>
-        static string BoxType(java.lang.Number number) => number switch
-        {
-            java.lang.Byte or java.lang.Short or java.lang.Integer or java.lang.Long => "BIGINT",
-            java.lang.Float or java.lang.Double => "DOUBLE",
-            _ => "DECIMAL",
         };
 
         /// <summary>
@@ -284,6 +279,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="rowBuilder">Builds a container row from the JSON value it arrived as.</param>
         /// <param name="probeKey">Reads the join key from a container row.</param>
         /// <param name="resultSelector">Combines a matching pair.</param>
+        /// <param name="comparison">
+        /// The type the join compares its keys in, after Calcite's cast (<c>CosmosLookupJoinRule.ComparisonType</c>), which
+        /// every key on both sides is normalised by (<see cref="Normalize"/>).
+        /// </param>
         /// <param name="cacheSize">
         /// How many keys to remember for the length of this join, or zero to remember none. Reference
         /// data is looked up repeatedly by definition, and a remembered key costs no request units at
@@ -302,11 +301,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Writes a normalised key as the value its parameter is bound to, or <c>null</c> where the key is
         /// bound as it is. A key spelled as <c>null</c> names no document and is not fetched.
         /// </param>
-        /// <param name="comparison">
-        /// The type the join compares its keys in, after Calcite's cast (<c>CosmosLookupJoinRule.ComparisonType</c>), which
-        /// every key on both sides is normalised by (<see cref="Normalize"/>); or <c>null</c> to compare a number as its
-        /// own box's type.
-        /// </param>
         /// <returns>The joined rows.</returns>
         /// <exception cref="ArgumentNullException">Any required argument is <c>null</c>.</exception>
         public static IClrCursor<TResult> Join<TBuild, TProbe, TResult>(
@@ -320,11 +314,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Func<JsonElement, TProbe> rowBuilder,
             Func<TProbe, object?> probeKey,
             Func<TBuild, TProbe, TResult> resultSelector,
+            SqlTypeName comparison,
             int cacheSize = 0,
             CosmosLookupCache? shared = null,
             Func<TBuild, TResult>? unmatched = null,
-            Func<object, object?>? spell = null,
-            SqlTypeName? comparison = null)
+            Func<object, object?>? spell = null)
         {
             if (build is null)
                 throw new ArgumentNullException(nameof(build));
@@ -338,6 +332,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 throw new ArgumentNullException(nameof(probeKey));
             if (resultSelector is null)
                 throw new ArgumentNullException(nameof(resultSelector));
+            if (comparison is null)
+                throw new ArgumentNullException(nameof(comparison));
             if (batchSize < 1)
                 throw new ArgumentOutOfRangeException(nameof(batchSize));
 
@@ -350,7 +346,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (query.SendsNothing == false)
                 query = CosmosQueries.Bind(query, root);
 
-            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell, comparison);
+            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell);
         }
 
         /// <summary>
@@ -371,14 +367,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             Func<JsonElement, TProbe> rowBuilder,
             Func<TProbe, object?> probeKey,
             Func<TBuild, TProbe, TResult> resultSelector,
+            SqlTypeName comparison,
             int cacheSize,
             CosmosLookupCache? shared,
             Func<TBuild, TResult>? unmatched,
             Func<object, object?>? spell,
-            SqlTypeName? comparison,
             CancellationToken cancellationToken)
         {
-            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, cacheSize, shared, unmatched, spell, comparison);
+            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell);
         }
 
         /// <summary>
@@ -397,11 +393,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             readonly Func<JsonElement, TProbe> _rowBuilder;
             readonly Func<TProbe, object?> _probeKey;
             readonly Func<TBuild, TProbe, TResult> _resultSelector;
+            readonly SqlTypeName _comparison;
             readonly int _cacheSize;
             readonly CosmosLookupCache? _shared;
             readonly Func<TBuild, TResult>? _unmatched;
             readonly Func<object, object?>? _spell;
-            readonly SqlTypeName? _comparison;
 
             // Held for the length of this join and no longer. A cache that outlived one execution
             // would have to answer for staleness, and this one cannot be stale in a way the join was
@@ -440,11 +436,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 Func<JsonElement, TProbe> rowBuilder,
                 Func<TProbe, object?> probeKey,
                 Func<TBuild, TProbe, TResult> resultSelector,
+                SqlTypeName comparison,
                 int cacheSize,
                 CosmosLookupCache? shared,
                 Func<TBuild, TResult>? unmatched,
-                Func<object, object?>? spell,
-                SqlTypeName? comparison)
+                Func<object, object?>? spell)
             {
                 _build = build;
                 _executor = executor;
@@ -455,11 +451,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 _rowBuilder = rowBuilder;
                 _probeKey = probeKey;
                 _resultSelector = resultSelector;
+                _comparison = comparison;
                 _cacheSize = cacheSize;
                 _shared = shared;
                 _unmatched = unmatched;
                 _spell = spell;
-                _comparison = comparison;
                 _cache = cacheSize > 0 ? new Dictionary<object, List<TProbe>>() : null;
                 _statement = shared is null ? null : CosmosLookupCache.Statement(query);
                 _batch = new List<TBuild>(batchSize);

@@ -336,6 +336,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             if (spelled)
                 spell = CosmosLookup.SpellStored(spell);
 
+            var comparison = CosmosLookupJoinRule.ComparisonType(this)
+                ?? throw new Sql.CosmosTranslationException("The lookup keys no longer have a type they are compared in.");
+
             var (query, paths, readings) = CosmosConverters.GenerateLookupQuery(probe, implementor.RexBuilder, _probeKey, KeyPrefix, _batchSize, key.Path);
 
             Convert.CosmosConverters.AnnounceQueryPlan(implementor, this, query.Sql);
@@ -354,13 +357,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 CosmosConverters.RowBuilder(probePhysType, probe.getRowType(), readings, paths),
                 KeySelector(probePhysType, probeType, _probeKey),
                 ResultSelector(physType, buildPhysType, buildType, probePhysType, probeType),
+                Expression.Constant(comparison, typeof(org.apache.calcite.sql.type.SqlTypeName)),
                 Expression.Constant(DefaultCacheSize),
                 CosmosConverters.LookupCacheExpression(probe, implementor.Root),
                 getJoinType() == JoinRelType.LEFT
                     ? UnmatchedSelector(physType, buildPhysType, buildType)
                     : Expression.Constant(null, typeof(Func<,>).MakeGenericType(buildType, physType.RowType)),
                 Expression.Constant(spell, typeof(Func<object, object?>)),
-                Expression.Constant(CosmosLookupJoinRule.ComparisonType(this), typeof(org.apache.calcite.sql.type.SqlTypeName)),
             ]);
         }
 

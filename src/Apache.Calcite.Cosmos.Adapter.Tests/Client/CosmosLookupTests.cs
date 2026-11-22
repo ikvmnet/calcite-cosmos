@@ -98,6 +98,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => element.GetProperty("category").GetString()!,
                 p => p,
                 (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR,
                 cacheSize,
                 shared));
         }
@@ -115,7 +116,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 b => b,
                 element => element.GetProperty("category").GetString()!,
                 p => p,
-                (b, p) => b + "/" + p);
+                (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR);
 
         // ── What it fetches ───────────────────────────────────────────────────────
 
@@ -192,7 +194,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 b => b,
                 element => element.GetProperty("category").GetString()!,
                 p => p,
-                (b, p) => (b ?? "null") + "/" + p));
+                (b, p) => (b ?? "null") + "/" + p,
+                SqlTypeName.VARCHAR));
 
             executor.Executed.Should().BeEmpty();
             rows.Should().BeEmpty();
@@ -255,15 +258,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 b => b,
                 element => element.GetProperty("n").GetInt64(),
                 p => p,
-                (b, p) => $"{b}/{p}"));
+                (b, p) => $"{b}/{p}",
+                SqlTypeName.BIGINT));
 
             rows.Should().Equal("7/7");
         }
 
         /// <summary>
         /// A number is reduced to the form its comparison type compares it in: an integer type a <see cref="long"/>,
-        /// <c>DECIMAL</c> its value, and an approximate type a <see cref="double"/>; with no comparison type, the type its
-        /// own box holds.
+        /// <c>DECIMAL</c> its value, and an approximate type a <see cref="double"/>.
         /// </summary>
         [Fact]
         public void NormalizeReducesANumberToItsComparisonTypesForm()
@@ -279,11 +282,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(unchecked((byte)0xFF), SqlTypeName.TINYINT).Should().BeOfType<long>().Which.Should().Be(-1L);
             CosmosLookup.Normalize(unchecked((byte)0x80), SqlTypeName.TINYINT).Should().Be(-128L);
 
-            CosmosLookup.Normalize(7).Should().Be(CosmosLookup.Normalize(7L));
-            CosmosLookup.Normalize(7d).Should().BeOfType<double>();
-            CosmosLookup.Normalize((decimal)7).Should().Be(new java.math.BigDecimal("7"));
-            CosmosLookup.Normalize("7").Should().NotBe(CosmosLookup.Normalize(7));
-            CosmosLookup.Normalize(null).Should().BeNull();
+            CosmosLookup.Normalize(7, SqlTypeName.BIGINT).Should().Be(CosmosLookup.Normalize(7L, SqlTypeName.BIGINT));
+            CosmosLookup.Normalize(7d, SqlTypeName.DOUBLE).Should().BeOfType<double>();
+            CosmosLookup.Normalize((decimal)7, SqlTypeName.DECIMAL).Should().Be(new java.math.BigDecimal("7"));
+            CosmosLookup.Normalize("7", SqlTypeName.VARCHAR).Should().NotBe(CosmosLookup.Normalize(7, SqlTypeName.INTEGER));
+            CosmosLookup.Normalize(null, SqlTypeName.BIGINT).Should().BeNull();
         }
 
         /// <summary>
@@ -298,14 +301,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [Fact]
         public void NormalizeReducesJavasBoxesToTheClrForms()
         {
-            CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(7));
-            CosmosLookup.Normalize(java.lang.Integer.valueOf(7)).Should().Be(CosmosLookup.Normalize(java.lang.Long.valueOf(7L)));
-            CosmosLookup.Normalize(java.lang.Short.valueOf((short)7)).Should().BeOfType<long>().Which.Should().Be(7L);
-            CosmosLookup.Normalize(java.lang.Double.valueOf(7.5d)).Should().Be(7.5d);
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(7), SqlTypeName.INTEGER).Should().Be(CosmosLookup.Normalize(7, SqlTypeName.INTEGER));
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(7), SqlTypeName.BIGINT).Should().Be(CosmosLookup.Normalize(java.lang.Long.valueOf(7L), SqlTypeName.BIGINT));
+            CosmosLookup.Normalize(java.lang.Short.valueOf((short)7), SqlTypeName.SMALLINT).Should().BeOfType<long>().Which.Should().Be(7L);
+            CosmosLookup.Normalize(java.lang.Double.valueOf(7.5d), SqlTypeName.DOUBLE).Should().Be(7.5d);
             CosmosLookup.Normalize(new java.math.BigDecimal("7"), SqlTypeName.BIGINT).Should().Be(CosmosLookup.Normalize(7, SqlTypeName.BIGINT));
-            CosmosLookup.Normalize(new java.math.BigDecimal("7.00")).Should().Be(CosmosLookup.Normalize((decimal)7));
-            CosmosLookup.Normalize(java.lang.Boolean.TRUE).Should().Be(true);
-            CosmosLookup.Normalize(java.lang.Boolean.FALSE).Should().Be(CosmosLookup.Normalize(false));
+            CosmosLookup.Normalize(new java.math.BigDecimal("7.00"), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize((decimal)7, SqlTypeName.DECIMAL));
+            CosmosLookup.Normalize(java.lang.Boolean.TRUE, SqlTypeName.BOOLEAN).Should().Be(true);
+            CosmosLookup.Normalize(java.lang.Boolean.FALSE, SqlTypeName.BOOLEAN).Should().Be(CosmosLookup.Normalize(false, SqlTypeName.BOOLEAN));
         }
 
         /// <remarks>
@@ -477,6 +480,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => element.GetProperty("category").GetString()!,
                 p => p,
                 (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR,
                 spell: CosmosLookup.SpellStored(null)));
 
             Keys(executor.Executed.Single()).Should().Equal("a﷐0", "﷐1", "bikes");
@@ -502,7 +506,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             var left = await ListCursor.CollectAsync(CosmosLookup.Join<string?, string, string>(
                 new ListCursor<string?>(["bikes", null]), executor, null!, Query() with { SendsNothing = true }, "@k", 3,
-                b => b, element => element.GetProperty("category").GetString()!, p => p, (b, p) => b + "/" + p, unmatched: b => (b ?? "null") + "/null"),
+                b => b, element => element.GetProperty("category").GetString()!, p => p, (b, p) => b + "/" + p, SqlTypeName.VARCHAR, unmatched: b => (b ?? "null") + "/null"),
                 TestContext.Current.CancellationToken);
             left.Should().Equal("bikes/null", "null/null");
 
@@ -523,6 +527,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => element.GetProperty("category").GetString()!,
                 p => p,
                 (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR,
                 cacheSize,
                 unmatched: b => (b ?? "null") + "/null"));
 
@@ -592,6 +597,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => org.apache.calcite.util.UuidValue.fromString(element.GetProperty("id").GetString()),
                 p => p,
                 (b, p) => "paired",
+                SqlTypeName.UUID,
                 spell: CosmosLookup.SpellUuid(Adapter.Metadata.CosmosUuidForms.CanonicalUpper)));
 
             rows.Should().Equal("paired");
@@ -617,6 +623,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => element.GetProperty("category").GetString()!,
                 p => p,
                 (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR,
                 unmatched: b => b + "/null",
                 spell: _ => null));
 
@@ -881,11 +888,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 element => element.GetProperty("category").GetString()!,
                 p => p,
                 (b, p) => b + "/" + p,
+                SqlTypeName.VARCHAR,
                 0,
                 null,
                 null,
                 null,
-                org.apache.calcite.sql.type.SqlTypeName.VARCHAR,
                 CancellationToken.None));
 
             rows.Should().Equal("bikes/bikes");
@@ -896,13 +903,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         {
             var executor = new RecordingExecutor();
 
-            var noBuild = () => CosmosLookup.Join<string, string, string>(null!, executor, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
-            var noExecutor = () => CosmosLookup.Join<string, string, string>(Async("a"), null!, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b);
-            var noBatch = () => CosmosLookup.Join<string, string, string>(Async("a"), executor, null!, Query(), "@k", 0, b => b, e => "", p => p, (b, p) => b);
+            var noBuild = () => CosmosLookup.Join<string, string, string>(null!, executor, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b, SqlTypeName.VARCHAR);
+            var noExecutor = () => CosmosLookup.Join<string, string, string>(Async("a"), null!, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b, SqlTypeName.VARCHAR);
+            var noBatch = () => CosmosLookup.Join<string, string, string>(Async("a"), executor, null!, Query(), "@k", 0, b => b, e => "", p => p, (b, p) => b, SqlTypeName.VARCHAR);
+
+            // The keys are compared in the type Calcite casts them to, and a join with none has no type to compare them in.
+            var noComparison = () => CosmosLookup.Join<string, string, string>(Async("a"), executor, null!, Query(), "@k", 3, b => b, e => "", p => p, (b, p) => b, null!);
 
             noBuild.Should().Throw<ArgumentNullException>();
             noExecutor.Should().Throw<ArgumentNullException>();
             noBatch.Should().Throw<ArgumentOutOfRangeException>();
+            noComparison.Should().Throw<ArgumentNullException>().Which.ParamName.Should().Be("comparison");
         }
 
         // ── Binding ───────────────────────────────────────────────────────────────

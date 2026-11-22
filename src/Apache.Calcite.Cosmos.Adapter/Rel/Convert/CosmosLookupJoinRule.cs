@@ -440,13 +440,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// an equi-join it casts the key column itself, so the equality's operands are both of that type
         /// (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>: <c>=($1, $3)</c> over <c>CAST($t2):BIGINT</c> for an
         /// <c>INTEGER</c> 7 beside a <c>BIGINT</c> 7). The lookup compares every key it reads, on both sides, as that type
-        /// compares it (<see cref="CosmosLookup.Normalize"/>), and binds it as a parameter of it.
+        /// compares it (<c>CosmosLookup.Normalize</c>), and binds it as a parameter of it.
         /// </para>
         /// <para>
         /// The operands are the two key columns the condition names, and their common type is read by Calcite's own
         /// <c>leastRestrictive</c>: the type both already hold, but for nullability, where Calcite cast them, and the one
         /// its <c>=</c> would have cast them to in a plan built without the cast. Two types with none answer <c>null</c>,
-        /// and the lookup then compares a number as its own box's type does.
+        /// and the rule declines the join, which then has no type to compare its keys in.
         /// </para>
         /// </remarks>
         /// <param name="join">The join, logical or the lookup it became.</param>
@@ -498,6 +498,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 if (GetKeys(join) is not (int build, int probe))
+                    return false;
+
+                // The keys are compared, on both sides, in the type Calcite casts them to; two keys with none have no
+                // type to be compared in, and no equality Calcite validates holds them.
+                if (ComparisonType(join) is null)
                     return false;
 
                 var right = join.getRight();
