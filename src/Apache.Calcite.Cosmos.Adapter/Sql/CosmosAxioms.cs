@@ -663,6 +663,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "+, - and * over DECIMAL are exact: 0.1 + 0.2 is 0.3 and 9007199254740993 + 0 is itself, where a double holds neither.",
                 CosmosAxiomTarget.Calcite, Cases, "Measurements.CalciteArithmeticMeasurementTests.DecimalArithmeticIsExact"),
 
+            // ── What Calcite's own join matches (CosmosLookup.Normalize) ─────────────────
+
+            new("Calcite.AnEquiJoinMatchesKeysAsEquality",
+                "Calcite plans an equi-join of two in-process tables as a merge join over its sorted keys, a join on <= and >= as one that evaluates the comparison, and = projected over a cross join as a nested-loop join under a Calc. The comparison and = match the same pairs in every case: BIGINT 2^53 and 2^53 + 1 apart and DOUBLE 2^53 and 2^53 + 1 together, one double; VARCHAR by its units, 'a' not 'a '; BOOLEAN as itself; an INTEGER 7 with a BIGINT 7 and a BIGINT 2^53 + 1 with a DOUBLE 2^53, casting the narrower key to the join's comparison type; and DOUBLE, REAL and FLOAT -0.0 with 0.0 and DECIMAL 1.0 with 1.00, every pair of each. The merge join never matches a DOUBLE, REAL or FLOAT -0.0 with 0.0, alone, either way round, or beside one on one side or both; it matches a lone -0.0 with a lone -0.0, and with -0.0 and 0.0 on each side matches -0.0 with neither; and of DECIMAL 1.0 and 1.00 it matches one pair each, along its sort's diagonal.",
+                CosmosAxiomTarget.Calcite, new(2026, 11, 21), "Measurements.CalciteJoinKeyMeasurementTests.AnEquiJoinMatchesKeysAsEquality"),
+
             // ── What the service answers of a ternary, an index, IN, the affixes and LIKE, and a number read back (Azure at h14b) ──
 
             new("Service.TernaryTakesThenOnTrueAlone",

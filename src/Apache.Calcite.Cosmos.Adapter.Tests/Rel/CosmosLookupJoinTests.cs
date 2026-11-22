@@ -108,7 +108,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         CalciteSchema _rootSchema = null!;
         JavaTypeFactoryImpl _typeFactory = null!;
 
-        void Given(string[] orders, string[] products, CosmosContainerMetadata? declared = null)
+        void Given(string[] orders, string[] products, CosmosContainerMetadata? declared = null, CosmosLookupCache? cache = null)
         {
             _typeFactory = new JavaTypeFactoryImpl();
 
@@ -116,14 +116,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             _productsExecutor = new StubExecutor(products);
 
             _orders = new CosmosTable(Orders, _ordersExecutor);
-            _products = new CosmosTable(declared ?? Products, _productsExecutor);
+            _products = new CosmosTable(declared ?? Products, _productsExecutor, cache);
 
             _rootSchema = CalciteSchema.createRootSchema(false);
             _rootSchema.add("orders", _orders);
             _rootSchema.add("products", _products);
         }
 
-        RelNode Plan(string sql)
+        /// <summary>
+        /// Plans a statement as the adapter does, or, where <paramref name="lookup"/> is <c>false</c>, without the lookup
+        /// join, which leaves the join to Calcite's own plan in process.
+        /// </summary>
+        RelNode Plan(string sql, bool lookup = true)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -133,6 +137,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
+
+            if (lookup == false)
+                planner.setRuleDescExclusionFilter(java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(global::Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.Create().ToString())));
 
             foreach (var rule in ClrCursorRules.Rules())
                 planner.addRule(rule);
@@ -309,6 +316,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// Beside the restricted statement the lookup is handed the same statement without the restriction, which a batch
+        /// holding a key that cannot be sent is fetched by (<c>CosmosLookup.Sent</c>): the probe's own
+        /// <c>WHERE</c> alone, with its parameters and everything else the statement carries.
+        /// </remarks>
+        [Fact]
+        public void TheStatementWithoutTheRestrictionIsTheProbesOwn()
+        {
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>());
+
+            var plan = Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN (SELECT * FROM products WHERE \"_ts\" > ?) p ON o.id = p.id");
+            var join = FindLookup(plan);
+            join.Should().NotBeNull(RelOptUtil.toString(plan));
+
+            var (query, unrestricted, _, _) = global::Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosConverters.GenerateLookupQuery(join!.getRight(), join.getCluster().getRexBuilder(), join.ProbeKey, "@k", 3);
+
+            unrestricted.Sql.Should().NotContain("@k");
+            var where = unrestricted.Sql[(unrestricted.Sql.IndexOf(" WHERE ", System.StringComparison.Ordinal) + " WHERE ".Length)..];
+            where.Should().Contain("c._ts > ");
+            query.Sql.Should().Be(unrestricted.Sql.Replace(" WHERE " + where, $" WHERE ({where} AND c.id IN (@k0, @k1, @k2))"));
+            unrestricted.Should().Be(query with { Sql = unrestricted.Sql });
+        }
+
+        /// <remarks>
         /// Two statements, the build side's and the lookup's, and each reaches <c>Hook.QUERY_PLAN</c>
         /// once though the plan is implemented for both ways of opening it (#211).
         /// </remarks>
@@ -406,8 +436,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// a <see cref="java.lang.Integer"/> — and was bound as that box, which the SDK writes as an
         /// object the service matches nothing against; nor did it equal the build side's key of
         /// another width in process. Measured on the emulator, this join returned no rows where the
-        /// in-process join returned two (review probe I4). The keys go down as numbers now, and the
-        /// rows fetched are paired.
+        /// in-process join returned two (review probe I4). The keys go down as numbers now, of the join's comparison
+        /// type, <c>INTEGER</c> here and so a long, and the rows fetched are paired.
         /// </remarks>
         [Fact]
         public async Task ANumericKeyIsBoundAsANumberAndPairsWhatItFetched()
@@ -429,8 +459,381 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             rows.Should().BeEquivalentTo(new object[] { "1", "3" });
 
             var keys = Keys(_productsExecutor.Executed.Should().ContainSingle().Which);
-            keys.Should().AllBeOfType<double>("a key is bound as the number it is, which the SDK writes as a JSON number");
-            keys.Distinct().Should().BeEquivalentTo(new object?[] { 120d, 80d });
+            keys.Should().AllBeOfType<long>("a key is bound as a number of the join's comparison type, which the SDK writes as a JSON number");
+            keys.Distinct().Should().BeEquivalentTo(new object?[] { 120L, 80L });
+        }
+
+        /// <remarks>
+        /// Keys are compared as the join compares them, after Calcite's cast to its comparison type, <c>BIGINT</c> here:
+        /// 2^53 + 1 matches the document holding 2^53 + 1 and not the one holding 2^53, which one double holds alike and
+        /// every number used to be compared as. The key is bound as that long, exactly.
+        /// </remarks>
+        [Fact]
+        public async Task KeysPastTwoTo53AreMatchedAsTheJoinsComparisonType()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"low","n":9007199254740992}""",
+                    """{"id":"high","n":9007199254740993}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (7), (9007199254740993)) AS v(k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING BIGINT) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "high" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { 7L, 9007199254740993L });
+        }
+
+        /// <remarks>
+        /// Calcite holds a <c>TINYINT</c> as a Java byte, which IKVM surfaces as a CLR byte, so a small side Calcite computes
+        /// hands the join <c>-1</c> as <c>0xFF</c>. Read as unsigned, it was sent and matched as 255, and <c>-128</c> as 128,
+        /// and the join lost both rows Calcite's own join answers.
+        /// </remarks>
+        [Fact]
+        public async Task ATinyintKeyOfAComputedSideIsSigned()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"pm1","n":-1}""",
+                    """{"id":"p127","n":127}""",
+                    """{"id":"pm128","n":-128}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (1, CAST(-1 AS TINYINT)), (2, CAST(127 AS TINYINT)), (3, CAST(-128 AS TINYINT))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING TINYINT) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "pm1", "p127", "pm128" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { -1L, 127L, -128L });
+        }
+
+        /// <remarks>
+        /// <c>IS NOT DISTINCT FROM</c> matches a null key with a null one, which no fetch by key finds: taken as an equality,
+        /// the lookup answered the 7 alone and lost the two documents Calcite's own join pairs with the null key, one holding
+        /// null and one holding nothing. It is joined in process, over the container read whole.
+        /// </remarks>
+        [Fact]
+        public async Task IsNotDistinctFromIsJoinedInProcess()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"pnull","n":null}""",
+                    """{"id":"pabsent"}""",
+                    """{"id":"p7","n":7}""",
+                    """{"id":"p8","n":8}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (1, CAST(NULL AS BIGINT)), (2, CAST(7 AS BIGINT))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING BIGINT) AS \"n\" FROM products AS c) AS t ON v.k IS NOT DISTINCT FROM t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().NotContain("CosmosLookupJoin", "a fetch by key finds no null key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "pnull", "pabsent", "p7" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the container is read whole");
+        }
+
+        /// <remarks>
+        /// A <c>REAL</c>, <c>FLOAT</c> or <c>DOUBLE</c> <c>-0.0</c> on the small side matches the container's <c>0</c> as
+        /// <c>=</c> does, alone, beside a <c>0.0</c> or in a left join, where Calcite's own join of the same statement, a
+        /// hash join once the lookup is not offered, leaves it unmatched: a row the lookup answers and Calcite's own join
+        /// does not (<c>TODO.md</c>).
+        /// </remarks>
+        [Theory]
+        [InlineData("REAL")]
+        [InlineData("FLOAT")]
+        [InlineData("DOUBLE")]
+        public async Task ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot(string type)
+        {
+            var products = new[] { """{"id":"p0","n":0}""", """{"id":"p15","n":1.5}""" };
+
+            string Sql(string join, string values) => $"SELECT t.\"id\" FROM (VALUES {values}) AS v(i, k) {join} (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING {type}) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            foreach (var (join, values, matched, calcites) in new (string, string, object?[], object?[])[]
+            {
+                ("JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST(1.5 AS {type}))", ["p0", "p15"], ["p15"]),
+                ("JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST('0.0' AS {type})), (3, CAST(1.5 AS {type}))", ["p0", "p0", "p15"], ["p0", "p15"]),
+                // In a left join the row matched to the 0 stands where Calcite's own join keeps the -0.0 unmatched.
+                ("LEFT JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST(1.5 AS {type}))", ["p0", "p15"], [null, "p15"]),
+            })
+            {
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var plan = Plan(Sql(join, values));
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan)).Should().BeEquivalentTo(matched, values);
+                Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Distinct()
+                    .Should().BeEquivalentTo(new[] { BitConverter.DoubleToInt64Bits(0d), BitConverter.DoubleToInt64Bits(1.5d) }, "the minus zero is sent as the 0 the service reads back");
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(Sql(join, values), lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own)).Should().BeEquivalentTo(calcites, values);
+            }
+        }
+
+        /// <remarks>
+        /// A <c>REAL</c> column reads a negative number too small for a float, a stored <c>-1e-50</c>, as <c>-0.0</c>, so the
+        /// container side can hold one. Calcite's own join of the same statement, a hash join once the lookup is not offered,
+        /// matches a small side's <c>-0.0</c> with that document and a <c>0.0</c> with the <c>0</c> alone. The lookup, where
+        /// its fetch brings the document back, as this stub's does, joins both keys to both documents, as <c>=</c> does. Its
+        /// restriction sends <c>0</c>, which a service does not find <c>-1e-50</c> equal to, so there the document is never
+        /// fetched (<c>TODO.md</c>).
+        /// </remarks>
+        [Fact]
+        public async Task CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero()
+        {
+            var products = new[] { """{"id":"p0","n":0}""", """{"id":"pm1em50","n":-1e-50}""" };
+
+            string Sql(string zero) => $"SELECT t.\"id\" FROM (VALUES (1, CAST('{zero}' AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            foreach (var (zero, calcites) in new (string, object[])[] { ("-0.0", ["pm1em50"]), ("0.0", ["p0"]) })
+            {
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(Sql(zero), lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own)).Should().BeEquivalentTo(calcites, zero);
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var plan = Plan(Sql(zero));
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan)).Should().BeEquivalentTo(new object[] { "p0", "pm1em50" }, zero);
+                Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Distinct()
+                    .Should().Equal(new[] { BitConverter.DoubleToInt64Bits(0d) }, "either zero is sent as 0");
+            }
+        }
+
+        /// <remarks>
+        /// A <c>REAL</c> column reads a stored <c>1e39</c> and <c>-1e39</c> as the infinities, and Calcite's own join of the
+        /// same statement, a hash join once the lookup is not offered, matches a small side's infinite keys with them. An
+        /// infinity has no JSON number, so the batch holding one is fetched by the statement without the key restriction,
+        /// and the lookup answers what Calcite's own join answers. Sent restricted, as the string the SDK writes for it, an
+        /// infinity lost both documents on the emulator.
+        /// </remarks>
+        [Fact]
+        public async Task AnInfiniteKeysBatchIsFetchedWithoutTheRestriction()
+        {
+            var products = new[] { """{"id":"pinf","n":1e39}""", """{"id":"pminf","n":-1e39}""", """{"id":"p15","n":1.5}""", """{"id":"p0","n":0}""" };
+            const string sql = "SELECT t.\"id\" FROM (VALUES (1, CAST('Infinity' AS REAL)), (2, CAST('-Infinity' AS REAL)), (3, CAST(1.5 AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var own = Plan(sql, lookup: false);
+            RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+            (await Execute(own)).Should().BeEquivalentTo(new object[] { "pinf", "pminf", "p15" });
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var plan = Plan(sql);
+            RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+            (await Execute(plan)).Should().BeEquivalentTo(new object[] { "pinf", "pminf", "p15" });
+
+            var sent = _productsExecutor.Executed.Should().ContainSingle().Which;
+            sent.Sql.Should().NotContain(CosmosLookupJoin.KeyPrefix, "an infinity has no number the restriction could name");
+            Keys(sent).Should().BeEmpty();
+        }
+
+        /// <remarks>
+        /// A batch fetched without the restriction reads every document the probe side keeps, as Calcite's own join reads
+        /// them, so it fails where that join fails on one of them: here a column the probe side projects, which reads a
+        /// stored <c>2.5</c> as an <c>INTEGER</c>. A restricted batch reads only the documents its keys fetch, and answers
+        /// where such a document is not among them (<c>TODO.md</c>).
+        /// </remarks>
+        [Fact]
+        public async Task AnInfiniteKeysBatchFailsWhereCalcitesOwnJoinFailsOnADocument()
+        {
+            var products = new[] { """{"id":"pinf","n":1e39,"q":1}""", """{"id":"p15","n":1.5,"q":2}""", """{"id":"pfrac","n":7,"q":2.5}""" };
+            const string sql = "SELECT t.\"id\", t.\"q\" FROM (VALUES (1, CAST('Infinity' AS REAL)), (2, CAST(1.5 AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\", JSON_VALUE(c.\"DOC\", '$.q' RETURNING INTEGER) AS \"q\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var own = Plan(sql, lookup: false);
+            RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+            var calcites = await FluentActions.Awaiting(() => Execute(own)).Should().ThrowAsync<CosmosMaterializationException>();
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var plan = Plan(sql);
+            RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+            (await FluentActions.Awaiting(() => Execute(plan)).Should().ThrowAsync<CosmosMaterializationException>())
+                .Which.Message.Should().Be(calcites.Which.Message);
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the batch holds an infinity, which the restriction cannot name");
+        }
+
+        /// <remarks>
+        /// A small side's key bound to a string holding a lone surrogate, which the SDK's UTF-8 encoder refuses while it
+        /// writes a statement (<c>Service.LoneSurrogateParameterIsNeverSent</c>), is matched with nothing by Calcite's own
+        /// join of the same statement, a hash join once the lookup is not offered. The batch holding it is fetched by the
+        /// statement without the key restriction, so the lookup answers what Calcite's own join answers, and nothing it
+        /// sends holds a value the encoder refuses. Sent restricted, it failed with the encoder's unnamed
+        /// <c>EncoderFallbackException</c> on the emulator.
+        /// </remarks>
+        [Fact]
+        public async Task AKeyBoundToALoneSurrogateIsFetchedWithoutTheRestriction()
+        {
+            var products = new[] { """{"id":"p7"}""", """{"id":"p7 "}""", """{"id":"x"}""" };
+            const string sql = "SELECT t.\"id\" FROM (VALUES ('l1', CAST(? AS VARCHAR(5))), ('l2', CAST('p7' AS VARCHAR(5)))) AS v(l, k) LEFT JOIN (SELECT c.\"id\" FROM products AS c) AS t ON v.k = t.\"id\"";
+
+            foreach (var value in new[] { "\uD800", "a\uDC00" })
+            {
+                var values = new Dictionary<string, object> { ["?0"] = value };
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(sql, lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own, values)).Should().BeEquivalentTo(new object?[] { null, "p7" });
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var plan = Plan(sql);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan, values)).Should().BeEquivalentTo(new object?[] { null, "p7" });
+
+                var sent = _productsExecutor.Executed.Should().ContainSingle().Which;
+                Keys(sent).Should().BeEmpty("a lone surrogate cannot be sent, so the restriction cannot name it");
+                sent.Parameters.Should().OnlyContain(p => CosmosEncodable.IsEncodable(p.Value));
+            }
+        }
+
+        /// <remarks>
+        /// A batch fetched without the restriction pairs every document the probe keeps with a key by its own plan's
+        /// reading, and the <c>REAL</c>, <c>DOUBLE</c> and <c>FLOAT</c> plans of one probe render one restricted statement
+        /// but read a stored number differently: a <c>REAL</c> column reads <c>16777217</c> as <c>16777216</c>, <c>0.1</c> as
+        /// the float nearest it, <c>±1e-50</c> as zero and <c>1e39</c> as an infinity. So what such a batch fetched is
+        /// remembered for its own execution alone. Remembered across executions under the restricted statement, it gave a
+        /// <c>DOUBLE</c> or <c>FLOAT</c> plan after a <c>REAL</c> plan whose batch held an infinity the <c>REAL</c> plan's
+        /// rows, and a <c>REAL</c> plan of an infinity after a <c>DOUBLE</c> plan's infinity batch nothing, where Calcite's
+        /// own join and the same plan over a fresh cache answer otherwise.
+        /// </remarks>
+        [Fact]
+        public async Task ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone()
+        {
+            var products = new[]
+            {
+                """{"id":"p2p24","n":16777216}""", """{"id":"p2p24p1","n":16777217}""", """{"id":"p01","n":0.1}""", """{"id":"p0","n":0}""",
+                """{"id":"pm1em50","n":-1e-50}""", """{"id":"p1em50","n":1e-50}""", """{"id":"pinf","n":1e39}""",
+            };
+
+            string Sql(string values, string type) => $"SELECT t.\"id\" FROM (VALUES {values}) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING {type}) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            var realInfinity = Sql("(1, CAST('Infinity' AS REAL)), (2, CAST(16777216 AS REAL)), (3, CAST(0.1 AS REAL)), (4, CAST(0 AS REAL))", "REAL");
+            var doubleInfinity = Sql("(1, CAST('Infinity' AS DOUBLE)), (2, 16777216e0)", "DOUBLE");
+
+            foreach (var (first, second, answer) in new (string, string, object[])[]
+            {
+                (realInfinity, Sql("(2, 16777216e0), (3, 0.10000000149011612e0), (4, 0e0)", "DOUBLE"), ["p2p24", "p0"]),
+                (realInfinity, Sql("(2, CAST(16777216 AS FLOAT)), (3, CAST(0.10000000149011612e0 AS FLOAT)), (4, CAST(0 AS FLOAT))", "FLOAT"), ["p2p24", "p0"]),
+                // A REAL column reads the stored 1e39 as the infinity a DOUBLE column does not.
+                (doubleInfinity, Sql("(1, CAST('Infinity' AS REAL))", "REAL"), ["pinf"]),
+            })
+            {
+                var cache = new CosmosLookupCache(1000, TimeSpan.FromMinutes(10));
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: cache);
+                var plan = Plan(first);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                await Execute(plan);
+                Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the batch holds an infinity, which the restriction cannot name");
+                var remembered = cache.Rows;
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: cache);
+                plan = Plan(second);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan)).Should().BeEquivalentTo(answer, second);
+                _productsExecutor.Executed.Should().ContainSingle("the first execution left nothing to answer it from");
+                remembered.Should().Be(0, "what a batch fetched without the restriction pairs is its own plan's reading");
+
+                Given(orders: System.Array.Empty<string>(), products: products, cache: new CosmosLookupCache(1000, TimeSpan.FromMinutes(10)));
+                (await Execute(Plan(second)))
+                    .Should().BeEquivalentTo(answer, "a fresh cache answers the same: " + second);
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(second, lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own)).Should().BeEquivalentTo(answer, "Calcite's own join answers the same: " + second);
+            }
+        }
+
+        /// <remarks>
+        /// A key not yet cast to the join's integer comparison type, as a direct caller may hand one over, is read as
+        /// Calcite's cast to that type reads the same value: the value Calcite's cast gives, or, where the cast fails on a
+        /// number outside the type's range, a failure by name.
+        /// </remarks>
+        [Theory]
+        [InlineData("300", "TINYINT")]
+        [InlineData("127", "TINYINT")]
+        [InlineData("CAST(-32769 AS INTEGER)", "SMALLINT")]
+        [InlineData("CAST(4294967303 AS BIGINT)", "INTEGER")]
+        [InlineData("CAST(9223372036854775808 AS DECIMAL(19, 0))", "BIGINT")]
+        [InlineData("CAST(9223372036854775807 AS DECIMAL(19, 0))", "BIGINT")]
+        [InlineData("1e20", "BIGINT")]
+        [InlineData("7.9e0", "BIGINT")]
+        [InlineData("-7.9e0", "BIGINT")]
+        public async Task AKeyIsReadAsCalcitesCastToTheIntegerComparisonTypeReadsIt(string value, string type)
+        {
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>());
+
+            var key = (await Execute(Plan($"SELECT t.x FROM (VALUES ({value})) AS t(x)", lookup: false))).Single();
+
+            object? cast;
+            try
+            {
+                cast = (await Execute(Plan($"SELECT CAST(t.x AS {type}) FROM (VALUES ({value})) AS t(x)", lookup: false))).Single();
+            }
+            catch (Exception e)
+            {
+                cast = e;
+            }
+
+            var comparison = org.apache.calcite.sql.type.SqlTypeName.valueOf(type);
+            if (cast is Exception failure)
+                FluentActions.Invoking(() => CosmosLookup.Normalize(key, comparison)).Should().Throw<CosmosExecutionException>($"Calcite's cast fails: {failure.Message}");
+            else
+                CosmosLookup.Normalize(key, comparison).Should().Be(cast switch
+                {
+                    java.lang.Number number => number.longValue(),
+                    byte held => unchecked((sbyte)held),
+                    _ => System.Convert.ToInt64(cast, System.Globalization.CultureInfo.InvariantCulture),
+                });
+        }
+
+        /// <remarks>
+        /// No container column reads a <c>DECIMAL</c>: the translator leaves <c>RETURNING DECIMAL</c> to the engine, which
+        /// parses what the path holds. So no key is ever compared as a <c>DECIMAL</c> by a planned lookup, and a small side's
+        /// <c>DECIMAL</c> key meets a container's number cast to the container's type, a <c>DOUBLE</c> here.
+        /// </remarks>
+        [Fact]
+        public void NoPlannedLookupComparesADecimalKey()
+        {
+            Given(orders: System.Array.Empty<string>(), products: new[] { """{"id":"p1","n":1}""" });
+
+            var text = RelOptUtil.toString(Plan("SELECT t.\"id\" FROM (VALUES (1, 1.00), (2, 2.5)) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DECIMAL) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\""));
+            text.Should().NotContain("CosmosLookupJoin", "no container column reads a DECIMAL: " + text);
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (1, 1.00), (2, 1.0)) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"");
+            var join = FindLookup(plan);
+            join.Should().NotBeNull("the container side is fetched by key: " + RelOptUtil.toString(plan));
+            global::Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosLookupJoinRule.ComparisonType(join!).Should().Be(org.apache.calcite.sql.type.SqlTypeName.DOUBLE);
+        }
+
+        static CosmosLookupJoin? FindLookup(RelNode node)
+        {
+            if (node is CosmosLookupJoin join)
+                return join;
+
+            foreach (RelNode input in node.getInputs().toArray())
+                if (FindLookup(input) is CosmosLookupJoin found)
+                    return found;
+
+            return null;
         }
 
         // ── Over a traversal ──────────────────────────────────────────────────────

@@ -186,15 +186,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether restricting the stored value at a key column's path fetches every
-        /// document whose key, as the column reads it, a batch could match.
+        /// Determines whether the rule restricts the stored value at a key column's path.
         /// </summary>
         /// <remarks>
         /// <para>
         /// <b>The restriction is on the raw value and the join compares the column.</b>
         /// <c>GenerateLookupQuery</c> writes <c>path IN (@k…)</c>, and the fetched rows are matched to
         /// the build side's keys in process, by the key as the column reads it. So the fetch may bring
-        /// back more than matches, and nothing else: a document the restriction leaves out is a row the
+        /// back more than matches: a document the restriction leaves out is a row the
         /// join loses. Whether that can happen is decided by the column's reading, which the binding
         /// derives beside the path for exactly this kind of question (#83), and the question is
         /// <see cref="CosmosRexTranslator.IsReadAsStored"/> — the one a grouping key and a sort key ask.
@@ -205,9 +204,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>RETURNING</c> asserts a type, null wherever the path holds another — which the method
         /// counts against it, and rightly for a sort, the service ordering the object the column reads
         /// null for. A restriction only has to keep every document whose column a key could equal, and
-        /// a key is bound as a parameter of the column's type — see <c>CosmosLookup.Bind</c>: a document
-        /// whose column is a number holds that number, which the restriction keeps, and one whose
-        /// column is null matches no key, so losing it loses no row.
+        /// a key is bound as a parameter of the column's type — see <c>CosmosLookup.Bind</c>.
+        /// <c>TODO.md</c> records the documents it leaves out that change the answer: one whose column
+        /// reads its number as another value, which Calcite's own join matches, and one whose column
+        /// fails, on which Calcite's own join fails.
         /// </para>
         /// <para>
         /// <b>A column read as text is a rendering</b>, and the filter translator already refuses this
@@ -241,7 +241,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="readings">How each of the subtree's columns is read.</param>
         /// <param name="container">The container the subtree reads, found by the walk that bound it.</param>
         /// <param name="facts">What every row of the subtree is known to satisfy.</param>
-        /// <returns><c>true</c> where the restriction loses no document the join would match.</returns>
+        /// <returns>
+        /// <c>true</c> where the rule takes the restriction: a column read as declared outright, any other where
+        /// <see cref="CosmosRexTranslator.IsReadAsStored"/> answers so. <c>TODO.md</c> records what a typed column's
+        /// restriction still leaves out.
+        /// </returns>
         static bool IsRestrictedAsStored(RelNode probe, int ordinal, System.Collections.Generic.IReadOnlyList<CosmosPath?> fields, System.Collections.Generic.IReadOnlyList<CosmosReading> readings, CosmosContainerMetadata container, JsonFactSet facts)
         {
             if ((ordinal < readings.Count ? readings[ordinal] : CosmosReading.Typed) == CosmosReading.Typed)
@@ -407,17 +411,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Returns the single pair of key ordinals a join matches on, or <c>null</c>.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The probe ordinal is returned relative to the probe's own row rather than to the joined row,
         /// which is what <see cref="JoinInfo"/> already gives.
+        /// </para>
+        /// <para>
+        /// <b>The condition is <c>=</c> itself.</b> <see cref="JoinInfo"/> counts <c>IS NOT DISTINCT FROM</c> as an equi
+        /// key too, and it matches a null key with a null one, which the lookup never fetches or pairs: a batch carries no
+        /// null key, and no <c>IN (@k…)</c> keeps a document whose key is null or absent. Taken as an equality, it lost
+        /// every row Calcite's own join pairs on two nulls.
+        /// </para>
         /// </remarks>
         static (int Build, int Probe)? GetKeys(Join join)
         {
+            if (join.getCondition().getKind() != SqlKind.EQUALS)
+                return null;
+
             var info = join.analyzeCondition();
 
             if (info.isEqui() == false || info.leftKeys.size() != 1 || info.rightKeys.size() != 1)
                 return null;
 
             return (((java.lang.Integer)info.leftKeys.get(0)).intValue(), ((java.lang.Integer)info.rightKeys.get(0)).intValue());
+        }
+
+        /// <summary>
+        /// Returns the type a join compares its keys in: the type of its equality's two operands, after Calcite's casts.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Calcite casts the narrower of two keys of different types to their common type before its <c>=</c>, and beneath
+        /// an equi-join it casts the key column itself, so the equality's operands are both of that type
+        /// (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>: <c>=($1, $3)</c> over <c>CAST($t2):BIGINT</c> for an
+        /// <c>INTEGER</c> 7 beside a <c>BIGINT</c> 7). The lookup compares every key it reads, on both sides, as that type
+        /// compares it (<c>CosmosLookup.Normalize</c>), and binds it as a parameter of it.
+        /// </para>
+        /// <para>
+        /// The operands are the two key columns the condition names, and their common type is read by Calcite's own
+        /// <c>leastRestrictive</c>: the type both already hold, but for nullability, where Calcite cast them, and the one
+        /// its <c>=</c> would have cast them to in a plan built without the cast. Two types with none answer <c>null</c>,
+        /// and the rule declines the join, which then has no type to compare its keys in.
+        /// </para>
+        /// </remarks>
+        /// <param name="join">The join, logical or the lookup it became.</param>
+        /// <returns>The comparison type, or <c>null</c> where the keys have none.</returns>
+        internal static SqlTypeName? ComparisonType(Join join)
+        {
+            if (GetKeys(join) is not (int build, int probe))
+                return null;
+
+            var operands = new java.util.ArrayList(2);
+            operands.add(((org.apache.calcite.rel.type.RelDataTypeField)join.getLeft().getRowType().getFieldList().get(build)).getType());
+            operands.add(((org.apache.calcite.rel.type.RelDataTypeField)join.getRight().getRowType().getFieldList().get(probe)).getType());
+
+            return join.getCluster().getTypeFactory().leastRestrictive(operands)?.getSqlTypeName();
         }
 
         /// <summary>
@@ -455,6 +502,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     return false;
 
                 if (GetKeys(join) is not (int build, int probe))
+                    return false;
+
+                // The keys are compared, on both sides, in the type Calcite casts them to; two keys with none have no
+                // type to be compared in, and no equality Calcite validates holds them.
+                if (ComparisonType(join) is null)
                     return false;
 
                 var right = join.getRight();

@@ -3447,6 +3447,63 @@ across documents* and *A join of a container to itself* is the record.
   same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
+- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches it
+  as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place of its unmatched one;
+  recorded, not planned.* Calcite's equi-join in process, a hash join for the lookup join's own shape and a merge join
+  between two in-process tables, never matches `-0.0` with `0.0`, alone or beside one
+  (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot` over each of the three,
+  `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
+  compares it after Calcite's cast to the join's comparison type, so a small side's `-0.0` is joined to the documents
+  holding `0`, which Calcite's own join leaves unmatched. The service reads a stored `-0` or `-0.0` back as `0`
+  (`Service.IntegralNumbersReadBackAsHeld`), but a `REAL` column reads a negative number too small for a float, such as
+  a stored `-1e-50`, as `-0.0`
+  (`CosmosLookupJoinTests.CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero`). Calcite's own
+  join matches a small side's `-0.0` with that document, which the restriction, sending `0`, never fetches (the next
+  entry); fetched, it would be joined to a small side's `0.0` as well, which Calcite's own join does not do. Following
+  Calcite's joins would answer by the plan Calcite chose rather than by the condition the query wrote.
+- **The lookup join's restriction leaves out a document whose typed column reads its number as another value** —
+  *medium, a wrong answer, older than the key match; settled when the rendering graph is asked for the restriction
+  (3B).* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), and the restriction
+  `path IN (@k0, …)` names each key's number, which the service compares by value with the number a document holds. A
+  typed column reads some stored numbers as another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL`
+  column reads a stored `0.1` as the float nearest it, `1e-50` and `-1e-50` as `0.0` and `-0.0`, and a `DOUBLE` or
+  `FLOAT` column a stored integer past 2^53 as its double. A key equal to what the column reads is sent as a number the
+  document does not hold, so the document Calcite's own join matches is never fetched. On the emulator, each in a
+  planned lookup, a `REAL` key `0.1` lost the document holding `0.1`, a `REAL` `0.0` the one holding `1e-50` and a
+  `-0.0` the one holding `-1e-50`, and a `BIGINT` key 2^53 + 1, which the join casts to the double 2^53, joined to a
+  `DOUBLE` column the one holding `9007199254740993`; against a stub returning every document the same joins agree, but
+  for the `-0.0` departure the entry above records. A filter by an `IN` list of twenty or more numbers loses such a
+  document too, since Calcite turns such a list into a join with its values, planned as a lookup: on the emulator a list
+  of twenty holding `9007199254740993` lost the document holding it from a `REAL` and from a `DOUBLE` column, and one
+  holding a `REAL` `0.1` the document holding `0.1` from a `REAL` column, where shorter lists, filtered in process, kept
+  them. `main` sends the same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the
+  bare equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past
+  2^53; its tests should hold a `REAL` key `0.1` against a stored `0.1` and a `DOUBLE` or `FLOAT` key 2^53 against a
+  stored `9007199254740993`, and one of them through an `IN` list.
+- **The lookup join answers where Calcite's own join fails on a document no key fetches** — *medium, an answer where
+  Calcite fails, older than the key match; left for a change of its own after "fail like Calcite", with "A filter above
+  a lookup join".* `CosmosLookupJoin` reads only the documents its keys fetch, where Calcite's own join reads every
+  document the probe side keeps. A typed column the probe side reads, its key or any column it projects, fails in
+  Calcite on a document holding a fraction or a number outside an integer type's range
+  (`Calcite.ColumnReadsWholeNumbersAsItsType`, `Calcite.ReturningAsserts`), so where no key fetches that document,
+  Calcite's own join fails and the lookup join answers. Measured on the emulator, each statement planned with the lookup
+  join and again with its rule excluded: `VALUES` keys `BIGINT` 7 and 8 joined to `JSON_VALUE(c."DOC", '$.n' RETURNING
+  BIGINT)` over documents holding 7 and 1.5 answer the row for 7, and as a left join the row for 8 unmatched beside it,
+  where Calcite fails on 1.5; an `INTEGER` key over a document holding 2147483648, a `SMALLINT` one over 70000, a
+  `TINYINT` one over 300 and a `BIGINT` one over 1e20 answer where Calcite fails on the range, as do a second
+  container's `BIGINT` key over 7.5 and an `INTEGER` key cast to `BIGINT` over 2.5; and a lookup by `id` projecting
+  `JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER)`, over a document no key names holding 1.5, answers where Calcite
+  fails, as does a `BIGINT` key beside a price of 3000000000. `main` answers each the same. The fix wants the lookup
+  join offered only where nothing the probe side reads can fail on a document its declaration admits, asked of the facts
+  graph, or such a probe side read whole, which fails as Calcite does: the fix "A filter above a lookup join" wants.
+  When the restriction is asked of the rendering graph (3B), its tests should hold a `BIGINT` key over a path holding
+  1.5.
+- **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, a bridge
+  until a statement's parameter is converted by its SQL type.* `CosmosLookup.Sent` sends a decimal key by
+  `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value` sends a decimal parameter, and adds the key's
+  double where that conversion has no exact answer, which the join's comparison of every fetched key makes safe. One
+  place should decide how a value of a type is sent: once a statement's parameter is converted by its SQL type, `Sent`
+  should call that conversion and keep only its double.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a statement whose WHERE holds one
   is sent. Finer rules where rows exist. A `COALESCE` is a call too: `COALESCE(c."id", 'none') IS NULL` and its kin

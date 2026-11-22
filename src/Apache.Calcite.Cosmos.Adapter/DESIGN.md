@@ -4066,14 +4066,15 @@ name with MySQL's, which, as `||` is, is null over a null as the service's is un
 **A lone surrogate is never sent.** The SDK's UTF-8 encoder refuses one while it writes the statement
 (`Service.LoneSurrogateParameterIsNeverSent`), so a statement carrying one failed on both targets where Calcite
 answers. Only a `U&` literal can hold one, inside `POSITION` or `REPLACE`, Calcite refusing one against a column
-elsewhere; `CosmosParameterList.Add`, which every value a statement carries passes through, refuses it, wherever in
-the statement it stands, and the expression it stood in is computed in process. A parameter's value arrives only when
-the statement runs. A column computed from parameters alone is never sent — the service would only hand back what it
-was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter as a column for the function above to compute — so the
-translator refuses one in a projection and Calcite computes it above. A parameter the service reads, in a comparison,
-is refused by name when it is bound (`CosmosQueries.Bind`), before the encoder throws: the check is
-`Client/CosmosEncodable`'s, asked at both ends, a property of the value as the encoder is handed it and no class of the
-theory's, a stored string never holding a lone surrogate.
+elsewhere; `CosmosParameterList.Add` refuses it, wherever in the statement it stands, and the expression it stood in is
+computed in process. A parameter's value arrives only when the statement runs. A column computed from parameters alone
+is never sent — the service would only hand back what it was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter
+as a column for the function above to compute — so the translator refuses one in a projection and Calcite computes it
+above. A parameter the service reads, in a comparison, is refused by name when it is bound (`CosmosQueries.Bind`),
+before the encoder throws. A lookup key arrives with its batch, and one holding a lone surrogate is not sent: the batch
+is fetched without the key restriction (*What the lookup join reaches*). The check is `Client/CosmosEncodable`'s, asked
+at both ends, a property of the value as the encoder is handed it and no class of the theory's, a stored string never
+holding a lone surrogate.
 
 **What it costs, and what it gives back.** Timed against `702129b` in Release, interleaved, a fresh process a run,
 two passes of ten paired rounds after a dropped first. In the first another session's test run held the machine at
@@ -6398,7 +6399,8 @@ string** — the declaration, or the probe's filter keeping a kind that declares
 restriction names the stored value, `path IN (@k0, …)`, and the join then matches the fetched rows to
 the build side's keys in process, by the key *as the column reads it*. So the fetch may return more
 than matches and never less, and whether it can return less is a question about the column's reading,
-which `TryBindOutput` derives beside its path. A column read as declared is the stored value. A
+which `TryBindOutput` derives beside its path. A column read as declared is the stored value, except where
+its type reads a stored number as another value, which `TODO.md` records. A
 `JSON_VALUE` read as text is its rendering, and the filter translator refuses `JSON_VALUE(…) = ?` over
 an undeclared path for exactly that reason: a stored `30` renders as `'30'` and Calcite matches it,
 while the service compares a number to a string and does not. The rule used to check the key's SQL
@@ -6429,8 +6431,49 @@ bound to a `java.lang.Integer` 120, and a lookup on a numeric key, on a `_ts` re
 on a boolean and on a `_ts` through a traversal each returned no rows where the in-process join returned
 them (review probes I4, I12, I13 and K9). In process the box equalled only a key of its own width, so
 even rows fetched would not have paired across an `INTEGER` and a `BIGINT`. Every `java.lang.Number` is
-now a `double` and a `java.lang.Boolean` a `bool`, the forms `CosmosQueries` binds a statement's own
-parameters as. The rule always admitted these keys; it was the batch that could not carry them.
+now a number of the join's comparison type and a `java.lang.Boolean` a `bool`, the forms `CosmosQueries`
+binds a statement's own parameters as. The rule always admitted these keys; it was the batch that could not
+carry them.
+
+**A key is compared as Calcite's `=` compares it, after Calcite's cast to the join's comparison type.**
+Unboxing every number to a `double` let two `BIGINT` keys past 2^53 that one double holds join each other's
+rows. How Calcite's own plan matches keys was measured first (`Calcite.AnEquiJoinMatchesKeysAsEquality`):
+it casts the narrower of two keys to their common type beneath the join, so the equality's operands are of
+one type, and it keeps `BIGINT` 2^53 and 2^53 + 1 apart where `DOUBLE`, one double for both, matches them.
+`CosmosLookupJoinRule.ComparisonType` reads that type off the equality's two operands, by Calcite's own
+`leastRestrictive`, and the rule declines two keys that have none. `CosmosLookup.Normalize` reduces every key
+on both sides to it by Calcite's own conversion of a number: an integer type to a `long` by Calcite's cast
+to it, which fails by name on a key outside the type's range as the cast does; a CLR `byte` read as the
+signed Java byte Calcite holds a `TINYINT` in; `DECIMAL` to a `BigDecimal` stripped of its trailing zeros;
+an approximate type to a `double`, a `REAL` by way of the float Calcite holds it in, so that its cast rounds
+16777217 to 16777216, where `FLOAT` and `DOUBLE` compare doubles (`CalciteColumnReadingMeasurementTests`).
+No planned lookup compares a `DECIMAL`, since no container column reads one; that arm serves a
+direct caller of `CosmosLookup.Join`. The batch's distinct keys, the probe rows and the match all
+read it. A key is bound as a number of that type, a decimal as a statement's decimal parameter is
+(`CosmosRexLiterals.TryGetExactNumberValue`), or as its double where that has no exact answer, which is
+how the service holds such a number; the join's own comparison then leaves out whatever else that double
+fetched. A key whose double is an infinity or NaN, an approximate key that is not finite or a decimal
+beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a string
+no stored number equals. A string holding a lone surrogate cannot be sent at all (*A lone surrogate is
+never sent*). So the restriction cannot name such a key: the batch holding it is fetched by the probe's
+own statement without the restriction, rendered beside the restricted one. Reading every document the
+probe side keeps, it costs request units and fails where Calcite's own join fails on one of them, where a
+restricted batch answers (`TODO.md`'s *The lookup join answers where Calcite's own join fails on a
+document no key fetches*), and it is remembered for its own execution alone (*The lookup join's caches*).
+The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi key too,
+matches a null key with a null one, which no fetch by key finds.
+
+**Calcite's own join never matches `-0.0` with `0.0`, and the lookup follows `=`.** Calcite's equi-join in
+process, a hash join for the lookup's own shape and a merge join between in-process tables, never matches a
+`REAL`, `FLOAT` or `DOUBLE` `-0.0` with `0.0`, where `=`, measured on every pair of a cross join, and the
+comparison join `ON a.v <= b.v AND a.v >= b.v` match them. The lookup answers what the condition says rather
+than what one of Calcite's physical joins happens to, and `TODO.md` records it. The service reads a stored
+`-0.0` back as `0`, but a `REAL` column reads a negative number too small for a float, such as `-1e-50`, as
+`-0.0`: Calcite's own join matches a small side's `-0.0` with that document, and the restriction, sending
+`0`, never fetches it (`TODO.md`); were it fetched, a small side's `0.0` would be joined to it too. What
+departs today is a small side's `-0.0` joined to a stored `0`. That `-0.0` is held and sent as `0.0`, which
+`=` cannot tell from it, because no row says how the service compares a minus zero it is sent with a
+stored `0`.
 
 **A traversal on the probe side is restricted per document, and the binding walk has to know both of
 its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it
@@ -6493,6 +6536,15 @@ no request units at all. Its decisions:
   shape cannot cross. The values are the ones the execution bound, not the slots a prepared
   statement carries: named by its slots, every execution of one plan would share answers whatever
   values it was run with. Rows are rebuilt from JSON per execution, which is the price of sharing.
+- **Only a restricted fetch is remembered.** A batch holding a key that cannot be sent is fetched without
+  the restriction (*What the lookup join reaches*), and pairs every document the probe keeps with a key by
+  its own plan's reading. The `REAL`, `DOUBLE` and `FLOAT` plans of one probe render one restricted
+  statement and read a stored number differently: a `REAL` column reads `16777217` as `16777216` and `1e39`
+  as an infinity, where a `DOUBLE` column does not. Remembered under that statement, a `REAL` plan's batch
+  answered a later `DOUBLE` or `FLOAT` plan with its own rows, and a `DOUBLE` plan's batch answered a
+  `REAL` plan's infinity as absent, each where Calcite's own join and a fresh cache answer otherwise
+  (`CosmosLookupJoinTests.ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone`). So such
+  a batch answers its keys for its own execution alone, through the cache within it.
 - **Expire-after-write, and expiry is the only eviction.** A full cache purges what has expired and
   otherwise declines new entries — the same fill-to-bound honesty as the inner cache, with the TTL
   providing turnover. The bound counts rows, with an absence entry counting as one.
