@@ -748,12 +748,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// (<see cref="CosmosPredicateLoader.Loading.Through"/>), in this statement's numbering: a path it reads is this
         /// statement's term, and what the loader cannot read is numbered beside that relation, never one of this
         /// statement's opaque terms. Assumed, it can only make a weakening applied that was not, so a push is declined,
-        /// never added.
+        /// never added. Where the projection's columns carry everything such a conjunct reads, it is also written over
+        /// them: over this statement's rows it is among <paramref name="beneath"/>, read through this statement's loading,
+        /// so that a typed or text column is one term above the projection and beneath it, and one node the loader cannot
+        /// read one term; over the rows of a projection met beneath another, beside the relation that projection is met
+        /// in (<see cref="BoundConjunct"/>).
         /// </para>
         /// </remarks>
         /// <param name="weakening">The weakening.</param>
-        /// <param name="beneath">What the filters beneath apply, and the weakenings pushed before this one, over the same
-        /// binding.</param>
+        /// <param name="beneath">What the filters beneath apply, what a filter beneath a projection there applies written
+        /// over its columns, and the weakenings pushed before this one, over the same binding.</param>
         /// <param name="across">What the filters beneath a projection apply, each conjunct beside the relation it reads and
         /// that relation's binding.</param>
         /// <returns><c>true</c> where the weakening adds nothing to what is applied.</returns>
@@ -771,8 +775,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <param name="Conjunct">The conjunct, over the relation's rows.</param>
         /// <param name="Relation">The relation the conjunct reads, compared by reference: the projection's input, or, where
-        /// it is written over the projection's columns, the relation the projection is met in. Two projections over one
-        /// input read one set of rows.</param>
+        /// it is written over the columns of a projection met beneath another, the relation that projection is met in. Two
+        /// projections over one input read one set of rows.</param>
         /// <param name="Fields">The ordinal-to-path binding of that relation.</param>
         /// <param name="Readings">How each of those fields is read.</param>
         internal readonly record struct BoundConjunct(RexNode Conjunct, object Relation, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings);

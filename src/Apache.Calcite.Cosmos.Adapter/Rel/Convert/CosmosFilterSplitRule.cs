@@ -43,8 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// term of a conjunct sent, or is the condition kept whole above the half sent, so split again it pushes only
     /// weakenings not yet applied, or nothing new, and stops. What is applied beneath is read through a projection
     /// too (<see cref="AlreadyApplied"/>): a weakening the transpose or the residual projection has already pushed
-    /// beneath it is found applied over the rows the filter there reads, and is pushed once. Reading beneath a
-    /// projection only adds what is assumed, so it can take a push away and never add one.
+    /// beneath it is found applied over the rows the filter there reads, or over the projection's own columns, and is
+    /// pushed once. Reading beneath a projection only adds what is assumed, so it can take a push away and never add
+    /// one.
     /// </para>
     /// <para>
     /// <b>The outer is the conjuncts the inner does not decide, as written</b>, or what Calcite's simplification of
@@ -198,7 +199,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
             // What its own rows hold alone: Calcite's equality compares nodes over one row type, and what a filter beneath a
             // projection applies is over another.
-            var (applied, _) = AlreadyApplied(filter.getInput());
+            var (applied, _, _) = AlreadyApplied(filter.getInput());
             if (pushable.All(applied.Contains))
                 return;
 
@@ -492,7 +493,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var residual = new List<RexNode>();
 
             // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
-            // filters beneath apply, and the weakenings pushed before it; and beside them what a filter beneath
+            // filters beneath apply, what a filter beneath a projection there applies written over its columns,
+            // and the weakenings pushed before it, all over these rows; and beside them what a filter beneath
             // a projection applies, each conjunct with the relation it reads. A weakening they, the admitted
             // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
             // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
@@ -529,7 +531,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (beneath is null)
                 {
                     var applied = AlreadyApplied(filter.getInput());
-                    beneath = applied.Own.ToList();
+                    beneath = [.. applied.Own, .. applied.Over];
                     across = applied.Across;
                 }
 
@@ -625,9 +627,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies, once each (<c>Own</c>), and what a filter
-        /// beneath a projection there applies, each conjunct beside the relation it reads and that relation's binding
-        /// (<c>Across</c>).
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each (<c>Own</c>); what a filter
+        /// beneath a projection there applies, written over that projection's columns, over the subtree's own rows
+        /// (<c>Over</c>); and what a filter beneath a projection applies, each conjunct beside the relation it reads and that
+        /// relation's binding (<c>Across</c>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -656,18 +659,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <para>
         /// <b>And over the projection's own columns.</b> Where the projection's columns carry everything a conjunct reads, it
         /// is also written over them, as Calcite writes a condition back over a projection, and holds of every row the
-        /// projection returns: beside the relation the projection is met in, read through that relation's binding, it reads
-        /// a column as a weakening over that binding reads it. Read only over the projection's input, a typed or text column
-        /// is its accessor there and a field here, two terms, and a weakening the transpose had pushed beneath was found not
-        /// applied and pushed again: <c>NOT (t."n" &gt; 10) OR INITCAP(…) = 'Steel'</c> over a view's <c>RETURNING DOUBLE</c>
-        /// column sent its weakening in two filters (<c>CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce</c>).
+        /// projection returns, which the relation the projection is met in reads: it reads a column as a weakening over that
+        /// relation's binding reads it. Read only over the projection's input, a typed or text column is its accessor there
+        /// and a field here, two terms, and a weakening the transpose had pushed beneath was found not applied and pushed
+        /// again: <c>NOT (t."n" &gt; 10) OR INITCAP(…) = 'Steel'</c> over a view's <c>RETURNING DOUBLE</c> column sent its
+        /// weakening in two filters (<c>CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce</c>).
+        /// Over this subtree's own rows it is <c>Over</c>, which the statement reads as it reads <c>Own</c>, through its own
+        /// loading, so that one node the loader cannot read is one term above the projection and beneath it
+        /// (<c>CosmosPlannerTests.AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn</c>); over the rows of a
+        /// projection met beneath another, it is beside that relation in <c>Across</c>.
         /// </para>
         /// </remarks>
-        internal static (IReadOnlyList<RexNode> Own, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct> Across) AlreadyApplied(RelNode? node)
+        internal static (IReadOnlyList<RexNode> Own, IReadOnlyList<RexNode> Over, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct> Across) AlreadyApplied(RelNode? node)
         {
             // Once each by Calcite's equality, which compares types where the digest prints none.
             var applied = new List<RexNode>();
             var once = new HashSet<RexNode>();
+            var over = new List<RexNode>();
+            var overOnce = new HashSet<RexNode>();
             var across = new List<Metadata.CosmosFilterStatement.BoundConjunct>();
             var projections = new List<Project>();
             var seen = Rel.CosmosPlanMembers.NewSeen();
@@ -715,8 +724,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             // Each projection once, over its input's binding, one whose input binds nothing giving nothing: each conjunct beside
-            // the relation it reads, and where the projection's columns carry everything it reads, written over them beside the
-            // rows the projection returns, which the relation it is met in reads, and read through that relation's binding.
+            // the relation it reads, and where the projection's columns carry everything it reads, written over them over the
+            // rows the projection returns, which the relation it is met in reads: this subtree's own, read as Own is, or beside
+            // that relation and its binding.
             void Cross(Project project, RelNode? outer, IReadOnlyList<CosmosPath?> outerFields, IReadOnlyList<CosmosReading> outerReadings)
             {
                 var input = project.getInput();
@@ -733,8 +743,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     var columns = new Columns(project, project.getCluster().getRexBuilder());
                     var carried = (RexNode)conjunct.accept(columns);
-                    if (outer is not null && columns.Unread == false)
+                    if (outer is null || columns.Unread)
+                        continue;
+
+                    if (ReferenceEquals(outer, node))
+                    {
+                        if (overOnce.Add(carried))
+                            over.Add(carried);
+                    }
+                    else
+                    {
                         across.Add(new(carried, outer, outerFields, outerReadings));
+                    }
                 }
             }
 
@@ -745,7 +765,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     Cross(project, bound ? node : null, fields, readings);
             }
 
-            return (applied, across);
+            return (applied, over, across);
         }
 
         /// <summary>

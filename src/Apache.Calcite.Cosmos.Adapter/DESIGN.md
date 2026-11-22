@@ -1494,9 +1494,11 @@ statement, and pushed it filtered nothing while making a filter a host could pla
 test has no body. What lies beneath includes what a filter beneath a projection applies, each conjunct read over the
 relation it reads (`CosmosPredicateLoader.Loading.Through`), with what the loader cannot read numbered beside that
 relation's reader, so that a term means one thing within the question. Where the projection's columns carry everything
-a conjunct reads, it is also written over them and read as the statement reads those columns, so that a typed or text
-column, a field above the projection and an accessor beneath it, is one term
-(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce`).
+a conjunct reads, it is also written over them, over the rows the projection returns, and read as those rows are read:
+through the statement's own loading where they are the statement's, so that a typed or text column, a field above the
+projection and an accessor beneath it, is one term
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce`), and one node the loader cannot read
+is one term too (`CosmosPlannerTests.AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn`).
 
 #### How the oracle is checked: population D
 
@@ -11568,10 +11570,11 @@ narrow on purpose, and each limit was measured:
 
 The split weakens a filter over a projection as it weakens any other. What lies beneath reads through
 the projection: a filter beneath it applies its conjuncts to every row the projection returns, and
-each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`), its paths the
-statement's own terms and what the loader cannot read numbered beside that relation's reader, so a
-weakening the transpose or the residual projection has already pushed beneath is applied there, and
-the facts graph finds it so. Derived above and blind to what lies beneath, a weakening is pushed
+each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`), what the loader
+cannot read numbered beside that relation's reader, and, where the projection's columns carry
+everything it reads, also written over them and read as the statement reads its own rows (*A
+weakening the rest already implies is not pushed*). So a weakening the transpose or the residual
+projection has already pushed beneath is applied there, and the facts graph finds it so. Derived above and blind to what lies beneath, a weakening is pushed
 twice: read only through its own rows, `SELECT c."DOC", JSON_VALUE(c."DOC", '$.price') AS "p" FROM
 products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 = 12` sent
 `IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
