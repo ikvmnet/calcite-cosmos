@@ -72,11 +72,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Runs a statement over a container that holds no document, with each planner the host makes given to <paramref
         /// name="bound"/>: each request sent, with its parameters, or <c>nothing</c>.
         /// </summary>
-        static string Sends(string sql, bool declared, string schema, CosmosServiceTarget target, java.util.function.Consumer bound)
+        static string Sends(string sql, bool declared, string schema, CosmosServiceTarget? target, java.util.function.Consumer? bound)
         {
             var sent = new System.Collections.Generic.List<string>();
             using var source = Open(declared ? schema : null, new RecordingExecutor(sent), target);
-            using var hook = org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
+            using var hook = bound is null ? null : org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
             using var connection = source.OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
@@ -132,6 +132,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }.ConnectionString)
                 .ConfigureRootSchema(root => root.add("items", table))
                 .Build();
+        }
+
+        /// <summary>
+        /// A constant Calcite's planning folds to a NaN or an infinity, compared or added into a projected column, is
+        /// computed in process, as Calcite answers it, and nothing sent holds it: no JSON number holds one, and the SDK
+        /// writes it as a JSON string, which the service reads as a string.
+        /// </summary>
+        /// <remarks>
+        /// Bound as a literal, <c>&lt;&gt; NaN</c> was pushed whole as <c>c.n != @p0</c> with <c>@p0</c> the string
+        /// <c>"NaN"</c>, which keeps no stored number where Calcite keeps 1.5, and the projected sum as
+        /// <c>(… + @p0)</c> with <c>"Infinity"</c>, which the service's arithmetic leaves undefined.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) <> CAST('NaN' AS DOUBLE)""", "NaN")]
+        [InlineData("""SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) + CAST('Infinity' AS DOUBLE) FROM items AS c""", "Infinity")]
+        public void AConstantFoldedToANaNOrAnInfinityIsComputedInProcess(string sql, string folded)
+        {
+            var plan = Explain(sql, declared: false);
+            var request = plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal);
+
+            request.Should().BeGreaterThan(0, "something is computed above the request: " + plan);
+            plan[..request].Should().Contain(folded, "Calcite computes the folded constant: " + plan);
+            plan[request..].Should().NotContain(folded, "the request holds no " + folded + ": " + plan);
+            Sends(sql, declared: false, Schema, null, null).Should().NotContainAny(["NaN", "Infinity"], "nothing sent binds one");
         }
 
         /// <summary>

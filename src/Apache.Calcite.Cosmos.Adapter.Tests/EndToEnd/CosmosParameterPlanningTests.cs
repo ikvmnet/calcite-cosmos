@@ -335,7 +335,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "the statement reads the parameter: " + query.Sql);
 
             FluentActions.Invoking(() => CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "1e400" }))).Should().Throw<CosmosExecutionException>()
-                .WithMessage("Parameter ?0 is Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
+                .WithMessage("Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
             CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "2.5" })).Parameters.Select(p => p.Value).Should().Contain(2.5d,
                 "a finite value is sent as the double Calcite converts it to");
         }

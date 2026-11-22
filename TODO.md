@@ -2012,7 +2012,9 @@ operator and projects without failing (`Calcite.ANonFiniteDoubleParameterRaises`
 answers against an `ANY` value is unmeasured. The Cosmos DB SDK writes a NaN or an infinity as the JSON string `"NaN"`,
 `"Infinity"` or `"-Infinity"`, which the service reads as a string wherever the statement reads the parameter, so the
 bind refuses one in every slot (`CosmosQueries.Bind`), as it refuses a lone surrogate, and the statement fails by name
-over any input, where Calcite may answer. It is legality of encoding, a bridge. The ADO.NET driver hands Calcite a value
+over any input, where Calcite may answer. It is legality of encoding, a bridge. A constant Calcite's planning folds to a
+NaN or an infinity is refused when it is bound, by the same test (`CosmosEncodable`), and computed in process, as
+Calcite answers it. The ADO.NET driver hands Calcite a value
 past the type's range already converted to an infinity, which Calcite's conversion refuses, so through it the two agree
 over any input that holds a row.
 

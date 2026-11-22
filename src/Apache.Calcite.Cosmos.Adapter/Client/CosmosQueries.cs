@@ -73,23 +73,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 else if (IsStored(query, parameters[i].Name) && Facts.EmulatorStoredText.Escapes(bound[i].Value))
                     throw new CosmosExecutionException($"Parameter {slot.VariableName} holds U+0000 or U+FDD0 inside a list or an object, which the emulator stores escaped and the statement does not spell, so it cannot be sent there.");
 
-                // The SDK's UTF-8 encoder refuses an unpaired surrogate while it writes the statement, unnamed and before
-                // anything is sent (Service.LoneSurrogateParameterIsNeverSent). A literal holding one is refused when the
-                // plan is made, and computed in process; a parameter's value arrives only now, and a column computed from
-                // parameters alone is never sent, so what is left is a value the service had to read, and the statement
-                // cannot run as it was planned.
-                if (CosmosEncodable.IsEncodable(bound[i].Value) == false)
-                    throw new CosmosExecutionException($"Parameter {slot.VariableName} holds a lone surrogate, which the Cosmos DB SDK cannot encode as UTF-8, so the statement cannot be sent; a string holding a surrogate pair, or none, can.");
-
-                // No JSON number holds a NaN or an infinity, and the SDK's serializer writes one as the string "NaN",
-                // "Infinity" or "-Infinity", which the service reads as a string wherever the statement reads the
-                // parameter (CosmosQueriesTests.ANonFiniteDoubleIsNoJsonNumber). Calcite's conversion has already refused
-                // one bound to a numeric parameter; what is left is a finite value it carries past an approximate type's
-                // range, and one an ANY or a VARIANT parameter holds as it came, which Calcite compares and projects. So
-                // the value is refused wherever it stands, as the lone surrogate is, and the statement fails where Calcite
-                // may answer: a bridge, until the request decision reads a bound value (TODO.md).
-                if (bound[i].Value is double number && double.IsFinite(number) == false)
-                    throw new CosmosExecutionException($"Parameter {slot.VariableName} is {number.ToString(System.Globalization.CultureInfo.InvariantCulture)}, which the Cosmos DB SDK writes as a JSON string rather than a number, so the statement cannot be sent; a finite number can.");
+                // A value the SDK cannot send as itself (CosmosEncodable): its UTF-8 encoder refuses an unpaired surrogate
+                // while it writes the statement, unnamed and before anything is sent (Service.LoneSurrogateParameterIsNeverSent),
+                // and its serializer writes a NaN or an infinity as a JSON string, which the service reads as a string
+                // wherever the statement reads the parameter. A literal holding either is refused when the plan is made,
+                // and computed in process; a parameter's value arrives only now, and a column computed from parameters
+                // alone is never sent, so what is left is a value the service had to read, and the statement cannot run
+                // as it was planned. For a NaN or an infinity that is a bridge: Calcite's conversion has refused one bound
+                // to a numeric parameter, and what is left is a finite value it carries past an approximate type's range,
+                // which Calcite compares and projects, or one an ANY or a VARIANT parameter holds as it came, over which
+                // Calcite may answer, its answer against an ANY value unmeasured. The statement fails where Calcite may
+                // answer, until the request decision reads a bound value (TODO.md).
+                switch (CosmosEncodable.Unencodable(bound[i].Value))
+                {
+                    case string:
+                        throw new CosmosExecutionException($"Parameter {slot.VariableName} holds a lone surrogate, which the Cosmos DB SDK cannot encode as UTF-8, so the statement cannot be sent; a string holding a surrogate pair, or none, can.");
+                    case double number:
+                        throw new CosmosExecutionException($"Parameter {slot.VariableName} holds {number.ToString(System.Globalization.CultureInfo.InvariantCulture)}, which the Cosmos DB SDK writes as a JSON string rather than a number, so the statement cannot be sent; a finite number can.");
+                }
             }
 
             return query with { Parameters = bound };

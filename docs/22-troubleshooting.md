@@ -217,7 +217,7 @@ timestamp is compared. The message names the
 exception Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the
 adapter fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
 
-**"Parameter ?0 is Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number"
+**"Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number"
 (`CosmosExecutionException`) when a statement runs.**
 A parameter was bound to a number past its type's range, the string `'1e400'` for a `DOUBLE` or the double
 `1e39` for a `REAL`, which Calcite's conversion makes an infinity, or to a NaN or an infinity where its type is

@@ -311,7 +311,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             using var scope = new AssertionScope();
             foreach (var (name, type, held, spelled) in cases)
                 FluentActions.Invoking(() => BindAs(type, held)).Should().Throw<CosmosExecutionException>(name)
-                    .WithMessage($"Parameter ?0 is {spelled}, which the Cosmos DB SDK writes as a JSON string rather than a number, so the statement cannot be sent*");
+                    .WithMessage($"Parameter ?0 holds {spelled}, which the Cosmos DB SDK writes as a JSON string rather than a number, so the statement cannot be sent*");
         }
 
         /// <summary>

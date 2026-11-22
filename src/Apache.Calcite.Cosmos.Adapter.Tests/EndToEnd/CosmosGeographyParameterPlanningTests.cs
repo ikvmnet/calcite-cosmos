@@ -336,7 +336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().MatchRegex(@"ST_DISTANCE\(c\.location, .+\) <= ", "the distance is the statement's comparison: " + query.Sql);
 
             FluentActions.Invoking(() => Adapter.Client.CosmosQueries.Bind(query, new Context("1e400"))).Should().Throw<Adapter.Client.CosmosExecutionException>()
-                .WithMessage("Parameter ?0 is Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
+                .WithMessage("Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
             Adapter.Client.CosmosQueries.Bind(query, new Context(java.lang.Double.valueOf(50000d))).Parameters.Select(p => p.Value).Should().Contain(50000d,
                 "a finite distance is sent");
         }

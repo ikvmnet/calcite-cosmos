@@ -2644,16 +2644,19 @@ by the limit, which Calcite reads otherwise than a value, so neither is converte
 the parameter, which leaves a statement over no row failing where Calcite answers none, and one the facts graph decides
 not to send answering where Calcite fails; `TODO.md` records both.
 
-**A NaN or an infinity is refused by name wherever the statement reads it, a bridge.** The conversion refuses a NaN
-or an infinity bound to a numeric parameter, but carries a finite value past an approximate type's range to an
-infinity, `'1e400'` bound to a `DOUBLE` parameter or 1e39 to a `REAL` one through Calcite's own driver, which Calcite
-compares and projects without failing (`Calcite.ANonFiniteDoubleParameterRaises`); and an `ANY` or a `VARIANT`
-parameter passes as bound, a NaN included. No JSON number holds either, and the SDK's default serializer writes one as
-the string `"Infinity"`, which the service reads as a string wherever it stands: compared, every stored number is
-undefined against it; added into a projected column, the sum comes back null; as a column's own value, the reader refuses a string.
-That is legality of encoding, a property of the value and not of where it stands, so `CosmosQueries.Bind` refuses it
-in every slot, as it refuses a lone surrogate, and the statement fails by name where Calcite may answer. The proper
-fix is the request decision reading the bound value, which no stage plans.
+**A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
+either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the
+service reads as a string wherever it stands: compared, every stored number is undefined against it; added into a
+projected column, the sum comes back null; as a column's own value, the reader refuses a string. That is legality of
+encoding, a property of the value and not of where it stands, so it is one test with the lone surrogate's
+(`CosmosEncodable`), asked of every value a statement carries. A constant Calcite's planning folds to one,
+`CAST('NaN' AS DOUBLE)`, is refused when it is bound, and the expression it stood in is computed in process, as Calcite
+answers it. A parameter's value arrives only when the statement runs. The conversion refuses a NaN or an infinity bound
+to a numeric parameter, but carries a finite value past an approximate type's range to an infinity, `'1e400'` bound to a
+`DOUBLE` parameter or 1e39 to a `REAL` one through Calcite's own driver, which Calcite compares and projects without
+failing (`Calcite.ANonFiniteDoubleParameterRaises`); and an `ANY` or a `VARIANT` parameter passes as bound, a NaN
+included. `CosmosQueries.Bind` refuses one in every slot, and the statement fails by name where Calcite may answer. The
+proper fix is the request decision reading the bound value, which no stage plans.
 
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =
