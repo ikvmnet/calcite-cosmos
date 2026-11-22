@@ -2643,9 +2643,13 @@ character, binary, boolean, datetime, interval, `UUID`, geometry, collection, `A
 Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the validator makes every
 parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number,
 a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A
-parameter of an interval type is never sent, as a literal of one is not: the service holds no interval, and a null test
-of one, sent over the count Calcite holds it in, was answered from the value bound where Calcite's plan answers
-otherwise. A presence slot reads only whether a value is bound, so it is not converted, and a row count is read as
+parameter of an interval, a `UUID` or a binary type is never sent, as a literal of one is not
+(`CosmosRexLiterals.HasNoServiceValue`): no value the service holds is one. A null test of an interval, sent over the
+count Calcite holds it in, was answered from the value bound where Calcite's plan answers otherwise; and a
+`RETURNING UUID` or a binary `RETURNING` compared with a parameter, bound as the `UuidValue` or the `ByteString`
+Calcite holds the value in, which the SDK writes as an object, was answered where Calcite's plan fails reading the
+path. A `UUID` compared with a path declared to spell one is written in that spelling, through a slot of its own.
+A presence slot reads only whether a value is bound, so it is not converted, and a row count is read as
 Calcite's limit reads it, below. Calcite fails only once a row reaches the
 parameter's reading, which leaves a statement whose request reads the parameter failing where Calcite answers, over no
 row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to send answering where Calcite

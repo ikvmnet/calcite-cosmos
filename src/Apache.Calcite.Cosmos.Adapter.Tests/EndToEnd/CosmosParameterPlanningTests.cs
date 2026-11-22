@@ -305,6 +305,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
         }
 
+        /// <summary>
+        /// A parameter of a <c>UUID</c>, a <c>BINARY</c> or a <c>VARBINARY</c> type is never sent, as no literal of one is:
+        /// Calcite holds its value as a Java object, which no value the service holds is. A comparison with one is computed
+        /// in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// A <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with a parameter was sent as <c>c.u = @p0</c>, bound
+        /// to the <c>UuidValue</c> or the <c>ByteString</c> Calcite converts the value to, which the SDK writes as an object,
+        /// so the statement answered where Calcite's plan fails (<see cref="CosmosConnectionPlanningTests"/>). A path declared
+        /// to spell a UUID is compared in that spelling, through a slot of its own (Chapter 14).
+        /// </remarks>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.u' RETURNING UUID) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""? = JSON_VALUE(c."DOC", '$.u' RETURNING UUID) OR c."id" = 'a'""", false)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.u' RETURNING UUID) IN (?, ?) AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING VARBINARY(4)) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING VARBINARY) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING BINARY(3)) IN (?, ?) AND c."id" = 'a'""", true)]
+        public void AUuidOrBinaryParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the value: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
         /// <remarks>
         /// Which is the whole of the fix. Nothing here has a value to record, and the ordinal is what
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL

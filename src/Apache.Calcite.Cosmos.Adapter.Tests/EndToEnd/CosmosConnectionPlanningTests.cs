@@ -261,6 +261,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with a parameter fails as Calcite's own plan fails
+        /// over the same documents, which hold a string at the path: nothing sent holds the parameter, and the comparison is
+        /// computed in process, over a container whose every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the <c>UuidValue</c> or the <c>ByteString</c> Calcite converts it to, which the
+        /// SDK writes as an object no stored value equals, and the statement answered where Calcite fails reading the path.
+        /// </remarks>
+        [Fact]
+        public void AUuidOrBinaryParametersComparisonFailsAsCalcitesPlan()
+        {
+            string[] documents = ["""{"id":"a","u":"00000000-0000-0000-0000-000000000001","b":"AQID"}""", """{"id":"b","u":"00000000-0000-0000-0000-000000000002","b":"BAUG"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+
+            foreach (var (reading, bound) in new (string, object)[]
+            {
+                ("""JSON_VALUE({d}, '$.u' RETURNING UUID)""", Guid.Parse("00000000-0000-0000-0000-000000000001")),
+                ("""JSON_VALUE({d}, '$.b' RETURNING VARBINARY(4))""", new byte[] { 1, 2, 3 }),
+                ("""JSON_VALUE({d}, '$.b' RETURNING BINARY(3))""", new byte[] { 1, 2, 3 }),
+            })
+            {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Innermost(FluentActions.Invoking(() => Rows(calcite, $"SELECT \"k\" FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\"") + " = ?", [bound]))
+                    .Should().Throw<Exception>("Calcite's plan fails reading the string at the path as " + reading).Which);
+                var failure = Innermost(FluentActions.Invoking(() => Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\"") + " = ?", documents, [bound], sent))
+                    .Should().Throw<Exception>("the statement fails as Calcite's plan: " + reading).Which);
+
+                failure.GetType().Should().Be(expected.GetType(), reading);
+                failure.Message.Should().Be(expected.Message, reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
+            }
+
+            static Exception Innermost(Exception e)
+            {
+                while (e.InnerException is not null)
+                    e = e.InnerException;
+
+                return e;
+            }
+        }
+
+        /// <summary>
         /// A scalar sub-query in a select list nothing above reads: the host's field trimmer drops its column and keeps the
         /// correlation variable its projection declares, and no rule converted a projection declaring one, Calcite's merge
         /// refusing it too, so the statement did not plan, declared or not, and through the reduce's empty answer only

@@ -25,8 +25,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Converts a Calcite literal into the CLR value to bind.
         /// </summary>
         /// <remarks>
-        /// Temporal literals are refused, Cosmos JSON having no date or time type, and so is an exact number the service would
-        /// read as another number (<see cref="TryGetExactNumberValue"/>). A geometry is bound as the GeoJSON object a geometry
+        /// Temporal literals are refused, Cosmos JSON having no date or time type, and so is a literal of a type no value the
+        /// service holds is (<see cref="HasNoServiceValue"/>) and an exact number the service would read as another number
+        /// (<see cref="TryGetExactNumberValue"/>). A geometry is bound as the GeoJSON object a geometry
         /// parameter is (#156).
         /// </remarks>
         /// <exception cref="CosmosTranslationException">The literal has no value the service can be sent.</exception>
@@ -36,6 +37,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var type = literal.getTypeName();
+
+            if (HasNoServiceValue(type))
+                throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
 
             if (type == SqlTypeName.BOOLEAN)
                 return ((java.lang.Boolean)literal.getValue()).booleanValue();
@@ -82,6 +86,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             throw new CosmosTranslationException($"Unsupported literal type '{type.getName()}'.");
         }
+
+        /// <summary>
+        /// Whether no value the service holds is a value of a type, so that neither a literal nor a parameter of it is sent:
+        /// an interval, which Calcite holds as a count of its smallest unit; and a <c>UUID</c>, a <c>BINARY</c> or a
+        /// <c>VARBINARY</c>, which Calcite holds as a Java object (<c>UuidValue</c>, <c>ByteString</c>) the SDK writes as a
+        /// JSON object.
+        /// </summary>
+        /// <remarks>
+        /// Read by <see cref="GetLiteralValue"/> and by the translator's parameter (<c>CosmosRexTranslator.WriteDynamicParam</c>),
+        /// so a parameter is written as a literal of its type would be. A <c>UUID</c> compared with a path declared to spell
+        /// one is written in that spelling, through a slot of its own (<c>CosmosRexTranslator.TryWriteStoredUuidParameter</c>).
+        /// </remarks>
+        /// <param name="type">The type of the literal or the parameter.</param>
+        /// <returns><c>true</c> where no value the service holds is one.</returns>
+        internal static bool HasNoServiceValue(SqlTypeName type) =>
+            SqlTypeName.INTERVAL_TYPES.contains(type) || type == SqlTypeName.UUID || type == SqlTypeName.BINARY || type == SqlTypeName.VARBINARY;
 
         /// <summary>
         /// Converts an exact number into the CLR value the service compares as that number, or answers <c>null</c> where

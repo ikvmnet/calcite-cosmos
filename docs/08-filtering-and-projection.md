@@ -485,8 +485,9 @@ foreach (var value in new object[] { "bikes", 1000, 20, 10 })
 
 A parameter is sent as a Cosmos parameter, exactly as a literal of the same type would be. That
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
-prepared statement serves every page. A parameter of an interval type, which Cosmos has no type for, is
-never sent: what reads it is computed in process.
+prepared statement serves every page. A parameter of an interval, a `UUID` or a binary type is never
+sent, no Cosmos value being one: what reads it is computed in process. A `UUID` compared with a property
+declared to spell one is the exception, sent in that spelling (Chapter 14.2).
 
 **A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
 as a double, and keeps a stored integer exact. So a whole number beyond 2^53
