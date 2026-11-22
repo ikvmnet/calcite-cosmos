@@ -4335,6 +4335,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A half over a filter the filter rule converts, over a projection the transpose will not carry it past, does not
+        /// reach the service. The view computing <c>INITCAP</c> is filtered by a comparison that renders, and the filter
+        /// above reads it through a second view: the half S's weakening rides in, beside the 80-way <c>LIKE</c> of the view's
+        /// column, sits over the filter as over its input, and read through the first view's expressions it grows past the
+        /// transpose's bloat. Asked of the half at the projection beneath the filter, as at a projection the half sits over,
+        /// it reaches nothing; asked without it, any filter over the subtree can.
+        /// </summary>
+        [Fact]
+        public void AHalfOverAFilterOverAProjectionIsAskedOfTheTransposeBeneathIt()
+        {
+            var sql = "SELECT u.\"ic\" FROM (SELECT t.\"DOC\", t.\"a\", t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t "
+                + "WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 80).Select(i => $"u.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(u.\"DOC\", '$.name')) = 'Steel'";
+
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            var logical = harness.ToLogical(sql);
+            var filter = Filters(logical).Single(f => f.getCondition().toString().Contains("LIKE"));
+            var beneath = Filters(filter.getInput()).Should().ContainSingle("the view's comparison filters the view computing INITCAP").Subject;
+            beneath.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("beneath the filter is the projection the transpose must cross");
+
+            var (pushable, residual) = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(filter, harness.Tables["products"].Container);
+            var rex = filter.getCluster().getRexBuilder();
+            var list = new java.util.ArrayList();
+            foreach (var conjunct in pushable)
+                list.add(conjunct);
+            var half = RexUtil.composeConjunction(rex, list);
+            TestContext.Current.TestOutputHelper?.WriteLine($"pushable {pushable.Count}, residual {residual.Count}; the half holds the service's form: {CosmosOperators.HoldsServiceForm(half)}");
+
+            CosmosOperators.HoldsServiceForm(half).Should().BeTrue("S's weakening of the case fold rides in the half beside the disjunction");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, filter.getInput(), CosmosPlanMembers.NewSeen()).Should().BeTrue("asked without the half, a filter over the subtree can reach the service");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half).Should().BeFalse("the half, read through the view computing INITCAP beneath the filter, grows past the transpose's bloat");
+        }
+
+        /// <summary>
         /// Records the half of each pair the split rule registers, before Volcano takes it: the filter beneath the one left
         /// above, or the filter registered alone where nothing is left above.
         /// </summary>

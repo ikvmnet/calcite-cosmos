@@ -751,7 +751,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// of a statement already, or one a rule converts over a subtree that can be: this container's scan, a projection,
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
         /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
-        /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there.
+        /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
+        /// asked of the half as it stands.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -769,8 +770,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// service only by the transpose moving the half beneath it, and the transpose declines a projection holding a
         /// window, a condition holding a correlation, and one that read through the projection's expressions grows past its
         /// bloat, as a half holding an 80-way <c>LIKE</c> of a view's column beside a weakening does over a view that also
-        /// computes <c>INITCAP</c>. Asked without the half, the projection counts wherever its input reaches, the transpose
-        /// taken for granted, which is the cheap question <see cref="matches"/> asks before the half is built.
+        /// computes <c>INITCAP</c>. A filter keeps its row type, so the half sits over its input as it sits over the filter,
+        /// and a projection beneath a filter the filter rule converts is asked of the half too. Asked without the half, the
+        /// projection counts wherever its input reaches, the transpose taken for granted, which is the cheap question
+        /// <see cref="matches"/> asks before the half is built.
         /// </para>
         /// </remarks>
         /// <param name="convention">The convention whose statements the filter would be part of.</param>
@@ -796,7 +799,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var reaches = member switch
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
-                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen, half),
                     Project project => half is null
                         ? Reaches(convention, project.getInput(), seen)
                         : Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath),
