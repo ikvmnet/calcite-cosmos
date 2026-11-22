@@ -208,6 +208,29 @@ one, `U&'\D83D'`, is computed in process instead, and so is a column computed fr
 `UPPER(CAST(? AS VARCHAR))`, which is never sent; a parameter the service reads is not known until it is
 bound. Bind a whole character, or compare in the application. Chapter 8.
 
+**"Parameter ?0 cannot be converted to its type, BIGINT, as Calcite converts it when a row reads it"
+(`CosmosExecutionException`) when a statement runs.**
+A parameter was bound to a value Calcite cannot read as the type it gave the parameter, which is the
+type of what the parameter is compared with: a string that spells no number where a number is compared,
+a NaN or an infinity bound to a numeric parameter, a string bound to a `BOOLEAN` or a `UUID`, a date
+bound through Calcite's own driver where a timestamp is compared. The message names the exception
+Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the adapter
+fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
+
+**"Parameter ?0 cannot be read as the FETCH count, as Calcite's limit reads it" (`CosmosExecutionException`)
+when a statement runs.**
+A row count was bound to a value Calcite's limit does not take: a string through Calcite's own driver, a
+NaN, a negative number or a null. Calcite's own plan fails the same way, so the adapter fails before
+anything is sent. Bind a number of rows. Chapter 9.
+
+**"Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number"
+(`CosmosExecutionException`) when a statement runs.**
+A parameter was bound to a number past its type's range, the string `'1e400'` for a `DOUBLE` or the double
+`1e39` for a `REAL`, which Calcite's conversion makes an infinity, or to a NaN or an infinity where its type is
+`ANY` or `VARIANT`, which Calcite does not convert. No JSON number holds one, and the service would read the
+string the SDK writes as a string, so the statement fails rather than answer otherwise, even where Calcite
+answers. Bind a finite value within the type's range. Chapter 8.7.
+
 **400 on a query with `SQRT`, `ASIN` or `ACOS`.**
 Cosmos fails the whole statement for an out-of-domain argument. Guard the input. Chapter 8.
 

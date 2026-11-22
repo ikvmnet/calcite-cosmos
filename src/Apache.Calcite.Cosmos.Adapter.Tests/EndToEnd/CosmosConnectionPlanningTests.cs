@@ -44,13 +44,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// An executor that answers every request with the same documents, whatever its <c>WHERE</c>, each as the row a
-        /// statement reading the document and its id is returned: <c>{ "DOC": c, "id": c.id }</c>.
+        /// statement reading the document and its id is returned: <c>{ "DOC": c, "id": c.id }</c>; and keeps each request
+        /// it is sent in <paramref name="sent"/>, where one is given.
         /// </summary>
-        sealed class DocumentsExecutor(string[] documents) : ICosmosQueryExecutor
+        sealed class DocumentsExecutor(string[] documents, System.Collections.Generic.List<CosmosQuery>? sent = null) : ICosmosQueryExecutor
         {
 
-            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default) =>
-                new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())));
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                if (sent is not null)
+                    lock (sent)
+                        sent.Add(query);
+
+                return new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())));
+            }
 
         }
 
@@ -72,11 +79,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Runs a statement over a container that holds no document, with each planner the host makes given to <paramref
         /// name="bound"/>: each request sent, with its parameters, or <c>nothing</c>.
         /// </summary>
-        static string Sends(string sql, bool declared, string schema, CosmosServiceTarget target, java.util.function.Consumer bound)
+        static string Sends(string sql, bool declared, string schema, CosmosServiceTarget? target, java.util.function.Consumer? bound)
         {
             var sent = new System.Collections.Generic.List<string>();
             using var source = Open(declared ? schema : null, new RecordingExecutor(sent), target);
-            using var hook = org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
+            using var hook = bound is null ? null : org.apache.calcite.runtime.Hook.PLANNER.addThread(bound);
             using var connection = source.OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
@@ -98,15 +105,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Runs a statement over a container declared nothing whose every request is answered with the same documents: the
-        /// plan implemented, and its first column read.
+        /// Runs a statement over a container declared nothing, or declared <paramref name="schema"/>, whose every request
+        /// is answered with the same documents: the plan implemented, each <c>?</c> bound in order to a value of
+        /// <paramref name="parameters"/>, and its first column read; each request sent is kept in
+        /// <paramref name="sent"/>, where one is given.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, string[] documents)
+        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null, System.Collections.Generic.List<CosmosQuery>? sent = null, string? schema = null)
         {
-            using var source = Open(null, new DocumentsExecutor(documents), null);
+            using var source = Open(schema, new DocumentsExecutor(documents, sent), null);
             using var connection = source.OpenConnection();
+            return Rows(connection, sql.Replace(" items AS ", " \"items\" AS "), parameters ?? []);
+        }
+
+        /// <summary>A statement's first column, each <c>?</c> bound in order, <c>null</c> as SQL null.</summary>
+        static System.Collections.Generic.List<string> Rows(System.Data.Common.DbConnection connection, string sql, object?[] parameters)
+        {
             using var command = connection.CreateCommand();
-            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            command.CommandText = sql;
+            foreach (var value in parameters)
+            {
+                var parameter = command.CreateParameter();
+                parameter.Value = value ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+            }
+
             using var reader = command.ExecuteReader();
             var rows = new System.Collections.Generic.List<string>();
             while (reader.Read())
@@ -132,6 +154,229 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }.ConnectionString)
                 .ConfigureRootSchema(root => root.add("items", table))
                 .Build();
+        }
+
+        /// <summary>
+        /// A constant Calcite's planning folds to a NaN or an infinity, compared or added into a projected column, is
+        /// computed in process, as Calcite answers it, and nothing sent holds it: no JSON number holds one, and the SDK
+        /// writes it as a JSON string, which the service reads as a string.
+        /// </summary>
+        /// <remarks>
+        /// Bound as a literal, <c>&lt;&gt; NaN</c> was pushed whole as <c>c.n != @p0</c> with <c>@p0</c> the string
+        /// <c>"NaN"</c>, which keeps no stored number where Calcite keeps 1.5, and the projected sum as
+        /// <c>(… + @p0)</c> with <c>"Infinity"</c>, which the service's arithmetic leaves undefined.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) <> CAST('NaN' AS DOUBLE)""", "NaN")]
+        [InlineData("""SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) + CAST('Infinity' AS DOUBLE) FROM items AS c""", "Infinity")]
+        public void AConstantFoldedToANaNOrAnInfinityIsComputedInProcess(string sql, string folded)
+        {
+            var plan = Explain(sql, declared: false);
+            var request = plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal);
+
+            request.Should().BeGreaterThan(0, "something is computed above the request: " + plan);
+            plan[..request].Should().Contain(folded, "Calcite computes the folded constant: " + plan);
+            plan[request..].Should().NotContain(folded, "the request holds no " + folded + ": " + plan);
+            Sends(sql, declared: false, Schema, null, null).Should().NotContainAny(["NaN", "Infinity"], "nothing sent binds one");
+        }
+
+        /// <summary>
+        /// A row count beside a request the facts graph decides not to send is read as Calcite's limit reads it, whatever
+        /// the rows (<c>Calcite.ARowCountIsTakenToItsCeiling</c>): a negative count or a null fails the statement by name, as
+        /// Calcite's own plan fails over the same documents, and a count the limit takes answers no rows; nothing is sent.
+        /// </summary>
+        /// <remarks>
+        /// Read only once the request was sent, the count was never read beside one decided unsent, and the statement
+        /// answered no rows where Calcite fails.
+        /// </remarks>
+        [Fact]
+        public void ARowCountBesideARequestDecidedUnsentIsReadAsCalcitesLimitReadsIt()
+        {
+            const string Sql = """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.kind') = 'C' FETCH FIRST ? ROWS ONLY""";
+            Explain(Sql, declared: true).Should().Contain("CosmosToClrCursorConverter(sends=[nothing])");
+
+            var sent = new System.Collections.Generic.List<string>();
+            using var source = Open(Schema, new RecordingExecutor(sent), null);
+            int Rows(object? count)
+            {
+                using var connection = source.OpenConnection();
+                using var command = connection.CreateCommand();
+                command.CommandText = Sql.Replace(" items AS ", " \"items\" AS ");
+                var parameter = command.CreateParameter();
+                parameter.Value = count ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+
+                var rows = 0;
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                    rows++;
+
+                return rows;
+            }
+
+            foreach (var refused in new object?[] { -1L, null })
+            {
+                var failure = FluentActions.Invoking(() => Rows(refused)).Should().Throw<Exception>().Which;
+                Chain(failure).OfType<CosmosExecutionException>().Should().ContainSingle()
+                    .Which.Message.Should().StartWith("Parameter ?0 cannot be read as the FETCH count, as Calcite's limit reads it");
+            }
+
+            Rows(2L).Should().Be(0);
+            sent.Should().BeEmpty("the request is decided unsent, whatever the count");
+
+            static System.Collections.Generic.IEnumerable<Exception> Chain(Exception e)
+            {
+                for (Exception? x = e; x is not null; x = x.InnerException)
+                    yield return x;
+            }
+        }
+
+        /// <summary>
+        /// A null test of a parameter of an interval type answers as Calcite's own plan answers it over the same rows,
+        /// whether a null, an integer or a long is bound: nothing sent holds the parameter, and the test is computed in
+        /// process, over a container whose every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the test read the count Calcite holds the interval in, and a null bound failed the statement where
+        /// Calcite answers.
+        /// </remarks>
+        [Theory]
+        [InlineData("""CAST(? AS INTERVAL DAY TO SECOND) IS NULL OR {id} = 'a'""")]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NOT NULL""")]
+        [InlineData("""CAST(? AS INTERVAL YEAR) IS NULL""")]
+        [InlineData("""CAST(? AS INTERVAL YEAR TO MONTH) IS NULL OR {id} = 'a'""")]
+        public void AnIntervalParametersNullTestAnswersAsCalcitesPlan(string predicate)
+        {
+            string[] documents = ["""{"id":"a","category":"x"}""", """{"id":"b","category":"x"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var ids = Measurements.MaterialisedTable.Of(org.apache.calcite.sql.type.SqlTypeName.VARCHAR, ["\"a\"", "\"b\""]).AddTo(calcite);
+
+            foreach (var bound in new object?[] { null, 2, 2L })
+            {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Rows(calcite, $"SELECT \"v\" FROM \"{ids}\" WHERE " + predicate.Replace("{id}", "\"v\""), [bound]);
+                Answer("SELECT c.\"id\" FROM items AS c WHERE " + predicate.Replace("{id}", "c.\"id\""), documents, [bound], sent)
+                    .Should().Equal(expected, $"bound to {bound?.GetType().Name ?? "null"}, the statement answers as Calcite's plan");
+                sent.SelectMany(q => q.Parameters).Select(p => p.Value).Should().OnlyContain(v => Equals(v, "a"), "nothing sent holds the parameter, only the literal beside it");
+            }
+        }
+
+        /// <summary>
+        /// A <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with a parameter fails as Calcite's own plan fails
+        /// over the same documents, which hold a string at the path: nothing sent holds the parameter, and the comparison is
+        /// computed in process, over a container whose every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the <c>UuidValue</c> or the <c>ByteString</c> Calcite converts it to, which the
+        /// SDK writes as an object no stored value equals, and the statement answered where Calcite fails reading the path.
+        /// </remarks>
+        [Fact]
+        public void AUuidOrBinaryParametersComparisonFailsAsCalcitesPlan()
+        {
+            string[] documents = ["""{"id":"a","u":"00000000-0000-0000-0000-000000000001","b":"AQID"}""", """{"id":"b","u":"00000000-0000-0000-0000-000000000002","b":"BAUG"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+
+            foreach (var (reading, bound) in new (string, object)[]
+            {
+                ("""JSON_VALUE({d}, '$.u' RETURNING UUID)""", Guid.Parse("00000000-0000-0000-0000-000000000001")),
+                ("""JSON_VALUE({d}, '$.b' RETURNING VARBINARY(4))""", new byte[] { 1, 2, 3 }),
+                ("""JSON_VALUE({d}, '$.b' RETURNING BINARY(3))""", new byte[] { 1, 2, 3 }),
+            })
+            {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Innermost(FluentActions.Invoking(() => Rows(calcite, $"SELECT \"k\" FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\"") + " = ?", [bound]))
+                    .Should().Throw<Exception>("Calcite's plan fails reading the string at the path as " + reading).Which);
+                var failure = Innermost(FluentActions.Invoking(() => Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\"") + " = ?", documents, [bound], sent))
+                    .Should().Throw<Exception>("the statement fails as Calcite's plan: " + reading).Which);
+
+                failure.GetType().Should().Be(expected.GetType(), reading);
+                failure.Message.Should().Be(expected.Message, reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
+            }
+        }
+
+        /// <summary>The exception that failed a statement, beneath every one wrapping it.</summary>
+        static Exception Innermost(Exception e)
+        {
+            while (e.InnerException is not null)
+                e = e.InnerException;
+
+            return e;
+        }
+
+        /// <summary>
+        /// A <c>RETURNING DATE</c>, <c>TIMESTAMP</c> or <c>TIME</c> accessor over a path declared to spell one, compared
+        /// with a parameter, fails as Calcite's own plan fails over the same documents, which hold the spelling at the
+        /// path: nothing sent holds the parameter, and the comparison is computed in process, over a container whose
+        /// every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the count of days or milliseconds Calcite holds it in, which no stored string
+        /// equals, and the statement answered where Calcite fails reading the string as the accessor's type.
+        /// </remarks>
+        [Fact]
+        public void ADateOrTimeParametersComparisonFailsAsCalcitesPlan()
+        {
+            string[] dates = ["""{"id":"a","at":"2024-01-15"}""", """{"id":"b","at":"2024-01-16"}"""];
+            string[] times = ["""{"id":"a","at":"12:34:56"}""", """{"id":"b","at":"12:35:00"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+
+            foreach (var (pattern, documents, reading, bound) in new (string, string[], string, object)[]
+            {
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING DATE) = ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING DATE) <> ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", dates, """JSON_VALUE({d}, '$.at' RETURNING TIMESTAMP) = ?""", new DateTime(2024, 1, 15)),
+                ("^[0-9]{2}:[0-9]{2}:[0-9]{2}$", times, """JSON_VALUE({d}, '$.at' RETURNING TIME) = ?""", new TimeOnly(12, 34, 56)),
+            })
+            {
+                var schema = $$"""{ "type": "object", "required": ["at"], "properties": { "at": { "type": "string", "pattern": "{{pattern}}" } } }""";
+                var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Innermost(FluentActions.Invoking(() => Rows(calcite, $"SELECT \"k\" FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\""), [bound]))
+                    .Should().Throw<Exception>("Calcite's plan fails reading the string at the path as " + reading).Which);
+                var failure = Innermost(FluentActions.Invoking(() => Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\""), documents, [bound], sent, schema))
+                    .Should().Throw<Exception>("the statement fails as Calcite's plan: " + reading).Which);
+
+                failure.GetType().Should().Be(expected.GetType(), reading);
+                failure.Message.Should().Be(expected.Message, reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
+            }
+        }
+
+        /// <summary>
+        /// A <c>RETURNING</c> collection compared with a parameter answers as Calcite's own plan answers over the same
+        /// documents, an <c>int[]</c>, a <c>double[]</c> or a <c>string[]</c> bound: nothing sent holds the parameter, and
+        /// the comparison is computed in process, over a container whose every request answers both documents, whatever its
+        /// <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the parameter was bound as the <c>java.util.List</c> of Java boxes Calcite holds the collection in,
+        /// which the SDK writes as an array of objects no stored array equals, so <c>&lt;&gt;</c> kept the document
+        /// Calcite drops.
+        /// </remarks>
+        [Fact]
+        public void ACollectionParametersComparisonAnswersAsCalcitesPlan()
+        {
+            string[] documents = ["""{"id":"a","a":[5,7],"d":[1.5,2.5],"v":["x","y"]}""", """{"id":"b","a":[1],"d":[3.5],"v":["z"]}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var table = Measurements.MaterialisedTable.Of(documents).AddTo(calcite);
+
+            foreach (var (reading, bound) in new (string, object)[]
+            {
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER ARRAY) <> ?""", new[] { 5, 7 }),
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER ARRAY) <> ?""", new[] { 1 }),
+                ("""JSON_QUERY({d}, '$.a' RETURNING INTEGER MULTISET) <> ?""", new[] { 5, 7 }),
+                ("""JSON_QUERY({d}, '$.d' RETURNING DOUBLE ARRAY) <> ?""", new[] { 1.5, 2.5 }),
+                ("""JSON_QUERY({d}, '$.v' RETURNING VARCHAR ARRAY) <> ?""", new[] { "x", "y" }),
+            })
+            {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
+                var expected = Rows(calcite, $"SELECT JSON_VALUE(\"d\", '$.id') FROM \"{table}\" WHERE " + reading.Replace("{d}", "\"d\""), [bound]);
+                Answer("SELECT c.\"id\" FROM items AS c WHERE " + reading.Replace("{d}", "c.\"DOC\""), documents, [bound], sent)
+                    .Should().Equal(expected, $"bound to {bound.GetType().Name}, the statement answers as Calcite's plan: " + reading);
+                sent.SelectMany(q => q.Parameters).Should().BeEmpty("nothing sent holds the parameter: " + reading);
+            }
         }
 
         /// <summary>

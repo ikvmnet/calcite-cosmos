@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -42,7 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly CosmosContainerMetadata Items = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/k" }));
 
-        static RelNode PlanToCosmos(string sql)
+        static RelNode PlanToCosmos(string sql) => PlanToCosmos(sql, null);
+
+        static RelNode PlanToCosmos(string sql, org.apache.calcite.plan.Context? context)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             var table = new CosmosTable(Items);
@@ -61,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
-            var planner = new VolcanoPlanner();
+            var planner = context is null ? new VolcanoPlanner() : new VolcanoPlanner(context);
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
@@ -103,9 +106,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <param name="sql">The SQL to plan.</param>
         /// <returns>The statement.</returns>
-        static CosmosQuery Query(string sql)
+        static CosmosQuery Query(string sql, org.apache.calcite.plan.Context? context = null)
         {
-            var best = PlanToCosmos(sql);
+            var best = PlanToCosmos(sql, context);
             var implementor = new CosmosImplementor(best.getCluster().getRexBuilder(), Items);
             implementor.Visit(FindCosmos(best));
             return implementor.Build();
@@ -129,6 +132,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("LIMIT @", "the name is written where the digits would have gone: " + query.Sql);
             query.Parameters.Should().ContainSingle(p => p.Value is CosmosDynamicValue,
                 "and the slot behind it is left for the execution");
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Single().RowCount.Should().Be("FETCH", "the slot holds a count, which the limit reads");
+        }
+
+        /// <summary>
+        /// A row count, literal or parameter, is the rows Calcite's limit takes for it: a fraction its ceiling, a count past
+        /// an int the most the statement writes, under the rounding policy the planner's context holds, which a
+        /// parameter's slot carries to the bind.
+        /// </summary>
+        /// <remarks>
+        /// <c>RexLiteral.intValue</c> cut a literal to its whole part, so <c>FETCH FIRST 2.5 ROWS ONLY</c> sent
+        /// <c>LIMIT 2</c> where Calcite takes three rows, and failed planning past an int, where Calcite takes every row
+        /// (<c>Calcite.ARowCountIsTakenToItsCeiling</c>).
+        /// </remarks>
+        [Fact]
+        public void ARowCountIsTheRowsCalcitesLimitTakes()
+        {
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 2.5 ROWS ONLY""").Sql.Should().EndWith("OFFSET 0 LIMIT 3");
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 3000000000 ROWS ONLY""").Sql.Should().EndWith("OFFSET 0 LIMIT 2147483647");
+            Query("""SELECT c."id" FROM items AS c ORDER BY c."_ts" OFFSET 2.5 ROWS FETCH NEXT 2 ROWS ONLY""").Sql.Should().EndWith("OFFSET 3 LIMIT 2");
+
+            var floor = org.apache.calcite.plan.Contexts.of(new Floor());
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 2.5 ROWS ONLY""", floor).Sql.Should().EndWith("OFFSET 0 LIMIT 2", "the planner's rounding policy comes first");
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST ? ROWS ONLY""", floor).Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Single().RowCountRounding
+                .Should().BeOfType<Floor>("and a parameter's slot carries it to the bind");
+        }
+
+        /// <summary>A rounding policy that takes a count down to its whole part.</summary>
+        sealed class Floor : org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy
+        {
+
+            public java.math.BigDecimal round(java.math.BigDecimal value) => value.setScale(0, java.math.RoundingMode.FLOOR);
+
         }
 
         /// <summary>
@@ -246,6 +281,83 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query("""SELECT c."id" FROM items AS c WHERE c."id" = ?""").Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "a parameter the service reads is sent");
         }
 
+        /// <summary>
+        /// A parameter of an interval type is never sent, as no literal of one is: the service holds no interval. A
+        /// null test of one is computed in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's planning leaves <c>CAST(? AS INTERVAL DAY) IS NULL</c> as a null test of the parameter itself,
+        /// which was sent as <c>IS_NULL(@p0)</c> over the count Calcite holds the interval in, answered from the value
+        /// bound, where Calcite's plan answers otherwise (<see cref="CosmosConnectionPlanningTests"/>).
+        /// </remarks>
+        [Theory]
+        [InlineData("""CAST(? AS INTERVAL DAY TO SECOND) IS NULL OR c."id" = 'a'""", false)]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NOT NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL YEAR) IS NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL YEAR TO MONTH) IS NULL AND c."id" = 'a'""", true)]
+        public void AnIntervalParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the interval: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
+        /// <summary>
+        /// A parameter of a <c>UUID</c>, a <c>BINARY</c> or a <c>VARBINARY</c> type is never sent, as no literal of one is:
+        /// Calcite holds its value as a Java object, which no value the service holds is. A comparison with one is computed
+        /// in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// A <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with a parameter was sent as <c>c.u = @p0</c>, bound
+        /// to the <c>UuidValue</c> or the <c>ByteString</c> Calcite converts the value to, which the SDK writes as an object,
+        /// so the statement answered where Calcite's plan fails (<see cref="CosmosConnectionPlanningTests"/>). A path declared
+        /// to spell a UUID is compared in that spelling, through a slot of its own (Chapter 14).
+        /// </remarks>
+        [Theory]
+        [InlineData("""JSON_VALUE(c."DOC", '$.u' RETURNING UUID) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""? = JSON_VALUE(c."DOC", '$.u' RETURNING UUID) OR c."id" = 'a'""", false)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.u' RETURNING UUID) IN (?, ?) AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING VARBINARY(4)) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING VARBINARY) = ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_VALUE(c."DOC", '$.b' RETURNING BINARY(3)) IN (?, ?) AND c."id" = 'a'""", true)]
+        public void AUuidOrBinaryParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the value: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
+        /// <summary>
+        /// A parameter of a collection type is never sent, as no literal of one is: Calcite holds its value as a Java list
+        /// or map, whose numbers the SDK writes as objects, and nobody has shown the service's comparison of one to be
+        /// Calcite's. A comparison with one is computed in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_QUERY(… RETURNING INTEGER ARRAY) &lt;&gt; ?</c> was sent as <c>c.a != @p0</c>, bound to the
+        /// <c>java.util.List</c> of <c>java.lang.Integer</c> Calcite holds the array in, which the SDK writes as an array
+        /// of objects no stored array equals, so the statement kept the document Calcite drops
+        /// (<see cref="CosmosConnectionPlanningTests"/>).
+        /// </remarks>
+        [Theory]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING INTEGER ARRAY) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING INTEGER MULTISET) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.a' RETURNING DOUBLE ARRAY) <> ? AND c."id" = 'a'""", true)]
+        [InlineData("""? <> JSON_QUERY(c."DOC", '$.v' RETURNING VARCHAR ARRAY) OR c."id" = 'a'""", false)]
+        [InlineData("""JSON_QUERY(c."DOC", '$.m' RETURNING MAP<VARCHAR, INTEGER>) <> ? AND c."id" = 'a'""", true)]
+        public void ACollectionParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the collection: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
         /// <remarks>
         /// Which is the whole of the fix. Nothing here has a value to record, and the ordinal is what
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL
@@ -310,6 +422,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query("""SELECT c."id" FROM items AS c FETCH NEXT 3 ROWS ONLY""");
 
             CosmosQueries.Bind(query, new Context(new Dictionary<string, object?>())).Should().Be(query);
+        }
+
+        /// <summary>
+        /// A parameter bound to a value that is an infinity once converted fails the statement by name wherever the
+        /// statement reads it: compared, added into a projected column, or as a column's value under a <c>COALESCE</c> or a
+        /// <c>CASE</c>; a finite value is sent.
+        /// </summary>
+        /// <remarks>
+        /// Through Calcite's own driver the string <c>'1e400'</c> bound to a <c>DOUBLE</c> parameter is +Infinity, which
+        /// Calcite compares and projects. The SDK writes it as the JSON string <c>"Infinity"</c>: a projected sum over it
+        /// came back null where Calcite answers the infinity, and a column holding it failed when the row was read, its
+        /// reader refusing a string.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) < ?""")]
+        [InlineData("""SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) + ? FROM items AS c""")]
+        [InlineData("""SELECT c."id", COALESCE(JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE), ?) FROM items AS c""")]
+        [InlineData("""SELECT c."id", CASE WHEN JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) > 0 THEN ? ELSE 0E0 END FROM items AS c""")]
+        public void AValueThatIsAnInfinityOnceConvertedFailsByNameWhereverItIsRead(string sql)
+        {
+            var query = Query(sql);
+            query.Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "the statement reads the parameter: " + query.Sql);
+
+            FluentActions.Invoking(() => CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "1e400" }))).Should().Throw<CosmosExecutionException>()
+                .WithMessage("Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
+            CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "2.5" })).Parameters.Select(p => p.Value).Should().Contain(2.5d,
+                "a finite value is sent as the double Calcite converts it to");
         }
 
         /// <summary>

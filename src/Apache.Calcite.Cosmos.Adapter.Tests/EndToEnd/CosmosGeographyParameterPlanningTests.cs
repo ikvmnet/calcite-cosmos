@@ -315,6 +315,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Text(best).Should().Contain("ClrCursorFilter", "the parse is the engine's: " + Text(best));
         }
 
+        /// <summary>
+        /// A distance the comparison inside <c>CLR_ST_GEOG_DWITHIN</c> reads, bound to a value that is an infinity once
+        /// converted, fails the statement by name, as wherever else the statement reads the value.
+        /// </summary>
+        /// <remarks>
+        /// The distance is written as <c>ST_DISTANCE(…) &lt;= @p</c>, a comparison of the translator's own making. Through
+        /// Calcite's own driver the string <c>'1e400'</c> bound to it is +Infinity, which Calcite compares, keeping every
+        /// located document; sent, the SDK wrote it as the JSON string <c>"Infinity"</c>, which no distance is below, and
+        /// the service kept none. A bare <c>?</c> there is refused by the validator, and a cast keeps the conjunct in
+        /// process, so the parameter takes its type from a <c>CASE</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ADistanceThatIsAnInfinityOnceConvertedFailsByName(bool reduce)
+        {
+            var query = Query(Plan($"""SELECT c."id" FROM products AS c WHERE CLR_ST_GEOG_DWITHIN({Location}, {Here}, CASE WHEN TRUE THEN ? ELSE 1e0 END)""", NullCollation.LOW, null, reduce));
+
+            query.Sql.Should().MatchRegex(@"ST_DISTANCE\(c\.location, .+\) <= ", "the distance is the statement's comparison: " + query.Sql);
+
+            FluentActions.Invoking(() => Adapter.Client.CosmosQueries.Bind(query, new Context("1e400"))).Should().Throw<Adapter.Client.CosmosExecutionException>()
+                .WithMessage("Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
+            Adapter.Client.CosmosQueries.Bind(query, new Context(java.lang.Double.valueOf(50000d))).Parameters.Select(p => p.Value).Should().Contain(50000d,
+                "a finite distance is sent");
+        }
+
+        /// <summary>
+        /// A data context holding the one value a run supplies for <c>?0</c>.
+        /// </summary>
+        sealed class Context(object value) : org.apache.calcite.DataContext
+        {
+
+            /// <inheritdoc />
+            public org.apache.calcite.schema.SchemaPlus getRootSchema() => null!;
+
+            /// <inheritdoc />
+            public org.apache.calcite.adapter.java.JavaTypeFactory getTypeFactory() => null!;
+
+            /// <inheritdoc />
+            public org.apache.calcite.linq4j.QueryProvider getQueryProvider() => null!;
+
+            /// <inheritdoc />
+            public object get(string name) => name == "?0" ? value : null!;
+
+        }
+
     }
 
 }

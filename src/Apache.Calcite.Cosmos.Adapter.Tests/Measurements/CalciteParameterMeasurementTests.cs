@@ -10,6 +10,8 @@ using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
+using org.apache.calcite.rel.type;
+using org.apache.calcite.schema;
 using org.apache.calcite.sql.type;
 
 using Xunit;
@@ -203,6 +205,491 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Calcite's own JDBC driver hands the caller's class to the data context, and Calcite converts the value to the
+        /// parameter's type when a row reads it; the ADO.NET driver converts it to the type before Calcite sees it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each case is a statement over an in-process table that records what the data context holds for <c>?0</c> when
+        /// it is scanned (<see cref="Recording"/>), bound once through <c>jdbc:calcite:</c> with the setter a caller of it
+        /// would use, and once through the ADO.NET driver with the .NET value a caller of it would use; with the rows kept,
+        /// or the innermost exception.
+        /// </para>
+        /// <para>
+        /// <b>Through Calcite's own driver the data context holds the caller's class:</b> a long for a <c>DOUBLE</c>, an
+        /// <c>INTEGER</c>, a <c>SMALLINT</c>, a <c>TINYINT</c>, a <c>REAL</c>, a <c>VARCHAR</c>, a <c>CHAR</c> and a
+        /// <c>DATE</c> parameter, a double for a <c>BIGINT</c> one, a string for a <c>BIGINT</c>, a <c>DECIMAL</c>, an
+        /// <c>INTEGER</c>, a <c>BOOLEAN</c> and a <c>UUID</c> one, a <c>java.util.UUID</c> for a <c>UUID</c> one and an
+        /// integer for a <c>TIMESTAMP</c> one. Calcite compares the value of the parameter's type, converted when the row's
+        /// code reads it: the long 2^53 + 1 as the double 2^53, keeping the stored 2^53 and not 1.5 below it;
+        /// 3,000,000,000 wrapped to −1,294,967,296; 65,537 wrapped to 1 as a <c>SMALLINT</c> and 257 as a <c>TINYINT</c>;
+        /// 2^24 + 1 rounded to 2^24 as a <c>REAL</c>; 1.5 cut to 1; the string <c>'2'</c> as 2 and <c>'2.50'</c> as the
+        /// decimal 2.5; the long 30 as the text <c>'30'</c>, the double 1e20 as Java writes it, <c>'1.0E20'</c>, and the
+        /// long 17 as <c>'17'</c> held to a <c>CHAR(1)</c>, <c>'1'</c>. It fails converting what it cannot: a string that
+        /// spells no number bound to a <c>BIGINT</c>, a NaN bound to a <c>BIGINT</c> or a <c>DOUBLE</c> and −Infinity
+        /// bound to a <c>DOUBLE</c> (<c>NumberFormatException</c>); and, casting what the data context holds to the class
+        /// it holds the type in, a string bound to a <c>BOOLEAN</c>, a string or a <c>java.util.UUID</c> bound to a
+        /// <c>UUID</c>, an integer bound to a <c>TIMESTAMP</c> and a long bound to a <c>DATE</c>
+        /// (<c>ClassCastException</c>). It fails only once a row reaches the parameter's reading: over an empty table it
+        /// answers no rows, a NaN bound to a <c>BIGINT</c> and a string bound to a <c>BOOLEAN</c> alike, and where no
+        /// row takes the <c>CASE</c> branch that reads the parameter it answers what the other branch decides, a string
+        /// that spells no number bound to a <c>DOUBLE</c> or an <c>INTEGER</c>, a NaN bound to a <c>DOUBLE</c> and a
+        /// string bound to a <c>BOOLEAN</c> alike, and projected a string bound to an <c>INTEGER</c> so too; a branch a
+        /// row takes fails. A projected parameter is read so too.
+        /// </para>
+        /// <para>
+        /// <b>Through the ADO.NET driver the data context holds the parameter's type's own class</b>, converted from the
+        /// .NET value before the statement runs (<c>ParameterBinder.Bind</c>), by its own rule: it rounds 1.5 to 2 for a
+        /// <c>BIGINT</c> where Calcite's conversion cuts it to 1, refuses a long past an <c>INTEGER</c>, a <c>SMALLINT</c>
+        /// or a <c>TINYINT</c> rather than wrap it, refuses a NaN or a string that spells no number for a <c>BIGINT</c> and
+        /// a string for a <c>UUID</c>, writes the double 1e20 as .NET's text, <c>'1E+20'</c>, and makes Calcite's
+        /// <c>UuidValue</c> of a <see cref="Guid"/>, the epoch milliseconds of a <c>TIMESTAMP</c> of a
+        /// <see cref="DateOnly"/> and the days of a <c>DATE</c> of a <see cref="DateTime"/>. Calcite's conversion then
+        /// finds the type's class and changes nothing, so a value converts to what the data context already holds.
+        /// </para>
+        /// <para>
+        /// A string the data context holds is recorded without a cast to <c>java.lang.Object</c>: IKVM holds Java's
+        /// <c>String</c> as <c>System.String</c>, which no such cast takes.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.AParameterIsConvertedToItsTypeWhenRead")]
+        public void AParameterIsConvertedToItsTypeWhenRead()
+        {
+            var doubles = MaterialisedTable.Of(SqlTypeName.DOUBLE, ["9007199254740992", "1.5"]);
+            var integers = MaterialisedTable.Of(SqlTypeName.INTEGER, ["-1294967296", "5"]);
+            var longs = MaterialisedTable.Of(SqlTypeName.BIGINT, ["1", "2"]);
+            var texts = MaterialisedTable.Of(SqlTypeName.VARCHAR, ["\"30\"", "\"x\"", "\"1.0E20\"", "\"1E+20\""]);
+            var documents = MaterialisedTable.Of(["{\"s\":\"30\"}", "{\"s\":\"x\"}", "{\"n\":2}"]);
+            var keys = MaterialisedTable.Of(SqlTypeName.INTEGER, ["1"]);
+            const string Uuid = "123e4567-e89b-12d3-a456-426614174000";
+            const string UuidEquals = "SELECT \"k\" FROM {t} WHERE CAST('" + Uuid + "' AS UUID) = ?";
+
+            var cases = new Conversion[]
+            {
+                new("DOUBLE v = ?, long 2^53 + 1", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [0]", "java.lang.Double 9.007199254740992E15: rows [0]"),
+                new("DOUBLE v < ?, long 2^53 + 1", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" < ?", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [1]", "java.lang.Double 9.007199254740992E15: rows [1]"),
+                new("INTEGER v = ?, long 3,000,000,000", integers, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows [0]", "not read: OverflowException"),
+                new("SMALLINT v = ?, long 65,537", MaterialisedTable.Of(SqlTypeName.SMALLINT, ["1", "2"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 65537L), 65537L,
+                    "java.lang.Long 65537: rows [0]", "not read: OverflowException"),
+                new("TINYINT v = ?, long 257", MaterialisedTable.Of(SqlTypeName.TINYINT, ["1", "2"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 257L), 257L,
+                    "java.lang.Long 257: rows [0]", "not read: OverflowException"),
+                new("REAL v = ?, long 2^24 + 1", MaterialisedTable.Of(SqlTypeName.REAL, ["16777216", "1.5"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 16777217L), 16777217L,
+                    "java.lang.Long 16777217: rows [0]", "java.lang.Float 1.6777216E7: rows [0]"),
+                new("BIGINT v = ?, double 1.5", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1.5), 1.5d,
+                    "java.lang.Double 1.5: rows [0]", "java.lang.Long 2: rows [1]"),
+                new("BIGINT v = ?, double NaN", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("BIGINT v = ?, double NaN, no row", MaterialisedTable.Of(SqlTypeName.BIGINT, []), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: rows []", "not read: OverflowException"),
+                new("DOUBLE v = ?, double NaN", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "java.lang.Double NaN: NumberFormatException"),
+                new("DOUBLE v = ?, double -Infinity", doubles, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, double.NegativeInfinity), double.NegativeInfinity,
+                    "java.lang.Double -Infinity: NumberFormatException", "java.lang.Double -Infinity: NumberFormatException"),
+                new("BIGINT v = ?, string '2'", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: rows [1]", "java.lang.Long 2: rows [1]"),
+                new("BIGINT v = ?, string 'x'", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: NumberFormatException", "not read: FormatException"),
+                new("DECIMAL v = ?, string '2.50'", MaterialisedTable.Of(SqlTypeName.DECIMAL, ["2.5", "3"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "2.50"), "2.50",
+                    "java.lang.String 2.50: rows [0]", "java.math.BigDecimal 2.50: rows [0]"),
+                new("RETURNING INTEGER = ?, string '2'", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.n' RETURNING INTEGER) = ?", s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: rows [2]", "java.lang.Integer 2: rows [2]"),
+                new("BOOLEAN v = ?, string 'true'", MaterialisedTable.Of(SqlTypeName.BOOLEAN, ["true", "false"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: ClassCastException", "java.lang.Boolean true: rows [0]"),
+                new("BOOLEAN v = ?, string 'true', no row", MaterialisedTable.Of(SqlTypeName.BOOLEAN, []), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: rows []", "java.lang.Boolean true: rows []"),
+                new("VARCHAR v = ?, long 30", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 30L), 30L,
+                    "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
+                new("VARCHAR v = ?, double 1e20", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1e20), 1e20d,
+                    "java.lang.Double 1.0E20: rows [2]", "java.lang.String 1E+20: rows [3]"),
+                new("CHAR(1) v = ?, long 17", MaterialisedTable.Of(SqlTypeName.CHAR, ["\"1\"", "\"2\""]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 17L), 17L,
+                    "java.lang.Long 17: rows [0]", "java.lang.String 17: rows [0]"),
+                new("UUID = ?, string", keys, UuidEquals, s => s.setString(1, Uuid), Uuid,
+                    "java.lang.String " + Uuid + ": ClassCastException", "not read: InvalidCastException"),
+                new("UUID = ?, java.util.UUID and Guid", keys, UuidEquals, s => s.setObject(1, java.util.UUID.fromString(Uuid)), Guid.Parse(Uuid),
+                    "java.util.UUID " + Uuid + ": ClassCastException", "org.apache.calcite.util.UuidValue " + Uuid + ": rows [0]"),
+                new("? > TIMESTAMP, integer 20667 and DateOnly", keys, "SELECT \"k\" FROM {t} WHERE ? > TIMESTAMP '2000-01-01 00:00:00'", s => s.setInt(1, 20667), new DateOnly(2026, 8, 2),
+                    "java.lang.Integer 20667: ClassCastException", "java.lang.Long 1785628800000: rows [0]"),
+                new("? > DATE, long and DateTime", keys, "SELECT \"k\" FROM {t} WHERE ? > DATE '2000-01-01'", s => s.setLong(1, 1785672000000L), new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Utc),
+                    "java.lang.Long 1785672000000: ClassCastException", "java.lang.Integer 20667: rows [0]"),
+                new("CASE no row takes, DOUBLE, string 'x'", doubles, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1e301 THEN ? ELSE 0e0 END < 5", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0, 1]", "not read: FormatException"),
+                new("CASE no row takes, DOUBLE, double NaN", doubles, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1e301 THEN ? ELSE 0e0 END < 5", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: rows [0, 1]", "java.lang.Double NaN: rows [0, 1]"),
+                new("CASE no row takes, INTEGER, string 'x'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 100 THEN ? ELSE 0 END = 0", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0, 1]", "not read: FormatException"),
+                new("CASE no row takes, BOOLEAN, string 'true'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 100 THEN ? ELSE TRUE END", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: rows [0, 1]", "java.lang.Boolean true: rows [0, 1]"),
+                new("CASE a row takes, INTEGER, string 'x'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1 THEN ? ELSE 0 END = 0", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: NumberFormatException", "not read: FormatException"),
+                new("projected CASE no row takes, INTEGER, string 'x'", integers, "SELECT \"k\", CASE WHEN \"v\" > 100 THEN ? ELSE 0 END FROM {t}", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0 0, 1 0]", "not read: FormatException"),
+                new("JSON_VALUE = ?, long 30", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.s') = ?", s => s.setLong(1, 30L), 30L,
+                    "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
+                new("projected DOUBLE, long 2^53 + 1", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
+                    "java.lang.Long 9007199254740993: rows [0 9.007199254740992E15]", "java.lang.Double 9.007199254740992E15: rows [0 9007199254740992]"),
+                new("projected DOUBLE, double NaN", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "java.lang.Double NaN: NumberFormatException"),
+            };
+
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+        }
+
+        /// <summary>
+        /// A NaN or an infinite double bound to a parameter of an approximate type fails the statement in Calcite, through
+        /// either driver, under every comparison operator, once a row is read; one of an integer or a <c>DECIMAL</c> type
+        /// fails in Calcite, or in the ADO.NET driver first; and a finite value whose conversion to an approximate type
+        /// passes its range is converted to an infinity, compared with no failure and projected as the infinity.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each case is a statement over an in-process table that records what the data context holds for <c>?0</c> when
+        /// it is scanned, bound once through <c>jdbc:calcite:</c> and once through the ADO.NET driver, as
+        /// <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases.
+        /// </para>
+        /// <para>
+        /// <b>A NaN, +Infinity or −Infinity bound to a <c>DOUBLE</c>, a <c>REAL</c> or a <c>FLOAT</c> column's parameter,
+        /// or to a <c>RETURNING DOUBLE</c>'s,</b> fails under <c>=</c>, <c>&lt;&gt;</c>, <c>&lt;</c>, <c>&lt;=</c>,
+        /// <c>&gt;</c> and <c>&gt;=</c>, through either driver, with <c>NumberFormatException</c>: over a row holding a
+        /// value, over a row holding null, and over a row an earlier conjunct is false for; over a table holding no row it
+        /// answers no rows. The failure is the conversion's: the data context holds the double, and Calcite's generated
+        /// code reads a numeric parameter through <c>SqlFunctions.toBigDecimal</c>, which refuses it
+        /// (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>), before the comparison is asked.
+        /// </para>
+        /// <para>
+        /// <b>A NaN bound to a <c>BIGINT</c>, an <c>INTEGER</c> or a <c>DECIMAL</c> parameter</b> fails in Calcite the
+        /// same way through its own driver; the ADO.NET driver refuses it before the statement runs.
+        /// </para>
+        /// <para>
+        /// <b>A value the conversion carries past the approximate type's range</b> is no failure. Through Calcite's own
+        /// driver the string <c>'1e400'</c> bound to a <c>DOUBLE</c> parameter is projected as +Infinity, and the double
+        /// 1e39 bound to a <c>REAL</c> one as the float +Infinity; compared, under every operator and beneath arithmetic
+        /// too, each keeps 1.5 as a value above every finite one would, and its negative as one below. No finite stored
+        /// value tells the infinity from a value past every double, so the comparisons show only that none fails. Through
+        /// the ADO.NET driver the same values reach Calcite as an infinity of the type, which its conversion refuses.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.ANonFiniteDoubleParameterRaises")]
+        public void ANonFiniteDoubleParameterRaises()
+        {
+            var readings = new (string Name, Func<IEnumerable<string?>, MaterialisedTable> Table, string Expression)[]
+            {
+                ("DOUBLE v", values => MaterialisedTable.Of(SqlTypeName.DOUBLE, values), "\"v\""),
+                ("REAL v", values => MaterialisedTable.Of(SqlTypeName.REAL, values), "\"v\""),
+                ("FLOAT v", values => MaterialisedTable.Of(SqlTypeName.FLOAT, values), "\"v\""),
+                ("RETURNING DOUBLE", Documents, "JSON_VALUE(\"d\", '$.v' RETURNING DOUBLE)"),
+            };
+
+            var inputs = new (string Name, string?[] Values, string Before)[]
+            {
+                ("one row", ["1.5"], ""),
+                ("a null row", [null], ""),
+                ("an earlier conjunct false", ["1.5"], "\"k\" < 0 AND "),
+                ("no row", [], ""),
+            };
+
+            var cases = new List<Conversion>();
+
+            // A non-finite double bound to an approximate parameter: every reading, every operator, every input.
+            foreach (var (reading, table, expression) in readings)
+                foreach (var (input, values, before) in inputs)
+                    foreach (var bound in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+                        foreach (var op in Ops)
+                        {
+                            var held = "java.lang.Double " + Java(bound);
+                            var answer = values.Length == 0 ? ": rows []" : ": NumberFormatException";
+                            var ado = (reading == "REAL v" ? "java.lang.Float " : "java.lang.Double ") + Java(bound);
+                            cases.Add(new($"{reading} {op} ?, {input}, double {Java(bound)}", table(values), $"SELECT \"k\" FROM {{t}} WHERE {before}{expression} {op} ?",
+                                s => s.setDouble(1, bound), bound, held + answer, ado + answer));
+                        }
+
+            // A NaN bound to an exact parameter.
+            foreach (var type in new[] { SqlTypeName.BIGINT, SqlTypeName.INTEGER, SqlTypeName.DECIMAL })
+                cases.Add(new($"{type.getName()} v = ?, double NaN", MaterialisedTable.Of(type, ["1", null]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?",
+                    s => s.setDouble(1, double.NaN), double.NaN, "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"));
+
+            // A finite value the conversion carries past the approximate type's range, both ways: every reading, every
+            // operator, over a row holding a value and a row holding null.
+            foreach (var (reading, table, expression) in readings)
+                foreach (var positive in new[] { true, false })
+                    foreach (var op in Ops)
+                    {
+                        var real = reading == "REAL v";
+                        var infinity = positive ? "Infinity" : "-Infinity";
+                        Action<java.sql.PreparedStatement> bind = real ? s => s.setDouble(1, positive ? 1e39 : -1e39) : s => s.setString(1, positive ? "1e400" : "-1e400");
+                        object bound = real ? positive ? 1e39 : -1e39 : positive ? "1e400" : "-1e400";
+                        var held = bound is double number ? "java.lang.Double " + Java(number) : "java.lang.String " + bound;
+                        var kept = Kept(op, positive) ? "0" : "";
+                        cases.Add(new($"{reading} {op} ?, {(bound is double ? Java((double)bound) : "'" + bound + "'")}", table(["1.5", null]), $"SELECT \"k\" FROM {{t}} WHERE {expression} {op} ?",
+                            bind, bound, $"{held}: rows [{kept}]", (real ? "java.lang.Float " : "java.lang.Double ") + infinity + ": NumberFormatException"));
+                    }
+
+            // The same beneath arithmetic, and projected.
+            cases.Add(new("DOUBLE v + CAST(? AS DOUBLE) > 0, '1e400'", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5", null]), "SELECT \"k\" FROM {t} WHERE \"v\" + CAST(? AS DOUBLE) > 0",
+                s => s.setString(1, "1e400"), "1e400", "java.lang.String 1e400: rows [0]", "java.lang.Double Infinity: NumberFormatException"));
+            cases.Add(new("projected DOUBLE, '1e400'", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}",
+                s => s.setString(1, "1e400"), "1e400", "java.lang.String 1e400: rows [0 Infinity]", "java.lang.Double Infinity: NumberFormatException"));
+            cases.Add(new("projected REAL, 1.0E39", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS REAL) FROM {t}",
+                s => s.setDouble(1, 1e39), 1e39, "java.lang.Double 1.0E39: rows [0 Infinity]", "java.lang.Float Infinity: NumberFormatException"));
+
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+
+            // Java's spelling of a double.
+            static string Java(double value) => java.lang.Double.toString(value);
+
+            // Whether the finite value 1.5 compares TRUE with +Infinity (positive) or -Infinity under an operator.
+            static bool Kept(string op, bool positive) => op switch
+            {
+                PredicateAtom.Equal => false,
+                PredicateAtom.NotEqual => true,
+                PredicateAtom.Less or PredicateAtom.LessOrEqual => positive,
+                _ => positive == false,
+            };
+        }
+
+        /// <summary>
+        /// Calcite's limit reads a <c>FETCH</c> or an <c>OFFSET</c> count, a literal's or a parameter's, as a decimal, and
+        /// takes or skips rows while their index is below it, so a fraction is taken to its ceiling and a count past an
+        /// <c>INTEGER</c> takes every row; a count that is no number, a NaN, a negative count or a null fails, whatever the
+        /// rows.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each case is a statement over an in-process table of four rows that records what the data context holds for
+        /// <c>?0</c> when it is scanned, bound once through <c>jdbc:calcite:</c> and once through the ADO.NET driver, as
+        /// <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases; a literal count binds nothing.
+        /// </para>
+        /// <para>
+        /// <b>Through Calcite's own driver the data context holds the caller's class</b>, and the limit reads it
+        /// (<c>EnumUtils.numberToBigDecimal</c>): the double 2.5 takes three rows and skips three, 0.5 takes one, the
+        /// decimal 2.01 takes three, the integer 2 and the double 2.0 take two, and the long 3,000,000,000 takes every row
+        /// and skips every row; the literals 2.5 and 3,000,000,000 alike. It fails the string <c>'2'</c>, a negative count
+        /// and a null (<c>IllegalArgumentException</c>), and a NaN (<c>NumberFormatException</c>).
+        /// </para>
+        /// <para>
+        /// <b>The limit reads its count whatever the rows</b>, when the plan is bound: a negative count and a null fail over a
+        /// table holding no row, and beneath a filter no row passes, through either driver, where a count it takes answers
+        /// no rows.
+        /// </para>
+        /// <para>
+        /// <b>The ADO.NET driver converts the value to a <c>DECIMAL</c> before Calcite sees it</b>, the type Calcite
+        /// gives a row count's parameter, so the string <c>'2'</c> takes two rows, and it refuses a NaN before the
+        /// statement runs; the limit reads the rest as through Calcite's own driver.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.ARowCountIsTakenToItsCeiling")]
+        public void ARowCountIsTakenToItsCeiling()
+        {
+            var four = MaterialisedTable.Of(SqlTypeName.INTEGER, ["0", "1", "2", "3"]);
+            var none = MaterialisedTable.Of(SqlTypeName.INTEGER, []);
+            const string Fetch = "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
+            const string Offset = "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET ? ROWS";
+            const string FetchKept = "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
+            const string OffsetKept = "SELECT \"k\" FROM {t} WHERE \"k\" > 10 ORDER BY \"k\" OFFSET ? ROWS";
+
+            var cases = new Conversion[]
+            {
+                new("FETCH ?, double 2.5", four, Fetch, s => s.setDouble(1, 2.5), 2.5d,
+                    "java.lang.Double 2.5: rows [0, 1, 2]", "java.math.BigDecimal 2.5: rows [0, 1, 2]"),
+                new("FETCH ?, double 0.5", four, Fetch, s => s.setDouble(1, 0.5), 0.5d,
+                    "java.lang.Double 0.5: rows [0]", "java.math.BigDecimal 0.5: rows [0]"),
+                new("FETCH ?, decimal 2.01", four, Fetch, s => s.setBigDecimal(1, new java.math.BigDecimal("2.01")), 2.01m,
+                    "java.math.BigDecimal 2.01: rows [0, 1, 2]", "java.math.BigDecimal 2.01: rows [0, 1, 2]"),
+                new("FETCH ?, integer 2", four, Fetch, s => s.setInt(1, 2), 2,
+                    "java.lang.Integer 2: rows [0, 1]", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, double 2.0", four, Fetch, s => s.setDouble(1, 2.0), 2.0d,
+                    "java.lang.Double 2.0: rows [0, 1]", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, long 3,000,000,000", four, Fetch, s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows [0, 1, 2, 3]", "java.math.BigDecimal 3000000000: rows [0, 1, 2, 3]"),
+                new("FETCH ?, string '2'", four, Fetch, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, double NaN", four, Fetch, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("FETCH ?, long -1", four, Fetch, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null", four, Fetch, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, double 2.5", four, Offset, s => s.setDouble(1, 2.5), 2.5d,
+                    "java.lang.Double 2.5: rows [3]", "java.math.BigDecimal 2.5: rows [3]"),
+                new("OFFSET ?, long 3,000,000,000", four, Offset, s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows []", "java.math.BigDecimal 3000000000: rows []"),
+                new("OFFSET ?, string '2'", four, Offset, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows [2, 3]"),
+                new("OFFSET ?, double NaN", four, Offset, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("OFFSET ?, long -1", four, Offset, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("OFFSET ?, null", four, Offset, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("FETCH FIRST 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 2.5 ROWS ONLY", _ => { }, null,
+                    "null: rows [0, 1, 2]", "null: rows [0, 1, 2]"),
+                new("FETCH FIRST 3,000,000,000", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 3000000000 ROWS ONLY", _ => { }, null,
+                    "null: rows [0, 1, 2, 3]", "null: rows [0, 1, 2, 3]"),
+                new("OFFSET 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 2.5 ROWS", _ => { }, null,
+                    "null: rows [3]", "null: rows [3]"),
+                new("OFFSET 3,000,000,000", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 3000000000 ROWS", _ => { }, null,
+                    "null: rows []", "null: rows []"),
+                new("FETCH ?, long -1, no row", none, Fetch, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null, no row", none, Fetch, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, long -1, no row", none, Offset, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("OFFSET ?, null, no row", none, Offset, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("FETCH ?, string '2', no row", none, Fetch, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, string '2', no row", none, Offset, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows []"),
+                new("FETCH ?, double NaN, no row", none, Fetch, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("OFFSET ?, double NaN, no row", none, Offset, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("FETCH ?, long 2, no row", none, Fetch, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, long 2, no row", none, Offset, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("FETCH ?, long -1, no row kept", four, FetchKept, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null, no row kept", four, FetchKept, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("FETCH ?, long 2, no row kept", four, FetchKept, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+                new("OFFSET ?, long -1, no row kept", four, OffsetKept, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("OFFSET ?, null, no row kept", four, OffsetKept, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, long 2, no row kept", four, OffsetKept, s => s.setLong(1, 2L), 2L,
+                    "java.lang.Long 2: rows []", "java.math.BigDecimal 2: rows []"),
+            };
+
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+        }
+
+        /// <summary>One conversion case: a statement over a table, how each driver binds its one parameter, and what each answers.</summary>
+        sealed record Conversion(string Label, MaterialisedTable Table, string Sql, Action<java.sql.PreparedStatement> Bind, object? Bound, string Calcite, string Ado);
+
+        /// <summary>
+        /// Calcite's own JDBC driver and the ADO.NET driver, each over a root schema a case's table is added to under a name
+        /// of its own.
+        /// </summary>
+        sealed class Drivers : IDisposable
+        {
+
+            readonly java.sql.Connection _jdbc = new org.apache.calcite.jdbc.Driver().connect("jdbc:calcite:", new java.util.Properties());
+            readonly DbConnection _ado = MaterialisedTable.Open();
+            int _named;
+
+            /// <summary>What each case answers through each driver, a line a driver, as <see cref="Expected"/> spells it.</summary>
+            public List<string> Measure(IEnumerable<Conversion> cases)
+            {
+                var schema = ((org.apache.calcite.jdbc.CalciteConnection)_jdbc.unwrap(typeof(org.apache.calcite.jdbc.CalciteConnection))).getRootSchema();
+                var measured = new List<string>();
+                foreach (var conversion in cases)
+                {
+                    measured.Add(conversion.Label + " | jdbc:calcite | " + Run(conversion, schema.add, sql =>
+                    {
+                        var statement = _jdbc.prepareStatement(sql);
+                        conversion.Bind(statement);
+                        var result = statement.executeQuery();
+                        var rows = new List<string>();
+                        while (result.next())
+                            rows.Add(string.Join(" ", Enumerable.Range(1, result.getMetaData().getColumnCount()).Select(c => result.getString(c))));
+
+                        return rows;
+                    }));
+
+                    measured.Add(conversion.Label + " | ADO.NET | " + Run(conversion, ((SchemaPlus)((Apache.Calcite.Data.CalciteConnection)_ado).RootSchema).add, sql =>
+                    {
+                        using var command = _ado.CreateCommand();
+                        command.CommandText = sql;
+                        if (sql.Contains('?'))
+                        {
+                            var parameter = command.CreateParameter();
+                            parameter.Value = conversion.Bound;
+                            command.Parameters.Add(parameter);
+                        }
+
+                        var rows = new List<string>();
+                        using var reader = command.ExecuteReader();
+                        while (reader.Read())
+                            rows.Add(string.Join(" ", Enumerable.Range(0, reader.FieldCount).Select(c => Convert.ToString(reader.GetValue(c), System.Globalization.CultureInfo.InvariantCulture))));
+
+                        return rows;
+                    }));
+                }
+
+                return measured;
+            }
+
+            /// <summary>What each case says each driver answers, a line a driver.</summary>
+            public static IEnumerable<string> Expected(IEnumerable<Conversion> cases) =>
+                cases.SelectMany(c => new[] { c.Label + " | jdbc:calcite | " + c.Calcite, c.Label + " | ADO.NET | " + c.Ado });
+
+            /// <summary>
+            /// One statement over a fresh recording of the case's table, named afresh: what the data context held when the
+            /// table was scanned, or "not read" where the driver failed first, and the rows kept or the innermost exception.
+            /// </summary>
+            string Run(Conversion conversion, Action<string, org.apache.calcite.schema.Table> add, Func<string, List<string>> rows)
+            {
+                var recording = new Recording(conversion.Table);
+                var name = "c" + (++_named).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                add(name, recording);
+                try
+                {
+                    var kept = rows(conversion.Sql.Replace("{t}", "\"" + name + "\""));
+                    return $"{recording.Held}: rows [{string.Join(", ", kept)}]";
+                }
+                catch (Exception e)
+                {
+                    while (e.InnerException is { } inner)
+                        e = inner;
+
+                    return $"{recording.Held}: {e.GetType().Name}";
+                }
+            }
+
+            public void Dispose()
+            {
+                _jdbc.close();
+                _ado.Dispose();
+            }
+
+        }
+
+        /// <summary>
+        /// A table that records what the data context holds for <c>?0</c> when it is scanned, and answers the rows of the
+        /// table it wraps.
+        /// </summary>
+        sealed class Recording(MaterialisedTable table) : org.apache.calcite.schema.impl.AbstractTable, ScannableTable
+        {
+
+            /// <summary>The class and the value <c>?0</c> held at the scan, Java's spelling of each; "not read" before one.</summary>
+            public string Held { get; private set; } = "not read";
+
+            public override RelDataType getRowType(RelDataTypeFactory typeFactory) => table.getRowType(typeFactory);
+
+            public org.apache.calcite.linq4j.Enumerable scan(org.apache.calcite.DataContext root)
+            {
+                Held = root.get("?0") switch
+                {
+                    null => "null",
+                    string text => "java.lang.String " + text,
+                    java.lang.Object held => held.getClass().getName() + " " + held.toString(),
+                    var other => other.GetType().FullName + " " + other,
+                };
+
+                return table.scan(root);
+            }
+
         }
 
         /// <summary>

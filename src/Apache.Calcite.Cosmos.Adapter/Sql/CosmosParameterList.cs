@@ -91,20 +91,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Binds <paramref name="value"/> and returns the name to emit in its place.
         /// </summary>
         /// <remarks>
-        /// <b>Every value a statement carries passes here, and one the SDK cannot send is refused.</b> A string holding an
-        /// unpaired surrogate is refused by the SDK's UTF-8 encoder while it writes the statement, on either target, where
-        /// Calcite answers it (<c>Service.LoneSurrogateParameterIsNeverSent</c>); only a <c>U&amp;</c> literal holds one,
-        /// inside <c>POSITION</c> or <c>REPLACE</c>, or a constant computed from one. Refused here, the expression that
-        /// would have sent it stays in process, wherever in the statement it stood (<see cref="Client.CosmosEncodable"/>).
-        /// A parameter bound when the statement runs is asked the same then (<see cref="Client.CosmosQueries.Bind"/>).
+        /// <b>Every value a statement carries passes here, and one the SDK cannot send as itself is refused.</b> A string
+        /// holding an unpaired surrogate is refused by the SDK's UTF-8 encoder while it writes the statement, on either
+        /// target, where Calcite answers it (<c>Service.LoneSurrogateParameterIsNeverSent</c>); only a <c>U&amp;</c> literal
+        /// holds one, inside <c>POSITION</c> or <c>REPLACE</c>, or a constant computed from one. A NaN or an infinity, which
+        /// a constant Calcite's planning folds can be, is written by the SDK as a JSON string the service reads as a string.
+        /// Refused here, the expression that would have sent either stays in process, wherever in the statement it stood
+        /// (<see cref="Client.CosmosEncodable"/>). A parameter bound when the statement runs is asked the same then
+        /// (<see cref="Client.CosmosQueries.Bind"/>).
         /// </remarks>
         /// <param name="value">The value to bind.</param>
         /// <returns>The parameter name, including the leading <c>@</c>.</returns>
-        /// <exception cref="CosmosTranslationException">The value holds a lone surrogate.</exception>
+        /// <exception cref="CosmosTranslationException">The value holds a lone surrogate, a NaN or an infinity.</exception>
         public string Add(object? value)
         {
-            if (Client.CosmosEncodable.IsEncodable(value) == false)
-                throw new CosmosTranslationException("A value holding a lone surrogate is refused by the SDK's UTF-8 encoder before the statement is sent, so it is computed in process.");
+            switch (Client.CosmosEncodable.Unencodable(value))
+            {
+                case string:
+                    throw new CosmosTranslationException("A value holding a lone surrogate is refused by the SDK's UTF-8 encoder before the statement is sent, so it is computed in process.");
+                case double:
+                    throw new CosmosTranslationException("A value holding a NaN or an infinity is written by the SDK as a JSON string rather than a number, so it is computed in process.");
+            }
 
             var name = _prefix + _parameters.Count.ToString(CultureInfo.InvariantCulture);
             _parameters.Add(new CosmosParameter(name, value));

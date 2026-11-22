@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 translator.Translate(_rex.makeCall(GeographyOperatorTable.ClrStGeogDistance, Geo(), _rex.makeAbstractCast(geometry, parameter)))
                     .Should().Be("ST_DISTANCE(c.location, @p0)");
 
-                parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be(new CosmosDynamicValue(0));
+                parameters.Parameters.Should().ContainSingle().Which.Value.Should().Be(new CosmosDynamicValue(0) { TypeName = SqlTypeName.GEOMETRY });
 
                 Translate(GeographyOperatorTable.ClrStGeogDistance, Geo(), parameter).Should().Be("ST_DISTANCE(c.location, @p0)",
                     "and bare, the same parameter");

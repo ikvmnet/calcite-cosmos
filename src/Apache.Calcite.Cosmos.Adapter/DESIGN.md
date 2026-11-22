@@ -2584,8 +2584,8 @@ literal.
 Framework and OData key filter parameterises its id, so an id lookup over a declared UUID path read the
 container whole — 448 MB for one document, measured on an Azure container of 11,868. The decision is
 `CosmosFactRewriter.TryStoredUuid`, which the literal lowering and the translator both ask; the slot
-carries the UUID form, and `CosmosQueries.Bind` spells the value into it from whichever box it arrives
-in. One difference from the literal: a literal outside a confined form's sign class is refused under
+carries the UUID form, and `CosmosQueries.Bind` spells into it the `UuidValue` the value is converted
+to. One difference from the literal: a literal outside a confined form's sign class is refused under
 the signed comparison, and a parameter cannot be. An equality needs no class, since a spelling no
 stored value has matches nothing. So only an ordering is held back, to where the order is the
 engine's for every value (`CosmosUuidForms.OrdersEveryValue`).
@@ -2620,6 +2620,72 @@ never consulted.
 | `>`, `<=` | `12:00:00Z` |
 | `>=`, `<` | `12:00:01Z` |
 | `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
+
+**Every value is converted to its parameter's type before it is sent, by Calcite's own conversion.** Calcite compares a
+value of the parameter's type, but which class reaches the data context depends on the driver. The ADO.NET driver
+converts each value to the placeholder's type before Calcite sees it (`ParameterBinder`), so there the class was the
+type, and switching on the class, as the bind did, sent what Calcite compared. Calcite's own JDBC driver hands the
+caller's class through, and Calcite converts it only when a row's code reads the parameter
+(`Calcite.AParameterIsConvertedToItsTypeWhenRead`): the long 2^53 + 1 bound to a `DOUBLE` parameter compares as 2^53 in
+Calcite and was sent as the 64-bit integer, which the service compares by value and kept nothing for; 3,000,000,000
+bound to an `INTEGER` wraps in Calcite and was sent whole; 30 bound to a text parameter is `'30'` in Calcite and was
+sent as a number, which the service leaves undefined against a string. So the slot carries the parameter's SQL type,
+read off the `RexDynamicParam` beside its length, a stored form's slot as a value's, and `CosmosQueries` converts the
+value by calling what Calcite's generated code calls (`RexToLixTranslator.visitDynamicParam`, through
+`EnumUtils.convert`): for a type in Calcite's numeric family, `SqlFunctions.toBigDecimal` and the conversion to the
+class Calcite holds the type in; for any other, the object's `toString()` where that class is a string, and otherwise a
+cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is; then the step that code takes after it
+(`checkExpressionPadTruncate`), holding a text or a binary value to its type's length (`SqlFunctions.truncate`, and
+`truncateOrPad` for a `CHAR`) and multiplying an interval by its end unit's multiplier. The classes come from Calcite's
+own type factory and the leaf conversions and the multipliers are Calcite's, called; the dispatch between them is
+written here, and the measurement, and a test against the code Calcite generates for a parameter of the numeric,
+character, binary, boolean, datetime, interval, `UUID`, geometry, collection, `ANY` and `VARIANT` types, hold it to
+Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the validator makes every
+parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number,
+a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A
+parameter of an interval, a date or a time, a `UUID`, a binary, a collection or a row type is never sent, as a literal
+of one is not (`CosmosRexLiterals.IsNeverSent`): the value Calcite holds it in is no value the service compares as
+Calcite compares it. A null test of an interval, sent over the count Calcite holds it in, was answered from the value
+bound where Calcite's plan answers otherwise; a `RETURNING DATE`, `TIME` or `TIMESTAMP` over a path declared to spell
+one, compared with a parameter, bound as the count of days or milliseconds Calcite holds the value in, and a
+`RETURNING UUID` or a binary `RETURNING` compared with one, bound as the `UuidValue` or the `ByteString` Calcite holds
+the value in, which the SDK writes as an object, were answered where Calcite's plan fails reading the path; and a
+`RETURNING` array's `<>`, bound as the `java.util.List` of Java boxes Calcite holds the array in, whose numbers the SDK
+writes as objects, kept the document Calcite drops. Shaping the elements would not make that sound, nobody having shown
+the service's comparison of an array or an object to be Calcite's. A `UUID`, a date or an instant compared with a path
+declared to spell one is written in that spelling, through a slot of its own. So no statement reaches the step's
+interval multiplication or its binary length; both are kept so that the conversion is Calcite's for every type, as the
+test against Calcite's generated code holds it. A presence slot reads only whether a value is bound, so it is not
+converted, and a row count is read as Calcite's limit reads it, below. Calcite fails only once a row reaches the
+parameter's reading, which leaves a statement whose request reads the parameter failing where Calcite answers, over no
+row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to send answering where Calcite
+fails; `TODO.md` records both.
+
+**A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
+either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the
+service reads as a string wherever it stands: compared, every stored number is undefined against it; added into a
+projected column, the sum comes back null; as a column's own value, the reader refuses a string. That is legality of
+encoding, a property of the value and not of where it stands, so it is one test with the lone surrogate's
+(`CosmosEncodable`), asked of every value a statement carries. A constant Calcite's planning folds to one,
+`CAST('NaN' AS DOUBLE)`, is refused when it is bound, and the expression it stood in is computed in process, as Calcite
+answers it. A parameter's value arrives only when the statement runs. The conversion refuses a NaN or an infinity bound
+to a numeric parameter, but carries a finite value past an approximate type's range to an infinity, `'1e400'` bound to a
+`DOUBLE` parameter or 1e39 to a `REAL` one through Calcite's own driver, which Calcite compares and projects without
+failing (`Calcite.ANonFiniteDoubleParameterRaises`); and an `ANY` or a `VARIANT` parameter passes as bound, a NaN
+included. `CosmosQueries.Bind` refuses one in every slot, and the statement fails by name where Calcite may answer. The
+proper fix is the request decision reading the bound value, which no stage plans.
+
+**A row count is sent as the rows Calcite's limit takes for it.** Calcite's limit reads a `FETCH` or an `OFFSET` count,
+a literal's or a parameter's, as a decimal (`EnumUtils.numberToBigDecimal`, with the rounding policy the planner's
+context holds) and takes or skips rows while their index is below it (`Calcite.ARowCountIsTakenToItsCeiling`): 2.5 takes
+three rows, and 3,000,000,000 every row. A literal was read with `RexLiteral.intValue`, which cut
+`FETCH FIRST 2.5 ROWS ONLY` to `LIMIT 2` and failed planning past an `int`, and a parameter was sent as the caller held
+it, a fraction among them. So `CosmosRowLimit.Rows` writes the count's ceiling for both, held to `int.MaxValue`, the
+`LIMIT` the statement writes beside an `OFFSET` alone for no limit at all; both rest on no request reading more rows
+than that, an assumption `TODO.md` records. A parameter's slot carries its clause and the policy, the bind reads the
+value so when it arrives, and a value the limit refuses — a string, a NaN, a negative count or a null — fails the
+statement by name, as Calcite's plan fails. The limit reads its count when the plan is bound, whatever the rows, so a
+statement the facts graph decides not to send reads its counts too (`CosmosQueries.ReadCounts`), and no other value.
 
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =

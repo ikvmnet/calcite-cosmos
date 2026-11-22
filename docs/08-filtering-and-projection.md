@@ -485,7 +485,10 @@ foreach (var value in new object[] { "bikes", 1000, 20, 10 })
 
 A parameter is sent as a Cosmos parameter, exactly as a literal of the same type would be. That
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
-prepared statement serves every page.
+prepared statement serves every page. A parameter of an interval, a date or a time, a `UUID`, a binary
+type, an array, a multiset or a map is never sent, as no literal of one is: what reads it is computed in
+process. A `UUID`, a date or an instant compared with a property declared to spell one is the exception,
+sent in that spelling (Chapters 14.2 and 15.2).
 
 **A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
 as a double, and keeps a stored integer exact. So a whole number beyond 2^53
@@ -524,9 +527,36 @@ the value. Its other escape, U+FDD0 as U+FDD0 `1`, keeps the order. Azure stores
 and is unaffected (Appendix E).
 
 **A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
-holds a string to that type's length: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is
-`'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, truncated
-or padded the same way, so the service keeps the rows SQL does.
+compares the value bound as a value of that type, whichever driver bound it. Through Calcite's own JDBC
+driver, `jdbc:calcite:` opened in process (Chapter 21.7), the value arrives as the caller bound it and
+is converted when a row reads it: a `long` bound to a `DOUBLE` parameter compares as its double, so
+2^53 + 1 is 2^53; a number bound to a text parameter compares as Java writes it, `30` as `'30'` and
+`1e20` as `'1.0E20'`; a string bound to a number compares as the number it spells; a long past an
+`INTEGER` wraps, and a double bound to a `BIGINT` is cut to its whole part. The ADO.NET driver converts
+the value to the type before Calcite sees it, by rules of its own: it rounds `1.5` to `2` for a
+`BIGINT`, and refuses a long past an `INTEGER`. A string is held to its type's length too: compared with
+`JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is `'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The
+adapter sends the value Calcite compares, converted by Calcite's own conversion and truncated or padded
+the same way, so the service keeps the rows SQL does.
+
+**A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as Calcite's
+own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN or an
+infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`, a date
+or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading, so where
+the request reads the parameter the adapter fails before anything is sent where Calcite answers: no rows
+over a container holding none, and what the other arms decide where no row takes the `CASE` arm that
+reads it. Where the plan has already proved the statement keeps no document (Chapter 14.2), a value only
+a row reads is not read and it answers no rows, where Calcite fails reading a row.
+
+**A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in
+the conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the
+double `1e39` bound to a `REAL` one, is +Infinity. A parameter of type `ANY` or `VARIANT` passes
+Calcite's conversion as bound, a NaN included. The Cosmos DB SDK writes such a number as a JSON string,
+which the service would read as a string, so a statement whose request reads the parameter fails when it
+runs, where Calcite may answer: it compares with an infinity and projects one (Chapter 22). Through the
+ADO.NET driver a value past the type's range arrives as the infinity, which Calcite cannot convert, so
+through it both fail, and a `VARIANT` placeholder takes no value but null. A constant that folds to a
+NaN or an infinity, `CAST('NaN' AS DOUBLE)`, is computed in process.
 
 **Two values that may both be a JSON null are compared in process** where equal values satisfy the
 comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALUE(c."DOC", '$.u')` over paths
@@ -580,7 +610,7 @@ documents it has to read.
 | `POSITION` whose pattern is not proved a string of ASCII that holds something — a literal, or a `required` path whose `enum` lists only such strings; a literal beside a path in `CONCAT` or `\|\|` that is empty or holds anything beyond ASCII, but on Azure one in `CONCAT` holding U+0000 or characters from U+E000 up; `REPEAT` of a literal string; on the emulator, `REPEAT` of a count of 0 | the service's answers were measured with such patterns, literals, subjects and counts alone (Appendix B.2) |
 | `SUBSTRING` of a length below 0 | Calcite raises, where the service answers the empty string (Appendix B.2) |
 | a `U&` literal holding a lone surrogate | the SDK cannot encode it |
-| on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text — a list among them — anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern, `MEMBER OF ?` | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
+| on the emulator, a constant holding U+0000 or U+FDD0, or a parameter that may hold text anywhere but a comparison with a stored value: a selected column, a `CASE` arm, a `COALESCE` fallback, a function's operand, a `REPLACE` replacement, a generic `LIKE` pattern | the emulator stores both characters in another spelling, and a raw U+0000 it returns fails the statement (Appendix E); a full-text function or `REGEXMATCH` given such a parameter has no body in process and fails the statement there. Azure sends them all |
 | on the emulator, a property or a selected column whose name holds U+0000 or U+FDD0 | the emulator stores a name in that spelling too, so the name written as it is reads nothing; read over the whole document. A table column so named cannot be read there at all |
 | on the emulator, `CHAR_LENGTH`, `LENGTH`, `SUBSTRING`, `LEFT`, `RIGHT`, `REVERSE`, `POSITION`, `REPLACE`, `\|\|`, `REPEAT`, and a `LIKE` whose pattern holds `_`, `0` or `1` beyond a prefix, over a string that may hold U+0000, U+FDD0 or another character from U+E000 up | the emulator's functions work on the two units it stores each escape as, and count, cut and match them as two (Appendix B.2) |
 | a column computed from parameters alone, such as `UPPER(CAST(? AS VARCHAR))` | the service would hand back what it was sent, and a parameter holding a lone surrogate could not be sent |

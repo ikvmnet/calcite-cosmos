@@ -794,11 +794,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// weakened to a definedness test and rechecked in process, so an equality on <c>id</c> read
         /// the container whole rather than taking a point read.
         /// </para>
+        /// <para>
+        /// <b>A parameter of an interval, a date or a time, a <c>UUID</c>, a binary, a collection or a row type is
+        /// refused, as a literal of one is</b> (<see cref="CosmosRexLiterals.IsNeverSent"/>): the value Calcite holds it
+        /// in is no value the service compares as Calcite compares it. Sent, a null test of a cast to an interval, which
+        /// Calcite's planning leaves as a test of the parameter itself, was answered from the count Calcite holds the
+        /// interval in, where Calcite's plan answers otherwise; a <c>RETURNING DATE</c>, <c>TIME</c> or <c>TIMESTAMP</c>
+        /// over a path declared to spell one, compared with one, bound as the count of days or milliseconds Calcite holds
+        /// it in, and a <c>RETURNING UUID</c> or a binary <c>RETURNING</c> compared with one, bound as the Java object
+        /// Calcite holds the value in, were answered where Calcite's plan fails reading the path; and a
+        /// <c>RETURNING</c> array's <c>&lt;&gt;</c>, bound as the Java list of boxes Calcite holds the array in, whose
+        /// numbers the SDK writes as objects, kept the document Calcite drops (<c>CosmosConnectionPlanningTests</c>).
+        /// </para>
         /// </remarks>
         /// <param name="builder">The statement under construction.</param>
         /// <param name="parameter">The parameter to write.</param>
+        /// <exception cref="CosmosTranslationException">A parameter of a type no literal of which is sent, or one the emulator stores escaped.</exception>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
+            if (parameter.getType()?.getSqlTypeName() is SqlTypeName type && CosmosRexLiterals.IsNeverSent(type))
+                throw new CosmosTranslationException($"A parameter of type '{type.getName()}' is computed in process, as a literal of one is: the value Calcite holds it in is no value the service compares as Calcite compares it.");
+
             if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
                 throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
 
@@ -845,34 +861,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Whether a parameter of a type may arrive as text or holding text: a character type, one that holds any value,
-        /// or a collection or row, whose elements the binding does not spell (<c>CosmosQueries.Bind</c>).
+        /// Whether a parameter of a type may arrive as text or holding text: a character type, or one that holds any value.
+        /// A collection or a row is never sent (<see cref="CosmosRexLiterals.IsNeverSent"/>).
         /// </summary>
         static bool MayHoldText(org.apache.calcite.rel.type.RelDataType? type) =>
             type?.getSqlTypeName() is not SqlTypeName name
             || name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.ANY || name == SqlTypeName.VARIANT
-            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN
-            || name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET || name == SqlTypeName.MAP || name == SqlTypeName.ROW;
+            || name == SqlTypeName.OTHER || name == SqlTypeName.NULL || name == SqlTypeName.UNKNOWN;
 
         /// <summary>
-        /// Returns the slot a parameter's value is bound into: its ordinal, and the length its type holds a string to.
+        /// Returns the slot a parameter's value is bound into: its ordinal, its type, and the length its type holds a
+        /// value to.
         /// </summary>
         /// <remarks>
-        /// Calcite reads a parameter as its type, and a <c>CHAR(n)</c> or a <c>VARCHAR(n)</c> holds a string to
-        /// <c>n</c> code units: its generated code truncates the value, and pads it for a <c>CHAR</c>
-        /// (<c>RexToLixTranslator.visitDynamicParam</c>). The validator gives a parameter the type of what it is
-        /// compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to <c>'xa'</c> compares with
-        /// <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept the rows holding
-        /// <c>'x'</c>. So the slot carries the length, and <see cref="Client.CosmosQueries.Bind"/> holds the value to it.
+        /// Calcite reads a parameter as its type (<c>RexToLixTranslator.visitDynamicParam</c>): its generated code
+        /// converts the value the data context holds to the type, and a <c>CHAR(n)</c> or a <c>VARCHAR(n)</c> holds a
+        /// string to <c>n</c> code units and a <c>BINARY(n)</c> or a <c>VARBINARY(n)</c> its bytes to <c>n</c>, truncated
+        /// (<c>checkExpressionPadTruncate</c>). Only a <c>CHAR</c> is padded: that step pads where what it holds
+        /// is text of no length, which a parameter's string is, and a parameter's bytes are not. The validator gives a
+        /// parameter the type of what it is compared with, so <c>JSON_VALUE(… RETURNING VARCHAR(1)) &lt; ?</c> bound to
+        /// <c>'xa'</c> compares with <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept
+        /// the rows holding <c>'x'</c>. And a long bound to a <c>DOUBLE</c> parameter through Calcite's own driver compares
+        /// as its double. So the slot carries the type and the length, and <see cref="Client.CosmosQueries.Bind"/>
+        /// converts the value and holds it to the length.
         /// </remarks>
-        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
+        internal static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
         {
             var type = parameter.getType();
             var name = type?.getSqlTypeName();
+            var slot = new CosmosDynamicValue(parameter.getIndex()) { TypeName = name };
 
-            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR) && type!.getPrecision() >= 0
-                ? new CosmosDynamicValue(parameter.getIndex()) { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
-                : new CosmosDynamicValue(parameter.getIndex());
+            return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR || name == SqlTypeName.BINARY || name == SqlTypeName.VARBINARY) && type!.getPrecision() >= 0
+                ? slot with { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
+                : slot;
         }
 
         void WriteInputRef(StringBuilder builder, RexInputRef inputRef)
@@ -3594,7 +3615,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append('(');
             Write(builder, accessor);
             builder.Append(' ').Append(op).Append(' ');
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding }));
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding, TypeName = parameter.getType()?.getSqlTypeName() }));
             builder.Append(')');
             return true;
         }
@@ -3642,7 +3663,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append('(');
             Write(builder, accessor);
             builder.Append(' ').Append(op).Append(' ');
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation }));
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, TypeName = parameter.getType()?.getSqlTypeName() }));
             builder.Append(')');
             return true;
         }

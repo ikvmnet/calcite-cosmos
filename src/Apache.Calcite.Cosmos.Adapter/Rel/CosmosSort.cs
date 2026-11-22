@@ -319,9 +319,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
                 implementor.OrderAnchored(anchored);
 
             if (offset is not null)
-                implementor.Query.Offset = implementor.RowLimit(offset);
+                implementor.Query.Offset = implementor.RowLimit(this, offset, "OFFSET");
             if (fetch is not null)
-                implementor.Query.Fetch = implementor.RowLimit(fetch);
+                implementor.Query.Fetch = implementor.RowLimit(this, fetch, "FETCH");
         }
 
     }

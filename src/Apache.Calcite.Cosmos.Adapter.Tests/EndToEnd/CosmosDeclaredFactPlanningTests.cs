@@ -1965,19 +1965,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Whatever box the value arrives in, it is written in the path's spelling.
+        /// The value Calcite holds a <c>UUID</c> in is written in the path's spelling; a value in another box, which
+        /// Calcite's own driver hands through, fails by name, as Calcite's cast fails it.
         /// </summary>
+        /// <remarks>
+        /// The ADO.NET driver makes Calcite's <c>UuidValue</c> of a <see cref="System.Guid"/> before the statement runs
+        /// (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>).
+        /// </remarks>
         [Fact]
-        public void AUuidParameterIsWrittenFromEveryBoxItArrivesIn()
+        public void AUuidParameterIsWrittenFromTheBoxCalciteHoldsItIn()
         {
             var (query, _) = PlanUuidParameter($"{Ref} = ?", PlainUuid.Replace("a-f", "A-F").Replace("89ab", "89AB"));
 
-            var expected = Canonical.ToUpperInvariant();
+            BoundUuid(query, org.apache.calcite.util.UuidValue.fromString(Canonical)).Should().Be(Canonical.ToUpperInvariant());
 
-            BoundUuid(query, System.Guid.Parse(Canonical)).Should().Be(expected);
-            BoundUuid(query, java.util.UUID.fromString(Canonical)).Should().Be(expected);
-            BoundUuid(query, org.apache.calcite.util.UuidValue.fromString(Canonical)).Should().Be(expected);
-            BoundUuid(query, Canonical).Should().Be(expected);
+            foreach (var other in new object[] { System.Guid.Parse(Canonical), java.util.UUID.fromString(Canonical), Canonical })
+                FluentActions.Invoking(() => BoundUuid(query, other)).Should().Throw<Adapter.Client.CosmosExecutionException>()
+                    .WithMessage("Parameter ?0 cannot be converted to its type, UUID, *ClassCastException*");
         }
 
         /// <summary>

@@ -658,13 +658,6 @@ is not offered, and one thing that cannot be fixed here at all.
   geometry is not a document value: bound as itself the SDK's serializer wrote its object graph and
   the service got that in place of a shape. `CosmosJson.ToGeoJsonValue` shapes it, dropping the `crs`
   member the writer adds, so a parameter and an inlined constant say the same thing.
-
-  **A projected parameter is still sent to the service and echoed back** — *small, and it is the
-  shape #154 was reported through.* `SELECT VALUE { "$f2": @p0 }` asks the service to return a value
-  the client already has; for a geography it also round-trips the instance through GeoJSON, which
-  keeps the shape and not the object. Declining to push a projection that is *only* a parameter or a
-  literal would remove both, and nothing needs the value to have travelled. Left out of #154 because
-  it changes which plans are chosen and the fix does not need it.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -1990,6 +1983,56 @@ on Azure, where it is a constant the service may or may not fold before it picks
 host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
 one, which is likely why nothing had reported it.
 
+### A parameter Calcite cannot convert fails where no row reaches it, and answers beside a request decided unsent — *small, a bridge, and the fix is not planned*
+
+The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Bind`,
+`Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no number
+bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a value of its type bound to a
+`BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a
+row reaches the parameter's reading, so two cases part from it:
+
+- **where no row reaches the parameter's reading and the request reads it**, the adapter fails where Calcite answers:
+  over a container holding no row, Calcite answers no rows; and where rows reach the statement but none takes the `CASE`
+  arm that reads the parameter, Calcite answers the rows the other arms decide, through its own driver with any value it
+  cannot convert and through the ADO.NET driver with a NaN bound to a `DOUBLE` parameter
+  (`Calcite.AParameterIsConvertedToItsTypeWhenRead`);
+- **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
+  without reading the value, where Calcite's own plan, reading the container's rows, fails.
+
+**The proper fix** is the request decision reading the bound value, which could keep in Calcite whatever reads a value
+it cannot convert, so that the statement answers where no row reaches the parameter's reading and fails where one does,
+as Calcite's own plan does. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
+the ADO.NET driver refuses a string that spells no number bound to a `BIGINT`, and a NaN bound to a `BIGINT`, an
+`INTEGER` or a `DECIMAL`, before the statement runs (`Calcite.AParameterIsConvertedToItsTypeWhenRead`,
+`Calcite.ANonFiniteDoubleParameterRaises`).
+
+### A NaN or an infinity bound fails where Calcite answers — *small, a bridge, and the fix is not planned*
+
+A NaN or an infinity bound to a numeric parameter is a value Calcite cannot convert, above. Two more reach the bind. A
+finite value can become an infinity in the conversion: through Calcite's own driver the string `'1e400'` bound to a
+`DOUBLE` parameter, or the double `1e39` bound to a `REAL` one, is +Infinity, which Calcite compares under every
+operator and projects without failing (`Calcite.ANonFiniteDoubleParameterRaises`). And a parameter of type `ANY` or
+`VARIANT` passes as bound, a NaN or an infinity included, which Calcite does not convert and may answer over; what it
+answers against an `ANY` value is unmeasured. The Cosmos DB SDK writes a NaN or an infinity as the JSON string `"NaN"`,
+`"Infinity"` or `"-Infinity"`, which the service reads as a string wherever the statement reads the parameter, so the
+bind refuses one in every slot (`CosmosQueries.Bind`), as it refuses a lone surrogate, and the statement fails by name
+over any input, where Calcite may answer. It is legality of encoding, a bridge. A constant Calcite's planning folds to a
+NaN or an infinity is refused when it is bound, by the same test (`CosmosEncodable`), and computed in process, as
+Calcite answers it. The ADO.NET driver hands Calcite a value past the type's range already converted to an infinity,
+which Calcite's conversion refuses, so through it the two agree wherever a row reaches the parameter's reading.
+
+**The proper fix** is the request decision reading the bound value, which could keep in Calcite whatever reads such a
+value, and answer a statement over no row with none. No stage plans it.
+
+### A row count past 2,147,483,647 is sent as 2,147,483,647 — *small, an assumption*
+
+The statement writes `LIMIT 2147483647` for no limit beside an `OFFSET` alone (`CosmosQueryBuilder`), and sends a
+`FETCH` or an `OFFSET` count past 2,147,483,647, a literal's or a parameter's, as 2,147,483,647 (`CosmosRowLimit.Rows`),
+where Calcite takes or skips rows by the whole count (`Calcite.ARowCountIsTakenToItsCeiling`). Both rest on no request
+reading or skipping more documents than that, which nothing measures: over more, the statement stops where Calcite
+goes on. How large a count the service and the SDK accept is not measured either; measured, a count up to that bound
+could be sent as it is.
+
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 
 A fixed-point decimal spelled as a string — `^[0-9]{5}\.[0-9]{2}$` — is injective and its lexical
@@ -2771,6 +2814,15 @@ across documents* and *A join of a container to itself* is the record.
 - **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
   in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
   `c.pk = 42` is unchecked.
+- **A `VARIANT` compared with a parameter bound through Calcite's own driver is sent** — *medium, a wrong answer.* The
+  rendering graph owns no conjunct that holds a parameter (`RenderingFamily.Owns`, until 3B), so the translator sends
+  `c."$.category" = ?` as `c.category = @p0`. Calcite's own JDBC driver hands the caller's class to the data context,
+  and the bind passes a `VARIANT` parameter's value as Calcite reads it, as it came: bound to the string `'bikes'`, the
+  service keeps the documents holding `"bikes"`, where Calcite compares the column's box with a value that is none and
+  keeps no row, its `<>` keeping every row instead (measured in process: `CAST('bikes' AS VARIANT) = ?` bound with
+  `setString` keeps nothing). The ADO.NET driver refuses any value but null for a `VARIANT` placeholder before the
+  statement runs, so only Calcite's own driver reaches it. The fix is the rendering graph owning parameter conjuncts
+  (3B), which leaves a `VARIANT` compared with a parameter in Calcite.
 - **A filter over `RETURNING VARIANT` runs in process** — *small; RU, never rows.* The loader reads `JSON_VALUE …
   RETURNING VARIANT` as a `RETURNING` of `VARIANT` (`typed:VARIANT`), whose value no row measures, so S proves nothing
   over it and Calcite evaluates every filter over it: a comparison, a null test and a type test. Calcite holds what it

@@ -287,8 +287,11 @@ The limit also sets the **page size**. Cosmos returns results a page at a time, 
 page with rows a `LIMIT 5` would discard and still charges for them. The adapter asks for pages the
 size of `OFFSET + LIMIT`, so a bounded query pays for the rows it returns.
 
-Both bounds may be parameters — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1`
-— so one prepared statement serves every page (Chapter 8).
+Both bounds may be parameters — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` —
+so one prepared statement serves every page (Chapter 8). A count, literal or parameter, is the rows
+Calcite takes for it: a fraction is taken to its ceiling, so `FETCH NEXT 2.5 ROWS ONLY` returns three
+rows, and a parameter Calcite's limit does not take — a string through Calcite's own driver, a NaN, a
+negative number or a null — fails the statement, as it fails in Calcite (Chapter 22).
 
 **Prefer keyset paging to deep offsets.** `OFFSET 10000 LIMIT 20` makes the service walk ten thousand
 documents to return twenty, at a cost that grows with the offset. Paging by the last key seen stays
