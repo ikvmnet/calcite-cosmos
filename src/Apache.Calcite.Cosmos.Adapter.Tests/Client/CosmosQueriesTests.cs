@@ -192,12 +192,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// a string that spells no number bound to a <c>BIGINT</c>, and a value of another class than the one Calcite holds
         /// the type in, which Calcite's cast refuses: a string bound to a <c>BOOLEAN</c>, a string, a
         /// <c>java.util.UUID</c> or a <see cref="Guid"/> bound to a <c>UUID</c>, an integer bound to a <c>TIMESTAMP</c>,
-        /// a long bound to a <c>DATE</c>, and text bound to a <c>GEOMETRY</c>.
+        /// a long bound to a <c>DATE</c>, and text bound to a <c>GEOMETRY</c>; and a null bound to an <c>INTERVAL DAY</c>,
+        /// which the step after the conversion unboxes to multiply, as Calcite's code does.
         /// </summary>
         [Fact]
         public void AValueCalciteCannotConvertFailsByName()
         {
-            var cases = new (SqlTypeName Type, object Held, string Raised)[]
+            var cases = new (SqlTypeName Type, object? Held, string Raised)[]
             {
                 (SqlTypeName.BIGINT, java.lang.Double.valueOf(double.NaN), "NumberFormatException"),
                 (SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.NaN), "NumberFormatException"),
@@ -211,6 +212,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 (SqlTypeName.TIMESTAMP, java.lang.Integer.valueOf(20667), "ClassCastException"),
                 (SqlTypeName.DATE, java.lang.Long.valueOf(1785672000000L), "ClassCastException"),
                 (SqlTypeName.GEOMETRY, "{\"type\":\"Point\",\"coordinates\":[0,0]}", "ClassCastException"),
+                (SqlTypeName.INTERVAL_DAY, null, "NullReferenceException"),
             };
 
             using var scope = new AssertionScope();

@@ -381,7 +381,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// </remarks>
         /// <param name="held">The value the data context holds, or <c>null</c>.</param>
         /// <param name="slot">The parameter, and the type it is converted to.</param>
-        /// <returns>The value of the parameter's type, in the class Calcite holds the type in; <c>null</c> for <c>null</c>.</returns>
+        /// <returns>
+        /// The value of the parameter's type, in the class Calcite holds the type in; <c>null</c> for <c>null</c>, but where
+        /// the step multiplies an interval or the slot is a <c>ROW</c>, which fail by name.
+        /// </returns>
         /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the type.</exception>
         internal static object? Converted(object? held, CosmosDynamicValue slot)
         {
