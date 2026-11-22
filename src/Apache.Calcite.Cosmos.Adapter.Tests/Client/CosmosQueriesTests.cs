@@ -131,8 +131,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         // -- The parameter's type ------------------------------------------------------------------
 
         /// <summary>Binds one value into a slot of a type, through a data context holding it as it stands.</summary>
-        static object? BindAs(SqlTypeName? type, object? held, int? length = null) => CosmosQueries.Bind(
-            Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = type, Length = length })),
+        static object? BindAs(SqlTypeName? type, object? held, int? length = null, bool padded = false) => CosmosQueries.Bind(
+            Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = type, Length = length, Padded = padded })),
             new Context(("?0", held))).Parameters[0].Value;
 
         /// <summary>
@@ -156,6 +156,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 ("DOUBLE, long 2^53 + 1", SqlTypeName.DOUBLE, java.lang.Long.valueOf(9007199254740993L), null, 9007199254740992d),
                 ("INTEGER, long 3,000,000,000", SqlTypeName.INTEGER, java.lang.Long.valueOf(3000000000L), null, -1294967296L),
                 ("SMALLINT, long 65,537", SqlTypeName.SMALLINT, java.lang.Long.valueOf(65537L), null, 1L),
+                ("TINYINT, long 257", SqlTypeName.TINYINT, java.lang.Long.valueOf(257L), null, 1L),
                 ("REAL, long 2^24 + 1", SqlTypeName.REAL, java.lang.Long.valueOf(16777217L), null, 16777216d),
                 ("BIGINT, double 1.5", SqlTypeName.BIGINT, java.lang.Double.valueOf(1.5), null, 1L),
                 ("BIGINT, string '2'", SqlTypeName.BIGINT, "2", null, 2L),
@@ -164,6 +165,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 ("VARCHAR, long 30", SqlTypeName.VARCHAR, java.lang.Long.valueOf(30L), null, "30"),
                 ("VARCHAR, double 1e20", SqlTypeName.VARCHAR, java.lang.Double.valueOf(1e20), null, "1.0E20"),
                 ("JSON_VALUE's VARCHAR(2000), long 30", SqlTypeName.VARCHAR, java.lang.Long.valueOf(30L), 2000, "30"),
+                ("CHAR(1), long 17", SqlTypeName.CHAR, java.lang.Long.valueOf(17L), 1, "1"),
                 ("projected DOUBLE, long 2^53 + 1", SqlTypeName.DOUBLE, java.lang.Long.valueOf(9007199254740993L), null, 9007199254740992d),
 
                 // The ADO.NET driver: the type's own class, which converts to itself.
@@ -180,12 +182,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             using var scope = new AssertionScope();
             foreach (var (name, type, held, length, sent) in cases)
                 BindAs(type, held, length).Should().Be(sent, name);
+
+            BindAs(SqlTypeName.CHAR, java.lang.Long.valueOf(7L), length: 3, padded: true).Should().Be("7  ", "the text of 7 padded to a CHAR(3)");
         }
 
         /// <summary>
         /// A value Calcite cannot convert to the parameter's type fails the statement by name, as Calcite's own plan fails
         /// reading it: a NaN bound to a <c>BIGINT</c> or a <c>DOUBLE</c> parameter, an infinity bound to a <c>DOUBLE</c>,
-        /// a string that spells no number bound to a <c>BIGINT</c>, and a string bound to a <c>BOOLEAN</c>.
+        /// a string that spells no number bound to a <c>BIGINT</c>, and a value of another class than the one Calcite holds
+        /// the type in, which Calcite's cast refuses: a string bound to a <c>BOOLEAN</c>, a string, a
+        /// <c>java.util.UUID</c> or a <see cref="Guid"/> bound to a <c>UUID</c>, an integer bound to a <c>TIMESTAMP</c>,
+        /// a long bound to a <c>DATE</c>, and text bound to a <c>GEOMETRY</c>.
         /// </summary>
         [Fact]
         public void AValueCalciteCannotConvertFailsByName()
@@ -198,6 +205,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 (SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.PositiveInfinity), "NumberFormatException"),
                 (SqlTypeName.BIGINT, "x", "NumberFormatException"),
                 (SqlTypeName.BOOLEAN, "true", "ClassCastException"),
+                (SqlTypeName.UUID, "123e4567-e89b-12d3-a456-426614174000", "ClassCastException"),
+                (SqlTypeName.UUID, java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"), "ClassCastException"),
+                (SqlTypeName.UUID, Guid.Parse("123e4567-e89b-12d3-a456-426614174000"), "ClassCastException"),
+                (SqlTypeName.TIMESTAMP, java.lang.Integer.valueOf(20667), "ClassCastException"),
+                (SqlTypeName.DATE, java.lang.Long.valueOf(1785672000000L), "ClassCastException"),
+                (SqlTypeName.GEOMETRY, "{\"type\":\"Point\",\"coordinates\":[0,0]}", "ClassCastException"),
             };
 
             using var scope = new AssertionScope();
@@ -223,6 +236,49 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = SqlTypeName.VARCHAR, Bound = CosmosAnchorBound.Lower })),
                 new Context(("?0", java.lang.Long.valueOf(30L))));
             bounded.Parameters[0].Value.Should().Be(CosmosServiceOrder.LowerBound("30"), "the bound is written from the converted text");
+        }
+
+        /// <summary>
+        /// An unsigned type, in Calcite's numeric family, is converted through <c>toBigDecimal</c> and
+        /// <c>UnsignedType</c>'s own conversion, as Calcite's generated code converts it, and a value past it fails by name.
+        /// </summary>
+        [Fact]
+        public void AnUnsignedTypeIsConvertedByCalcitesUnsignedConversion()
+        {
+            BindAs(SqlTypeName.UTINYINT, java.lang.Long.valueOf(5L)).Should().Be(5m);
+            BindAs(SqlTypeName.UINTEGER, "4294967295").Should().Be(4294967295m);
+            FluentActions.Invoking(() => BindAs(SqlTypeName.UTINYINT, java.lang.Long.valueOf(300L))).Should().Throw<CosmosExecutionException>()
+                .WithMessage("Parameter ?0 cannot be converted to its type, UTINYINT, *");
+        }
+
+        /// <summary>
+        /// A slot written in a path's stored form converts the value to its type first: the epoch milliseconds a
+        /// <c>TIMESTAMP</c> is held in and the days a <c>DATE</c> is are written, a <c>UuidValue</c> is spelled, and a value
+        /// of another class fails by name, as Calcite's cast fails it.
+        /// </summary>
+        [Fact]
+        public void AStoredFormValueIsConvertedToItsTypeFirst()
+        {
+            object? Stored(SqlTypeName type, Adapter.Metadata.CosmosRepresentation form, object held) => CosmosQueries.Bind(
+                Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { Form = form, TypeName = type })),
+                new Context(("?0", held))).Parameters[0].Value;
+
+            var instant = Adapter.Metadata.CosmosTemporalForms.Iso8601UtcMilliseconds;
+            Stored(SqlTypeName.TIMESTAMP, instant, java.lang.Long.valueOf(1785672000000L)).Should().Be("2026-08-02T12:00:00.000Z");
+            Stored(SqlTypeName.DATE, instant, java.lang.Integer.valueOf(20667)).Should().Be("2026-08-02T00:00:00.000Z");
+            Stored(SqlTypeName.UUID, Adapter.Metadata.CosmosUuidForms.CanonicalLower, org.apache.calcite.util.UuidValue.fromString("123E4567-E89B-12D3-A456-426614174000"))
+                .Should().Be("123e4567-e89b-12d3-a456-426614174000");
+
+            using var scope = new AssertionScope();
+            foreach (var (type, form, held) in new (SqlTypeName, Adapter.Metadata.CosmosRepresentation, object)[]
+            {
+                (SqlTypeName.TIMESTAMP, instant, java.lang.Integer.valueOf(20667)),
+                (SqlTypeName.DATE, instant, java.lang.Long.valueOf(1785672000000L)),
+                (SqlTypeName.UUID, Adapter.Metadata.CosmosUuidForms.CanonicalLower, "123e4567-e89b-12d3-a456-426614174000"),
+                (SqlTypeName.UUID, Adapter.Metadata.CosmosUuidForms.CanonicalLower, Guid.Parse("123e4567-e89b-12d3-a456-426614174000")),
+            })
+                FluentActions.Invoking(() => Stored(type, form, held)).Should().Throw<CosmosExecutionException>()
+                    .WithMessage($"Parameter ?0 cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it (ClassCastException: *");
         }
 
         // -- A non-finite value ----------------------------------------------------------------------

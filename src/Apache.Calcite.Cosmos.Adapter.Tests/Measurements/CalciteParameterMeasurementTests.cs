@@ -220,25 +220,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </para>
         /// <para>
         /// <b>Through Calcite's own driver the data context holds the caller's class:</b> a long for a <c>DOUBLE</c>, an
-        /// <c>INTEGER</c>, a <c>SMALLINT</c>, a <c>REAL</c> and a <c>VARCHAR</c> parameter, a double for a <c>BIGINT</c>
-        /// one, a string for a <c>BIGINT</c>, a <c>DECIMAL</c>, an <c>INTEGER</c> and a <c>BOOLEAN</c> one. Calcite compares
-        /// the value of the parameter's type, converted when the row's code reads it: the long 2^53 + 1 as the double 2^53,
-        /// keeping the stored 2^53 and not 1.5 below it; 3,000,000,000 wrapped to −1,294,967,296; 65,537 wrapped to 1 as a
-        /// <c>SMALLINT</c>; 2^24 + 1 rounded to 2^24 as a <c>REAL</c>; 1.5 cut to 1; the string <c>'2'</c> as 2 and
-        /// <c>'2.50'</c> as the decimal 2.5; the long 30 as the text <c>'30'</c> and the double 1e20 as Java writes it,
-        /// <c>'1.0E20'</c>. It fails converting what it cannot: a string that spells no number, a NaN bound to a
-        /// <c>BIGINT</c> or a <c>DOUBLE</c> and −Infinity bound to a <c>DOUBLE</c> (<c>NumberFormatException</c>), a
-        /// string bound to a <c>BOOLEAN</c> (<c>ClassCastException</c>); and over an empty table, where no row reads the
-        /// parameter, it answers no rows.
+        /// <c>INTEGER</c>, a <c>SMALLINT</c>, a <c>TINYINT</c>, a <c>REAL</c>, a <c>VARCHAR</c>, a <c>CHAR</c> and a
+        /// <c>DATE</c> parameter, a double for a <c>BIGINT</c> one, a string for a <c>BIGINT</c>, a <c>DECIMAL</c>, an
+        /// <c>INTEGER</c>, a <c>BOOLEAN</c> and a <c>UUID</c> one, a <c>java.util.UUID</c> for a <c>UUID</c> one and an
+        /// integer for a <c>TIMESTAMP</c> one. Calcite compares the value of the parameter's type, converted when the row's
+        /// code reads it: the long 2^53 + 1 as the double 2^53, keeping the stored 2^53 and not 1.5 below it;
+        /// 3,000,000,000 wrapped to −1,294,967,296; 65,537 wrapped to 1 as a <c>SMALLINT</c> and 257 as a <c>TINYINT</c>;
+        /// 2^24 + 1 rounded to 2^24 as a <c>REAL</c>; 1.5 cut to 1; the string <c>'2'</c> as 2 and <c>'2.50'</c> as the
+        /// decimal 2.5; the long 30 as the text <c>'30'</c>, the double 1e20 as Java writes it, <c>'1.0E20'</c>, and the
+        /// long 17 as <c>'17'</c> held to a <c>CHAR(1)</c>, <c>'1'</c>. It fails converting what it cannot: a string that
+        /// spells no number bound to a <c>BIGINT</c>, a NaN bound to a <c>BIGINT</c> or a <c>DOUBLE</c> and −Infinity
+        /// bound to a <c>DOUBLE</c> (<c>NumberFormatException</c>); and, casting what the data context holds to the class
+        /// it holds the type in, a string bound to a <c>BOOLEAN</c>, a string or a <c>java.util.UUID</c> bound to a
+        /// <c>UUID</c>, an integer bound to a <c>TIMESTAMP</c> and a long bound to a <c>DATE</c>
+        /// (<c>ClassCastException</c>); and over an empty table, where no row reads the parameter, it answers no rows.
         /// A projected parameter is read so too.
         /// </para>
         /// <para>
         /// <b>Through the ADO.NET driver the data context holds the parameter's type's own class</b>, converted from the
         /// .NET value before the statement runs (<c>ParameterBinder.Bind</c>), by its own rule: it rounds 1.5 to 2 for a
-        /// <c>BIGINT</c> where Calcite's conversion cuts it to 1, refuses a long past an <c>INTEGER</c> or a
-        /// <c>SMALLINT</c> rather than wrap it, refuses a NaN or a string that spells no number for a <c>BIGINT</c>, and
-        /// writes the double 1e20 as .NET's text, <c>'1E+20'</c>. Calcite's conversion then finds the type's class and
-        /// changes nothing, so a value converts to what the data context already holds.
+        /// <c>BIGINT</c> where Calcite's conversion cuts it to 1, refuses a long past an <c>INTEGER</c>, a <c>SMALLINT</c>
+        /// or a <c>TINYINT</c> rather than wrap it, refuses a NaN or a string that spells no number for a <c>BIGINT</c> and
+        /// a string for a <c>UUID</c>, writes the double 1e20 as .NET's text, <c>'1E+20'</c>, and makes Calcite's
+        /// <c>UuidValue</c> of a <see cref="Guid"/>, the epoch milliseconds of a <c>TIMESTAMP</c> of a
+        /// <see cref="DateOnly"/> and the days of a <c>DATE</c> of a <see cref="DateTime"/>. Calcite's conversion then
+        /// finds the type's class and changes nothing, so a value converts to what the data context already holds.
         /// </para>
         /// <para>
         /// A string the data context holds is recorded without a cast to <c>java.lang.Object</c>: IKVM holds Java's
@@ -253,6 +259,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var longs = MaterialisedTable.Of(SqlTypeName.BIGINT, ["1", "2"]);
             var texts = MaterialisedTable.Of(SqlTypeName.VARCHAR, ["\"30\"", "\"x\"", "\"1.0E20\"", "\"1E+20\""]);
             var documents = MaterialisedTable.Of(["{\"s\":\"30\"}", "{\"s\":\"x\"}", "{\"n\":2}"]);
+            var keys = MaterialisedTable.Of(SqlTypeName.INTEGER, ["1"]);
+            const string Uuid = "123e4567-e89b-12d3-a456-426614174000";
+            const string UuidEquals = "SELECT \"k\" FROM {t} WHERE CAST('" + Uuid + "' AS UUID) = ?";
 
             var cases = new Conversion[]
             {
@@ -264,6 +273,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.Long 3000000000: rows [0]", "not read: OverflowException"),
                 new("SMALLINT v = ?, long 65,537", MaterialisedTable.Of(SqlTypeName.SMALLINT, ["1", "2"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 65537L), 65537L,
                     "java.lang.Long 65537: rows [0]", "not read: OverflowException"),
+                new("TINYINT v = ?, long 257", MaterialisedTable.Of(SqlTypeName.TINYINT, ["1", "2"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 257L), 257L,
+                    "java.lang.Long 257: rows [0]", "not read: OverflowException"),
                 new("REAL v = ?, long 2^24 + 1", MaterialisedTable.Of(SqlTypeName.REAL, ["16777216", "1.5"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 16777217L), 16777217L,
                     "java.lang.Long 16777217: rows [0]", "java.lang.Float 1.6777216E7: rows [0]"),
                 new("BIGINT v = ?, double 1.5", longs, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1.5), 1.5d,
@@ -290,6 +301,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
                 new("VARCHAR v = ?, double 1e20", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1e20), 1e20d,
                     "java.lang.Double 1.0E20: rows [2]", "java.lang.String 1E+20: rows [3]"),
+                new("CHAR(1) v = ?, long 17", MaterialisedTable.Of(SqlTypeName.CHAR, ["\"1\"", "\"2\""]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 17L), 17L,
+                    "java.lang.Long 17: rows [0]", "java.lang.String 17: rows [0]"),
+                new("UUID = ?, string", keys, UuidEquals, s => s.setString(1, Uuid), Uuid,
+                    "java.lang.String " + Uuid + ": ClassCastException", "not read: InvalidCastException"),
+                new("UUID = ?, java.util.UUID and Guid", keys, UuidEquals, s => s.setObject(1, java.util.UUID.fromString(Uuid)), Guid.Parse(Uuid),
+                    "java.util.UUID " + Uuid + ": ClassCastException", "org.apache.calcite.util.UuidValue " + Uuid + ": rows [0]"),
+                new("? > TIMESTAMP, integer 20667 and DateOnly", keys, "SELECT \"k\" FROM {t} WHERE ? > TIMESTAMP '2000-01-01 00:00:00'", s => s.setInt(1, 20667), new DateOnly(2026, 8, 2),
+                    "java.lang.Integer 20667: ClassCastException", "java.lang.Long 1785628800000: rows [0]"),
+                new("? > DATE, long and DateTime", keys, "SELECT \"k\" FROM {t} WHERE ? > DATE '2000-01-01'", s => s.setLong(1, 1785672000000L), new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Utc),
+                    "java.lang.Long 1785672000000: ClassCastException", "java.lang.Integer 20667: rows [0]"),
                 new("JSON_VALUE = ?, long 30", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.s') = ?", s => s.setLong(1, 30L), 30L,
                     "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
                 new("projected DOUBLE, long 2^53 + 1", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setLong(1, 9007199254740993L), 9007199254740993L,

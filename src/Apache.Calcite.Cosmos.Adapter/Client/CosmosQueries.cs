@@ -131,6 +131,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// path gives a literal and the one these forms store.
         /// </para>
         /// <para>
+        /// <b>It is converted first, as every value is</b> (<see cref="Converted"/>): Calcite casts a
+        /// <c>TIMESTAMP</c> parameter to <c>java.lang.Long</c>, a <c>DATE</c> one to
+        /// <c>java.lang.Integer</c> and a <c>UUID</c> one to <c>UuidValue</c>, so a value of another
+        /// class, which Calcite's own driver hands through, fails by name, as Calcite's plan fails reading
+        /// it.
+        /// </para>
+        /// <para>
         /// <b>A null is bound as null</b>, which is what a parameter of any other kind binds — and
         /// that the service compares a JSON null as a value where SQL compares nothing is answered
         /// for every parameter alike, by the test of it the statement carries beside each comparison
@@ -144,7 +151,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <exception cref="CosmosExecutionException">The value is not an instant, or cannot be written in the form.</exception>
         static object? Stored(org.apache.calcite.DataContext root, CosmosDynamicValue slot, Metadata.CosmosRepresentation form)
         {
-            var value = root.get(slot.VariableName);
+            var value = Converted(root.get(slot.VariableName), slot);
 
             if (Metadata.CosmosUuidForms.IsUuid(form))
                 return StoredUuid(slot, form, value);
@@ -180,9 +187,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Writes a <c>UUID</c> parameter's value in the stored spelling of the path it is compared with.
         /// </summary>
         /// <remarks>
-        /// Calcite boxes a <c>UUID</c> as <c>UuidValue</c>, a host may hand one over as a
-        /// <c>java.util.UUID</c> or a <see cref="Guid"/>, and text is accepted where it parses: each is
-        /// the same value, read the way <see cref="CosmosLookup.Normalize"/> reads a lookup key.
+        /// Calcite holds a <c>UUID</c> as <c>UuidValue</c>, which a slot carrying its type has converted the
+        /// value to already; one made without a type reads a <c>java.util.UUID</c>, a <see cref="Guid"/> or
+        /// text that parses as the same value, the way <see cref="CosmosLookup.Normalize"/> reads a lookup key.
         /// </remarks>
         /// <param name="slot">The ordinal the value was read from.</param>
         /// <param name="form">The stored form to write it in.</param>
@@ -294,6 +301,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 java.lang.Double d => d.doubleValue(),
                 java.math.BigDecimal d => CosmosRexLiterals.TryGetExactNumberValue(d)
                     ?? throw new CosmosExecutionException($"Parameter {value.VariableName} is the number {d}, which no value the service can be sent compares there as."),
+                org.joou.UNumber u => CosmosRexLiterals.TryGetExactNumberValue(new java.math.BigDecimal(u.toBigInteger()))
+                    ?? throw new CosmosExecutionException($"Parameter {value.VariableName} is the number {u}, which no value the service can be sent compares there as."),
                 java.lang.Boolean b => b.booleanValue(),
                 org.locationtech.jts.geom.Geometry g => CosmosJson.ToGeoJsonValue(g),
                 var other => other,
@@ -315,21 +324,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// data context held it, the value was compared by the service as another value than Calcite's.
         /// </para>
         /// <para>
-        /// <b>The conversion is Calcite's own code, called, so it cannot drift from it.</b>
-        /// <c>RexToLixTranslator.visitDynamicParam</c> reads a parameter of a numeric type through <c>java.lang.Number</c>,
-        /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the type's class's
-        /// own <c>…Value()</c>; one of a character type through the object's <c>toString()</c>; a <c>BOOLEAN</c> through a
-        /// cast to <c>java.lang.Boolean</c>. Every other type, <c>ANY</c> among them, is read as the class the data context
-        /// holds, and passes as it is. A parameter's type is always nullable, the validator making every one so, so the
-        /// conversion is the boxed one: an integer past its type wraps, as <c>BigDecimal.intValue()</c> does, rather than
-        /// raise as the unboxed <c>intValueExact()</c> would.
+        /// <b>The dispatch is <c>RexToLixTranslator.visitDynamicParam</c>'s, over Calcite's own list and classes.</b> A
+        /// type in Calcite's numeric family (<c>SqlTypeName.NUMERIC_TYPES</c>) is read through <c>java.lang.Number</c>,
+        /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the conversion to the
+        /// class Calcite holds the type in: the box's own <c>…Value()</c>, the decimal itself, or <c>UnsignedType</c>'s for
+        /// an unsigned type. Any other type is read as the class Calcite holds it in, as its own type factory answers
+        /// (<c>JavaTypeFactoryImpl.getJavaClass</c>): a <c>String</c> through the object's <c>toString()</c>, any other
+        /// class through a cast, which <c>Object</c>, an <c>ANY</c>'s or a <c>VARIANT</c>'s class, passes as it is. The
+        /// leaf conversions and the classes are Calcite's, called; the dispatch between them is written here, and the
+        /// measurement holds it to Calcite's. A parameter's type is always nullable, the validator making every one so,
+        /// so the conversion is the boxed one: an integer past its type wraps, as <c>BigDecimal.intValue()</c> does,
+        /// rather than raise as the unboxed <c>intValueExact()</c> would.
         /// </para>
         /// <para>
         /// <b>A value Calcite cannot convert fails the statement by name</b>, as Calcite's own plan fails reading it: a
         /// string that spells no number bound to a numeric parameter, a NaN or an infinite double bound to any numeric one
-        /// (<c>toBigDecimal</c> refuses both), anything but a boolean bound to a <c>BOOLEAN</c> one. Calcite fails only
-        /// once a row reaches the parameter's reading, and answers no rows over an input that holds none; the bind fails
-        /// whatever the input holds (TODO.md).
+        /// (<c>toBigDecimal</c> refuses both), and a value of another class than its type's bound to a parameter of a type
+        /// Calcite casts to, a string bound to a <c>BOOLEAN</c> or a <c>UUID</c> one. Calcite fails only once a row reaches
+        /// the parameter's reading, and answers no rows over an input that holds none; the bind fails whatever the input
+        /// holds (TODO.md).
         /// </para>
         /// </remarks>
         /// <param name="held">The value the data context holds, or <c>null</c>.</param>
@@ -343,24 +356,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
             try
             {
-                return type switch
+                var boxed = JavaClassOf(type);
+
+                if (SqlTypeName.NUMERIC_TYPES.contains(type))
                 {
-                    _ when type == SqlTypeName.TINYINT => java.lang.Byte.valueOf(SqlFunctions.toBigDecimal(held).byteValue()),
-                    _ when type == SqlTypeName.SMALLINT => java.lang.Short.valueOf(SqlFunctions.toBigDecimal(held).shortValue()),
-                    _ when type == SqlTypeName.INTEGER => java.lang.Integer.valueOf(SqlFunctions.toBigDecimal(held).intValue()),
-                    _ when type == SqlTypeName.BIGINT => java.lang.Long.valueOf(SqlFunctions.toBigDecimal(held).longValue()),
-                    _ when type == SqlTypeName.REAL => java.lang.Float.valueOf(SqlFunctions.toBigDecimal(held).floatValue()),
-                    _ when type == SqlTypeName.FLOAT || type == SqlTypeName.DOUBLE => java.lang.Double.valueOf(SqlFunctions.toBigDecimal(held).doubleValue()),
-                    _ when type == SqlTypeName.DECIMAL => SqlFunctions.toBigDecimal(held),
-                    _ when type == SqlTypeName.CHAR || type == SqlTypeName.VARCHAR => java.lang.String.valueOf(held),
-                    _ when type == SqlTypeName.BOOLEAN => ((java.lang.Class)typeof(java.lang.Boolean)).cast(held),
-                    _ => held,
-                };
+                    var number = SqlFunctions.toBigDecimal(held);
+                    return boxed switch
+                    {
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Byte) => java.lang.Byte.valueOf(number.byteValue()),
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Short) => java.lang.Short.valueOf(number.shortValue()),
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Integer) => java.lang.Integer.valueOf(number.intValue()),
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Long) => java.lang.Long.valueOf(number.longValue()),
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Float) => java.lang.Float.valueOf(number.floatValue()),
+                        _ when boxed == (java.lang.Class)typeof(java.lang.Double) => java.lang.Double.valueOf(number.doubleValue()),
+                        _ when boxed == (java.lang.Class)typeof(org.joou.UByte) => org.apache.calcite.linq4j.tree.UnsignedType.toUByte(number),
+                        _ when boxed == (java.lang.Class)typeof(org.joou.UShort) => org.apache.calcite.linq4j.tree.UnsignedType.toUShort(number),
+                        _ when boxed == (java.lang.Class)typeof(org.joou.UInteger) => org.apache.calcite.linq4j.tree.UnsignedType.toUInteger(number),
+                        _ when boxed == (java.lang.Class)typeof(org.joou.ULong) => org.apache.calcite.linq4j.tree.UnsignedType.toULong(number),
+                        _ => number,
+                    };
+                }
+
+                return boxed == (java.lang.Class)typeof(string) ? java.lang.String.valueOf(held) : boxed.cast(held);
             }
-            catch (java.lang.RuntimeException e)
+            catch (Exception e) when (e is java.lang.RuntimeException or InvalidCastException)
             {
-                throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({e.GetType().Name}: {e.getMessage()}), so the statement fails as Calcite's own plan fails.", e);
+                throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({e.GetType().Name}: {e.Message}), so the statement fails as Calcite's own plan fails.", e);
             }
+        }
+
+        /// <summary>
+        /// Answers the class Calcite holds a parameter of a type in: its own type factory's answer for the nullable type,
+        /// the validator making every parameter's type nullable.
+        /// </summary>
+        /// <param name="type">The parameter's type.</param>
+        /// <returns>The class.</returns>
+        static java.lang.Class JavaClassOf(SqlTypeName type)
+        {
+            var factory = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
+            return (java.lang.Class)factory.getJavaClass(factory.createTypeWithNullability(factory.createSqlType(type), true));
         }
 
         /// <summary>

@@ -1992,10 +1992,10 @@ one, which is likely why nothing had reported it.
 
 ### A parameter Calcite cannot convert fails where no row reaches it — *small, and the fix is not planned*
 
-The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Value`,
+The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Bind`,
 `Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no
-number bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a boolean bound to a
-`BOOLEAN` — fails the statement by name before it is sent. Calcite fails only once a row reaches the parameter's
+number bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a value of its type
+bound to a `BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a row reaches the parameter's
 reading, so two cases part from it:
 
 - **over an input that holds no row**, an empty container or partition, Calcite answers no rows and the adapter fails;

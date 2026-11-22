@@ -212,7 +212,8 @@ bound. Bind a whole character, or compare in the application. Chapter 8.
 (`CosmosExecutionException`) when a statement runs.**
 A parameter was bound to a value Calcite cannot read as the type it gave the parameter, which is the type
 of what the parameter is compared with: a string that spells no number where a number is compared, a NaN
-or an infinity bound to a numeric parameter, a string bound to a `BOOLEAN`. The message names the
+or an infinity bound to a numeric parameter, a string bound to a `BOOLEAN` or a `UUID`, a date where a
+timestamp is compared. The message names the
 exception Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the
 adapter fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
 

@@ -3598,7 +3598,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append('(');
             Write(builder, accessor);
             builder.Append(' ').Append(op).Append(' ');
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding }));
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, Rounding = rounding, TypeName = parameter.getType()?.getSqlTypeName() }));
             builder.Append(')');
             return true;
         }
@@ -3646,7 +3646,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             builder.Append('(');
             Write(builder, accessor);
             builder.Append(' ').Append(op).Append(' ');
-            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation }));
+            builder.Append(_parameters.Add(new CosmosDynamicValue(parameter.getIndex()) { Form = representation, TypeName = parameter.getType()?.getSqlTypeName() }));
             builder.Append(')');
             return true;
         }

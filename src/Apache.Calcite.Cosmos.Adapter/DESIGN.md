@@ -2621,25 +2621,28 @@ never consulted.
 | `>=`, `<` | `12:00:01Z` |
 | `=`, `<>` | `12:00:00.5000000Z`, which no stored value equals |
 
-**Every value is converted to its parameter's type before it is sent, by Calcite's own conversion.** Calcite
-compares a value of the parameter's type, but which class reaches the data context depends on the driver. The ADO.NET
-driver converts each value to the placeholder's type before Calcite sees it (`ParameterBinder`), so there the class
-was the type, and switching on the class, as the bind did, sent what Calcite compared. Calcite's own JDBC driver
-hands the caller's class through, and Calcite converts it only when a row's code reads the parameter
-(`Calcite.AParameterIsConvertedToItsTypeWhenRead`): the long 2^53 + 1 bound to a `DOUBLE` parameter compares as 2^53
-in Calcite and was sent as the 64-bit integer, which the service compares by value and kept nothing for;
-3,000,000,000 bound to an `INTEGER` wraps in Calcite and was sent whole; 30 bound to a text parameter is `'30'` in
-Calcite and was sent as a number, which the service leaves undefined against a string. So the slot carries the
-parameter's SQL type, read off the `RexDynamicParam` beside its length, and `CosmosQueries.Value` converts the value
-by calling what Calcite's generated code calls (`RexToLixTranslator.visitDynamicParam`, through `EnumUtils.convert`):
-`SqlFunctions.toBigDecimal` and the type's own `…Value()` for a number, the object's `toString()` for text, a cast
-for a boolean; every other type, `ANY` among them, Calcite reads as the class the data context holds, and it passes
-as it is. The conversion is called rather than copied, so it cannot drift from Calcite's, and it is the boxed one,
-which wraps an integer past its type, since the validator makes every parameter's type nullable. A value it refuses
-— a string that spells no number, a NaN or an infinity bound to a number — fails the statement by name, where
-Calcite's plan fails reading it. Calcite fails only once a row reaches the parameter, which leaves a statement over
-no row failing where Calcite answers none, and one the facts graph decides not to send answering where Calcite fails;
-`TODO.md` records both.
+**Every value is converted to its parameter's type before it is sent, by Calcite's own conversion.** Calcite compares a
+value of the parameter's type, but which class reaches the data context depends on the driver. The ADO.NET driver
+converts each value to the placeholder's type before Calcite sees it (`ParameterBinder`), so there the class was the
+type, and switching on the class, as the bind did, sent what Calcite compared. Calcite's own JDBC driver hands the
+caller's class through, and Calcite converts it only when a row's code reads the parameter
+(`Calcite.AParameterIsConvertedToItsTypeWhenRead`): the long 2^53 + 1 bound to a `DOUBLE` parameter compares as 2^53 in
+Calcite and was sent as the 64-bit integer, which the service compares by value and kept nothing for; 3,000,000,000
+bound to an `INTEGER` wraps in Calcite and was sent whole; 30 bound to a text parameter is `'30'` in Calcite and was
+sent as a number, which the service leaves undefined against a string. So the slot carries the parameter's SQL type,
+read off the `RexDynamicParam` beside its length, a stored form's slot as a value's, and `CosmosQueries` converts the
+value by calling what Calcite's generated code calls (`RexToLixTranslator.visitDynamicParam`, through
+`EnumUtils.convert`): for a type in Calcite's numeric family, `SqlFunctions.toBigDecimal` and the conversion to the
+class Calcite holds the type in; for any other, the object's `toString()` where that class is a string, and otherwise a
+cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is. The classes come from Calcite's own
+type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the
+measurement holds it to Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the
+validator makes every parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an
+infinity bound to a number, a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where
+Calcite's plan fails reading it. A presence slot reads only whether a value is bound, and the row limit's slot is read
+by the limit, which Calcite reads otherwise than a value, so neither is converted. Calcite fails only once a row reaches
+the parameter, which leaves a statement over no row failing where Calcite answers none, and one the facts graph decides
+not to send answering where Calcite fails; `TODO.md` records both.
 
 **A NaN or an infinity is refused by name wherever the statement reads it, a bridge.** The conversion refuses a NaN
 or an infinity bound to a numeric parameter, but carries a finite value past an approximate type's range to an
