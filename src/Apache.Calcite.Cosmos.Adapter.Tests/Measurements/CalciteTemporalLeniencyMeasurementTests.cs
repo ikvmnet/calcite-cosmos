@@ -215,6 +215,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("0000-00-00T00:00:00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14T00:00:00", "1582-10-24 00:00:00"),
                 Alias("1582-10-05T00:00:00", "1582-10-15 00:00:00"),
+                Alias("1582-10-14T12:00:00", "1582-10-24 12:00:00"),
+                Alias("1582-10-14T24:00:00", "1582-10-15 00:00:00"),
+                Alias("1582-10-13T24:00:00", "1582-10-24 00:00:00"),
+                Alias("1582-10-04T24:00:00", "1582-10-15 00:00:00"),
             ],
             [Family.Minutes] =
             [
@@ -247,6 +251,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("1000-02-30T00:00", "1000-03-01 00:00:00"),
                 Alias("0000-00-00T00:00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14T00:00", "1582-10-24 00:00:00"),
+                Alias("1582-10-14T24:00", "1582-10-15 00:00:00"),
+                Alias("1582-10-04T24:00", "1582-10-15 00:00:00"),
             ],
             [Family.Date] =
             [
@@ -285,6 +291,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("0000-00-00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14", "1582-10-24 00:00:00"),
                 Alias("1582-10-05", "1582-10-15 00:00:00"),
+                Alias("1582-09-35", "1582-10-15 00:00:00"),
+                Alias("1582-09-44", "1582-10-24 00:00:00"),
             ],
             [Family.YearMonth] =
             [
@@ -567,7 +575,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// over none of them, so no format reads its form one for one. Before 1582-10-15 a field is carried over by the
         /// Julian calendar, a year before year one counted by its year of the era, and the date that makes read as a
         /// proleptic Gregorian day, raising where there is none: <c>1000-02-30</c> is 1 March, <c>0000-00-00</c> is
-        /// <c>0002-11-30</c>, and 29 February of 0100 raises. <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
+        /// <c>0002-11-30</c>, and 29 February of 0100 raises. A field carried into 1582's gap is carried first and the
+        /// gap's ten days applied to the day that results: <c>1582-10-14T24:00:00</c> is <c>1582-10-15</c>.
+        /// <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
         /// </summary>
         [Fact, CosmosPins("Calcite.ParsesReadTheirFieldsLeniently")]
         public void EveryListedFormatRollsAFieldPastItsRange()
