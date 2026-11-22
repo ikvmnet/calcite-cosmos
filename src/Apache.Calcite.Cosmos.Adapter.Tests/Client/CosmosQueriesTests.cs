@@ -229,7 +229,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         [Fact]
         public void ASlotWhoseClassItsTypesNameDoesNotGiveFailsByName()
         {
-            foreach (var held in new object[] { java.lang.Long.valueOf(1L), "x" })
+            foreach (var held in new object?[] { java.lang.Long.valueOf(1L), "x", null })
                 FluentActions.Invoking(() => BindAs(SqlTypeName.ROW, held)).Should().Throw<CosmosExecutionException>()
                     .WithMessage("Parameter ?0 is of type ROW, for which Calcite's type factory answers no class from the type's name alone (*");
         }
@@ -269,9 +269,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// The conversion is the code Calcite generates for a dynamic parameter: over a parameter of the numeric, character,
         /// binary, boolean, datetime, interval, <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c> types, each
-        /// slotted as the translator slots it, and over the classes a caller of Calcite's own driver binds, it answers what
-        /// Calcite's code for a <c>RexDynamicParam</c> of the type answers, the value in the same class, or fails where that
-        /// code fails, with the same exception.
+        /// slotted as the translator slots it, and over the classes a caller of Calcite's own driver binds and null, it
+        /// answers what Calcite's code for a <c>RexDynamicParam</c> of the type answers, the value in the same class, or
+        /// fails where that code fails, with the same exception.
         /// </summary>
         /// <remarks>
         /// The leaf conversions and the classes are Calcite's, called, and the dispatch between them, the length a slot
@@ -280,7 +280,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// (<c>RexExecutorImpl.getExecutable</c>), wherever a later Calcite moves it: a type's length, a <c>CHAR</c>'s
         /// padding, and an interval's multiplier among it. Left out at 16 types, the binary types and every interval that
         /// does not end in a month were bound as another value than Calcite reads, the bytes uncut and the number
-        /// unmultiplied.
+        /// unmultiplied; with no null among the values, a null bound to an interval Calcite multiplies was bound as null,
+        /// where Calcite's code raises unboxing it.
         /// </remarks>
         [Fact]
         public void TheConversionIsTheCodeCalciteGeneratesForAParameter()
@@ -354,7 +355,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 java.lang.Boolean.TRUE, java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"),
                 org.apache.calcite.util.UuidValue.fromString("123e4567-e89b-12d3-a456-426614174000"), java.lang.Character.valueOf('7'),
                 new org.apache.calcite.avatica.util.ByteString([1]), new org.apache.calcite.avatica.util.ByteString([1, 2]), new org.apache.calcite.avatica.util.ByteString([1, 2, 3]),
-                list, map, Point(),
+                list, map, Point(), null,
             };
 
             using var scope = new AssertionScope();

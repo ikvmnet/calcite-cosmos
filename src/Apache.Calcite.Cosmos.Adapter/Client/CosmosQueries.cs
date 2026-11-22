@@ -358,24 +358,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>BigDecimal.intValue()</c> does, rather than raise as the unboxed <c>intValueExact()</c> would.
         /// </para>
         /// <para>
-        /// <b>Then the step the generated code takes after it</b> (<c>RexToLixTranslator.checkExpressionPadTruncate</c>):
-        /// a text or a binary type of a length holds the value to it, truncated, and padded where
+        /// <b>Then the step the generated code takes after it</b> (<c>RexToLixTranslator.checkExpressionPadTruncate</c>): a
+        /// text or a binary type of a length holds the value to it, truncated, and padded where
         /// <see cref="CosmosDynamicValue.Padded"/> says (<c>SqlFunctions.truncate</c> and <c>truncateOrPad</c>, called);
         /// and an interval, held in a number of its smallest unit, is multiplied by its end unit's multiplier, as the
-        /// generated code multiplies a number read into one (<c>RexImpTable.multiplyDivide</c>). The leaf conversions, the
-        /// classes and the multipliers are Calcite's; the dispatch between them is written here, and a test holds it to
-        /// the code Calcite generates for a parameter of the numeric, character, binary, boolean, datetime, interval,
-        /// <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c> types
-        /// (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), beside the measurement.
+        /// generated code multiplies a number read into one (<c>RexImpTable.multiplyDivide</c>), unboxing it, so a null
+        /// raises there as in Calcite. The leaf conversions, the classes and the multipliers are Calcite's; the dispatch
+        /// between them is written here, and a test holds it to the code Calcite generates for a parameter of the numeric,
+        /// character, binary, boolean, datetime, interval, <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c>
+        /// types (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), beside the measurement.
         /// </para>
         /// <para>
         /// <b>A value Calcite cannot convert fails the statement by name</b>, as Calcite's own plan fails reading it: a
         /// string that spells no number bound to a numeric parameter, a NaN or an infinite double bound to any numeric one
-        /// (<c>toBigDecimal</c> refuses both), and a value of another class than its type's bound to a parameter of a type
-        /// Calcite casts to, a string bound to a <c>BOOLEAN</c> or a <c>UUID</c> one. Calcite fails only once a row reaches
-        /// the parameter's reading, and answers where none does: no rows over an input that holds none, and what the other
-        /// arms decide where no row takes the <c>CASE</c> arm reading it. The bind fails whatever the input holds
-        /// (TODO.md).
+        /// (<c>toBigDecimal</c> refuses both), a value of another class than its type's bound to a parameter of a type
+        /// Calcite casts to, a string bound to a <c>BOOLEAN</c> or a <c>UUID</c> one, and a null bound to an interval the
+        /// step multiplies. Calcite fails only once a row reaches the parameter's reading, and answers where none does: no
+        /// rows over an input that holds none, and what the other arms decide where no row takes the <c>CASE</c> arm
+        /// reading it. The bind fails whatever the input holds (TODO.md).
         /// </para>
         /// </remarks>
         /// <param name="held">The value the data context holds, or <c>null</c>.</param>
@@ -384,31 +384,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the type.</exception>
         internal static object? Converted(object? held, CosmosDynamicValue slot)
         {
-            if (held is null || slot.TypeName is not SqlTypeName type)
+            if (slot.TypeName is not SqlTypeName type)
                 return held;
 
             var boxed = JavaClassOf(type, slot);
 
-            object read;
             try
             {
-                read = SqlTypeName.NUMERIC_TYPES.contains(type) ? Number(SqlFunctions.toBigDecimal(held), boxed)
+                var read = held is null ? null
+                    : SqlTypeName.NUMERIC_TYPES.contains(type) ? Number(SqlFunctions.toBigDecimal(held), boxed)
                     : boxed == (java.lang.Class)typeof(string) ? java.lang.String.valueOf(held)
                     : boxed.cast(held);
+
+                return read switch
+                {
+                    string text when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(text, length) : SqlFunctions.truncate(text, length),
+                    org.apache.calcite.avatica.util.ByteString bytes when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(bytes, length) : SqlFunctions.truncate(bytes, length),
+                    _ when SqlTypeName.INTERVAL_TYPES.contains(type) && EndUnit(type) != 1 => Multiplied(read, boxed, EndUnit(type)),
+                    _ => read,
+                };
             }
-            catch (Exception e) when (e is java.lang.RuntimeException or InvalidCastException)
+            catch (Exception e) when (e is java.lang.RuntimeException or InvalidCastException or NullReferenceException)
             {
                 throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it ({e.GetType().Name}: {e.Message}), so the statement fails as Calcite's own plan fails.", e);
             }
-
-            return read switch
-            {
-                string text when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(text, length) : SqlFunctions.truncate(text, length),
-                org.apache.calcite.avatica.util.ByteString bytes when slot.Length is int length => slot.Padded ? SqlFunctions.truncateOrPad(bytes, length) : SqlFunctions.truncate(bytes, length),
-                java.lang.Long units when SqlTypeName.INTERVAL_TYPES.contains(type) => java.lang.Long.valueOf(unchecked(units.longValue() * EndUnit(type))),
-                java.lang.Integer units when SqlTypeName.INTERVAL_TYPES.contains(type) => java.lang.Integer.valueOf(unchecked(units.intValue() * EndUnit(type))),
-                _ => read,
-            };
         }
 
         /// <summary>
@@ -440,6 +439,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="type">An interval type.</param>
         /// <returns>The multiplier.</returns>
         static int EndUnit(SqlTypeName type) => type.getEndUnit().multiplier.intValueExact();
+
+        /// <summary>
+        /// Multiplies the number an interval is read from by its end unit's multiplier, as the generated code multiplies it
+        /// (<c>RexImpTable.multiplyDivide</c>, which leaves a multiplier of one alone): unboxed first, so a null raises as
+        /// Calcite's code raises unboxing it, and wrapping as Java's <c>*</c> wraps.
+        /// </summary>
+        /// <param name="units">The converted value, in the class Calcite holds the interval in, or <c>null</c>.</param>
+        /// <param name="boxed">That class: an <c>Integer</c> for a year-month interval, a <c>Long</c> for a day-time one.</param>
+        /// <param name="multiplier">The end unit's multiplier.</param>
+        /// <returns>The interval in its smallest unit, in the same class.</returns>
+        /// <exception cref="NullReferenceException"><paramref name="units"/> is <c>null</c>, as Calcite's code raises over one.</exception>
+        static object Multiplied(object? units, java.lang.Class boxed, int multiplier) => boxed == (java.lang.Class)typeof(java.lang.Integer)
+            ? java.lang.Integer.valueOf(unchecked(((java.lang.Integer)units!).intValue() * multiplier))
+            : java.lang.Long.valueOf(unchecked(((java.lang.Long)units!).longValue() * multiplier));
 
         /// <summary>
         /// Answers the class Calcite holds a parameter of a type in: its own type factory's answer for the nullable type,
