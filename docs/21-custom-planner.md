@@ -65,8 +65,11 @@ transposes, projection merge, distinct-aggregate expansion, aggregate reduction 
 Volcano planner has none of them and a pushdown must not depend on which rules a caller happened to
 add. Its sort transpose is guarded, and a Cosmos table's convention takes Calcite's own out of the
 planner if a caller added it: Calcite's moves a sort beneath a cast of text to a date or a time, whose
-order is not the text's. Register `ConventionTraitDef.INSTANCE` and `RelCollationTraitDef.INSTANCE` on
-the planner.
+order is not the text's. The planner is the statement's, so in a statement that reads a container the
+guarded transpose plans every sort, another source's among them: beneath a projection no container
+binds, a sort moves past a cast only where the cast keeps every value's order — a widening or a change
+of nullability — or, on the last key, narrows text. Register `ConventionTraitDef.INSTANCE` and
+`RelCollationTraitDef.INSTANCE` on the planner.
 
 Ask for **`ClrCursorConvention`** as the root convention:
 

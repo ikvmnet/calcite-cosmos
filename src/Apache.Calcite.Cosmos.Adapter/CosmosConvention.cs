@@ -106,7 +106,10 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// and ordered <c>12:30:99</c> before <c>12:31:00</c> where Calcite's cast reads the first as the later time. The
         /// adapter registers the same transpose with the test the plan's keys must pass first
         /// (<see cref="Rel.Convert.CosmosSortProjectTransposeRule"/>), so the unguarded one goes: what it moved that the
-        /// guarded one does not is a sort whose order nothing proves.
+        /// guarded one does not is a sort whose order nothing proves. The planner is the statement's, so every sort of a
+        /// statement that reads this container is the guarded rule's, another source's among them, and beneath a
+        /// projection no container binds it moves a sort past a cast only where
+        /// <see cref="Metadata.CosmosServiceOrder.CastPreservesOrder"/> holds.
         /// </remarks>
         /// <param name="planner">The planner.</param>
         public override void register(RelOptPlanner planner)
