@@ -534,6 +534,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "null: rows [0, 1, 2, 3]", "null: rows [0, 1, 2, 3]"),
                 new("OFFSET 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 2.5 ROWS", _ => { }, null,
                     "null: rows [3]", "null: rows [3]"),
+                new("OFFSET 3,000,000,000", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 3000000000 ROWS", _ => { }, null,
+                    "null: rows []", "null: rows []"),
                 new("FETCH ?, long -1, no row", none, Fetch, s => s.setLong(1, -1L), -1L,
                     "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
                 new("FETCH ?, null, no row", none, Fetch, s => s.setNull(1, java.sql.Types.INTEGER), null,
