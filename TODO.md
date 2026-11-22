@@ -3471,6 +3471,24 @@ across documents* and *A join of a container to itself* is the record.
   equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
   its tests should hold a `REAL` key `0.1` against a stored `0.1`, a `DOUBLE` key 2^53 against a stored
   `9007199254740993`, and a `BIGINT` key 2^53 against a stored `9007199254740993.0` under Production.
+- **The lookup join answers where Calcite's own join fails on a document no key fetches** — *medium, an answer where
+  Calcite fails, older than the key match; left for a change of its own after "fail like Calcite", with "A filter above
+  a lookup join".* `CosmosLookupJoin` reads only the documents its keys fetch, where Calcite's own join reads every
+  document the probe side keeps. A typed column the probe side reads, its key or any column it projects, fails in
+  Calcite on a document holding a fraction or a number outside an integer type's range
+  (`Calcite.ColumnReadsWholeNumbersAsItsType`, `Calcite.ReturningAsserts`), so where no key fetches that document,
+  Calcite's own join fails and the lookup join answers. Measured on the emulator, each statement planned with the lookup
+  join and again with its rule excluded: `VALUES` keys `BIGINT` 7 and 8 joined to `JSON_VALUE(c."DOC", '$.n' RETURNING
+  BIGINT)` over documents holding 7 and 1.5 answer the row for 7, and as a left join the row for 8 unmatched beside it,
+  where Calcite fails on 1.5; an `INTEGER` key over a document holding 2147483648, a `SMALLINT` one over 70000, a
+  `TINYINT` one over 300 and a `BIGINT` one over 1e20 answer where Calcite fails on the range, as do a second
+  container's `BIGINT` key over 7.5 and an `INTEGER` key cast to `BIGINT` over 2.5; and a lookup by `id` projecting
+  `JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER)`, over a document no key names holding 1.5, answers where Calcite
+  fails, as does a `BIGINT` key beside a price of 3000000000. `main` answers each the same. The fix wants the lookup join
+  offered only where nothing the probe side reads can fail on a document its declaration admits, asked of the facts
+  graph, or such a probe side read whole, which fails as Calcite does: the fix "A filter above a lookup join" wants.
+  When the restriction is asked of the rendering graph (3B), its tests should hold a `BIGINT` key over a path holding
+  1.5.
 - **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, a bridge
   until a statement's parameter is converted by its SQL type.*
   `CosmosLookup.Sent` sends a decimal key by `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value`

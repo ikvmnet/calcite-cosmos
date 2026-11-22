@@ -205,9 +205,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <c>RETURNING</c> asserts a type, null wherever the path holds another — which the method
         /// counts against it, and rightly for a sort, the service ordering the object the column reads
         /// null for. A restriction only has to keep every document whose column a key could equal, and
-        /// a key is bound as a parameter of the column's type — see <c>CosmosLookup.Bind</c>: a document
-        /// whose column is a number holds that number, which the restriction keeps, and one whose
-        /// column is null matches no key, so losing it loses no row.
+        /// a key is bound as a parameter of the column's type — see <c>CosmosLookup.Bind</c>.
+        /// <c>TODO.md</c> records the documents it leaves out that change the answer: one whose column
+        /// reads its number as another value, which Calcite's own join matches, and one whose column
+        /// fails, on which Calcite's own join fails.
         /// </para>
         /// <para>
         /// <b>A column read as text is a rendering</b>, and the filter translator already refuses this
