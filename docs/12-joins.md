@@ -34,8 +34,7 @@ In a plan it appears as `CosmosLookupJoin`.
 
 ### When it applies
 
-The lookup join is chosen by the planner where it is cheaper and **only** where it gives exactly the
-answer a full join would:
+The lookup join is chosen by the planner where it is cheaper and **only** where:
 
 - **An inner or a left join**, with the container on the right. A left join keeps a row whose key
   matched nothing — a null key, or a key the container has no document for — with nulls for the
