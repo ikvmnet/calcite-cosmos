@@ -170,25 +170,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// unmatched.
         /// </para>
         /// <para>
-        /// <b>A key beyond a double's range has no number to be sent as</b>: its double is an infinity, which JSON writes
-        /// as no number. The restriction cannot name it, so the batch holding it is fetched without the restriction and
-        /// the join's own comparison of every document the probe keeps answers it, which rests on nothing about what a
-        /// document may hold. That costs request units in a case only a direct caller reaches, since no planned lookup
-        /// compares a <c>DECIMAL</c>.
+        /// <b>A key whose double is an infinity or NaN has no number to be sent as</b>: JSON holds no such number, and the
+        /// SDK writes one as the string <c>"Infinity"</c>, <c>"-Infinity"</c> or <c>"NaN"</c>, which no stored number
+        /// equals. That is an approximate key that is not finite, and a decimal beyond a double's range. The restriction
+        /// cannot name it, so the batch holding it is fetched without the restriction and the join's own comparison of
+        /// every document the probe keeps answers it, which rests on nothing about what a document may hold. That costs
+        /// request units, for a batch holding such a key.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
         /// <returns>The value bound, or <c>null</c> where the key has none.</returns>
         internal static object? Sent(object? key)
         {
-            if (key is not java.math.BigDecimal value)
-                return key;
+            var sent = key switch
+            {
+                java.math.BigDecimal value when CosmosRexLiterals.TryGetExactNumberValue(value) is { } exact && (exact is not decimal held || new java.math.BigDecimal(held.ToString(CultureInfo.InvariantCulture)).compareTo(value) == 0) => exact,
+                java.math.BigDecimal value => value.doubleValue(),
+                _ => key,
+            };
 
-            if (CosmosRexLiterals.TryGetExactNumberValue(value) is { } exact && (exact is not decimal held || new java.math.BigDecimal(held.ToString(CultureInfo.InvariantCulture)).compareTo(value) == 0))
-                return exact;
-
-            var approximate = value.doubleValue();
-            return double.IsInfinity(approximate) ? null : approximate;
+            return sent is double number && double.IsFinite(number) == false ? null : sent;
         }
 
         /// <summary>

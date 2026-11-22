@@ -3466,18 +3466,16 @@ across documents* and *A join of a container to itself* is the record.
   (3B).* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), and the restriction
   `path IN (@k0, …)` names each key's number, which the service compares by value with the number a document holds. A
   typed column reads some stored numbers as another value (`Calcite.ColumnReadsWholeNumbersAsItsType`): a `REAL`
-  column reads a stored `0.1` as the float nearest it, `1e-50` and `-1e-50` as `0.0` and `-0.0`, and `1e39` and `-1e39`
-  as the infinities, and a `DOUBLE` column a stored integer past 2^53 as its double. A key equal to what the column
-  reads is sent as a number the document does not hold, so the document Calcite's own join matches is never fetched.
-  On the emulator, each in a planned lookup, a `REAL` key `0.1` lost the document holding `0.1`, a `REAL` `0.0` the one
-  holding `1e-50` and a `-0.0` the one holding `-1e-50`, the infinities those holding `1e39` and `-1e39`, and a `BIGINT`
-  key 2^53 + 1, which the join casts to the double 2^53, joined to a `DOUBLE` column the one holding
-  `9007199254740993`; against a stub returning every document the same joins agree, but for the `-0.0` departure the
-  entry above records. `main`
-  sends the same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the bare
-  equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
-  its tests should hold a `REAL` key `0.1` against a stored `0.1` and a `DOUBLE` key 2^53 against a stored
-  `9007199254740993`.
+  column reads a stored `0.1` as the float nearest it, `1e-50` and `-1e-50` as `0.0` and `-0.0`, and a `DOUBLE` column
+  a stored integer past 2^53 as its double. A key equal to what the column reads is sent as a number the document does
+  not hold, so the document Calcite's own join matches is never fetched. On the emulator, each in a planned lookup, a
+  `REAL` key `0.1` lost the document holding `0.1`, a `REAL` `0.0` the one holding `1e-50` and a `-0.0` the one
+  holding `-1e-50`, and a `BIGINT` key 2^53 + 1, which the join casts to the double 2^53, joined to a `DOUBLE` column
+  the one holding `9007199254740993`; against a stub returning every document the same joins agree, but for the `-0.0`
+  departure the entry above records. `main` sends the same numbers, so the key match neither causes nor changes it.
+  The rendering graph, asked of the bare equality the restriction is a disjunction of, leaves `REAL` unplaced and
+  declines a `DOUBLE` comparison past 2^53; its tests should hold a `REAL` key `0.1` against a stored `0.1` and a
+  `DOUBLE` key 2^53 against a stored `9007199254740993`.
 - **The lookup join answers where Calcite's own join fails on a document no key fetches** — *medium, an answer where
   Calcite fails, older than the key match; left for a change of its own after "fail like Calcite", with "A filter above
   a lookup join".* `CosmosLookupJoin` reads only the documents its keys fetch, where Calcite's own join reads every

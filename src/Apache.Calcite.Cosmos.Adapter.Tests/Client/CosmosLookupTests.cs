@@ -529,6 +529,68 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// An infinite or NaN approximate key has no number to be sent as either: JSON holds none, and the SDK writes one as
+        /// the string <c>"Infinity"</c>, <c>"-Infinity"</c> or <c>"NaN"</c>, which no stored number equals. So the batch
+        /// holding it is fetched by the statement without the key restriction, as a decimal beyond a double's range is, and
+        /// the join's own comparison answers every key of it: an infinity pairs with a document its column reads as that
+        /// infinity, a key not yet cast to <c>REAL</c> among them, and a NaN with nothing. Sent restricted, an infinity lost
+        /// the document Calcite's own join matches.
+        /// </summary>
+        [Fact]
+        public async Task ANonFiniteApproximateKeyIsFetchedWithoutTheRestriction()
+        {
+            var unrestricted = new CosmosQuery("SELECT VALUE c FROM products c", Array.Empty<CosmosParameter>());
+            string[] documents = ["""{"id":"pinf","n":1e39}""", """{"id":"pminf","n":-1e39}""", """{"id":"p15","n":1.5}""", """{"id":"p0","n":0}"""];
+
+            object AsReal(JsonElement element) => java.lang.Float.valueOf((float)element.GetProperty("n").GetDouble());
+            object AsDouble(JsonElement element) => java.lang.Double.valueOf(element.GetProperty("n").GetDouble());
+
+            // Joins labelled keys to the documents, each read as the column reads its number, and answers the labels paired.
+            async Task<(List<string> Rows, CosmosQuery Sent)> Joined(SqlTypeName type, Func<JsonElement, object> read, bool left, params (string Label, object Key)[] keys)
+            {
+                var executor = new RecordingExecutor(documents);
+                var rows = await Collect(CosmosLookup.Join<(string Label, object Key), (string Id, object N), string>(
+                    new ListCursor<(string Label, object Key)>(keys),
+                    executor,
+                    null!,
+                    Query(),
+                    "@k",
+                    3,
+                    b => b.Key,
+                    element => (element.GetProperty("id").GetString()!, read(element)),
+                    p => p.N,
+                    (b, p) => $"{b.Label}/{p.Id}",
+                    type,
+                    unmatched: left ? (Func<(string Label, object Key), string>)(b => $"{b.Label}/null") : null,
+                    unrestricted: unrestricted));
+
+                return (rows, executor.Executed.Single());
+            }
+
+            var (rows, sent) = await Joined(SqlTypeName.REAL, AsReal, false,
+                ("inf", java.lang.Float.valueOf(float.PositiveInfinity)), ("minf", java.lang.Float.valueOf(float.NegativeInfinity)), ("r15", java.lang.Float.valueOf(1.5f)));
+            rows.Should().Equal("inf/pinf", "minf/pminf", "r15/p15");
+            sent.Sql.Should().Be(unrestricted.Sql);
+            Keys(sent).Should().BeEmpty();
+
+            // A direct caller's key not yet cast: Calcite's cast to REAL makes 1e39 an infinity.
+            (rows, sent) = await Joined(SqlTypeName.REAL, AsReal, false, ("big", java.lang.Double.valueOf(1e39)));
+            rows.Should().Equal("big/pinf");
+            sent.Sql.Should().Be(unrestricted.Sql);
+
+            (rows, sent) = await Joined(SqlTypeName.DOUBLE, AsDouble, true, ("nan", java.lang.Double.valueOf(double.NaN)), ("d15", java.lang.Double.valueOf(1.5d)));
+            rows.Should().Equal("nan/null", "d15/p15");
+            sent.Sql.Should().Be(unrestricted.Sql);
+            Keys(sent).Should().BeEmpty();
+
+            // A batch of finite keys is restricted as before.
+            (rows, sent) = await Joined(SqlTypeName.REAL, AsReal, false, ("r15", java.lang.Float.valueOf(1.5f)));
+            rows.Should().Equal("r15/p15");
+            sent.Sql.Should().Be(Query().Sql);
+            Keys(sent).Should().Equal(1.5d, 1.5d, 1.5d);
+        }
+
+        /// <summary>
         /// A <c>UUID</c> is one value however it was boxed: Calcite's <c>UuidValue</c>, Java's own, or a
         /// <see cref="Guid"/>.
         /// </summary>

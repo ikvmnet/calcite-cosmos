@@ -617,6 +617,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// A <c>REAL</c> column reads a stored <c>1e39</c> and <c>-1e39</c> as the infinities, and Calcite's own join of the
+        /// same statement, a hash join once the lookup is not offered, matches a small side's infinite keys with them. An
+        /// infinity has no JSON number, so the batch holding one is fetched by the statement without the key restriction,
+        /// and the lookup answers what Calcite's own join answers. Sent restricted, as the string the SDK writes for it, an
+        /// infinity lost both documents on the emulator.
+        /// </remarks>
+        [Fact]
+        public async Task AnInfiniteKeysBatchIsFetchedWithoutTheRestriction()
+        {
+            var products = new[] { """{"id":"pinf","n":1e39}""", """{"id":"pminf","n":-1e39}""", """{"id":"p15","n":1.5}""", """{"id":"p0","n":0}""" };
+            const string sql = "SELECT t.\"id\" FROM (VALUES (1, CAST('Infinity' AS REAL)), (2, CAST('-Infinity' AS REAL)), (3, CAST(1.5 AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var own = Plan(sql, lookup: false);
+            RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+            (await Execute(own)).Should().BeEquivalentTo(new object[] { "pinf", "pminf", "p15" });
+
+            Given(orders: System.Array.Empty<string>(), products: products);
+            var plan = Plan(sql);
+            RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+            (await Execute(plan)).Should().BeEquivalentTo(new object[] { "pinf", "pminf", "p15" });
+
+            var sent = _productsExecutor.Executed.Should().ContainSingle().Which;
+            sent.Sql.Should().NotContain(CosmosLookupJoin.KeyPrefix, "an infinity has no number the restriction could name");
+            Keys(sent).Should().BeEmpty();
+        }
+
+        /// <remarks>
         /// No container column reads a <c>DECIMAL</c>: the translator leaves <c>RETURNING DECIMAL</c> to the engine, which
         /// parses what the path holds. So no key is ever compared as a <c>DECIMAL</c> by a planned lookup, and a small side's
         /// <c>DECIMAL</c> key meets a container's number cast to the container's type, a <c>DOUBLE</c> here.
