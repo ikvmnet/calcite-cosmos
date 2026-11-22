@@ -437,9 +437,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// A <c>DECIMAL</c> key is bound as <c>CosmosQueries</c> binds a decimal parameter, a decimal where its double is
-        /// right and a long where the double is another whole number; where neither serves, or where the decimal would round
-        /// the key past its 28 places, as its double, which the service holds such a number as; and beyond a double's range
-        /// it fails by name.
+        /// right and a long where the double is another whole number; and where neither serves, or where the decimal would
+        /// round the key past its 28 places, as its double, which the service holds such a number as.
         /// </summary>
         [Fact]
         public async Task ADecimalKeyIsBoundAsTheNumberTheServiceComparesAsIt()
@@ -469,9 +468,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             // A decimal holds 28 places, and rounds a key past them to another number: 1E-30 to 0, which no document holding
             // 1E-30 equals. Each is sent as its double, which the stored number is held as.
             (await Bound("1E-30", "1.23456789E-25", "1.2345678901234567E-13")).Should().Equal(1e-30d, 1.23456789E-25d, 1.2345678901234567E-13d);
+        }
 
-            var beyond = () => Bound("1e400");
-            await beyond.Should().ThrowAsync<CosmosExecutionException>().WithMessage("*beyond the range of a double*");
+        /// <summary>
+        /// A <c>DECIMAL</c> key beyond a double's range has no number to be sent as, so the batch holding it is fetched by
+        /// the statement without the key restriction, and the join's own comparison answers every key of it: a document
+        /// whose number reads as the key is matched, as Calcite's own join matches it, and a left join keeps a row nothing
+        /// matched. It used to be answered as matching nothing, unsent, on a premise about what a document may hold.
+        /// </summary>
+        [Fact]
+        public async Task ADecimalKeyBeyondADoublesRangeIsFetchedWithoutTheRestriction()
+        {
+            var unrestricted = new CosmosQuery("SELECT VALUE c FROM products c", Array.Empty<CosmosParameter>());
+
+            IClrCursor<string> DecimalJoin(RecordingExecutor executor, bool left, CosmosQuery? open, params string[] keys) =>
+                CosmosLookup.Join<object, object, string>(
+                    new ListCursor<object>([.. keys.Select(k => (object)new java.math.BigDecimal(k))]),
+                    executor,
+                    null!,
+                    Query(),
+                    "@k",
+                    3,
+                    b => b,
+                    element => new java.math.BigDecimal(element.GetProperty("n").GetRawText()),
+                    p => p,
+                    (b, p) => $"{b}/{p}",
+                    SqlTypeName.DECIMAL,
+                    unmatched: left ? (Func<object, string>)(b => $"{b}/null") : null,
+                    unrestricted: open);
+
+            // The batch holding the key is sent without the restriction, and each of its keys pairs with what it fetched.
+            var inner = new RecordingExecutor("""{"n":1e400}""", """{"n":1}""", """{"n":2}""");
+            (await Collect(DecimalJoin(inner, false, unrestricted, "1e400", "1"))).Should().Equal("1E+400/1E+400", "1/1");
+            inner.Executed.Should().ContainSingle().Which.Sql.Should().Be(unrestricted.Sql);
+            Keys(inner.Executed.Single()).Should().BeEmpty();
+
+            var outer = new RecordingExecutor("""{"n":1}""");
+            (await Collect(DecimalJoin(outer, true, unrestricted, "1e400", "1"))).Should().Equal("1E+400/null", "1/1");
+            outer.Executed.Should().ContainSingle().Which.Sql.Should().Be(unrestricted.Sql);
+
+            // A batch without one is restricted as before.
+            var plain = new RecordingExecutor("""{"n":1}""");
+            (await Collect(DecimalJoin(plain, false, unrestricted, "1", "2"))).Should().Equal("1/1");
+            plain.Executed.Should().ContainSingle().Which.Sql.Should().Be(Query().Sql);
+            Keys(plain.Executed.Single()).Should().Equal(1m, 2m, 2m);
+
+            // Given no statement without the restriction, such a batch fails by name rather than answering unasked.
+            var missing = new RecordingExecutor("""{"n":1e400}""");
+            await FluentActions.Awaiting(() => Collect(DecimalJoin(missing, true, null, "1e400"))).Should().ThrowAsync<CosmosExecutionException>();
+            missing.Executed.Should().BeEmpty();
         }
 
         /// <summary>
@@ -920,6 +965,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 (b, p) => b + "/" + p,
                 SqlTypeName.VARCHAR,
                 0,
+                null,
                 null,
                 null,
                 null,

@@ -147,7 +147,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
         /// <summary>
         /// Returns the value a normalised key is bound as: a <c>DECIMAL</c> key as <c>CosmosQueries</c> sends a decimal
-        /// parameter, and every other key as it is.
+        /// parameter, and every other key as it is; or <c>null</c> for a key with no number to be sent as.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -162,13 +162,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// rounds (<c>1E-30</c> to 0). The service holds a number written so as its correctly rounded double, which a key
         /// equal to it rounds to as well. The restriction has only to keep every document the key could match, since the
         /// join compares every fetched key itself, so a document another key rounds alike to is fetched and left
-        /// unmatched. A key beyond a double's range is no number the service holds, and fails the batch by name rather
-        /// than be sent as an infinity.
+        /// unmatched.
+        /// </para>
+        /// <para>
+        /// <b>A key beyond a double's range has no number to be sent as</b>: its double is an infinity, which JSON writes
+        /// as no number. The restriction cannot name it, so the batch holding it is fetched without the restriction and
+        /// the join's own comparison of every document the probe keeps answers it, which rests on nothing about what a
+        /// document may hold. That costs request units in a case only a direct caller reaches, since no planned lookup
+        /// compares a <c>DECIMAL</c>.
         /// </para>
         /// </remarks>
         /// <param name="key">The key as <see cref="Normalize"/> made it, and as any spelling wrote it.</param>
-        /// <returns>The value bound.</returns>
-        /// <exception cref="CosmosExecutionException">A decimal key is beyond the range of a double.</exception>
+        /// <returns>The value bound, or <c>null</c> where the key has none.</returns>
         internal static object? Sent(object? key)
         {
             if (key is not java.math.BigDecimal value)
@@ -178,10 +183,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 return exact;
 
             var approximate = value.doubleValue();
-            if (double.IsInfinity(approximate))
-                throw new CosmosExecutionException($"The lookup key {value} is beyond the range of a double, and no number the service holds is equal to it.");
-
-            return approximate;
+            return double.IsInfinity(approximate) ? null : approximate;
         }
 
         /// <summary>
@@ -228,9 +230,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="query">The statement, rendered with <paramref name="parameterCount"/> key parameters.</param>
         /// <param name="prefix">The key parameters' name prefix.</param>
         /// <param name="parameterCount">How many key parameters the statement carries.</param>
-        /// <param name="keys">The batch's distinct keys, at most <paramref name="parameterCount"/> of them.</param>
+        /// <param name="keys">The batch's distinct keys as they are sent, at most <paramref name="parameterCount"/> of them.</param>
         /// <returns>The statement with every parameter bound.</returns>
-        /// <exception cref="CosmosExecutionException">A decimal key is beyond the range of a double.</exception>
         public static CosmosQuery Bind(CosmosQuery query, string prefix, int parameterCount, IReadOnlyList<object?> keys)
         {
             if (keys.Count == 0 || keys.Count > parameterCount)
@@ -240,7 +241,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             parameters.AddRange(query.Parameters);
 
             for (var i = 0; i < parameterCount; i++)
-                parameters.Add(new CosmosParameter(prefix + i.ToString(CultureInfo.InvariantCulture), Sent(keys[i < keys.Count ? i : keys.Count - 1])));
+                parameters.Add(new CosmosParameter(prefix + i.ToString(CultureInfo.InvariantCulture), keys[i < keys.Count ? i : keys.Count - 1]));
 
             return query with { Parameters = parameters };
         }
@@ -303,6 +304,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Writes a normalised key as the value its parameter is bound to, or <c>null</c> where the key is
         /// bound as it is. A key spelled as <c>null</c> names no document and is not fetched.
         /// </param>
+        /// <param name="unrestricted">
+        /// The statement without the key restriction, which a batch holding a key with no number to be sent as
+        /// (<see cref="Sent"/>) is fetched by; the planned join always gives it. A batch holding such a key fails by name
+        /// where none is given.
+        /// </param>
         /// <returns>The joined rows.</returns>
         /// <exception cref="ArgumentNullException">Any required argument is <c>null</c>.</exception>
         public static IClrCursor<TResult> Join<TBuild, TProbe, TResult>(
@@ -320,7 +326,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             int cacheSize = 0,
             CosmosLookupCache? shared = null,
             Func<TBuild, TResult>? unmatched = null,
-            Func<object, object?>? spell = null)
+            Func<object, object?>? spell = null,
+            CosmosQuery? unrestricted = null)
         {
             if (build is null)
                 throw new ArgumentNullException(nameof(build));
@@ -348,7 +355,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             if (query.SendsNothing == false)
                 query = CosmosQueries.Bind(query, root);
 
-            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell);
+            if (unrestricted is { SendsNothing: false } open)
+                unrestricted = CosmosQueries.Bind(open, root);
+
+            return new LookupCursor<TBuild, TProbe, TResult>(build, executor, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell, unrestricted);
         }
 
         /// <summary>
@@ -374,9 +384,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             CosmosLookupCache? shared,
             Func<TBuild, TResult>? unmatched,
             Func<object, object?>? spell,
+            CosmosQuery? unrestricted,
             CancellationToken cancellationToken)
         {
-            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell);
+            return Join(await build.ConfigureAwait(false), executor, root, query, prefix, batchSize, buildKey, rowBuilder, probeKey, resultSelector, comparison, cacheSize, shared, unmatched, spell, unrestricted);
         }
 
         /// <summary>
@@ -400,6 +411,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             readonly CosmosLookupCache? _shared;
             readonly Func<TBuild, TResult>? _unmatched;
             readonly Func<object, object?>? _spell;
+            readonly CosmosQuery? _unrestricted;
 
             // Held for the length of this join and no longer. A cache that outlived one execution
             // would have to answer for staleness, and this one cannot be stale in a way the join was
@@ -442,7 +454,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 int cacheSize,
                 CosmosLookupCache? shared,
                 Func<TBuild, TResult>? unmatched,
-                Func<object, object?>? spell)
+                Func<object, object?>? spell,
+                CosmosQuery? unrestricted)
             {
                 _build = build;
                 _executor = executor;
@@ -458,6 +471,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 _shared = shared;
                 _unmatched = unmatched;
                 _spell = spell;
+                _unrestricted = unrestricted;
                 _cache = cacheSize > 0 ? new Dictionary<object, List<TProbe>>() : null;
                 _statement = shared is null ? null : CosmosLookupCache.Statement(query);
                 _batch = new List<TBuild>(batchSize);
@@ -583,6 +597,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 var keys = new List<object?>();
                 var spelled = new List<object?>();
                 var seen = new HashSet<object>();
+                var unnamed = false;
 
                 foreach (var row in _batch)
                 {
@@ -611,17 +626,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                         continue;
                     }
 
-                    // A key with no spelling in the container's form names no document there: it is
-                    // answered as absent without asking.
-                    var value = _spell is null ? key : _spell(key);
-                    if (value is null)
+                    // A key with no spelling in the container's form names no document there: it is answered as absent
+                    // without asking.
+                    var written = _spell is null ? key : _spell(key);
+                    if (written is null)
                     {
                         _lookup[key] = new List<TProbe>();
                         continue;
                     }
 
                     keys.Add(key);
-                    spelled.Add(value);
+
+                    // A key with no number to be sent as cannot be named by the restriction, so the batch is fetched
+                    // without it.
+                    if (Sent(written) is { } value)
+                        spelled.Add(value);
+                    else
+                        unnamed = true;
                 }
 
                 // A probe whose WHERE keeps no document the declaration admits and fails on none answers every key as
@@ -639,7 +660,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 // it. The elements are already standalone: the executor clones what it yields.
                 var elements = _shared is null ? null : new Dictionary<object, List<JsonElement>>();
 
-                var cursor = await _executor.OpenAsync(Bind(_query, _prefix, _batchSize, spelled), cancellationToken: cancellationToken).ConfigureAwait(false);
+                // Every document the probe keeps, where the restriction cannot name a key of the batch; the join's own
+                // comparison below then answers every key of it.
+                var statement = unnamed
+                    ? _unrestricted ?? throw new CosmosExecutionException("A lookup key has no number it can be sent as, and the join was given no statement to fetch its batch without the key restriction.")
+                    : Bind(_query, _prefix, _batchSize, spelled);
+
+                var cursor = await _executor.OpenAsync(statement, cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 await using (cursor.ConfigureAwait(false))
                 {
@@ -647,7 +674,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     {
                         var element = cursor.Current;
                         var probe = _rowBuilder(element);
-                        if (Normalize(_probeKey(probe), _comparison) is not object key)
+
+                        // A row no key of the batch asked for is left where it is, which keeps a fetch without the
+                        // restriction from holding every document it reads.
+                        if (Normalize(_probeKey(probe), _comparison) is not object key || seen.Contains(key) == false)
                             continue;
 
                         if (fetched.TryGetValue(key, out var rows) == false)

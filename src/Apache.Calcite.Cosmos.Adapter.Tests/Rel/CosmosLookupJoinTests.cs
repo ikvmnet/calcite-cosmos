@@ -316,6 +316,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         }
 
         /// <remarks>
+        /// Beside the restricted statement the lookup is handed the same statement without the restriction, which a batch
+        /// holding a key with no number to be sent as is fetched by (<c>CosmosLookup.Sent</c>): the probe's own
+        /// <c>WHERE</c> alone, with its parameters and everything else the statement carries.
+        /// </remarks>
+        [Fact]
+        public void TheStatementWithoutTheRestrictionIsTheProbesOwn()
+        {
+            Given(orders: System.Array.Empty<string>(), products: System.Array.Empty<string>());
+
+            var plan = Plan("SELECT o.id, p.\"$.category\" FROM orders o JOIN (SELECT * FROM products WHERE \"_ts\" > ?) p ON o.id = p.id");
+            var join = FindLookup(plan);
+            join.Should().NotBeNull(RelOptUtil.toString(plan));
+
+            var (query, unrestricted, _, _) = global::Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosConverters.GenerateLookupQuery(join!.getRight(), join.getCluster().getRexBuilder(), join.ProbeKey, "@k", 3);
+
+            unrestricted.Sql.Should().NotContain("@k");
+            var where = unrestricted.Sql[(unrestricted.Sql.IndexOf(" WHERE ", System.StringComparison.Ordinal) + " WHERE ".Length)..];
+            where.Should().Contain("c._ts > ");
+            query.Sql.Should().Be(unrestricted.Sql.Replace(" WHERE " + where, $" WHERE ({where} AND c.id IN (@k0, @k1, @k2))"));
+            unrestricted.Should().Be(query with { Sql = unrestricted.Sql });
+        }
+
+        /// <remarks>
         /// Two statements, the build side's and the lookup's, and each reaches <c>Hook.QUERY_PLAN</c>
         /// once though the plan is implemented for both ways of opening it (#211).
         /// </remarks>

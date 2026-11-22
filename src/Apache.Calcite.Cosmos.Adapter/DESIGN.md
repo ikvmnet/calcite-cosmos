@@ -6448,7 +6448,11 @@ reads one; that arm serves a direct caller of `CosmosLookup.Join`. The batch's d
 and the match all read it. A key is bound as a number of that type, a decimal as a statement's decimal
 parameter is (`CosmosRexLiterals.TryGetExactNumberValue`), or as its double where that has no exact answer,
 which is how the service holds such a number; the join's own comparison then leaves out whatever else that
-double fetched. The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi
+double fetched. A decimal beyond a double's range has no number to be sent as, so the restriction cannot
+name it: the batch holding it is fetched by the probe's own statement without the restriction, rendered
+beside the restricted one, and the join's own comparison answers every key of it, which rests on nothing
+about what a document may hold and costs request units only, in a case only a direct caller reaches. The
+condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi
 key too, matches a null key with a null one, which no fetch by key finds.
 
 **Calcite's own join never matches `-0.0` with `0.0`, and the lookup follows `=`.** Calcite's equi-join in

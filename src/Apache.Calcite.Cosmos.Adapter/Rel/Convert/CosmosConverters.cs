@@ -156,6 +156,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// A fixed number of parameters, because the statement is rendered once and run per batch. A
         /// short batch repeats a key rather than re-rendering — see <c>CosmosLookup.Bind</c>.
         /// </para>
+        /// <para>
+        /// The same statement without the restriction is rendered beside it: what a batch holding a key the
+        /// restriction cannot name, one with no number to be sent as (<c>CosmosLookup.Sent</c>), is fetched by, so
+        /// that the join's own comparison of every document the probe keeps answers it.
+        /// </para>
         /// </remarks>
         /// <param name="input">The subtree being restricted.</param>
         /// <param name="rexBuilder">Used when translating expressions.</param>
@@ -167,9 +172,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// path holding one spelling per value, whose keys are bound in that spelling. See
         /// <c>CosmosLookupJoinRule.TryProbeKey</c>.
         /// </param>
-        /// <returns>The statement, the bindings of its output fields, and how each is to be read back.</returns>
+        /// <returns>
+        /// The statement, the same statement without the restriction, the bindings of its output fields, and how each is
+        /// to be read back.
+        /// </returns>
         /// <exception cref="CosmosTranslationException">The subtree or its key has no Cosmos equivalent.</exception>
-        public static (CosmosQuery Query, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize, CosmosPath? keyPath = null)
+        public static (CosmosQuery Query, CosmosQuery Unrestricted, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings) GenerateLookupQuery(RelNode input, RexBuilder rexBuilder, int keyOrdinal, string prefix, int batchSize, CosmosPath? keyPath = null)
         {
             if (input.getConvention() is not CosmosConvention convention)
                 throw new CosmosTranslationException($"Node '{input.getRelTypeName()}' is not in the Cosmos convention.");
@@ -190,10 +198,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 names[i] = prefix + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var restriction = $"{keyPath} IN ({string.Join(", ", names)})";
+            var where = implementor.Query.Where;
 
-            implementor.Query.Where = string.IsNullOrEmpty(implementor.Query.Where)
+            implementor.Query.Where = string.IsNullOrEmpty(where)
                 ? restriction
-                : $"({implementor.Query.Where} AND {restriction})";
+                : $"({where} AND {restriction})";
 
             EnsureProjection(implementor, input.getRowType());
 
@@ -209,7 +218,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // extractor reads literals only and so would not have offered one, but a point read applies
             // no predicate at all — it would ignore this and return a document the batch did not ask
             // for, which is a wrong answer rather than a slow one. Both forms, for the same reason.
-            return (query with { PointReadId = null, PointReadIds = null }, fields, readings);
+            query = query with { PointReadId = null, PointReadIds = null };
+
+            // The probe's own WHERE alone, with everything else the statement carries.
+            implementor.Query.Where = where;
+            var unrestricted = query with { Sql = implementor.Query.Build() };
+
+            return (query, unrestricted, fields, readings);
         }
 
         /// <summary>
