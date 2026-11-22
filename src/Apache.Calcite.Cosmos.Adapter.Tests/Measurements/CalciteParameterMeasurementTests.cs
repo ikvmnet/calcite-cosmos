@@ -310,9 +310,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// </summary>
         /// <remarks>
         /// <para>
-        /// The judge's probe, widened. Each case is a statement over an in-process table that records what the data
-        /// context holds for <c>?0</c> when it is scanned, bound once through <c>jdbc:calcite:</c> and once through the
-        /// ADO.NET driver, as <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases.
+        /// Each case is a statement over an in-process table that records what the data context holds for <c>?0</c> when
+        /// it is scanned, bound once through <c>jdbc:calcite:</c> and once through the ADO.NET driver, as
+        /// <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases.
         /// </para>
         /// <para>
         /// <b>A NaN, +Infinity or −Infinity bound to a <c>DOUBLE</c>, a <c>REAL</c> or a <c>FLOAT</c> column's parameter,

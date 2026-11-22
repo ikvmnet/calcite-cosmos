@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Client;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
@@ -310,6 +311,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var query = Query("""SELECT c."id" FROM items AS c FETCH NEXT 3 ROWS ONLY""");
 
             CosmosQueries.Bind(query, new Context(new Dictionary<string, object?>())).Should().Be(query);
+        }
+
+        /// <summary>
+        /// A parameter bound to a value that is an infinity once converted fails the statement by name wherever the
+        /// statement reads it: compared, added into a projected column, or as a column's value under a <c>COALESCE</c> or a
+        /// <c>CASE</c>; a finite value is sent.
+        /// </summary>
+        /// <remarks>
+        /// Through Calcite's own driver the string <c>'1e400'</c> bound to a <c>DOUBLE</c> parameter is +Infinity, which
+        /// Calcite compares and projects. The SDK writes it as the JSON string <c>"Infinity"</c>: a projected sum over it
+        /// came back null where Calcite answers the infinity, and a column holding it failed when the row was read, its
+        /// reader refusing a string.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) < ?""")]
+        [InlineData("""SELECT c."id", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) + ? FROM items AS c""")]
+        [InlineData("""SELECT c."id", COALESCE(JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE), ?) FROM items AS c""")]
+        [InlineData("""SELECT c."id", CASE WHEN JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) > 0 THEN ? ELSE 0E0 END FROM items AS c""")]
+        public void AValueThatIsAnInfinityOnceConvertedFailsByNameWhereverItIsRead(string sql)
+        {
+            var query = Query(sql);
+            query.Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "the statement reads the parameter: " + query.Sql);
+
+            FluentActions.Invoking(() => CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "1e400" }))).Should().Throw<CosmosExecutionException>()
+                .WithMessage("Parameter ?0 is Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number*");
+            CosmosQueries.Bind(query, new Context(new Dictionary<string, object?> { ["?0"] = "2.5" })).Parameters.Select(p => p.Value).Should().Contain(2.5d,
+                "a finite value is sent as the double Calcite converts it to");
         }
 
         /// <summary>

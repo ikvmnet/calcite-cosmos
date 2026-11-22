@@ -227,22 +227,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         // -- A non-finite value ----------------------------------------------------------------------
 
-        static object? BindCompared(SqlTypeName? type, object? held, bool compared = true) => CosmosQueries.Bind(
-            Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { TypeName = type, Compared = compared })),
-            new Context(("?0", held))).Parameters[0].Value;
-
         /// <summary>
-        /// A value that is NaN or an infinity once converted, in a slot a comparison reads, fails the statement by name: a
-        /// finite value Calcite's conversion carries past an approximate type's range, as
+        /// A value that is NaN or an infinity once converted fails the statement by name, whatever its type and wherever
+        /// the statement reads it: a finite value Calcite's conversion carries past an approximate type's range, as
         /// <c>CalciteParameterMeasurementTests.ANonFiniteDoubleParameterRaises</c> measures it, and a non-finite double an
-        /// <c>ANY</c> slot or an untyped one holds as it arrived.
+        /// <c>ANY</c>, a <c>VARIANT</c> or an untyped slot holds as it arrived.
         /// </summary>
         /// <remarks>
         /// A bridge: the SDK writes the value as a JSON string (<see cref="ANonFiniteDoubleIsNoJsonNumber"/>), which the
-        /// service would compare as a string where Calcite compares the number.
+        /// service reads as a string where Calcite reads the number.
         /// </remarks>
         [Fact]
-        public void ANonFiniteValueAComparisonReadsIsRefusedByName()
+        public void ANonFiniteValueIsRefusedByName()
         {
             var cases = new (string Case, SqlTypeName? Type, object Held, string Spelled)[]
             {
@@ -252,28 +248,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 ("REAL, double 1e39", SqlTypeName.REAL, java.lang.Double.valueOf(1e39), "Infinity"),
                 ("REAL, double -1e39", SqlTypeName.REAL, java.lang.Double.valueOf(-1e39), "-Infinity"),
                 ("ANY, double NaN", SqlTypeName.ANY, java.lang.Double.valueOf(double.NaN), "NaN"),
+                ("VARIANT, double +Infinity", SqlTypeName.VARIANT, java.lang.Double.valueOf(double.PositiveInfinity), "Infinity"),
                 ("untyped, double +Infinity", null, java.lang.Double.valueOf(double.PositiveInfinity), "Infinity"),
             };
 
             using var scope = new AssertionScope();
             foreach (var (name, type, held, spelled) in cases)
-                FluentActions.Invoking(() => BindCompared(type, held)).Should().Throw<CosmosExecutionException>(name)
-                    .WithMessage($"Parameter ?0 is {spelled} once Calcite converts it to its type, and a comparison reads it: the Cosmos DB SDK writes a NaN or an infinity as a JSON string*");
+                FluentActions.Invoking(() => BindAs(type, held)).Should().Throw<CosmosExecutionException>(name)
+                    .WithMessage($"Parameter ?0 is {spelled}, which the Cosmos DB SDK writes as a JSON string rather than a number, so the statement cannot be sent*");
         }
 
         /// <summary>
-        /// A finite value is sent, −0.0 as the 0.0 Calcite converts it to; a text slot holding <c>'NaN'</c> is a string;
-        /// and a slot no comparison reads sends the infinity a value converts to. A NaN in a numeric slot no comparison
-        /// reads still fails, by the conversion's name, as Calcite's conversion fails it projected.
+        /// A finite value is sent, −0.0 as the 0.0 Calcite converts it to, and a text slot holding <c>'NaN'</c> is a string;
+        /// a NaN bound to a numeric slot fails by the conversion's name, as Calcite's conversion fails it.
         /// </summary>
         [Fact]
-        public void AFiniteValueOrOneNoComparisonReadsIsSent()
+        public void AFiniteValueIsSent()
         {
-            BindCompared(SqlTypeName.DOUBLE, java.lang.Double.valueOf(1.5)).Should().Be(1.5d);
-            BindCompared(SqlTypeName.DOUBLE, java.lang.Double.valueOf(-0.0d)).Should().BeOfType<double>().Which.Should().Match(d => d == 0d && double.IsNegative(d) == false, "−0.0 is finite, and sent as the 0.0 Calcite's conversion reads it as through a BigDecimal, which has no −0.0");
-            BindCompared(SqlTypeName.VARCHAR, "NaN").Should().Be("NaN", "the text 'NaN' is a string");
-            BindCompared(SqlTypeName.DOUBLE, "1e400", compared: false).Should().Be(double.PositiveInfinity, "a projection computes with the value as it is sent");
-            FluentActions.Invoking(() => BindCompared(SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.NaN), compared: false)).Should().Throw<CosmosExecutionException>()
+            BindAs(SqlTypeName.DOUBLE, java.lang.Double.valueOf(1.5)).Should().Be(1.5d);
+            BindAs(SqlTypeName.DOUBLE, java.lang.Double.valueOf(-0.0d)).Should().BeOfType<double>().Which.Should().Match(d => d == 0d && double.IsNegative(d) == false, "−0.0 is finite, and sent as the 0.0 Calcite's conversion reads it as through a BigDecimal, which has no −0.0");
+            BindAs(SqlTypeName.VARCHAR, "NaN").Should().Be("NaN", "the text 'NaN' is a string");
+            FluentActions.Invoking(() => BindAs(SqlTypeName.DOUBLE, java.lang.Double.valueOf(double.NaN))).Should().Throw<CosmosExecutionException>()
                 .WithMessage("Parameter ?0 cannot be converted to its type, DOUBLE, *");
         }
 

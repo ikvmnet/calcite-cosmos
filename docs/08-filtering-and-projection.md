@@ -541,14 +541,13 @@ infinity bound to a numeric one, anything but a boolean bound to a `BOOLEAN` one
 fails only once it reads a row, and over a container or a partition holding none it answers no rows; the
 adapter fails before anything is sent, whatever the container holds.
 
-**A value that is an infinity once converted fails a comparison.** A finite value can become one in the
+**A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in the
 conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the double
-`1e39` bound to a `REAL` one, is +Infinity. Calcite compares with it, but the Cosmos DB SDK writes an
-infinity as the string `"Infinity"`, which the service would compare as a string, so a statement in which a
-comparison reads the parameter fails when it runs, where Calcite answers (Chapter 22). The ADO.NET driver
-hands Calcite the infinity itself, which Calcite cannot convert, so through it both fail. A projection that
-computes with such a value is not refused: the service computes over the string, and a sum with it comes
-back null where Calcite answers the infinity.
+`1e39` bound to a `REAL` one, is +Infinity. A parameter of type `ANY` or `VARIANT` is sent as bound, a NaN
+included. The Cosmos DB SDK writes such a number as a JSON string, which the service would read as a string,
+so a statement that reads the parameter anywhere fails when it runs, where Calcite may answer: it compares
+with an infinity and projects one (Chapter 22). The ADO.NET driver hands Calcite the infinity itself, which
+Calcite cannot convert, so through it both fail.
 
 **Two values that may both be a JSON null are compared in process** where equal values satisfy the
 comparison — `=`, `<=`, `>=` — as in `JSON_VALUE(c."DOC", '$.t') = JSON_VALUE(c."DOC", '$.u')` over paths

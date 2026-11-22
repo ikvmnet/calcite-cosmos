@@ -106,18 +106,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public org.apache.calcite.sql.type.SqlTypeName? TypeName { get; init; }
 
         /// <summary>
-        /// Gets whether a comparison reads the value: set by the writer that makes the slot, where the parameter stands in
-        /// a comparison's operand, beneath whatever computes the operand from it.
-        /// </summary>
-        /// <remarks>
-        /// What the service does with the value there depends on its being sent as the value Calcite compares, and a NaN
-        /// or an infinity cannot be: the Cosmos DB SDK writes it as a JSON string. So
-        /// <see cref="Client.CosmosQueries.Bind"/> refuses a non-finite value in a compared slot, and leaves one a
-        /// projection carries to be computed as it is (TODO.md).
-        /// </remarks>
-        public bool Compared { get; init; }
-
-        /// <summary>
         /// Gets the name Calcite binds the value under in the data context.
         /// </summary>
         /// <remarks>
