@@ -1,3 +1,5 @@
+using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+
 using FluentAssertions;
 
 using Xunit;
@@ -27,7 +29,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// Text compares by UTF-16 code unit: U+E000 and U+FFFD above U+1F600, <c>true</c> and <c>false</c> above
         /// <c>bikes</c>, <c>30</c> below.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Calcite.TextOrderIsByCodeUnit")]
         public void TextComparesByUtf16Unit()
         {
             using var connection = MaterialisedTable.Open();

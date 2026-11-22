@@ -257,7 +257,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "in every case");
         }
 
-        [Fact]
+        [Fact, CosmosPins("Calcite.ReturningAsserts")]
         public void ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt()
         {
             // Where the document holds exactly the type named, it answers.
