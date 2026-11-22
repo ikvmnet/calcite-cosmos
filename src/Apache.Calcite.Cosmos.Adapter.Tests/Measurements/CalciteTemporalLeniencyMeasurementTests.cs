@@ -733,7 +733,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The clause asserts the extracted type rather than converting to it (<c>Calcite.ReturningAsserts</c>), so no
         /// stored string is a value of it, and an accessor so typed over a declared form has no column the service could
         /// send in its place. The numbers and the absent path are the controls: the raise is the string's, not the
-        /// clause's, and it is told apart from a null.
+        /// clause's, and it is told apart from a null. <see cref="CosmosStoredForms.ReturningReads"/> is held to it for
+        /// every registered form and type.
         /// </remarks>
         [Fact, CosmosPins("Calcite.ReturningReadsNoStoredString")]
         public void AReturningClauseRaisesOverEveryStoredString()
@@ -777,6 +778,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var absent = MaterialisedTable.Of(["{}"]);
             foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" })
                 absent.Values(connection, $"JSON_VALUE(\"d\", '$.s' RETURNING {type})")[0].Should().BeNull($"RETURNING {type} over an absent path is null, not a raise");
+
+            // And the reading an accessor so typed asks before it is sent says the same of every form.
+            foreach (var representation in CosmosTemporalForms.Registered)
+                foreach (var parts in new[] { CosmosTemporalParts.Date, CosmosTemporalParts.Time, CosmosTemporalParts.Instant })
+                    CosmosStoredForms.ReturningReads(representation, parts).Should().BeFalse($"RETURNING reads no string of {representation.Name} into {parts}");
         }
 
     }
