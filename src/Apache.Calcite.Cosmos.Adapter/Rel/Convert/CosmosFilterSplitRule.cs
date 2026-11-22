@@ -859,8 +859,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// correlation, or the condition so read grows past the rule's bloat.
         /// </summary>
         /// <remarks>
-        /// The rule the adapter registers (<see cref="CosmosRules"/>), its bloat read from its own configuration, so the
-        /// answer is the one it gives itself when it matches the filter over the projection.
+        /// The rule the adapter registers (<see cref="CosmosRules"/>). Its bloat is read from its own configuration; the window
+        /// and the correlation repeat what its match and its default operand ask in the Calcite build the adapter resolves.
         /// </remarks>
         internal static RexNode? Transposed(RexNode condition, Project project)
         {

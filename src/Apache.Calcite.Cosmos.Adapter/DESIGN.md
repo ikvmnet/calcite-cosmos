@@ -11580,12 +11580,12 @@ a weakening is pushed twice: read only through its own rows, `SELECT c."DOC", JS
 '$.price') AS "p" FROM products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 =
 12` sent `IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
 (`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument`).
-The split still ends: each push adds to what is applied beneath its residual a predicate
-not applied there before, drawn from a finite set, and reading beneath a projection
-only adds what is assumed. The half a weakening rides in goes over a projection only
-where it reaches the service, through a member already part of a statement or through
-the transpose asked its own conditions (a window, a correlation, its bloat); elsewhere
-the conjuncts admitted go alone, since Calcite has no body for the service's form
+The split still ends: each push adds to what is applied beneath its residual a predicate not applied
+there before, drawn from a finite set, and reading beneath a projection only adds what is assumed.
+The half a weakening rides in goes over a projection only where it reaches the service, through a
+member already part of a statement or through the transpose asked its own conditions (a window, a
+correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcite has no body for
+the service's form
 (`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
 Nor does it register a pair over a projection the service may select holding a computed column whose
 reading can refuse a value, whatever the condition left above reads, nor over a projection or a

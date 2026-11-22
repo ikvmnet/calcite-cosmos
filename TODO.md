@@ -4150,9 +4150,9 @@ across documents* and *A join of a container to itself* is the record.
 - **A traversal over a view projecting a reading that can refuse** — *small, soundness; on `main`.* `SELECT v."n" FROM
   (SELECT t."DOC" AS "d", t."n", x AS "tag" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
   FROM products AS c) AS t, UNNEST(StringToArray(JSON_QUERY(t."DOC", '$.tags'))) AS x) AS v WHERE
-  INITCAP(JSON_VALUE(v."d", '$.name')) = 'Steel'`, bare and as a host plans, sends `SELECT VALUE { "DOC": c, "n":
-  (IS_NUMBER(c.n) ? c.n : null) } FROM products c WHERE IS_DEFINED(c.name)` and fails to implement: Calcite is left a
-  calc holding `StringToArray`, which has no in-process body ("cannot translate call StringToArray"). With
+  INITCAP(JSON_VALUE(v."d", '$.name')) = 'Steel'`, bare and as a host plans, plans `SELECT VALUE { "DOC": c, "n":
+  (IS_NUMBER(c.n) ? c.n : null) } FROM products c WHERE IS_DEFINED(c.name)` beneath a calc holding `StringToArray`,
+  which has no in-process body, and fails to implement ("cannot translate call StringToArray"). With
   `JSON_VALUE(c."DOC", '$.type') = 'Park'` in the view, bare, the traversal reaches the service, `… "n": (IS_NUMBER(c.n)
   ? c.n : null), "EXPR$0": t0 } FROM products c JOIN t0 IN c.tags WHERE ((c.type = @p0) AND IS_DEFINED(c.name))`, and
   the refusing column is selected beneath the case fold kept in process: the split rule's question of what can refuse
