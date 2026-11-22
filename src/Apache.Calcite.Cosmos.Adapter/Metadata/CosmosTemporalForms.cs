@@ -444,10 +444,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>24:00:00</c> and <c>99:99:99</c> are later than every time of day
         /// (<c>Calcite.TimeCastRollsAClocksFields</c>). The forms' languages hold those strings, so no
         /// comparison or order of the stored strings stands for the cast's, as none stands for a
-        /// parse's (<see cref="ParsesExactly"/>). An accessor typed <c>TIME</c> asks this table too,
-        /// and <c>RETURNING TIME</c> raises over every string
-        /// (<c>Calcite.ReturningReadsNoStoredString</c>), where the bare path read back answered a
-        /// time; with no row it is computed in process, where it raises.
+        /// parse's (<see cref="ParsesExactly"/>).
         /// </para>
         /// <para>
         /// <b>The calendar date's row stays, and its day zero is recorded rather than fixed.</b> The
@@ -474,12 +471,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>CalciteTemporalLeniencyMeasurementTests</c> are the measurements.
         /// </para>
         /// <para>
-        /// <b><c>JSON_VALUE(…, RETURNING TIMESTAMP)</c> is not in here at all, and cannot be.</b>
-        /// Measured: it raises for <em>every</em> string, including the one the cast accepts, and
-        /// answers correctly for a JSON <em>number</em> of epoch milliseconds. The clause asserts the
+        /// <b>An accessor's <c>RETURNING</c> clause is not this table's.</b> Measured,
+        /// <c>JSON_VALUE(…, RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>
+        /// raise over <em>every</em> string, the ones the cast reads included, and read a JSON
+        /// <em>number</em> (<c>Calcite.ReturningReadsNoStoredString</c>): the clause asserts the
         /// extracted type rather than converting to it — the same reading this codebase already
-        /// arrived at for <c>RETURNING INTEGER</c>. So over a path storing text there is no shape it
-        /// reads, and no row here could say otherwise.
+        /// arrived at for <c>RETURNING INTEGER</c>. So the accessor asks <see cref="ReturningReads"/>,
+        /// and this table is the plain cast's alone. It used to ask this one, and an accessor typed
+        /// <c>DATE</c> or <c>TIMESTAMP</c> over a declared calendar date, or <c>TIME</c> over a declared
+        /// time of day, was sent as the bare path and answered every row where the query raises.
         /// </para>
         /// </remarks>
         static readonly Dictionary<string, CosmosTemporalParts[]> EngineTargets = new(StringComparer.Ordinal)
@@ -502,6 +502,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <returns><c>true</c> where the engine reads the shape into that type.</returns>
         public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
             EngineTargets.TryGetValue(representation.Name, out var targets) && Array.IndexOf(targets, target) >= 0;
+
+        /// <summary>
+        /// Determines whether an accessor's <c>RETURNING</c> clause, into a value holding the given
+        /// halves of an instant, reads this form's stored text as the value it denotes: for no form
+        /// and no type.
+        /// </summary>
+        /// <remarks>
+        /// <c>JSON_VALUE(…, RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>
+        /// assert the extracted type rather than converting to it, and raise over a string of every
+        /// registered temporal form, reading only a JSON number of days, of milliseconds into the
+        /// day or of milliseconds since the epoch (<c>Calcite.ReturningReadsNoStoredString</c>). Every
+        /// form here is a language of strings, so the accessor reads none of them, and an accessor so
+        /// typed is computed in process, where it raises as the query does. The plain cast, which does
+        /// read a calendar date, is <see cref="EngineReads"/>'s.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="target">The halves of an instant the accessor's type holds.</param>
+        /// <returns><c>false</c>: measured, the clause reads no stored string.</returns>
+        public static bool ReturningReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
+            false;
 
         /// <summary>
         /// Returns every format that reads this form's canonical strings as the instants they spell.

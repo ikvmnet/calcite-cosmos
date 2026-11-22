@@ -978,8 +978,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <para>
         /// <b>Which guard each accessor takes is <see cref="ReadingTests"/>'s to say</b>, and is not
         /// said again here: the guard is the reading's null set, which the null test and a comparison's
-        /// guard read from the same place. A date or a time is written without it, being admitted
-        /// only over a declared stored form, where its guard would read null for nothing — see
+        /// guard read from the same place. A date, a time or a timestamp would be written without it,
+        /// being admitted only over a declared stored form its clause reads, where its guard would read
+        /// null for nothing; measured, the clause reads none, so none is admitted — see
         /// <see cref="RequireTheEngineCouldRead"/>. <c>DECIMAL</c> does not reach here. It parses a
         /// stored string that spells a number rather than asserting its class
         /// (<c>CalciteJsonValueMeasurementTests.EachNumericOrBooleanReturningAssertsItsClassButDecimal</c>),
@@ -992,9 +993,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsPlainJsonQuery(call) && IsCollectionJsonQuery(call) == false)
                 throw new CosmosTranslationException("A JSON_QUERY inside an expression is the fragment as text, which the service has no way to produce -- the enclosing operator would run over the value instead. JSON_QUERY renders as a column of its own, where the reading writes the text.");
 
-            // A date or a time is the one reading left bare. RequireTheEngineCouldRead admits it only
-            // over a stored form the container declares, which is a string, so the path holds nothing
-            // its guard would read null for -- and a guard costs a point read whose columns include one.
+            // A temporal reading is the one left bare. RequireTheEngineCouldRead admits one only over a
+            // stored form the container declares and the clause reads, which today is none; such a form
+            // is a string, so the path would hold nothing its guard reads null for -- and a guard costs a
+            // point read whose columns include one.
             if (Metadata.CosmosTemporalParse.PartsOf(call.getType()?.getSqlTypeName()) != Metadata.CosmosTemporalParts.None)
             {
                 builder.Append(rendered);
@@ -2386,8 +2388,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// Refuses an accessor the plan types as temporal over a path the engine could not have read,
-        /// so that the pushed plan does not answer where the query raises.
+        /// Refuses an accessor the plan types as temporal over a path its <c>RETURNING</c> clause does
+        /// not read, which is every declared form, so that the pushed plan does not answer where the
+        /// query raises.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -2402,10 +2405,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </para>
         /// <para>
         /// <b>Refusing is the whole fix, and it costs what it costs.</b> The column stays in process,
-        /// where it raises — which is the answer the query has. What replaces it is the parse: a
-        /// caller who writes <c>PARSE_DATETIME(&lt;format&gt;, &lt;path&gt;)</c> names how the text is
-        /// read, the engine can read it, and <see cref="TryStoredInstantProjection"/> pushes it. That
-        /// is the spelling that works and the one <c>README.md</c> now points at.
+        /// where it raises — which is the answer the query has. A caller who writes
+        /// <c>PARSE_DATETIME(&lt;format&gt;, &lt;path&gt;)</c> names how the text is read and the engine
+        /// can read it, but measured, the parse carries a field past its range over, so
+        /// <see cref="TryStoredInstantProjection"/> declines it too and the column is computed in
+        /// process (<see cref="Metadata.CosmosStoredForms.ParsesExactly"/>). <c>RETURNING DATE</c> and
+        /// <c>RETURNING TIME</c> raise over every string as <c>RETURNING TIMESTAMP</c> does
+        /// (<c>Calcite.ReturningReadsNoStoredString</c>), so what is asked is
+        /// <see cref="Metadata.CosmosStoredForms.ReturningReads"/>, which no form answers. It was
+        /// <see cref="Metadata.CosmosStoredForms.EngineReads"/>, the plain cast's table, and the cast
+        /// reads a calendar date and a time of day: an accessor typed <c>DATE</c> or <c>TIMESTAMP</c>
+        /// over a declared date, or <c>TIME</c> over a declared time of day, was sent down and answered
+        /// every row where the query raises.
         /// </para>
         /// <para>
         /// <b>One choke point rather than one per clause.</b> Every clause reaches an accessor through
@@ -2417,7 +2428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </remarks>
         /// <param name="call">The accessor.</param>
         /// <param name="path">The path it addresses.</param>
-        /// <exception cref="CosmosTranslationException">The engine could not have read the shape.</exception>
+        /// <exception cref="CosmosTranslationException">The engine does not read the shape through the clause.</exception>
         void RequireTheEngineCouldRead(RexCall call, CosmosPath path)
         {
             var held = Metadata.CosmosTemporalParse.PartsOf(call.getType()?.getSqlTypeName());
@@ -2426,14 +2437,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
             if (DocumentOf(path) is JsonDocumentPath document
                 && Facts.RepresentationOf(document) is Metadata.CosmosRepresentation representation
-                && Metadata.CosmosStoredForms.EngineReads(representation, held))
+                && Metadata.CosmosStoredForms.ReturningReads(representation, held))
                 return;
 
             throw new CosmosTranslationException(
-                $"An accessor typed '{call.getType()}' over '{path}' has no Cosmos form: measured, Calcite reads a "
-                + "stored string into that type only for a calendar date and a whole-second time of day, and raises "
-                + "for every ISO-8601 instant. Sending the path down would answer a value where the query raises. "
-                + "PARSE_DATETIME with a format the declared shape is read by is the spelling that pushes.");
+                $"An accessor typed '{call.getType()}' over '{path}' has no Cosmos form: measured, Calcite's RETURNING "
+                + "clause raises over every string read into a date, a time or a timestamp, the strings of every declared "
+                + "form among them. Sending the path down would answer a value the query does not.");
         }
 
         /// <summary>

@@ -531,6 +531,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Nor does an accessor typed <c>DATE</c> or <c>TIMESTAMP</c> over a declared calendar date go
+        /// down, as a column or as a sort key.
+        /// </summary>
+        /// <remarks>
+        /// The plain cast reads the form's canonical strings, and <c>RETURNING</c> is not the cast: it
+        /// raises over every string, <c>2024-01-15</c> among them
+        /// (<c>Calcite.ReturningReadsNoStoredString</c>). Sent as the bare path, the column answered
+        /// every row's date and the sort ordered the stored text, for a query that raises on every row.
+        /// </remarks>
+        [Theory]
+        [InlineData("DATE")]
+        [InlineData("TIMESTAMP")]
+        public void AnAccessorTypedDateOrTimestampOverADeclaredDateIsNotSentDown(string type)
+        {
+            var container = Container("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
+
+            var projected = PlanToCosmos(
+                $"""SELECT JSON_VALUE(c."DOC", '$.at' RETURNING {type}) AS "at" FROM items AS c""",
+                container);
+            var sorted = PlanToCosmos(
+                $"""SELECT c."id" FROM items AS c ORDER BY JSON_VALUE(c."DOC", '$.at' RETURNING {type}) FETCH NEXT 20 ROWS ONLY""",
+                container);
+
+            Query(FindCosmos(projected), container).Sql.Should().NotContain("\"at\": c.at",
+                "the engine raises over every string read into the type, so the column stays where it raises");
+            Query(FindCosmos(sorted), container).Sql.Should().NotContain("ORDER BY",
+                "nor is the stored text's order the order of values the query has none of");
+        }
+
+        /// <summary>
         /// A format that is not a literal is refused, whatever the document happens to hold there.
         /// </summary>
         /// <remarks>
