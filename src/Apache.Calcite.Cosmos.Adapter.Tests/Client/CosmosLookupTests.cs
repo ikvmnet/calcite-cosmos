@@ -643,9 +643,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// A <c>DECIMAL</c> key beyond a double's range has no number to be sent as, so the batch holding it is fetched by
-        /// the statement without the key restriction, and the join's own comparison answers every key of it: a document
-        /// whose number reads as the key is matched, as Calcite's own join matches it, and a left join keeps a row nothing
-        /// matched. It used to be answered as matching nothing, unsent, on a premise about what a document may hold.
+        /// the statement without the key restriction: a document whose number reads as the key is matched, as Calcite's
+        /// own join matches it, and a left join keeps a row nothing matched. It used to be answered as matching nothing,
+        /// unsent, on a premise about what a document may hold.
         /// </summary>
         [Fact]
         public async Task ADecimalKeyBeyondADoublesRangeIsFetchedWithoutTheRestriction()
@@ -693,10 +693,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <summary>
         /// An infinite or NaN approximate key has no number to be sent as either: JSON holds none, and the SDK writes one as
         /// the string <c>"Infinity"</c>, <c>"-Infinity"</c> or <c>"NaN"</c>, which no stored number equals. So the batch
-        /// holding it is fetched by the statement without the key restriction, as a decimal beyond a double's range is, and
-        /// the join's own comparison answers every key of it: an infinity pairs with a document its column reads as that
-        /// infinity, a key not yet cast to <c>REAL</c> among them, and a NaN with nothing. Sent restricted, an infinity lost
-        /// the document Calcite's own join matches.
+        /// holding it is fetched by the statement without the key restriction, as a decimal beyond a double's range is: an
+        /// infinity pairs with a document its column reads as that infinity, a key not yet cast to <c>REAL</c> among them,
+        /// and a NaN with nothing. Sent restricted, an infinity lost the document Calcite's own join matches.
         /// </summary>
         [Fact]
         public async Task ANonFiniteApproximateKeyIsFetchedWithoutTheRestriction()
