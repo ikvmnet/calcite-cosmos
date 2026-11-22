@@ -44,13 +44,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// An executor that answers every request with the same documents, whatever its <c>WHERE</c>, each as the row a
-        /// statement reading the document and its id is returned: <c>{ "DOC": c, "id": c.id }</c>.
+        /// statement reading the document and its id is returned: <c>{ "DOC": c, "id": c.id }</c>; and keeps each request
+        /// it is sent in <paramref name="sent"/>, where one is given.
         /// </summary>
-        sealed class DocumentsExecutor(string[] documents) : ICosmosQueryExecutor
+        sealed class DocumentsExecutor(string[] documents, System.Collections.Generic.List<CosmosQuery>? sent = null) : ICosmosQueryExecutor
         {
 
-            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default) =>
-                new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())));
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                if (sent is not null)
+                    lock (sent)
+                        sent.Add(query);
+
+                return new(Infrastructure.ListCursor.Documents(documents.Select(d => new JsonObject { ["DOC"] = JsonNode.Parse(d), ["id"] = JsonNode.Parse(d)!["id"]!.DeepClone() }.ToJsonString())));
+            }
 
         }
 
@@ -100,11 +107,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// Runs a statement over a container declared nothing whose every request is answered with the same documents: the
         /// plan implemented, each <c>?</c> bound in order to a value of <paramref name="parameters"/>, and its first
-        /// column read.
+        /// column read; each request sent is kept in <paramref name="sent"/>, where one is given.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null)
+        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null, System.Collections.Generic.List<CosmosQuery>? sent = null)
         {
-            using var source = Open(null, new DocumentsExecutor(documents), null);
+            using var source = Open(null, new DocumentsExecutor(documents, sent), null);
             using var connection = source.OpenConnection();
             return Rows(connection, sql.Replace(" items AS ", " \"items\" AS "), parameters ?? []);
         }
@@ -245,9 +252,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             foreach (var bound in new object?[] { null, 2, 2L })
             {
+                var sent = new System.Collections.Generic.List<CosmosQuery>();
                 var expected = Rows(calcite, $"SELECT \"v\" FROM \"{ids}\" WHERE " + predicate.Replace("{id}", "\"v\""), [bound]);
-                Answer("SELECT c.\"id\" FROM items AS c WHERE " + predicate.Replace("{id}", "c.\"id\""), documents, [bound])
+                Answer("SELECT c.\"id\" FROM items AS c WHERE " + predicate.Replace("{id}", "c.\"id\""), documents, [bound], sent)
                     .Should().Equal(expected, $"bound to {bound?.GetType().Name ?? "null"}, the statement answers as Calcite's plan");
+                sent.SelectMany(q => q.Parameters).Select(p => p.Value).Should().OnlyContain(v => Equals(v, "a"), "nothing sent holds the parameter, only the literal beside it");
             }
         }
 
