@@ -2584,8 +2584,8 @@ literal.
 Framework and OData key filter parameterises its id, so an id lookup over a declared UUID path read the
 container whole — 448 MB for one document, measured on an Azure container of 11,868. The decision is
 `CosmosFactRewriter.TryStoredUuid`, which the literal lowering and the translator both ask; the slot
-carries the UUID form, and `CosmosQueries.Bind` spells the value into it from whichever box it arrives
-in. One difference from the literal: a literal outside a confined form's sign class is refused under
+carries the UUID form, and `CosmosQueries.Bind` spells into it the `UuidValue` the value is converted
+to. One difference from the literal: a literal outside a confined form's sign class is refused under
 the signed comparison, and a parameter cannot be. An equality needs no class, since a spelling no
 stored value has matches nothing. So only an ordering is held back, to where the order is the
 engine's for every value (`CosmosUuidForms.OrdersEveryValue`).

@@ -64,12 +64,13 @@ than a container read for every page. A range names no single value, so it is no
 partition.
 
 A parameter in place of the literal works the same way, which is the shape Entity Framework and OData
-send for every key filter. `CAST(…) = ?` and `CAST(…) IN (?, ?, ?)` become `c.trackingId = @p0`, and
-the adapter writes the bound value in the declared spelling when the statement runs. Bind a `Guid`,
-which the ADO.NET driver makes Calcite's own `UuidValue`; through Calcite's own driver any other value
-fails the statement, as Calcite's plan fails reading it (Chapter 8.7). An ordering against a parameter
-pushes only under the unsigned comparison (14.3). A value supplied at run time can't be checked against
-a confined pattern the way a literal is.
+send for every key filter. `CAST(…) = ?` and `CAST(…) IN (?, ?, ?)` become `c.trackingId = @p0`, and the
+adapter writes the bound value in the declared spelling when the statement runs. Through the ADO.NET
+driver bind a `Guid`, which it makes Calcite's own `UuidValue`; through Calcite's own driver bind the
+`UuidValue` itself, since any other value, a `Guid` among them, fails the statement as Calcite's plan
+fails reading it (Chapter 8.7). An ordering against a parameter pushes only under the unsigned
+comparison (14.3). A value supplied at run time can't be checked against a confined pattern the way a
+literal is.
 
 ### Selecting the value
 

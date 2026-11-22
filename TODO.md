@@ -2016,9 +2016,8 @@ answers against an `ANY` value is unmeasured. The Cosmos DB SDK writes a NaN or 
 bind refuses one in every slot (`CosmosQueries.Bind`), as it refuses a lone surrogate, and the statement fails by name
 over any input, where Calcite may answer. It is legality of encoding, a bridge. A constant Calcite's planning folds to a
 NaN or an infinity is refused when it is bound, by the same test (`CosmosEncodable`), and computed in process, as
-Calcite answers it. The ADO.NET driver hands Calcite a value
-past the type's range already converted to an infinity, which Calcite's conversion refuses, so through it the two agree
-over any input that holds a row.
+Calcite answers it. The ADO.NET driver hands Calcite a value past the type's range already converted to an infinity,
+which Calcite's conversion refuses, so through it the two agree wherever a row reaches the parameter's reading.
 
 **The proper fix** is the request decision reading the bound value, which could keep in Calcite whatever reads such a
 value, and answer a statement over no row with none. No stage plans it.
