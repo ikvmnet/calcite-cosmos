@@ -367,6 +367,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// between them is written here, and a test holds it to the code Calcite generates for a parameter of the numeric,
         /// character, binary, boolean, datetime, interval, <c>UUID</c>, geometry, collection, <c>ANY</c> and <c>VARIANT</c>
         /// types (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), beside the measurement.
+        /// The translator writes no parameter of a binary or an interval type
+        /// (<see cref="Sql.CosmosRexLiterals.HasNoServiceValue"/>), so no statement reaches those two steps; they are
+        /// kept so that the conversion is Calcite's for every type.
         /// </para>
         /// <para>
         /// <b>A value Calcite cannot convert fails the statement by name</b>, as Calcite's own plan fails reading it: a
