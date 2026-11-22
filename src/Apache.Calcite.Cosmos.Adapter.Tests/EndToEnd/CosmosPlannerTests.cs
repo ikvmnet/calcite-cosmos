@@ -4258,6 +4258,98 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             statement.IsApplied(weakening, own, across).Should().BeTrue("the view's null test of the same text implies it");
         }
 
+        /// <summary>
+        /// A split over a projection the transpose will not carry pushes the conjuncts it admits alone. The view computes
+        /// <c>INITCAP</c>, which no statement holds, so the half split off over it reaches the service only by the transpose,
+        /// and an 80-way <c>LIKE</c> of the view's column, read through the view's expressions, grows past the transpose's
+        /// bloat: a half holding it beside S's weakening of the case fold above would be the service's form in a filter only
+        /// Calcite can evaluate. Planned as the harness plans for a host, with what the split rule registers recorded before
+        /// Volcano takes it: over that view one half holds the disjunction and no service form; every half holding the
+        /// service's form reaches the service, as <c>Reaches</c> asks it of the half; and no filter Calcite evaluates in the
+        /// plan chosen holds the service's form.
+        /// </summary>
+        [Fact]
+        public void ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone()
+        {
+            var sql = "SELECT t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 80).Select(i => $"t.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            // As the harness's PlanToAsync plans it, the recorder added first.
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            var productions = new SplitProductions();
+            var logical = harness.ToLogical(sql);
+            var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+            planner.addListener(productions);
+            harness.AddCosmosRules(planner);
+            Corpus.PlannerHarness.AddAsyncRules(planner);
+            planner.setRoot(planner.changeTraits(logical, logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify()));
+            var best = planner.findBestExp();
+
+            var halves = productions.Halves.Select(half => (
+                OverTheView: CosmosPlanMembers.Of(half.getInput()).OfType<org.apache.calcite.rel.core.Project>().Any(ComputesInitcap),
+                Likes: Likes(half.getCondition()),
+                ServiceForm: CosmosOperators.HoldsServiceForm(half.getCondition()),
+                Reaches: Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, half.getInput(), CosmosPlanMembers.NewSeen(), half.getCondition()))).ToList();
+            foreach (var half in halves)
+                TestContext.Current.TestOutputHelper?.WriteLine($"half over {(half.OverTheView ? "the view computing INITCAP" : "another input")}: LIKEs {half.Likes}, service form {half.ServiceForm}, reaches {half.Reaches}");
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            halves.Where(half => half.OverTheView && half.Likes == 80).Should().ContainSingle("the split over the view pushes the disjunction it admits")
+                .Which.ServiceForm.Should().BeFalse("nothing carries a half holding a weakening beneath a view the transpose will not cross");
+            halves.Where(half => half.ServiceForm).Should().OnlyContain(half => half.Reaches, "a half holding the service's form is one that reaches the service");
+
+            var inProcess = Filters(best).Where(filter => filter is not CosmosRel).ToList();
+            inProcess.Should().NotBeEmpty("the case fold is Calcite's to evaluate: " + Plan(best));
+            inProcess.Should().NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+
+            static bool ComputesInitcap(org.apache.calcite.rel.core.Project project)
+            {
+                var projects = project.getProjects();
+                for (var i = 0; i < projects.size(); i++)
+                    if (RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, (RexNode)projects.get(i)) is not null)
+                        return true;
+
+                return false;
+            }
+
+            static int Likes(RexNode node)
+            {
+                if (node is not RexCall call)
+                    return 0;
+
+                var count = call.getKind() == org.apache.calcite.sql.SqlKind.LIKE ? 1 : 0;
+                var operands = call.getOperands();
+                for (var i = 0; i < operands.size(); i++)
+                    count += Likes((RexNode)operands.get(i));
+
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// Records the half of each pair the split rule registers, before Volcano takes it: the filter beneath the one left
+        /// above, or the filter registered alone where nothing is left above.
+        /// </summary>
+        sealed class SplitProductions : RelOptListener
+        {
+            public List<org.apache.calcite.rel.core.Filter> Halves { get; } = new();
+
+            public void relEquivalenceFound(RelOptListener.RelEquivalenceEvent e) { }
+
+            public void ruleAttempted(RelOptListener.RuleAttemptedEvent e) { }
+
+            public void ruleProductionSucceeded(RelOptListener.RuleProductionEvent e)
+            {
+                if (e.isBefore() && e.getRuleCall().getRule() is Adapter.Rel.Convert.CosmosFilterSplitRule && e.getRel() is org.apache.calcite.rel.core.Filter produced)
+                    Halves.Add(produced.getInput() as org.apache.calcite.rel.core.Filter ?? produced);
+            }
+
+            public void relDiscarded(RelOptListener.RelDiscardedEvent e) { }
+
+            public void relChosen(RelOptListener.RelChosenEvent e) { }
+        }
+
         /// <summary>Counts each match the planner fires of the split rule.</summary>
         sealed class SplitMatches : RelOptListener
         {

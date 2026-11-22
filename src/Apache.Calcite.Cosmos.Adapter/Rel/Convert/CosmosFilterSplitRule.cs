@@ -176,6 +176,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
+            var rexBuilder = filter.getCluster().getRexBuilder();
+
+            // Legality: a weakening is the service's form, which Calcite has no body for, so the half split off holds one only
+            // where it reaches the service: through a member already part of a statement, or over a projection through
+            // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed). Where nothing carries it, the conjuncts
+            // admitted go alone, Calcite's own forms, and the weakenings of what is left above are not pushed by this split.
+            var half = Compose(rexBuilder, pushable);
+            if (CosmosOperators.HoldsServiceForm(half) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half) == false)
+            {
+                if (admitted.Count == 0)
+                    return;
+
+                pushable = admitted;
+            }
+
             // Split no further where everything it would push is applied beneath already, compared as Calcite compares
             // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
             // What its own rows hold alone: Calcite's equality compares nodes over one row type, and what a filter beneath a
@@ -183,8 +198,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var (applied, _) = AlreadyApplied(filter.getInput());
             if (pushable.All(applied.Contains))
                 return;
-
-            var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
             // conjuncts admitted are the filter, the weakenings of what is left out with it.
@@ -642,8 +655,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Determines whether a filter over a subtree can be a <see cref="CosmosFilter"/>: some equivalent form of it is part
         /// of a statement already, or one a rule converts over a subtree that can be: this container's scan, a projection,
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
+        /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
+        /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The filter rule converts a filter only over an input that converts, so a filter it declines leaves every filter
         /// above it in Calcite; and a filter Calcite implements copies as one. Split in either, the pushed half was a filter
         /// Calcite evaluates, and a weakening in it the service's form written as a Rex:
@@ -652,8 +668,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the two filters. So did one over a lateral, an <c>UNNEST</c> or a scalar sub-query beside such a cast, while any
         /// member that was no filter counted: the correlate moved the half pushed into its left side, beside the cast. Which
         /// rule converts a member is legality, the question each asks of it.
+        /// </para>
+        /// <para>
+        /// <b>A half holding the service's form, over a projection no statement holds.</b> Such a projection reaches the
+        /// service only by the transpose moving the half beneath it, and the transpose declines a projection holding a
+        /// window, a condition holding a correlation, and one that read through the projection's expressions grows past its
+        /// bloat, as a half holding an 80-way <c>LIKE</c> of a view's column beside a weakening does over a view that also
+        /// computes <c>INITCAP</c>. Asked without the half, the projection counts wherever its input reaches, the transpose
+        /// taken for granted, which is the cheap question <see cref="matches"/> asks before the half is built.
+        /// </para>
         /// </remarks>
-        static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
+        /// <param name="convention">The convention whose statements the filter would be part of.</param>
+        /// <param name="node">The subtree the filter sits over.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        /// <param name="half">The condition of the filter split off, where it holds the service's form; <c>null</c> asks
+        /// whether any filter over the subtree can reach the service.</param>
+        internal static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen, RexNode? half = null)
         {
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
             {
@@ -672,7 +702,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
                     Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen),
-                    Project project => Reaches(convention, project.getInput(), seen),
+                    Project project => half is null
+                        ? Reaches(convention, project.getInput(), seen)
+                        : Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath),
                     Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen),
                     _ => false,
                 };
@@ -682,6 +714,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Returns a condition read through a projection's expressions as Calcite's <c>FILTER_PROJECT_TRANSPOSE</c> reads it,
+        /// asked that rule's own conditions, or <c>null</c> where it declines: the projection holds a window, the condition a
+        /// correlation, or the condition so read grows past the rule's bloat.
+        /// </summary>
+        /// <remarks>
+        /// The rule the adapter registers (<see cref="CosmosRules"/>), its bloat read from its own configuration, so the
+        /// answer is the one it gives itself when it matches the filter over the projection.
+        /// </remarks>
+        internal static RexNode? Transposed(RexNode condition, Project project)
+        {
+            if (project.containsOver() || RexUtil.containsCorrelation(condition))
+                return null;
+
+            var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE.config;
+            return RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat());
         }
 
         /// <summary>
