@@ -3447,16 +3447,16 @@ across documents* and *A join of a container to itself* is the record.
   same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
-- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup
-  join matches it as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place
-  of its unmatched one; recorded, not planned.* Calcite's equi-join in process, a hash join for the lookup
-  join's own shape and a merge join between two in-process tables, never matches `-0.0` with `0.0`, alone or
-  beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot` over each
-  of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize`
-  compares a key as `=` compares it after Calcite's cast to the join's comparison type, so a small
-  side's `-0.0` is joined to the documents holding `0`, which Calcite's own join leaves unmatched. The
-  service reads a stored `-0` or `-0.0` back as `0` (`Service.IntegralNumbersReadBackAsHeld`), but a
-  `REAL` column reads a negative number too small for a float, such as a stored `-1e-50`, as `-0.0`
+- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches it
+  as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place of its unmatched one;
+  recorded, not planned.* Calcite's equi-join in process, a hash join for the lookup join's own shape and a merge join
+  between two in-process tables, never matches `-0.0` with `0.0`, alone or beside one
+  (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot` over each of the three,
+  `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
+  compares it after Calcite's cast to the join's comparison type, so a small side's `-0.0` is joined to the documents
+  holding `0`, which Calcite's own join leaves unmatched. The service reads a stored `-0` or `-0.0` back as `0`
+  (`Service.IntegralNumbersReadBackAsHeld`), but a `REAL` column reads a negative number too small for a float, such as
+  a stored `-1e-50`, as `-0.0`
   (`CosmosLookupJoinTests.CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero`). Calcite's own
   join matches a small side's `-0.0` with that document, which the restriction, sending `0`, never fetches (the next
   entry); fetched, it would be joined to a small side's `0.0` as well, which Calcite's own join does not do. Following
@@ -3495,11 +3495,11 @@ across documents* and *A join of a container to itself* is the record.
   When the restriction is asked of the rendering graph (3B), its tests should hold a `BIGINT` key over a path holding
   1.5.
 - **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, a bridge
-  until a statement's parameter is converted by its SQL type.*
-  `CosmosLookup.Sent` sends a decimal key by `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value`
-  sends a decimal parameter, and adds the key's double where that conversion has no exact answer, which the join's
-  comparison of every fetched key makes safe. One place should decide how a value of a type is sent: once a
-  statement's parameter is converted by its SQL type, `Sent` should call that conversion and keep only its double.
+  until a statement's parameter is converted by its SQL type.* `CosmosLookup.Sent` sends a decimal key by
+  `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value` sends a decimal parameter, and adds the key's
+  double where that conversion has no exact answer, which the join's comparison of every fetched key makes safe. One
+  place should decide how a value of a type is sent: once a statement's parameter is converted by its SQL type, `Sent`
+  should call that conversion and keep only its double.
 - **A comparison of two paths, a call, and a parameter over a cast of a raw value read as "may raise"** — *small,
   precision.* No atom reads them, or `RaisesOver` counts the cast's every column, so a statement whose WHERE holds one
   is sent. Finer rules where rows exist. A `COALESCE` is a call too: `COALESCE(c."id", 'none') IS NULL` and its kin
