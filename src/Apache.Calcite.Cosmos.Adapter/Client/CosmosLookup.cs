@@ -52,9 +52,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <b>So a number is compared as the join's comparison type compares it</b>, the type Calcite casts both keys to
         /// before its <c>=</c> (<c>Calcite.AnEquiJoinMatchesKeysAsEquality</c>): an integer type as a <see cref="long"/>,
         /// <c>DECIMAL</c> by its value, as a <see cref="java.math.BigDecimal"/> stripped of its trailing zeros so that
-        /// <c>1.0</c> and <c>1.00</c> are one key, and an approximate type as a <see cref="double"/>. Each key reaches the
-        /// type by Calcite's own conversion of a number (<c>SqlFunctions.toLong</c>, <c>toBigDecimal</c> and
-        /// <c>toDouble</c>), which is the identity for a key Calcite has already cast. Every number used to be compared as a
+        /// <c>1.0</c> and <c>1.00</c> are one key, and an approximate type as a <see cref="double"/>, a <c>REAL</c> by way of
+        /// the float Calcite holds it in. Each key reaches the type by Calcite's own conversion of a number
+        /// (<c>SqlFunctions.toLong</c>, <c>toBigDecimal</c>, <c>toFloat</c> and <c>toDouble</c>), which is the identity for a
+        /// key Calcite has already cast. Every number used to be compared as a
         /// double, so two <c>BIGINT</c> keys past 2^53 that one double holds joined each other's rows, where Calcite keeps
         /// them apart.
         /// </para>
@@ -110,7 +111,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => SqlFunctions.toLong(number),
                     "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
                     // Plus zero, which = cannot tell from minus zero, so that a batch sends the 0 the service reads back.
-                    "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
+                    "FLOAT" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
+                    "REAL" => (double)SqlFunctions.toFloat(number) + 0d,
 
                     // No number arrives under any other type: the rule passes the type Calcite cast both keys to. Under
                     // none, a number read for a UUID parameter passes through, and is refused there by name.

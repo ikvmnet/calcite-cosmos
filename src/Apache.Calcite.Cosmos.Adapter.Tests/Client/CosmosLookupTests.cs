@@ -278,6 +278,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(new java.math.BigDecimal("0.00"), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize(0, SqlTypeName.DECIMAL));
             CosmosLookup.Normalize(1.5f, SqlTypeName.REAL).Should().Be(1.5d);
 
+            // Calcite holds a REAL as a float, and its cast to REAL makes 16777217 the float 16777216: a key not yet cast is
+            // compared as that, not as the double 16777217, where FLOAT and DOUBLE keep it.
+            CosmosLookup.Normalize(java.lang.Integer.valueOf(16777217), SqlTypeName.REAL).Should().Be(16777216d);
+            CosmosLookup.Normalize(16777217L, SqlTypeName.REAL).Should().Be(CosmosLookup.Normalize(16777216f, SqlTypeName.REAL));
+            CosmosLookup.Normalize(16777217L, SqlTypeName.DOUBLE).Should().Be(16777217d);
+            CosmosLookup.Normalize(16777217L, SqlTypeName.FLOAT).Should().Be(16777217d);
+            CosmosLookup.Normalize(java.lang.Float.valueOf(0.1f), SqlTypeName.REAL).Should().Be((double)0.1f);
+            BitConverter.DoubleToInt64Bits((double)CosmosLookup.Normalize(-0f, SqlTypeName.REAL)!).Should().Be(0L);
+
             // A CLR byte is a Java byte, Calcite's TINYINT, which is signed.
             CosmosLookup.Normalize(unchecked((byte)0xFF), SqlTypeName.TINYINT).Should().BeOfType<long>().Which.Should().Be(-1L);
             CosmosLookup.Normalize(unchecked((byte)0x80), SqlTypeName.TINYINT).Should().Be(-128L);
