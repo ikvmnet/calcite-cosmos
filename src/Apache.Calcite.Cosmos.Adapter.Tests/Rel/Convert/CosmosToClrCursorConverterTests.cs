@@ -1528,6 +1528,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// Where the transpose will not carry a filter beneath a view whose projection holds a reading that can refuse, the
+        /// split over the view still pushes what renders beneath it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's column, read through the view's projection, grow past the
+        /// transpose's bloat, so the filter stays above the view whatever the split does. Declining the split's pair there
+        /// left nothing of the condition beneath the view, and the statement selected the view's projection with less of a
+        /// <c>WHERE</c>: over <c>{"a":"z","n":1.5}</c>, which the equality drops, it read the 1.5 as an <c>INTEGER</c> and
+        /// failed where Calcite answers; and a type test only the service evaluates, left to Calcite beside the
+        /// <c>LIKE</c>s, did not implement.
+        /// </para>
+        /// <para>
+        /// The statement selects the view's column beneath the condition kept in process, as it did before the split weakened
+        /// over a projection (<c>TODO.md</c>, <em>A filter kept in process over a view projecting a reading that can
+        /// refuse</em>).
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(true, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(false, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"a\", t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE u.\"a\" = 'k' AND ", "u.\"a\"",
+            "((c.type = @p0) AND (c.a = @p1))")]
+        [InlineData(true, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"a\", t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE u.\"a\" = 'k' AND ", "u.\"a\"",
+            "((c.type = @p0) AND (c.a = @p1))")]
+        [InlineData(false, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE IS_STRING(JSON_VALUE(t.\"DOC\", '$.k')) AND ", "t.\"a\"",
+            "(IS_STRING(c.k) AND IS_DEFINED(c.a))")]
+        public void ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string sql, string folded, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP({folded}) LIKE 'W{i}%'")) + ")";
+            var best = trimmed ? PlanToClrAsAHostDoes(sql + likes) : PlanToClrWithHostRules(sql + likes);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split beneath the view sends what renders: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "the split beneath the view sends what renders: {0}", sent);
+        }
+
+        /// <summary>
+        /// A view whose projection holds the document, a text column and an <c>INTEGER</c> read from it.
+        /// </summary>
+        const string ViewOfTextBesideARefusingReading =
+            "(SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t";
+
+        /// <summary>
         /// A weakening over a projection's typed or text column, a view's or the query's own select list, is pushed once,
         /// where a filter beneath the projection applies it already.
         /// </summary>

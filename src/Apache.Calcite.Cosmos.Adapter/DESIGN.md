@@ -11587,22 +11587,24 @@ where it reaches the service, through a member already part of a statement or th
 the transpose asked its own conditions (a window, a correlation, its bloat); elsewhere
 the conjuncts admitted go alone, since Calcite has no body for the service's form
 (`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
-Nor does it register a pair over a projection the service may select holding a computed
-column whose reading can refuse a value, whatever the condition left above reads, nor over a
-projection or a filter above one, since the transpose carries the half beneath every projection
-of the stack and a column passed up as it is may be the one beneath: beneath that condition
-the column is read for every row the half returns, where Calcite computes it only for the rows
-that reach it, a `CASE` branch or a later operand of `COALESCE` only where it is reached, the
-reason the residual projection declines such a projection. Asked by type alone, as the residual
-projection asks it (`TODO.md`, section 7). The transpose carries the filter beneath it instead
-(`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
-So a filter over a projection is weakened as any other is, where its half reaches the service and
-nothing it would select beneath the condition can refuse: over a view that renames the document,
-`INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's projection of the document
-the split offers the plan whose `SELECT` is that projection beneath the residual, which the
-converter's width prefers where the condition kept in process reads the document anyway; in the corpus
-planned as a host plans, Calcite's field trimmer first, such statements moved their `SELECT` alone,
-their `WHERE` unchanged.
+Nor does it register a pair over a projection the service may select holding a computed column whose
+reading can refuse a value, whatever the condition left above reads, nor over a projection or a
+filter above one, since the transpose carries the half beneath every projection of the stack and a
+column passed up as it is may be the one beneath: beneath that condition the column is read for
+every row the half returns, where Calcite computes it only for the rows that reach it, a `CASE`
+branch or a later operand of `COALESCE` only where it is reached, the reason the residual projection
+declines such a projection. Asked by type alone, as the residual projection asks it (`TODO.md`,
+section 7), and only of a projection the transpose would carry the filter beneath instead
+(`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`):
+where the transpose declines, the filter stays above the projection whatever the split does, and
+declining the pair would leave the service to select the projection under less of a `WHERE`
+(`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`).
+So a filter over a projection is weakened as any other is, where these allow: over a view that
+renames the document, `INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's
+projection of the document the split offers the plan whose `SELECT` is that projection beneath the
+residual, which the converter's width prefers where the condition kept in process reads the document
+anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such statements moved
+their `SELECT` alone, their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what

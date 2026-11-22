@@ -217,9 +217,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // selects is read for every row the half returns, where Calcite computes a column only for the rows that reach it.
             // A computed column whose reading can refuse a value then failed the statement over a row the condition drops, where
             // Calcite answers, whatever the condition reads: a CASE branch, COALESCE's later operands among them, is computed only
-            // for the rows that reach it (ReadsWhatCanRefuse). The transpose still carries the filter beneath such a projection,
-            // where it is split over the rows the projection reads.
-            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput()))
+            // for the rows that reach it (ReadsWhatCanRefuse). Asked only of a projection the transpose carries this filter
+            // beneath, where it is split over the rows the projection reads instead: where the transpose declines, the filter
+            // stays above the projection whatever this split does.
+            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput(), filter.getCondition()))
                 return;
 
             if (left.isAlwaysTrue())
@@ -319,7 +320,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
         /// <summary>
         /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter or a
-        /// projection there, holds a computed column whose reading can refuse a value.
+        /// projection there, holds a computed column whose reading can refuse a value, where the transpose would carry the
+        /// filter beneath it instead.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -352,13 +354,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the service may select each. Measured: a view passing up, as they are, the document and the column of a filtered
         /// view beneath it selected that view's column under the condition kept in process and failed in the same way.
         /// </para>
+        /// <para>
+        /// <b>Only where the transpose carries the filter beneath</b> (<see cref="Transposed"/>), which it then does, and the
+        /// filter is split over the rows the projection reads. Where the transpose declines, the filter stays above the
+        /// projection whatever the split does, and the service selects the projection under what lies beneath it, which the
+        /// pair only narrows. Measured: sixty <c>LIKE</c>s of a case fold of the view's column beside <c>t."a" = 'k'</c>,
+        /// the pair declined, sent no <c>WHERE</c> and failed over <c>{"a":"z","n":1.5}</c>, which the equality drops.
+        /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
-        static bool ReadsWhatCanRefuse(RelNode? node)
+        /// <param name="condition">The filter's condition, carried beneath each projection as the transpose writes it there.</param>
+        static bool ReadsWhatCanRefuse(RelNode? node, RexNode condition)
         {
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
-            bool Holds(RelNode? candidate)
+            bool Holds(RelNode? candidate, RexNode carried)
             {
                 foreach (var member in Rel.CosmosPlanMembers.Of(candidate))
                 {
@@ -366,12 +376,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                         continue;
 
                     // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
-                    // one a projection beneath computes.
-                    if (member is Project project && (Refuses(project) || Holds(project.getInput())))
+                    // one a projection beneath computes; asked where it carries the filter itself beneath.
+                    if (member is Project project && Transposed(carried, project) is RexNode beneath && (Refuses(project) || Holds(project.getInput(), beneath)))
                         return true;
 
                     // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals.
-                    if (member is Filter filter && Holds(filter.getInput()))
+                    if (member is Filter filter && Holds(filter.getInput(), carried))
                         return true;
                 }
 
@@ -391,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
             }
 
-            return Holds(node);
+            return Holds(node, condition);
         }
 
         /// <summary>
