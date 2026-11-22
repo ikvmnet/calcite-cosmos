@@ -119,6 +119,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Returns a number in the Java box Calcite holds a value of its type in, so that one conversion of Calcite's
         /// reaches every key; or <c>null</c> for anything but a number.
         /// </summary>
+        /// <remarks>
+        /// A CLR <see cref="byte"/> is Calcite's <c>TINYINT</c>, as <see cref="CosmosJson"/> reads one: a Java byte is
+        /// signed and IKVM surfaces it as a CLR byte, so a small side Calcite computes hands <c>-1</c> over as <c>0xFF</c>,
+        /// which is boxed as the Java byte it is rather than read as 255.
+        /// </remarks>
         static java.lang.Number? Boxed(object key) => key switch
         {
             java.lang.Number number => number,
@@ -126,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             short value => java.lang.Short.valueOf(value),
             int value => java.lang.Integer.valueOf(value),
             long value => java.lang.Long.valueOf(value),
-            byte value => java.lang.Short.valueOf(value),
+            byte value => java.lang.Byte.valueOf(value),
             ushort value => java.lang.Integer.valueOf(value),
             uint value => java.lang.Long.valueOf(value),
             ulong value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),

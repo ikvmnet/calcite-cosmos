@@ -275,6 +275,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(new java.math.BigDecimal("0.00"), SqlTypeName.DECIMAL).Should().Be(CosmosLookup.Normalize(0, SqlTypeName.DECIMAL));
             CosmosLookup.Normalize(1.5f, SqlTypeName.REAL).Should().Be(1.5d);
 
+            // A CLR byte is a Java byte, Calcite's TINYINT, which is signed.
+            CosmosLookup.Normalize(unchecked((byte)0xFF), SqlTypeName.TINYINT).Should().BeOfType<long>().Which.Should().Be(-1L);
+            CosmosLookup.Normalize(unchecked((byte)0x80), SqlTypeName.TINYINT).Should().Be(-128L);
+
             CosmosLookup.Normalize(7).Should().Be(CosmosLookup.Normalize(7L));
             CosmosLookup.Normalize(7d).Should().BeOfType<double>();
             CosmosLookup.Normalize((decimal)7).Should().Be(new java.math.BigDecimal("7"));

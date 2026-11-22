@@ -460,6 +460,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { 7L, 9007199254740993L });
         }
 
+        /// <remarks>
+        /// Calcite holds a <c>TINYINT</c> as a Java byte, which IKVM surfaces as a CLR byte, so a small side Calcite computes
+        /// hands the join <c>-1</c> as <c>0xFF</c>. Read as unsigned, it was sent and matched as 255, and <c>-128</c> as 128,
+        /// and the join lost both rows Calcite's own join answers.
+        /// </remarks>
+        [Fact]
+        public async Task ATinyintKeyOfAComputedSideIsSigned()
+        {
+            Given(
+                orders: System.Array.Empty<string>(),
+                products: new[]
+                {
+                    """{"id":"pm1","n":-1}""",
+                    """{"id":"p127","n":127}""",
+                    """{"id":"pm128","n":-128}""",
+                });
+
+            var plan = Plan("SELECT t.\"id\" FROM (VALUES (1, CAST(-1 AS TINYINT)), (2, CAST(127 AS TINYINT)), (3, CAST(-128 AS TINYINT))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING TINYINT) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"");
+
+            var text = RelOptUtil.toString(plan);
+            text.Should().Contain("CosmosLookupJoin", "the container side is fetched by key: " + text);
+
+            var rows = await Execute(plan);
+            rows.Should().BeEquivalentTo(new object[] { "pm1", "p127", "pm128" });
+
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Distinct().Should().BeEquivalentTo(new object?[] { -1L, 127L, -128L });
+        }
+
         // ── Over a traversal ──────────────────────────────────────────────────────
 
         /// <summary>
