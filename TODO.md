@@ -3471,7 +3471,8 @@ across documents* and *A join of a container to itself* is the record.
   equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
   its tests should hold a `REAL` key `0.1` against a stored `0.1`, a `DOUBLE` key 2^53 against a stored
   `9007199254740993`, and a `BIGINT` key 2^53 against a stored `9007199254740993.0` under Production.
-- **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, upkeep.*
+- **How a `DECIMAL` lookup key is sent is decided beside how a statement's decimal parameter is** — *small, a bridge
+  until a statement's parameter is converted by its SQL type.*
   `CosmosLookup.Sent` sends a decimal key by `CosmosRexLiterals.TryGetExactNumberValue`, as `CosmosQueries.Value`
   sends a decimal parameter, and adds the key's double where that conversion has no exact answer, which the join's
   comparison of every fetched key makes safe. One place should decide how a value of a type is sent: once a

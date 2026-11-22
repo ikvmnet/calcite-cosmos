@@ -155,7 +155,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// A decimal reaches the service as a JSON number, so it is sent as the value the service compares as that number
         /// (<see cref="CosmosRexLiterals.TryGetExactNumberValue"/>): a decimal where its double is right, a
         /// <see cref="long"/> where the double would be another whole number, which an <c>int64</c> the service holds is
-        /// compared with by value (<c>Service.NumbersBeyondLongCompareAsDoubles</c>).
+        /// compared with by value (<c>Service.NumbersBeyondLongCompareAsDoubles</c>). This repeats how <c>CosmosQueries</c>
+        /// sends a decimal parameter, a bridge <c>TODO.md</c> records until a statement's parameter is converted by its SQL
+        /// type, when this should call that conversion and keep only the double below.
         /// </para>
         /// <para>
         /// <b>Where that answers none, or a decimal that is not the key, the key is sent as its double</b>: a whole number
