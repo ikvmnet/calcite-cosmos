@@ -18,7 +18,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <para>
     /// The ordinal is what is carried, because the ordinal is what the plan knows of the value. What
     /// the value will be is the caller's; what type it is the plan already decided, and the slot carries
-    /// that type (<see cref="TypeName"/>) and the length a sized text type holds a string to
+    /// that type (<see cref="TypeName"/>) and the length a sized text or binary type holds a value to
     /// (<see cref="Length"/>), because both change what Calcite reads. The other additions are what the
     /// plan chose from the comparison the value sits in: a spelling taken from the path it is compared
     /// with, which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>).
