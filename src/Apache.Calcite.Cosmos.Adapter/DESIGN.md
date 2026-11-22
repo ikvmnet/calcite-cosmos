@@ -2649,13 +2649,12 @@ count Calcite holds it in, was answered from the value bound where Calcite's pla
 `RETURNING UUID` or a binary `RETURNING` compared with a parameter, bound as the `UuidValue` or the `ByteString`
 Calcite holds the value in, which the SDK writes as an object, was answered where Calcite's plan fails reading the
 path. A `UUID` compared with a path declared to spell one is written in that spelling, through a slot of its own.
-So no statement reaches the step's interval multiplication or its binary length; both are kept so that the conversion
-is Calcite's for every type, as the test against Calcite's generated code holds it.
-A presence slot reads only whether a value is bound, so it is not converted, and a row count is read as
-Calcite's limit reads it, below. Calcite fails only once a row reaches the
-parameter's reading, which leaves a statement whose request reads the parameter failing where Calcite answers, over no
-row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to send answering where Calcite
-fails; `TODO.md` records both.
+So no statement reaches the step's interval multiplication or its binary length; both are kept so that the conversion is
+Calcite's for every type, as the test against Calcite's generated code holds it. A presence slot reads only whether a
+value is bound, so it is not converted, and a row count is read as Calcite's limit reads it, below. Calcite fails only
+once a row reaches the parameter's reading, which leaves a statement whose request reads the parameter failing where
+Calcite answers, over no row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to
+send answering where Calcite fails; `TODO.md` records both.
 
 **A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
 either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the
