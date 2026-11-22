@@ -2635,8 +2635,7 @@ value by calling what Calcite's generated code calls (`RexToLixTranslator.visitD
 `EnumUtils.convert`): for a type in Calcite's numeric family, `SqlFunctions.toBigDecimal` and the conversion to the
 class Calcite holds the type in; for any other, the object's `toString()` where that class is a string, and otherwise a
 cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is. The classes come from Calcite's own
-type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the
-measurement holds it to Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the
+type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the measurement, and a test against the code Calcite generates for a parameter of each type, hold it to Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the
 validator makes every parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an
 infinity bound to a number, a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where
 Calcite's plan fails reading it. A presence slot reads only whether a value is bound, and the row limit's slot is read

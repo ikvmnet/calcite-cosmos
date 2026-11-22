@@ -252,6 +252,103 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// The conversion is the code Calcite generates for a dynamic parameter: over every type a parameter takes without
+        /// a length, and over the classes a caller of Calcite's own driver binds, it answers what Calcite's code for a
+        /// <c>RexDynamicParam</c> of the type answers, the value in the same class, or fails where that code fails, with
+        /// the same exception.
+        /// </summary>
+        /// <remarks>
+        /// The leaf conversions and the classes are Calcite's, called, and the dispatch between them is written in C#
+        /// (<c>CosmosQueries.Converted</c>), so this holds the dispatch to what Calcite's code generator makes of the same
+        /// parameter (<c>RexExecutorImpl.getExecutable</c>), wherever a later Calcite moves it. A type with a length is
+        /// left out: holding the text to its length comes after the conversion
+        /// (<see cref="TheConvertedValueIsHeldToItsLengthAndAnyPassesAsItIs"/>).
+        /// </remarks>
+        [Fact]
+        public void TheConversionIsTheCodeCalciteGeneratesForAParameter()
+        {
+            var types = new org.apache.calcite.jdbc.JavaTypeFactoryImpl();
+            var rex = new org.apache.calcite.rex.RexBuilder(types);
+
+            var typed = new[]
+            {
+                types.createSqlType(SqlTypeName.TINYINT),
+                types.createSqlType(SqlTypeName.SMALLINT),
+                types.createSqlType(SqlTypeName.INTEGER),
+                types.createSqlType(SqlTypeName.BIGINT),
+                types.createSqlType(SqlTypeName.DECIMAL),
+                types.createSqlType(SqlTypeName.DECIMAL, 10, 2),
+                types.createSqlType(SqlTypeName.REAL),
+                types.createSqlType(SqlTypeName.FLOAT),
+                types.createSqlType(SqlTypeName.DOUBLE),
+                types.createSqlType(SqlTypeName.VARCHAR),
+                types.createSqlType(SqlTypeName.BOOLEAN),
+                types.createSqlType(SqlTypeName.TIMESTAMP, 3),
+                types.createSqlType(SqlTypeName.DATE),
+                types.createSqlType(SqlTypeName.UUID),
+                types.createSqlType(SqlTypeName.ANY),
+                types.createSqlType(SqlTypeName.VARIANT),
+            };
+
+            var held = new object?[]
+            {
+                java.lang.Long.valueOf(4294967298L), java.lang.Long.valueOf(-129L), java.lang.Long.valueOf(9007199254740993L), java.lang.Long.valueOf(long.MinValue),
+                java.lang.Integer.valueOf(70000), java.lang.Short.valueOf((short)300), java.lang.Byte.valueOf(unchecked((byte)(sbyte)-7)),
+                java.lang.Double.valueOf(1.9), java.lang.Double.valueOf(-1.9), java.lang.Double.valueOf(1e20), java.lang.Double.valueOf(0.1), java.lang.Double.valueOf(-0.0),
+                java.lang.Double.valueOf(4.9e-324), java.lang.Double.valueOf(1e300), java.lang.Double.valueOf(double.NaN), java.lang.Double.valueOf(double.PositiveInfinity),
+                java.lang.Float.valueOf(0.1f), java.lang.Float.valueOf(3.4e38f), java.lang.Float.valueOf(-0.0f),
+                new java.math.BigDecimal("2.555"), new java.math.BigDecimal("1E+3"), new java.math.BigDecimal("123456789012345678901234567890.5"), new java.math.BigDecimal("-0.000"),
+                new java.math.BigInteger("18446744073709551617"),
+                " 7 ", "2.5e1", "x", "1e400", "-1e-400", "+3", "NaN", "Infinity", "0x10", "", "true",
+                java.lang.Boolean.TRUE, java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000"),
+                org.apache.calcite.util.UuidValue.fromString("123e4567-e89b-12d3-a456-426614174000"), java.lang.Character.valueOf('7'),
+            };
+
+            using var scope = new AssertionScope();
+            foreach (var type in typed)
+            {
+                var parameter = rex.makeDynamicParam(types.createTypeWithNullability(type, true), 0);
+                var code = org.apache.calcite.rex.RexExecutorImpl.getExecutable(rex, java.util.Collections.singletonList(parameter), types.builder().build());
+                var slot = new CosmosDynamicValue(0) { TypeName = type.getSqlTypeName() };
+
+                foreach (var value in held)
+                {
+                    var calcite = Outcome(() =>
+                    {
+                        code.setDataContext(new Context(("?0", value)));
+                        return code.execute()[0];
+                    });
+
+                    Outcome(() => CosmosQueries.Converted(value, slot)).Should().Be(calcite, $"{parameter.getType().getFullTypeString()} bound to {Outcome(() => value)}");
+                }
+            }
+
+            // The value and its class, or the innermost exception's class: the conversion's own, beneath the one naming it. A
+            // cast that fails is one exception, which IKVM raises as InvalidCastException from compiled code and as Java's
+            // ClassCastException from Class.cast.
+            static string Outcome(Func<object?> read)
+            {
+                try
+                {
+                    return read() switch
+                    {
+                        null => "null",
+                        string text => "java.lang.String " + text,
+                        java.lang.Object value => value.getClass().getName() + " " + value.toString(),
+                        var other => other.GetType().FullName + " " + other,
+                    };
+                }
+                catch (Exception e)
+                {
+                    while (e.InnerException is { } inner)
+                        e = inner;
+
+                    return "raises " + (e is InvalidCastException ? typeof(java.lang.ClassCastException).FullName : e.GetType().FullName);
+                }
+            }
+        }
+
+        /// <summary>
         /// A slot written in a path's stored form converts the value to its type first: the epoch milliseconds a
         /// <c>TIMESTAMP</c> is held in and the days a <c>DATE</c> is are written, a <c>UuidValue</c> is spelled, and a value
         /// of another class fails by name, as Calcite's cast fails it.

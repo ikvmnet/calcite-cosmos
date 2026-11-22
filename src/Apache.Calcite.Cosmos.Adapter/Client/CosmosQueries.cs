@@ -136,7 +136,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>TIMESTAMP</c> parameter to <c>java.lang.Long</c>, a <c>DATE</c> one to
         /// <c>java.lang.Integer</c> and a <c>UUID</c> one to <c>UuidValue</c>, so a value of another
         /// class, which Calcite's own driver hands through, fails by name, as Calcite's plan fails reading
-        /// it.
+        /// it. Those are the only types whose slots take a stored form, each carrying its type
+        /// (<c>TryWriteStoredInstantParameter</c>, <c>TryWriteStoredUuidParameter</c>), so the value read here is
+        /// of the class its type is held in.
         /// </para>
         /// <para>
         /// <b>A null is bound as null</b>, which is what a parameter of any other kind binds — and
@@ -149,31 +151,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="slot">The ordinal to read, and how it is rounded.</param>
         /// <param name="form">The stored form to write it in.</param>
         /// <returns>The bound value.</returns>
-        /// <exception cref="CosmosExecutionException">The value is not an instant, or cannot be written in the form.</exception>
+        /// <exception cref="CosmosExecutionException">The value is not of its type, or cannot be written in the form.</exception>
         static object? Stored(org.apache.calcite.DataContext root, CosmosDynamicValue slot, Metadata.CosmosRepresentation form)
         {
             var value = Converted(root.get(slot.VariableName), slot);
 
-            if (Metadata.CosmosUuidForms.IsUuid(form))
-                return StoredUuid(slot, form, value);
+            if (value is null)
+                return null;
 
-            DateTime instant;
+            if (Metadata.CosmosUuidForms.IsUuid(form))
+                return StoredUuid(slot, form, (org.apache.calcite.util.UuidValue)value);
 
             try
             {
-                switch (value)
-                {
-                    case null:
-                        return null;
-                    case java.lang.Long millis:
-                        instant = DateTimeOffset.FromUnixTimeMilliseconds(millis.longValue()).UtcDateTime;
-                        break;
-                    case java.lang.Integer days:
-                        instant = DateTime.SpecifyKind(DateTime.UnixEpoch.AddDays(days.intValue()), DateTimeKind.Utc);
-                        break;
-                    default:
-                        throw new CosmosExecutionException($"Parameter {slot.VariableName} is compared with a path stored as '{form.Name}', and arrived as '{value.GetType().FullName}' rather than as an instant.");
-                }
+                var instant = value is java.lang.Long millis
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(millis.longValue()).UtcDateTime
+                    : DateTime.SpecifyKind(DateTime.UnixEpoch.AddDays(((java.lang.Integer)value).intValue()), DateTimeKind.Utc);
 
                 return Metadata.CosmosStoredForms.RenderDateTime(form, instant, slot.Rounding)
                     ?? throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be written in the stored form '{form.Name}'.");
@@ -188,29 +181,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// Writes a <c>UUID</c> parameter's value in the stored spelling of the path it is compared with.
         /// </summary>
         /// <remarks>
-        /// Calcite holds a <c>UUID</c> as <c>UuidValue</c>, which a slot carrying its type has converted the
-        /// value to already; one made without a type reads a <c>java.util.UUID</c>, a <see cref="Guid"/> or
-        /// text that parses as the same value, the way <see cref="CosmosLookup.Normalize"/> reads a lookup key.
+        /// Calcite holds a <c>UUID</c> as <c>UuidValue</c>, which the slot's type has converted the value to.
         /// </remarks>
         /// <param name="slot">The ordinal the value was read from.</param>
         /// <param name="form">The stored form to write it in.</param>
-        /// <param name="value">The value the data context holds.</param>
+        /// <param name="value">The value, converted to its type.</param>
         /// <returns>The bound value.</returns>
-        /// <exception cref="CosmosExecutionException">The value is not a UUID.</exception>
-        static object? StoredUuid(CosmosDynamicValue slot, Metadata.CosmosRepresentation form, object? value)
+        /// <exception cref="CosmosExecutionException">The value cannot be written in the form.</exception>
+        static object? StoredUuid(CosmosDynamicValue slot, Metadata.CosmosRepresentation form, org.apache.calcite.util.UuidValue value)
         {
-            var uuid = CosmosLookup.Normalize(value) switch
-            {
-                null => (Guid?)null,
-                Guid g => g,
-                string s when Guid.TryParse(s, out var parsed) => parsed,
-                _ => throw new CosmosExecutionException($"Parameter {slot.VariableName} is compared with a path stored as '{form.Name}', and arrived as '{value!.GetType().FullName}' rather than as a UUID."),
-            };
-
-            if (uuid is not Guid v)
-                return null;
-
-            return Metadata.CosmosUuidForms.Spell(form, v)
+            return Metadata.CosmosUuidForms.Spell(form, Guid.Parse(value.toString()))
                 ?? throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be written in the stored form '{form.Name}'.");
         }
 
@@ -328,12 +308,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <b>The dispatch is <c>RexToLixTranslator.visitDynamicParam</c>'s, over Calcite's own list and classes.</b> A
         /// type in Calcite's numeric family (<c>SqlTypeName.NUMERIC_TYPES</c>) is read through <c>java.lang.Number</c>,
         /// which <c>EnumUtils.convert</c> writes as <c>SqlFunctions.toBigDecimal(Object)</c> and then the conversion to the
-        /// class Calcite holds the type in: the box's own <c>…Value()</c>, the decimal itself, or <c>UnsignedType</c>'s for
-        /// an unsigned type. Any other type is read as the class Calcite holds it in, as its own type factory answers
+        /// class Calcite holds the type in: the box's own <c>…Value()</c>, as linq4j's <c>Primitive.number</c> converts it,
+        /// the decimal itself, or <c>UnsignedType</c>'s for an unsigned type. Any other type is read as the class Calcite holds it in, as its own type factory answers
         /// (<c>JavaTypeFactoryImpl.getJavaClass</c>): a <c>String</c> through the object's <c>toString()</c>, any other
         /// class through a cast, which <c>Object</c>, an <c>ANY</c>'s or a <c>VARIANT</c>'s class, passes as it is. The
         /// leaf conversions and the classes are Calcite's, called; the dispatch between them is written here, and the
-        /// measurement holds it to Calcite's. A parameter's type is always nullable, the validator making every one so,
+        /// measurement, and a test against the code Calcite generates for a parameter of each type
+        /// (<c>CosmosQueriesTests.TheConversionIsTheCodeCalciteGeneratesForAParameter</c>), hold it to Calcite's. A parameter's type is always nullable, the validator making every one so,
         /// so the conversion is the boxed one: an integer past its type wraps, as <c>BigDecimal.intValue()</c> does,
         /// rather than raise as the unboxed <c>intValueExact()</c> would.
         /// </para>
@@ -350,26 +331,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <param name="slot">The parameter, and the type it is converted to.</param>
         /// <returns>The value of the parameter's type, in the class Calcite holds the type in; <c>null</c> for <c>null</c>.</returns>
         /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the type.</exception>
-        static object? Converted(object? held, CosmosDynamicValue slot)
+        internal static object? Converted(object? held, CosmosDynamicValue slot)
         {
             if (held is null || slot.TypeName is not SqlTypeName type)
                 return held;
 
+            var boxed = JavaClassOf(type);
+
             try
             {
-                var boxed = JavaClassOf(type);
-
                 if (SqlTypeName.NUMERIC_TYPES.contains(type))
                 {
                     var number = SqlFunctions.toBigDecimal(held);
+                    if (org.apache.calcite.linq4j.tree.Primitive.ofBox(boxed) is { } primitive)
+                        return primitive.number(number);
+
                     return boxed switch
                     {
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Byte) => java.lang.Byte.valueOf(number.byteValue()),
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Short) => java.lang.Short.valueOf(number.shortValue()),
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Integer) => java.lang.Integer.valueOf(number.intValue()),
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Long) => java.lang.Long.valueOf(number.longValue()),
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Float) => java.lang.Float.valueOf(number.floatValue()),
-                        _ when boxed == (java.lang.Class)typeof(java.lang.Double) => java.lang.Double.valueOf(number.doubleValue()),
                         _ when boxed == (java.lang.Class)typeof(org.joou.UByte) => org.apache.calcite.linq4j.tree.UnsignedType.toUByte(number),
                         _ when boxed == (java.lang.Class)typeof(org.joou.UShort) => org.apache.calcite.linq4j.tree.UnsignedType.toUShort(number),
                         _ when boxed == (java.lang.Class)typeof(org.joou.UInteger) => org.apache.calcite.linq4j.tree.UnsignedType.toUInteger(number),
