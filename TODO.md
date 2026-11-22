@@ -4144,6 +4144,18 @@ across documents* and *A join of a container to itself* is the record.
   meets a filter Calcite evaluates above the converter: whether the column's reading can refuse, asked by
   `CosmosJson.CanRefuse` of its type today and by the theory once *Whether a reading can refuse is asked by its type
   alone* is done. No rule of the adapter asks it there today.
+- **A traversal over a view projecting a reading that can refuse** — *small, soundness; on `main`.* `SELECT v."n" FROM
+  (SELECT t."DOC" AS "d", t."n", x AS "tag" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
+  FROM products AS c) AS t, UNNEST(StringToArray(JSON_QUERY(t."DOC", '$.tags'))) AS x) AS v WHERE
+  INITCAP(JSON_VALUE(v."d", '$.name')) = 'Steel'`, bare and as a host plans, sends `SELECT VALUE { "DOC": c, "n":
+  (IS_NUMBER(c.n) ? c.n : null) } FROM products c WHERE IS_DEFINED(c.name)` and fails to implement: Calcite is left a
+  calc holding `StringToArray`, which has no in-process body ("cannot translate call StringToArray"). With
+  `JSON_VALUE(c."DOC", '$.type') = 'Park'` in the view, bare, the traversal reaches the service, `… "n": (IS_NUMBER(c.n)
+  ? c.n : null), "EXPR$0": t0 } FROM products c JOIN t0 IN c.tags WHERE ((c.type = @p0) AND IS_DEFINED(c.name))`, and
+  the refusing column is selected beneath the case fold kept in process: the split rule's question of what can refuse
+  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`) walks projections and filters, not a traversal's left side. The proper
+  fixes are legality at the conversion, so that no node Calcite implements holds a function with no in-process body, and
+  that question asked of a traversal's left side as of a projection beneath.
 - **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
   1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
   newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with
