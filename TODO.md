@@ -2642,6 +2642,17 @@ across documents* and *A join of a container to itself* is the record.
   strata use, and nothing added in C#; its gates are the statement and a document in the differential, recorded as a
   divergence the day value positions open, source A sampling a branch's false condition beside a refusing reading, and
   C6 running projections.
+- **A path the residual projection carries under a branch Calcite does not take** — *small, soundness; on `main`.*
+  `CosmosProjectResidualRule` declines a column of the projection it moves whose reading can refuse, but carries every
+  path the filter kept in process reads as a column beside it (`CollectPaths`), whatever its reading, since Calcite
+  reads those paths for every row it tests (`DESIGN.md`, *A residual filter was the same wall*). Calcite computes a
+  `CASE` branch only for the rows that reach it, and a later operand of `COALESCE` likewise, so `SELECT
+  JSON_VALUE(c."DOC", '$.region') AS "r" FROM products AS c WHERE CASE WHEN INITCAP(JSON_VALUE(c."DOC", '$.name')) =
+  'Steel' THEN UPPER(CAST(JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS VARCHAR)) = JSON_VALUE(c."DOC", '$.s') ELSE
+  FALSE END` sends `"$f2": (IS_NUMBER(c.n) ? c.n : null)` beneath that condition, bare and as a host plans, and fails over
+  `{"n":1.5,"name":"x","s":"q"}`, which Calcite drops without computing the cast. The fix is the one *A refusing reading
+  under a branch Calcite does not take* names: a path read only under a branch, where its reading can refuse, is not
+  carried.
 
 ---
 
@@ -4124,12 +4135,14 @@ across documents* and *A join of a container to itself* is the record.
   beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING
   INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) = 'Steel'`
   sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
-  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule and the
-  residual projection place no such projection beneath a condition kept in process
-  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`, `CosmosProjectResidualRule`), but the view's own shape puts it there and
-  the converter's width prefers it to the item whole. The proper fix is legality where the statement's projection meets
-  a filter Calcite evaluates above the converter, the question `CosmosJson.CanRefuse` answers, which no rule of the
-  adapter asks there today.
+  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule registers
+  no pair over such a projection (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), and the residual projection moves no such
+  column beneath its filter, though it carries the paths the filter reads (*A path the residual projection carries under
+  a branch Calcite does not take*); but the view's own shape puts the projection there and the converter's width prefers
+  it to the item whole. The proper fix is legality where the statement's projection meets a filter Calcite evaluates
+  above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by
+  the theory once *Whether a reading can refuse is asked by its type alone* is done. No rule of the adapter asks it
+  there today.
 - **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
   1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
   newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with
