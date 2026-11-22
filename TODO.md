@@ -1991,8 +1991,10 @@ bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anyth
 `BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a
 row reaches the parameter's reading, so two cases part from it:
 
-- **over an input from which no row reaches the parameter**, an empty container or partition, or beside a condition
-  Calcite's own planning proves false, Calcite answers no rows and the adapter fails;
+- **where no row reaches the parameter's reading**, the adapter fails where Calcite answers: over a container holding
+  no row, Calcite answers no rows; and where rows reach the statement but none takes the `CASE` arm that reads the
+  parameter, Calcite answers the rows the other arms decide, through its own driver with any value it cannot convert and
+  through the ADO.NET driver with a NaN (`Calcite.AParameterIsConvertedToItsTypeWhenRead`);
 - **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
   without binding anything, where Calcite's own plan, reading the container's rows, fails.
 

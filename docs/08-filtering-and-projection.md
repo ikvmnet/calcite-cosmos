@@ -538,11 +538,12 @@ service keeps the rows SQL does.
 
 **A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as Calcite's
 own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN or an
-infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`, a date or
-a timestamp one (Chapter 22). Calcite fails only once it reads a row: over a container or a partition
-holding none, or beside a condition its planning proves false, it answers no rows, where the adapter fails
-before anything is sent. Where the plan has already proved the statement keeps no document (Chapter 14.2),
-nothing is bound and it answers no rows, where Calcite fails reading a row.
+infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`, a date
+or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading: over a
+container holding no row it answers no rows, and where no row takes the `CASE` arm that reads the
+parameter it answers what the other arms decide, where the adapter fails before anything is sent. Where
+the plan has already proved the statement keeps no document (Chapter 14.2), nothing is bound and it
+answers no rows, where Calcite fails reading a row.
 
 **A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in the
 conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the

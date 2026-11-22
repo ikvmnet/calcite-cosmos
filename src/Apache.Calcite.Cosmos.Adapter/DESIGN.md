@@ -2640,8 +2640,9 @@ validator makes every parameter's type nullable. A value it refuses — a string
 infinity bound to a number, a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where
 Calcite's plan fails reading it. A presence slot reads only whether a value is bound, and the row limit's slot is read
 by the limit, which Calcite reads otherwise than a value, so neither is converted. Calcite fails only once a row reaches
-the parameter, which leaves a statement over no row failing where Calcite answers none, and one the facts graph decides
-not to send answering where Calcite fails; `TODO.md` records both.
+the parameter's reading, which leaves a statement over no row, or one no row of which takes the `CASE` arm reading the
+parameter, failing where Calcite answers, and one the facts graph decides not to send answering where Calcite fails;
+`TODO.md` records both.
 
 **A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
 either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the

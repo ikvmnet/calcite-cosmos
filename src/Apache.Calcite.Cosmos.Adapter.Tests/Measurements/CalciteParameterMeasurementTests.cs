@@ -233,8 +233,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// bound to a <c>DOUBLE</c> (<c>NumberFormatException</c>); and, casting what the data context holds to the class
         /// it holds the type in, a string bound to a <c>BOOLEAN</c>, a string or a <c>java.util.UUID</c> bound to a
         /// <c>UUID</c>, an integer bound to a <c>TIMESTAMP</c> and a long bound to a <c>DATE</c>
-        /// (<c>ClassCastException</c>); and over an empty table, where no row reads the parameter, it answers no rows.
-        /// A projected parameter is read so too.
+        /// (<c>ClassCastException</c>). It fails only once a row reaches the parameter's reading: over an empty table it
+        /// answers no rows, a NaN bound to a <c>BIGINT</c> and a string bound to a <c>BOOLEAN</c> alike, and where no
+        /// row takes the <c>CASE</c> branch that reads the parameter it answers what the other branch decides, a string
+        /// that spells no number bound to a <c>DOUBLE</c> or an <c>INTEGER</c>, a NaN bound to a <c>DOUBLE</c> and a
+        /// string bound to a <c>BOOLEAN</c> alike, and projected a string bound to an <c>INTEGER</c> so too; a branch a
+        /// row takes fails. A projected parameter is read so too.
         /// </para>
         /// <para>
         /// <b>Through the ADO.NET driver the data context holds the parameter's type's own class</b>, converted from the
@@ -297,6 +301,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.String 2: rows [2]", "java.lang.Integer 2: rows [2]"),
                 new("BOOLEAN v = ?, string 'true'", MaterialisedTable.Of(SqlTypeName.BOOLEAN, ["true", "false"]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "true"), "true",
                     "java.lang.String true: ClassCastException", "java.lang.Boolean true: rows [0]"),
+                new("BOOLEAN v = ?, string 'true', no row", MaterialisedTable.Of(SqlTypeName.BOOLEAN, []), "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: rows []", "java.lang.Boolean true: rows []"),
                 new("VARCHAR v = ?, long 30", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setLong(1, 30L), 30L,
                     "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
                 new("VARCHAR v = ?, double 1e20", texts, "SELECT \"k\" FROM {t} WHERE \"v\" = ?", s => s.setDouble(1, 1e20), 1e20d,
@@ -311,6 +317,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.Integer 20667: ClassCastException", "java.lang.Long 1785628800000: rows [0]"),
                 new("? > DATE, long and DateTime", keys, "SELECT \"k\" FROM {t} WHERE ? > DATE '2000-01-01'", s => s.setLong(1, 1785672000000L), new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Utc),
                     "java.lang.Long 1785672000000: ClassCastException", "java.lang.Integer 20667: rows [0]"),
+                new("CASE no row takes, DOUBLE, string 'x'", doubles, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1e301 THEN ? ELSE 0e0 END < 5", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0, 1]", "not read: FormatException"),
+                new("CASE no row takes, DOUBLE, double NaN", doubles, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1e301 THEN ? ELSE 0e0 END < 5", s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: rows [0, 1]", "java.lang.Double NaN: rows [0, 1]"),
+                new("CASE no row takes, INTEGER, string 'x'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 100 THEN ? ELSE 0 END = 0", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0, 1]", "not read: FormatException"),
+                new("CASE no row takes, BOOLEAN, string 'true'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 100 THEN ? ELSE TRUE END", s => s.setString(1, "true"), "true",
+                    "java.lang.String true: rows [0, 1]", "java.lang.Boolean true: rows [0, 1]"),
+                new("CASE a row takes, INTEGER, string 'x'", integers, "SELECT \"k\" FROM {t} WHERE CASE WHEN \"v\" > 1 THEN ? ELSE 0 END = 0", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: NumberFormatException", "not read: FormatException"),
+                new("projected CASE no row takes, INTEGER, string 'x'", integers, "SELECT \"k\", CASE WHEN \"v\" > 100 THEN ? ELSE 0 END FROM {t}", s => s.setString(1, "x"), "x",
+                    "java.lang.String x: rows [0 0, 1 0]", "not read: FormatException"),
                 new("JSON_VALUE = ?, long 30", documents, "SELECT \"k\" FROM {t} WHERE JSON_VALUE(\"d\", '$.s') = ?", s => s.setLong(1, 30L), 30L,
                     "java.lang.Long 30: rows [0]", "java.lang.String 30: rows [0]"),
                 new("projected DOUBLE, long 2^53 + 1", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}", s => s.setLong(1, 9007199254740993L), 9007199254740993L,
