@@ -381,6 +381,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             CosmosServiceOrder.Compare(stored, conversion, parameter, inclusive: true, RenderingSet.Emulator).IsProved.Should().BeTrue();
         }
 
+        /// <remarks>
+        /// A path read as a <c>DATE</c>, a <c>TIME</c> or a <c>TIMESTAMP</c> is an accessor's <c>RETURNING</c> clause, which
+        /// raises over every stored string (<c>Calcite.ReturningReadsNoStoredString</c>): over a declared calendar date its
+        /// order is not the stored text's, where the plain cast's of the same path is, and the order family answers so by
+        /// the same reading the accessor asks before it is sent.
+        /// </remarks>
+        [Fact]
+        public void AnAccessorReadAsATemporalTypeIsNotOrderedByADeclaredDate()
+        {
+            var facts = Declared("""{ "type": "object", "required": ["at"], "properties": { "at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } }""");
+            var cast = CosmosOrderOperand.ForConversion(At("at"), null, CosmosTemporalParts.Date);
+
+            CosmosServiceOrder.OrderBy(facts, new[] { Key(cast) }, RenderingSet.Production).IsProved.Should().BeTrue("the plain cast reads the form");
+            CosmosServiceOrder.Extreme(facts, cast, RenderingSet.Production).IsProved.Should().BeTrue("and its extreme is the stored text's");
+
+            foreach (var type in new[] { SqlTypeName.DATE, SqlTypeName.TIMESTAMP, SqlTypeName.TIME })
+            {
+                var verdict = CosmosServiceOrder.OrderBy(facts, new[] { Key(Typed("at", type)) }, RenderingSet.Production);
+                verdict.IsProved.Should().BeFalse($"RETURNING {type.getName()} raises over the stored string: {verdict.Reason}");
+                CosmosServiceOrder.Extreme(facts, Typed("at", type), RenderingSet.Production).IsProved.Should().BeFalse($"nor is its extreme the stored text's, as {type.getName()}");
+            }
+        }
+
 /// <remarks>
         /// Text over a path that may hold a number is a rendering, compared as text in Calcite and as another type at
         /// the service.

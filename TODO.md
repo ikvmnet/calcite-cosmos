@@ -1167,7 +1167,7 @@ hand. Two tests pin both directions.
   `TIMESTAMP` raise over a string of every registered form (`Calcite.ReturningReadsNoStoredString`), so an
   accessor so typed over a declared calendar date or time of day, sent as the bare path, answered every
   row where the query raises. It asks `CosmosTemporalForms.ReturningReads` now, which no form answers,
-  and is computed in process.
+  and is computed in process, and the order family reads such a column by the same answer.
 
 **Not built, and each for a stated reason:**
 

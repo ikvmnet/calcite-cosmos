@@ -575,7 +575,9 @@ back. But `RETURNING` is not the cast: it asserts the extracted type, and `RETUR
 read only a JSON number. So over a declared calendar date or time of day the column, its sort, its
 extremes and its groups answered every row where the query raises. The accessor now asks
 `CosmosTemporalForms.ReturningReads`, which no form answers, and is computed in process, where it
-raises as Calcite does; `EngineTargets` is the cast's alone.
+raises as Calcite does; `EngineTargets` is the cast's alone. The order family's reading of a path so
+typed (`CosmosServiceOrder.ReadPath`) asks the same, so it no longer calls such a column's order the
+stored text's where nothing sends it.
 
 **The calendar date's row stays, and its day zero is recorded rather than fixed**
 (`Calcite.DateCastReadsDayZeroAsTheMonthBefore`). The cast reads `2024-03-00` as 29 February and

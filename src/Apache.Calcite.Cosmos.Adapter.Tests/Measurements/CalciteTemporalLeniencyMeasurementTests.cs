@@ -779,7 +779,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" })
                 absent.Values(connection, $"JSON_VALUE(\"d\", '$.s' RETURNING {type})")[0].Should().BeNull($"RETURNING {type} over an absent path is null, not a raise");
 
-            // And the reading an accessor so typed asks before it is sent says the same of every form.
+            // And the reading an accessor so typed asks before it is sent, and the order family asks of a column so typed,
+            // says the same of every form.
             foreach (var representation in CosmosTemporalForms.Registered)
                 foreach (var parts in new[] { CosmosTemporalParts.Date, CosmosTemporalParts.Time, CosmosTemporalParts.Instant })
                     CosmosStoredForms.ReturningReads(representation, parts).Should().BeFalse($"RETURNING reads no string of {representation.Name} into {parts}");
