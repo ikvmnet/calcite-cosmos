@@ -542,8 +542,8 @@ infinity bound to a numeric one, anything but a value of its type bound to a `BO
 or a timestamp one (Chapter 22). Calcite fails only once a row reaches the parameter's reading, so where
 the request reads the parameter the adapter fails before anything is sent where Calcite answers: no rows
 over a container holding none, and what the other arms decide where no row takes the `CASE` arm that
-reads it. Where the plan has already proved the statement keeps no document (Chapter 14.2), the value is
-not read and it answers no rows, where Calcite fails reading a row.
+reads it. Where the plan has already proved the statement keeps no document (Chapter 14.2), a value only
+a row reads is not read and it answers no rows, where Calcite fails reading a row.
 
 **A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in
 the conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the
