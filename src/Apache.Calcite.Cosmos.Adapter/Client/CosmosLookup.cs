@@ -208,7 +208,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
         /// <summary>
         /// Returns a number as a Java number, which Calcite's conversions take: a Java number as it is, and a CLR number
-        /// boxed; or <c>null</c> for anything but a number.
+        /// of a type it lists boxed; or <c>null</c> for anything else.
         /// </summary>
         /// <remarks>
         /// A CLR <see cref="byte"/> is Calcite's <c>TINYINT</c>, as <see cref="CosmosJson"/> reads one: a Java byte is
