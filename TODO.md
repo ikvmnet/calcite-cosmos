@@ -2936,6 +2936,19 @@ across documents* and *A join of a container to itself* is the record.
   grouping keys it so. Both are on main, and each is left for a change of its own after "fail like Calcite": the fix
   goes with F's reading of the cells, which reads the union where the rendering is read, and the column's writer with
   S's column (h37).
+- **`SAFE_CAST` of a raw value to text loads as the plain cast's reading** — *small, latent; older, main the same.* The
+  loader reads `SAFE_CAST(c."$.category" AS VARCHAR)` as it reads the `CAST` (`CosmosPredicateLoader.Cast`'s branch for
+  a text cast, which `CosmosRexShapes.TryTextCastValue` opens to both), so the null test of either loads to
+  `(cast(VARCHAR, raw($["category"] VARIANT)) is null)`. That reading's `VARIANT` column raises over an object or an
+  array (`Calcite.CastOfARawValueToText`), so its cell there reads a raise alone, in both graphs, where Calcite in
+  process answers `SAFE_CAST`'s null test TRUE over either and raises on nothing. `Cast`'s own remarks say `SAFE_CAST`
+  converts as no row measured, which its last branch keeps (`kind == CAST`) and its branch for a text cast does not. No
+  wrong form came of it: the statements over it judged against Calcite in process on both targets found none, S keeping
+  its null tests in process and its exact forms agreeing over the structures. The fix is the loader reading a
+  `SAFE_CAST` of a raw value as no reading, as its last branch does, or a row measuring `SAFE_CAST`'s null where the
+  cast raises and a reading named for it. `DESIGN.md`'s *Casts over document values* says the two differ only where a
+  conversion fails, "which rendering a value as text never does", which the row contradicts for a `VARIANT`; it is
+  corrected with the fix.
 - **A projected or grouped type test over `JSON_VALUE` is written over the rendering** — *medium, a wrong answer; the
   column's, h37.* The translator writes a column's `IS_STRING(JSON_VALUE(DOC, '$.v'))`, and every type test and
   `IS_DEFINED` beside it, as the function over the value's rendering, `IS_STRING((IS_PRIMITIVE(c.v) ? c.v : null))`
