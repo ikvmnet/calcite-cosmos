@@ -658,13 +658,6 @@ is not offered, and one thing that cannot be fixed here at all.
   geometry is not a document value: bound as itself the SDK's serializer wrote its object graph and
   the service got that in place of a shape. `CosmosJson.ToGeoJsonValue` shapes it, dropping the `crs`
   member the writer adds, so a parameter and an inlined constant say the same thing.
-
-  **A projected parameter is still sent to the service and echoed back** — *small, and it is the
-  shape #154 was reported through.* `SELECT VALUE { "$f2": @p0 }` asks the service to return a value
-  the client already has; for a geography it also round-trips the instance through GeoJSON, which
-  keeps the shape and not the object. Declining to push a projection that is *only* a parameter or a
-  literal would remove both, and nothing needs the value to have travelled. Left out of #154 because
-  it changes which plans are chosen and the fix does not need it.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -1990,22 +1983,24 @@ on Azure, where it is a constant the service may or may not fold before it picks
 host that rewrites `= NULL` into `IS NULL` before it sends anything, as Entity Framework does, never sends
 one, which is likely why nothing had reported it.
 
-### A parameter Calcite cannot convert fails where no row reaches it — *small, and the fix is not planned*
+### A parameter Calcite cannot convert fails where no row reaches it, and answers beside a request decided unsent — *small, and the fix is not planned*
 
 The bind converts each parameter's value to its type with Calcite's own conversion (`CosmosQueries.Bind`,
-`Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no
-number bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a value of its type
-bound to a `BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a row reaches the parameter's
-reading, so two cases part from it:
+`Calcite.AParameterIsConvertedToItsTypeWhenRead`), and a value that conversion refuses — a string that spells no number
+bound to a numeric parameter, a NaN or an infinity bound to a numeric one, anything but a value of its type bound to a
+`BOOLEAN`, a `UUID`, a date or a timestamp — fails the statement by name before it is sent. Calcite fails only once a
+row reaches the parameter's reading, so two cases part from it:
 
-- **over an input that holds no row**, an empty container or partition, Calcite answers no rows and the adapter fails;
+- **over an input from which no row reaches the parameter**, an empty container or partition, or beside a condition
+  Calcite's own planning proves false, Calcite answers no rows and the adapter fails;
 - **beside a request the facts graph decides not to send** (`CosmosQuery.SendsNothing`), the adapter answers no rows
   without binding anything, where Calcite's own plan, reading the container's rows, fails.
 
 **The proper fix** is the request decision reading the bound value, so that a statement over no row answers none and
 one over any row fails. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
 the ADO.NET driver refuses a string that spells no number bound to a `BIGINT`, and a NaN bound to a `BIGINT`, an
-`INTEGER` or a `DECIMAL`, before the statement runs (`Calcite.ANonFiniteDoubleParameterRaises`).
+`INTEGER` or a `DECIMAL`, before the statement runs (`Calcite.AParameterIsConvertedToItsTypeWhenRead`,
+`Calcite.ANonFiniteDoubleParameterRaises`).
 
 ### A NaN or an infinity bound fails where Calcite answers — *small, a bridge, and the fix is not planned*
 

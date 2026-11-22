@@ -525,21 +525,24 @@ and is unaffected (Appendix E).
 
 **A parameter is the value of its type.** Calcite gives `?` the type of what it is compared with, and
 compares the value bound as a value of that type, whichever driver bound it. Through Calcite's own JDBC
-driver the value arrives as the caller bound it and is converted when a row reads it: a `long` bound to
-a `DOUBLE` parameter compares as its double, so 2^53 + 1 is 2^53; a number bound to a text parameter
-compares as Java writes it, `30` as `'30'` and `1e20` as `'1.0E20'`; a string bound to a number compares
-as the number it spells; a long past an `INTEGER` wraps, and a double bound to a `BIGINT` is cut to its
-whole part. The ADO.NET driver converts the value to the type before Calcite sees it, by rules of its
-own: it rounds `1.5` to `2` for a `BIGINT`, and refuses a long past an `INTEGER`. A string is held to its
-type's length too: compared with `JSON_VALUE(… RETURNING VARCHAR(1))`, `'ab'` is `'a'`, and against a
-`CHAR(3)` `'a'` is `'a  '`. The adapter sends the value Calcite compares, converted by Calcite's own
-conversion and truncated or padded the same way, so the service keeps the rows SQL does.
+driver, `jdbc:calcite:` opened in process (Chapter 21.7), the value arrives as the caller bound it and
+is converted when a row reads it: a `long` bound to a `DOUBLE` parameter compares as its double, so 2^53
++ 1 is 2^53; a number bound to a text parameter compares as Java writes it, `30` as `'30'` and `1e20` as
+`'1.0E20'`; a string bound to a number compares as the number it spells; a long past an `INTEGER` wraps,
+and a double bound to a `BIGINT` is cut to its whole part. The ADO.NET driver converts the value to the
+type before Calcite sees it, by rules of its own: it rounds `1.5` to `2` for a `BIGINT`, and refuses a
+long past an `INTEGER`. A string is held to its type's length too: compared with `JSON_VALUE(… RETURNING
+VARCHAR(1))`, `'ab'` is `'a'`, and against a `CHAR(3)` `'a'` is `'a  '`. The adapter sends the value
+Calcite compares, converted by Calcite's own conversion and truncated or padded the same way, so the
+service keeps the rows SQL does.
 
 **A value Calcite cannot convert to its parameter's type fails the statement** when it runs, as Calcite's
 own plan fails reading it: a string that spells no number bound to a numeric parameter, a NaN or an
 infinity bound to a numeric one, anything but a value of its type bound to a `BOOLEAN`, a `UUID`, a date or
-a timestamp one (Chapter 22). Calcite fails only once it reads a row, and over a container or a partition
-holding none it answers no rows; the adapter fails before anything is sent, whatever the container holds.
+a timestamp one (Chapter 22). Calcite fails only once it reads a row: over a container or a partition
+holding none, or beside a condition its planning proves false, it answers no rows, where the adapter fails
+before anything is sent. Where the plan has already proved the statement keeps no document (Chapter 14.2),
+nothing is bound and it answers no rows, where Calcite fails reading a row.
 
 **A number that is NaN or an infinity fails the statement.** A finite value can become an infinity in the
 conversion: through Calcite's own driver, the string `'1e400'` bound to a `DOUBLE` parameter, or the double
