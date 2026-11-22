@@ -913,9 +913,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A projection binds no path for what reads through a <c>RETURNING VARIANT</c>: an item of it, an item of that, or an
-        /// accessor over it. Calcite reads each through the accessor, which is null where the path holds an array or an
-        /// object, and so wherever a path beneath it is defined; a field of that path reads the value the document holds there.
+        /// A projection binds no path for a <c>RETURNING VARIANT</c>, nor for what reads through one: an item of it, an item of
+        /// that, or an accessor over it. Calcite reads each through the accessor, which is null where the path holds an array
+        /// or an object, and so wherever a path beneath it is defined; a field of that path reads the value the document holds
+        /// there.
         /// </summary>
         [Theory]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)")]
