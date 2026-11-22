@@ -6398,8 +6398,8 @@ string** — the declaration, or the probe's filter keeping a kind that declares
 restriction names the stored value, `path IN (@k0, …)`, and the join then matches the fetched rows to
 the build side's keys in process, by the key *as the column reads it*. So the fetch may return more
 than matches and never less, and whether it can return less is a question about the column's reading,
-which `TryBindOutput` derives beside its path. A column read as declared is the stored value, but where
-its type reads a stored number as another, which `TODO.md` records. A
+which `TryBindOutput` derives beside its path. A column read as declared is the stored value, except where
+its type reads a stored number as another value, which `TODO.md` records. A
 `JSON_VALUE` read as text is its rendering, and the filter translator refuses `JSON_VALUE(…) = ?` over
 an undeclared path for exactly that reason: a stored `30` renders as `'30'` and Calcite matches it,
 while the service compares a number to a string and does not. The rule used to check the key's SQL
