@@ -540,6 +540,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             var plan = Plan(sql);
             RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
             (await Execute(plan)).Should().BeEquivalentTo(new object[] { "p0", "p15" });
+            Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Distinct()
+                .Should().BeEquivalentTo(new[] { BitConverter.DoubleToInt64Bits(0d), BitConverter.DoubleToInt64Bits(1.5d) }, "the minus zero is sent as the 0 the service reads back");
 
             Given(orders: System.Array.Empty<string>(), products: products);
             var own = Plan(sql, lookup: false);

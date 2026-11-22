@@ -62,7 +62,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <b>Calcite's own join never matches <c>-0.0</c> with <c>0.0</c>, and this follows <c>=</c>, which does.</b> Its
         /// equi-join in process, a hash join or a merge join, leaves a <c>DOUBLE</c> <c>-0.0</c> unmatched against
         /// <c>0.0</c>, where the comparison join and <c>=</c> itself match them. A <see cref="double"/> <c>-0.0</c> equals
-        /// <c>0.0</c> here as it does under <c>=</c>, hashing alike; <c>TODO.md</c> records the departure.
+        /// <c>0.0</c> here as it does under <c>=</c>, hashing alike, and is held as <c>0.0</c>, so that a batch never sends
+        /// the minus zero no row says the service compares with a stored <c>0</c>; <c>TODO.md</c> records the departure.
         /// </para>
         /// <para>
         /// <b>Java's boxes as well as the CLR's, and the Java ones are the ordinary case.</b> A
@@ -107,7 +108,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 {
                     "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" => SqlFunctions.toLong(number),
                     "DECIMAL" => SqlFunctions.toBigDecimal(number).stripTrailingZeros(),
-                    "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number),
+                    // Plus zero, which = cannot tell from minus zero, so that a batch sends the 0 the service reads back.
+                    "FLOAT" or "REAL" or "DOUBLE" => SqlFunctions.toDouble(number) + 0d,
 
                     // No number arrives under any other type, or under none: Calcite cast both keys to the join's
                     // comparison type, which the join always passes, and a UUID parameter read by this is no number.

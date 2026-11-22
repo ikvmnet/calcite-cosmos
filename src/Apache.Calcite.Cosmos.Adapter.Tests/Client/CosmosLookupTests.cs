@@ -424,8 +424,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var rows = await NumberJoin([java.lang.Double.valueOf(-0d), java.lang.Double.valueOf(0d)], executor, n => java.lang.Double.valueOf(n.GetDouble()), SqlTypeName.DOUBLE);
 
             rows.Should().HaveCount(2, "each key matches the document holding 0");
-            // One key, padded by repeating it; two would have sent 0.0 after it.
-            Keys(executor.Executed.Single()).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Should().Equal(Enumerable.Repeat(BitConverter.DoubleToInt64Bits(-0d), 3), "-0.0 and 0.0 are one key");
+            // One key, padded by repeating it, and sent as plus zero, the 0 the service reads back: no row says how it
+            // compares a minus zero sent with a stored 0.
+            Keys(executor.Executed.Single()).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Should().Equal(Enumerable.Repeat(BitConverter.DoubleToInt64Bits(0d), 3), "-0.0 and 0.0 are one key, plus zero");
+
+            // Alone, a minus zero is sent as plus zero too.
+            var alone = new RecordingExecutor("""{"n":0}""");
+            (await NumberJoin([java.lang.Double.valueOf(-0d)], alone, n => java.lang.Double.valueOf(n.GetDouble()), SqlTypeName.DOUBLE)).Should().ContainSingle();
+            Keys(alone.Executed.Single()).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Should().AllBeEquivalentTo(BitConverter.DoubleToInt64Bits(0d));
+            BitConverter.DoubleToInt64Bits((double)CosmosLookup.Normalize(-0f, SqlTypeName.REAL)!).Should().Be(BitConverter.DoubleToInt64Bits(0d));
         }
 
         /// <summary>
