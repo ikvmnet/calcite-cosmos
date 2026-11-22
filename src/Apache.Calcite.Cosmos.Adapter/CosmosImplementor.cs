@@ -623,8 +623,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// input's readings, so an accessor over a field read as text, which Calcite parses, binds nothing, as the translator
         /// refuses it. The element a traversal yields, which only the correlate rule's question binds, passes through as the
         /// field it is and no further: an accessor over it reads its text parsed, which is no path. It binds less than
-        /// implementation for a <c>RETURNING VARIANT</c>, which <c>CosmosProject.Implement</c> still binds to its path (see
-        /// below); the walk may know less than implementation and never more
+        /// implementation for a <c>RETURNING VARIANT</c> and what reads through one, which <c>CosmosProject.Implement</c> still
+        /// binds to its path (see below); the walk may know less than implementation and never more
         /// (<c>CosmosRelTests.TheWalkBindsNoMoreThanImplementation</c>). And it reads a <c>JSON_QUERY</c> returning an array
         /// as its JSON text, where implementation reads the array typed (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>).
         /// </remarks>
@@ -637,9 +637,20 @@ namespace Apache.Calcite.Cosmos.Adapter
             // (CosmosPredicateLoader.Loading.Field), which is what a promoted column is. RETURNING VARIANT is typed so and is
             // no raw value: Calcite holds what it reads in no box, and it is null where the path holds an array or an object
             // (Calcite.VariantEqualsOnlyItsOwnBox). No reading of a field says what this column holds, so it binds nothing,
-            // as RETURNING DECIMAL binds nothing.
+            // as RETURNING DECIMAL binds nothing; nor what reads through it, an item of it or an accessor over it, which
+            // Calcite reads through that null wherever a path beneath it is defined.
+            static bool ThroughVariant(RexNode node)
+            {
+                // Each step the resolver takes reads through its first operand: an item's, an accessor's, StringToArray's.
+                for (; node is RexCall call && call.getOperands().size() > 0; node = (RexNode)call.getOperands().get(0))
+                    if (CosmosRexShapes.IsVariantReturningJsonValue(call))
+                        return true;
+
+                return false;
+            }
+
             var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef)
-                && CosmosRexShapes.IsVariantReturningJsonValue(expression) == false ? resolved : null;
+                && ThroughVariant(expression) == false ? resolved : null;
             return (path,
                 path is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
                 : path is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText

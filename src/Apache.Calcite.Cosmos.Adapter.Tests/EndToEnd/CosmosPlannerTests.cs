@@ -3066,27 +3066,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A view's <c>RETURNING VARIANT</c> column is no raw value, so nothing derived through it drops a document Calcite
-        /// keeps: each form the split rule pushes of a filter over the view, read beneath the view as the filter rule reads
-        /// it there, is judged on both targets over every document Calcite keeps of the whole condition, the column's path
-        /// absent, a JSON null, a number, an empty and a full array and object, each with and without the name.
+        /// A view's <c>RETURNING VARIANT</c> column, or an item of one, is no raw value, so nothing derived through it drops a
+        /// document Calcite keeps: each form the split rule pushes of a filter over the view, read beneath the view as the
+        /// filter rule reads it there, is judged on both targets over every document Calcite keeps of the whole condition, the
+        /// column's path absent, a JSON null, a number, an empty and a full array, and an empty, a full and a nested object,
+        /// each with and without the name.
         /// </summary>
         /// <remarks>
         /// Bound to its path, the column read through its field as the raw value, and S, asked to weaken the filter over the
         /// view, proved <c>IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)</c> of the disjunction and <c>IS_NULL(c.x)
         /// OR NOT IS_DEFINED(c.x)</c> beside <c>IS_DEFINED(c.name)</c> of the <c>CASE</c>, each false over <c>{"x":[]}</c>, which
         /// Calcite keeps: Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an
-        /// object. A projection binds no path for it (<c>CosmosImplementor.Projected</c>), so no weakening is derived
-        /// through the column.
+        /// object. An item of it, bound to <c>c.x.a</c>, proved the same of <c>c.x.a</c>, false over <c>{"x":{"a":1}}</c>, where
+        /// Calcite's item is null because the accessor is. A projection binds no path for either
+        /// (<c>CosmosImplementor.Projected</c>), so no weakening is derived through the column.
         /// </remarks>
-        [Fact]
-        public void AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps()
+        [Theory]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']")]
+        public void AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps(string column)
         {
-            const string View = "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT) AS \"v\" FROM products AS c) AS t WHERE ";
+            var view = $"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", {column} AS \"v\" FROM products AS c) AS t WHERE ";
             var values = new J?[]
             {
                 null, new J.Null(), new J.Num(1m), new J.Arr([]), new J.Arr([new J.Num(1m)]),
                 new J.Obj(new SortedDictionary<string, J>()), new J.Obj(new SortedDictionary<string, J> { ["a"] = new J.Num(1m) }),
+                new J.Obj(new SortedDictionary<string, J> { ["a"] = new J.Obj(new SortedDictionary<string, J> { ["b"] = new J.Num(1m) }) }),
             };
             var documents = values.SelectMany(value => new[] { false, true }.Select(named =>
             {
@@ -3104,7 +3110,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "CASE WHEN t.\"v\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
             })
             {
-                var filter = Filters(PlanLogical(View + condition)).Single();
+                var filter = Filters(PlanLogical(view + condition)).Single();
                 var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
                 CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _).Should().BeTrue();
 
@@ -3129,7 +3135,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 kept.SelectMany(document => forms.SelectMany(form => new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
                         .Where(target => CosmosEval.On(form, document, target) is { } outcome && outcome != ServiceOutcomes.True)
                         .Select(target => $"Calcite keeps {Documents.Json(document)}; {target} drops it under {form}")))
-                    .Should().BeEmpty($"{condition} pushes [{string.Join(" & ", pushable)}]");
+                    .Should().BeEmpty($"{condition} over {column} pushes [{string.Join(" & ", pushable)}]");
             }
 
             static java.util.List Java(IEnumerable<RexNode> nodes)

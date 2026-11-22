@@ -1606,6 +1606,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// A filter over an item of a view's <c>RETURNING VARIANT</c> column, where the transpose will not carry it beneath the
+        /// view, sends no test of the item's path.
+        /// </summary>
+        /// <remarks>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's text column, read through the view's projection, grow past the
+        /// transpose's bloat, so the split weakens the filter over the view, through the binding of its columns. Bound to
+        /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
+        /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
+        /// the accessor is null over an object. A projection binds no path for an item of a <c>RETURNING VARIANT</c>
+        /// (<c>CosmosImplementor.Projected</c>), so the split sends what it derives of the rest.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.a)")]
+        [InlineData(true, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.a)")]
+        [InlineData(false, "CASE WHEN t.\"e\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(true, "CASE WHEN t.\"e\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        public void ShouldSendNoTestOfAnItemOfAViewsReturningVariantColumnWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string condition, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP(t.\"a\") LIKE 'W{i}%'")) + ")";
+            var sql = "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a'] AS \"e\", "
+                + "INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE (" + condition + ") AND " + likes;
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the item's path is sent: {0}", sent);
+        }
+
+        /// <summary>
         /// Renders the statement each pushed subtree of a plan sends.
         /// </summary>
         List<string> Sent(RelNode best)

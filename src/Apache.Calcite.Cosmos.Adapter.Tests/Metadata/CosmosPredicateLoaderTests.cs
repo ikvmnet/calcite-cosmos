@@ -912,6 +912,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                 $"{name}: {projected} bound to {fields[0]?.ToString() ?? "nothing"} reads through its field as {throughField} and itself as {itself?.ToString() ?? "nothing"}");
         }
 
+        /// <summary>
+        /// A projection binds no path for what reads through a <c>RETURNING VARIANT</c>: an item of it, an item of that, or an
+        /// accessor over it. Calcite reads each through the accessor, which is null where the path holds an array or an
+        /// object, and so wherever a path beneath it is defined; a field of that path reads the value the document holds there.
+        /// </summary>
+        [Theory]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)[1]")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x[0]' RETURNING VARIANT)['a']")]
+        [InlineData("JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a')")]
+        [InlineData("JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a' RETURNING INTEGER)")]
+        [InlineData("JSON_QUERY(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a')")]
+        public void AProjectionBindsNoPathForWhatReadsThroughAReturningVariant(string expression)
+        {
+            var project = new EndToEnd.Corpus.PlannerHarness().ToLogical($"SELECT {expression} AS \"e\", c.\"DOC\" AS \"d\" FROM products AS c")
+                .Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            CosmosImplementor.TryBindOutput(project, out var fields, out _, out _).Should().BeTrue();
+
+            fields[0].Should().BeNull($"{project.getProjects().get(0)} reads through the accessor");
+            fields[1].Should().NotBeNull("the document beside it is bound");
+        }
+
         /// <summary>A reading's kind, path and type, a raw reading's type the column given, and its form left out.</summary>
         static string? ReadingOf(SqlValue? value, string? column) => value switch
         {

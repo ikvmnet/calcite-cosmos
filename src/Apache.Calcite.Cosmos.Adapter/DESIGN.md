@@ -10988,7 +10988,11 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   column was read as the raw value, its null test sent as the raw value's, and S, asked to weaken `t."v" IS NULL OR
   INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)`, which drops
   `{"x":[]}` where Calcite keeps it. Bound to nothing, as `RETURNING DECIMAL` is, no weakening is derived through the
-  column (`CosmosPlannerTests.AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps`). Every other column a
+  column (`CosmosPlannerTests.AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps`). What reads through
+  it, an item of it or an accessor over it, is bound to nothing too, since Calcite reads it through the accessor's null
+  wherever a path beneath is defined: bound to `c.x.a`, an item's null test over a view was weakened to `IS_NULL(c.x.a)
+  OR … OR NOT IS_DEFINED(c.x.a)`, which drops `{"x":{"a":1}}` where Calcite keeps it
+  (`CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`). Every other column a
   projection binds is read through its field as the same kind of reading of the same path and type as its expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
