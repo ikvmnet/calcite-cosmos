@@ -1351,11 +1351,14 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
                     };
                 }
 
-                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) => IsString(literal) == false ? Equal(cell.Coarse, literal)
-                    : AsText(cell, PredicateAtom.Equal, literal, columns, () => Numeric(cell) ? MayRender(cell, StringOf(literal)) ? T | F : F : base.EqualOn(cell, literal));
+                /// <summary>
+                /// A comparison on a cell as its column answers on the cell's key (G5), beside a literal of any class: beside one
+                /// no row says the cast is compared with, no column answers, so anything and a raise.
+                /// </summary>
+                public override Truths EqualOn(PathCell cell, string literal, RawTruths columns) =>
+                    AsText(cell, PredicateAtom.Equal, literal, columns, () => IsString(literal) && Numeric(cell) ? MayRender(cell, StringOf(literal)) ? T | F : F : base.EqualOn(cell, literal));
 
-                public override Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => IsString(literal) == false ? Order(cell.Coarse, op, literal)
-                    : AsText(cell, op, literal, columns, () => base.OrderOn(cell, op, literal));
+                public override Truths OrderOn(PathCell cell, string op, string literal, RawTruths columns) => AsText(cell, op, literal, columns, () => base.OrderOn(cell, op, literal));
 
                 public override Truths NullOn(PathCell cell, RawTruths columns) => AsText(cell, NullTest, null, columns, () => T | F);
 

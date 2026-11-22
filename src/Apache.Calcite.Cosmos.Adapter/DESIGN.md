@@ -7998,6 +7998,20 @@ category that may hold anything the positive affix is proved, as the column of t
 union: the `ANY` renders a number or a boolean the negation keeps where the `VARIANT` reads null and drops it. Since
 rawtyped a declared field's reading names its column, which chooses (*The raw reading through its column*).
 
+**Beside a literal that is no string.** The row compares each column beside a string alone, so beside a number, a
+boolean or null no row says the cast is compared at all: a cell reads the column's key there as it does beside a
+string, and since no column answers that key, it reads anything and a raise (`RawAnswer.Unanswered`), as a raw key no
+column answers is read everywhere. `RawText.EqualOn` and `OrderOn` used to take the text's coarse answer beside such a
+literal, any truth and no raise, which left out a raise the rows do not rule out, a `VARCHAR` column's over a number or
+a `VARIANT`'s over a structure; they read the key beside every literal now, and compare the rendering on the cell beside
+a string alone. So an `IN` holding such a literal beside a string gains a raise beside what it answers, and may raise
+where it did not. The loader writes the cast beside strings, an `IN` of strings and `LIKE` alone, every comparison of it
+in the gate's corpus, so no plan reads the change: the plan digests at 200 predicates are byte-equal under both targets,
+and an evaluation of every reading over both graphs' tables moved only the cast's cells beside such a literal, each
+widened by a raise. What `Kept` keeps beside such a literal is the coarse reading's and stays as it was: every value of
+the types asked, which is what a key no column answers keeps class by class.
+`RenderingRawUnionTests.ARawCastBesideALiteralThatIsNoStringReadsItsColumnsKey` holds the cells.
+
 **What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
 graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
 `Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.

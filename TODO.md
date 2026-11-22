@@ -4296,11 +4296,10 @@ across documents* and *A join of a container to itself* is the record.
 - **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
   reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
   text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
-  reading's own evaluator where no alias row names one, a lookup with a default; and `RawText.EqualOn` and `OrderOn`
-  beside a literal that is no string take the coarse answer beside G5's rows. An
-  evaluator that is a function of the rows alone, with the casts owed above as rows, finishes G7. It waits past the
-  switch because the audit's plan puts the rest of G7 there, before 3B closes (§3): which evaluator reads a row is
-  provenance, never an answer, and the switch read the rows as they stand.
+  reading's own evaluator where no alias row names one, a lookup with a default. An evaluator that is a function of the
+  rows alone, with the casts owed above as rows, finishes G7. It waits past the switch because the audit's plan puts the
+  rest of G7 there, before 3B closes (§3): which evaluator reads a row is provenance, never an answer, and the switch
+  read the rows as they stand.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
   keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
   `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`, which `REPLACE`'s search and `SUBSTRING`'s length name
