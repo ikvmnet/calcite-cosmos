@@ -1180,7 +1180,8 @@ hand. Two tests pin both directions.
   a range of the stored strings wide enough to hold every spelling of the instants a comparison keeps
   exists. What the profile has to hold, measured: 29 February of 0100 and of 1500 raises where that of
   1900 rolls to 1 March; `0000-01-01` reads as `0001-01-01` and `0001-01-00` as `0001-12-31`;
-  `CAST … AS TIMESTAMP FORMAT` parts from the other parses before 1582-10-16; and `PARSE_TIME` wraps at a
+  what `CAST … AS TIMESTAMP FORMAT` reads before 1582-10-16, and `PARSE_DATETIME` of a time a
+  daylight-saving change skips, depends on the host's default time zone; and `PARSE_TIME` wraps at a
   day where the plain `TIME` cast does not.
   `Calcite.ParsesReadTheirFieldsLeniently` names no evaluator, so nothing reads a parse today.
 - **The date cast's day zero** — *small, soundness; for filters with 3C's stored lowering, for projected

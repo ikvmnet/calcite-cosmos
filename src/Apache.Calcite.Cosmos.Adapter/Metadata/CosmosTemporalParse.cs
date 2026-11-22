@@ -36,7 +36,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and
     /// reads the format with the same model the <c>PARSE_</c> family does — measured, every spelling
     /// <see cref="CosmosTemporalForms"/> lists reads its shape's canonical strings to the same instant
-    /// either way from 1582-10-16 on, the cast to <c>TIMESTAMP</c> parting from the rest before it,
+    /// either way from 1582-10-16 on, before which what the cast to <c>TIMESTAMP</c> reads depends on the host's time zone,
     /// which is what lets one table answer for both. What it has that the library functions do not is
     /// a place in the core operator table, so it validates inside a model view, which Calcite analyzes under
     /// its default configuration whatever the connection enabled: a federation presenting containers

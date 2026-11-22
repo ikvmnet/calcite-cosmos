@@ -540,9 +540,13 @@ range as the value its fields make once carried over, raising over none of these
 the ones before, and a day of 1582's gap ten days on. Before 1582-10-15 the family parts from that:
 `0000-01-01` is read as `0001-01-01` and `0001-01-00` as `0001-12-31`, and 29 February of 0100 and of
 1500, years the Julian calendar holds leap and the Gregorian does not, raises. Into `TIME` the clock
-wraps at a day: `24:00:00` is midnight and `99:99:99` is 04:40:39. `CAST … AS TIMESTAMP FORMAT` alone parts from the rest before 1582-10-16,
-reading `0001-01-01` as `0002-01-01` and `1582-10-15` as the day ten days before it. Through the
-adapter as it stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form
+wraps at a day: `24:00:00` is midnight and `99:99:99` is 04:40:39. `CAST … AS TIMESTAMP FORMAT` before
+1582-10-16, and `PARSE_DATETIME` over a time of day a daylight-saving change skips, read what the host's
+default time zone makes of them, whatever the session's: under America/Chicago the cast reads
+`0001-01-01` as `0002-01-01` and `1582-10-15` as `1582-10-05` and the parse reads
+`2024-03-10T02:30:00Z` as 03:30, and under UTC each reads as spelled. So the measurement asks the cast
+from 1582-10-16 on and the skipped time against the host's own zone, and holds wherever it runs. Through
+the adapter as it stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form
 was sent as `WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that string,
 `2016-12-31T24:00:00Z`, `2016-12-31T23:60:00Z`, `2016-11-61T00:00:00Z` and the next day's it kept one
 document where Calcite keeps three.
@@ -614,7 +618,7 @@ parse, should one be built; neither licenses anything while the parse reads leni
 **`CAST(<text> AS TIMESTAMP(3) FORMAT '<format>')` is the same parse, and the one a model view can
 write.** Calcite plans it as a `CAST` carrying the format as a second operand and reads the format with
 the same model, so the table above answers for its canonical strings — measured through both, every
-spelling — save that before 1582-10-16 the `TIMESTAMP` target parts from the library functions (above).
+spelling — save that before 1582-10-16 what the `TIMESTAMP` target reads depends on the host's time zone (above).
 It exists for a reason the library functions cannot meet: a model view is analyzed under Calcite's
 default configuration whatever the connection enabled (`ViewTableMacro.apply` →
 `MATERIALIZATION_CONNECTION`), so `PARSE_DATETIME` does not validate inside one and the cast, being in

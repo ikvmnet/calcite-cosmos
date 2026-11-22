@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Sql;
+using Apache.Calcite.Data;
 
 using FluentAssertions;
 
@@ -38,10 +39,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <para>
     /// The cases are those the earlier probes of the leniency found: <c>24:00:00</c>, a minute or second of <c>60</c>, 30 February, day
     /// and month <c>00</c>, <c>0001-01-00</c>, year <c>0000</c>, the 1582 gap and a leap year's 29 February, beside the
-    /// boundaries of each form; and two this measurement found, 29 February of 0100 and of 1500, years before 1582 the
+    /// boundaries of each form; and one this measurement found, 29 February of 0100 and of 1500, years before 1582 the
     /// Julian calendar holds leap and the Gregorian does not, over which the parse family raises where it rolls that of
-    /// 1900, and the years before 1582-10-16, over which <c>CAST … AS TIMESTAMP FORMAT</c> parts from the rest of the
-    /// family.
+    /// 1900.
+    /// </para>
+    /// <para>
+    /// <b>What it asserts holds in every host time zone.</b> Two readings depend on the zone the host's JVM defaults to,
+    /// whatever the session's: <c>CAST … AS TIMESTAMP FORMAT</c> before 1582-10-16, which is asked only from that day on,
+    /// and <c>PARSE_DATETIME</c> over a time of day the zone skips at a daylight-saving change, which the canonical cases
+    /// keep clear of and <see cref="EveryListedFormatReadsTheCanonicalStringsOfItsForm"/> asks against the host's own
+    /// zone. Measured in fresh processes, the zone set before any connection opened: under America/Chicago and
+    /// America/Los_Angeles the cast reads <c>0001-01-01</c> as <c>0002-01-01</c> and <c>1582-10-15</c> as
+    /// <c>1582-10-05</c>, and under UTC as the rest of the family does; from 1582-10-16 on it reads as the rest under
+    /// those three, Asia/Tokyo and Pacific/Kiritimati. A zone set while the process runs is not a measurement: what a
+    /// connection opened after it reads is shifted by the zone the process began in.
     /// </para>
     /// </remarks>
     public class CalciteTemporalLeniencyMeasurementTests
@@ -292,42 +303,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         static readonly string[] Fractions = ["000", "999"];
 
         /// <summary>
-        /// Where <c>CAST … AS TIMESTAMP FORMAT</c> parts from the rest of the parse family, by family and fields: what it
-        /// reads instead, or <c>null</c> where it raises. It reads every other case as the family does, and
-        /// <c>CAST … AS DATE FORMAT</c> and <c>AS TIME FORMAT</c> part from it nowhere.
+        /// The first day from which <c>CAST … AS TIMESTAMP FORMAT</c> is asked: before it, what the cast reads depends on
+        /// the host's default time zone (the class's remarks).
         /// </summary>
-        /// <remarks>
-        /// Every entry is before 1582-10-16: year one is read as year two and year zero as year three, 1582-10-15 as the day
-        /// ten days before it and a day in the gap as the day it spells, and 1 March of a year the Julian calendar holds
-        /// leap and the Gregorian does not as a raise, its 29 February as 1 March.
-        /// </remarks>
-        static readonly Dictionary<(Family Family, string Fields), (string? Reads, int DaysBefore)> TimestampFormatReadsOtherwise = new()
-        {
-            [(Family.Instant, "0001-01-01T00:00:00")] = ("0002-01-01 00:00:00", 0),
-            [(Family.Instant, "0000-01-01T00:00:00")] = ("0003-01-01 00:00:00", 0),
-            [(Family.Instant, "1582-10-15T00:00:00")] = ("1582-10-15 00:00:00", 10),
-            [(Family.Instant, "1582-10-05T00:00:00")] = ("1582-10-15 00:00:00", 10),
-            [(Family.Instant, "0100-03-01T00:00:00")] = (null, 0),
-            [(Family.Instant, "1500-03-01T00:00:00")] = (null, 0),
-            [(Family.Instant, "1500-02-29T00:00:00")] = ("1500-03-01 00:00:00", 0),
-            [(Family.Instant, "0100-02-29T00:00:00")] = ("0100-03-01 00:00:00", 0),
-            [(Family.Minutes, "0001-01-01T00:00")] = ("0002-01-01 00:00:00", 0),
-            [(Family.Minutes, "0000-01-01T00:00")] = ("0003-01-01 00:00:00", 0),
-            [(Family.Minutes, "1582-10-15T00:00")] = ("1582-10-15 00:00:00", 10),
-            [(Family.Minutes, "0100-03-01T00:00")] = (null, 0),
-            [(Family.Minutes, "1500-03-01T00:00")] = (null, 0),
-            [(Family.Minutes, "1500-02-29T00:00")] = ("1500-03-01 00:00:00", 0),
-            [(Family.Date, "0001-01-01")] = ("0002-01-01 00:00:00", 0),
-            [(Family.Date, "0000-01-01")] = ("0003-01-01 00:00:00", 0),
-            [(Family.Date, "1582-10-15")] = ("1582-10-15 00:00:00", 10),
-            [(Family.Date, "1582-10-05")] = ("1582-10-15 00:00:00", 10),
-            [(Family.Date, "0100-03-01")] = (null, 0),
-            [(Family.Date, "1500-03-01")] = (null, 0),
-            [(Family.Date, "1500-02-29")] = ("1500-03-01 00:00:00", 0),
-            [(Family.Date, "0100-02-29")] = ("0100-03-01 00:00:00", 0),
-            [(Family.YearMonth, "0001-01")] = ("0002-01-01 00:00:00", 0),
-            [(Family.YearMonth, "0000-01")] = ("0003-01-01 00:00:00", 0),
-        };
+        const string TimestampFormatFrom = "1582-10-16";
+
+        /// <summary>
+        /// Whether a conversion is asked over a row: every one is, but <c>CAST … AS TIMESTAMP FORMAT</c> over a row whose
+        /// fields spell a day before <see cref="TimestampFormatFrom"/>. A time of day is read on 1970-01-01.
+        /// </summary>
+        static bool Asked(Row row, Conversion conversion) =>
+            conversion != Conversion.CastFormatTimestamp
+            || row.Form.Family is Family.Clock or Family.ClockMinutes
+            || string.CompareOrdinal(row.Case.Fields, TimestampFormatFrom) >= 0;
 
         /// <summary>The conversions a family is read through, each the type a parse of its fields is claimed into.</summary>
         static Conversion[] ConversionsOf(Family family) => family switch
@@ -392,21 +380,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             Cases[form.Family].SelectMany(c => (form.Fraction ? Fractions : new[] { "000" }).Select(f => new Row(form, c, f, form.Write(c.Fields, f))));
 
         /// <summary>The literal a row is expected to read as through a conversion, or <c>null</c> where it is expected to raise.</summary>
-        static string? Expected(Row row, Conversion conversion)
-        {
-            var type = TypeOf(conversion);
-
-            var (reads, daysBefore) = conversion == Conversion.CastFormatTimestamp && TimestampFormatReadsOtherwise.TryGetValue((row.Form.Family, row.Case.Fields), out var otherwise)
-                ? otherwise
-                : (row.Case.Reads, row.Case.DaysBefore);
-
-            return reads is null ? null : Literal(type, reads, row.Fraction, daysBefore);
-        }
+        static string? Expected(Row row, Conversion conversion) =>
+            row.Case.Reads is null ? null : Literal(TypeOf(conversion), row.Case.Reads, row.Fraction, row.Case.DaysBefore);
 
         /// <summary>
         /// Asks every listed format of every registered form through each conversion its fields are claimed into, over
-        /// every case: one statement per form and conversion, each format a predicate and each row a document, and a row
-        /// expected to raise asked alone.
+        /// every case it is asked over (<see cref="Asked"/>): one statement per form and conversion, each format a
+        /// predicate and each row a document, and a row expected to raise asked alone.
         /// </summary>
         static readonly Lazy<IReadOnlyList<Answer>> Measured = new(Measure);
 
@@ -423,8 +403,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
                 foreach (var conversion in ConversionsOf(form.Family))
                 {
-                    var reading = rows.Where(r => Expected(r, conversion) is not null).ToArray();
-                    var raising = rows.Where(r => Expected(r, conversion) is null).ToArray();
+                    var asked = rows.Where(r => Asked(r, conversion)).ToArray();
+                    var reading = asked.Where(r => Expected(r, conversion) is not null).ToArray();
+                    var raising = asked.Where(r => Expected(r, conversion) is null).ToArray();
 
                     answers.AddRange(Ask(connection, reading, conversion, formats));
 
@@ -510,9 +491,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Every listed format reads the canonical strings of its form as Calcite's literal of the same spelling, through
-        /// the parse family; <c>CAST … AS TIMESTAMP FORMAT</c> parts from the literal before 1582-10-16, where
-        /// <see cref="TimestampFormatReadsOtherwise"/> says.
+        /// the parse family, <c>CAST … AS TIMESTAMP FORMAT</c> asked from 1582-10-16 on; and over a time of day the host's
+        /// default time zone skips at a daylight-saving change, whatever the session's zone, <c>PARSE_DATETIME</c> reads
+        /// the time the zone moves it to and the cast reads it as spelled.
         /// </summary>
+        /// <remarks>
+        /// The skipped time is 02:30 on 2024-03-10, the spring change where a zone keeps the second Sunday of March, and
+        /// what the host's zone moves it to is asked of that zone, so the assertion holds in every zone: under one that
+        /// skips nothing there, both read it as spelled.
+        /// </remarks>
         [Fact, CosmosPins("Calcite.ParseSpellingsReadTheirShapes")]
         public void EveryListedFormatReadsTheCanonicalStringsOfItsForm()
         {
@@ -520,12 +507,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             canonical.Should().NotBeEmpty();
             string.Join(Environment.NewLine, Disagreements(canonical)).Should().BeEmpty("a canonical string reads as the literal of its own spelling");
+
+            const string Spelled = "2024-03-10 02:30:00";
+            var moved = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .format(java.time.LocalDateTime.of(2024, 3, 10, 2, 30).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+
+            var problems = new List<string>();
+            foreach (var session in new[] { string.Empty, ";timeZone=UTC" })
+            {
+                using var connection = new CalciteConnection(new CalciteConnectionStringBuilder { Fun = "all" }.ConnectionString + session);
+                connection.Open();
+
+                foreach (var form in Forms.Where(f => f.Family is Family.Instant or Family.Minutes))
+                {
+                    var stored = form.Write(form.Family == Family.Instant ? "2024-03-10T02:30:00" : "2024-03-10T02:30", "000");
+                    var table = MaterialisedTable.Of([Document(stored)]);
+
+                    foreach (var format in CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(form.Pattern)!.Value))
+                        foreach (var (conversion, reads) in new[] { (Conversion.ParseDatetime, moved), (Conversion.CastFormatTimestamp, Spelled) })
+                            if (table.Ask(connection, $"({Expression(conversion, format)}) = {Literal("TIMESTAMP", reads, "000")}")[0] != "T")
+                                problems.Add($"{form.Name} {conversion} '{format}' over '{stored}' (session '{session}'): expected {reads}, read {table.Values(connection, $"CAST({Expression(conversion, format)} AS VARCHAR)")[0]}");
+                }
+            }
+
+            string.Join(Environment.NewLine, problems).Should().BeEmpty($"the parse reads a time the host's zone, {java.time.ZoneId.systemDefault()}, skips as {moved}, and the cast as spelled");
         }
 
         /// <summary>
         /// Every listed format reads a string that rolls a field past its range as the value its fields make, raising
         /// over none of them, so no format reads its form one for one; before 1582-10-15, <c>0000-01-01</c> is read as
         /// <c>0001-01-01</c> and <c>0001-01-00</c> as <c>0001-12-31</c>, and 29 February of 0100 and of 1500 raises.
+        /// <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
         /// </summary>
         [Fact, CosmosPins("Calcite.ParsesReadTheirFieldsLeniently")]
         public void EveryListedFormatRollsAFieldPastItsRange()
