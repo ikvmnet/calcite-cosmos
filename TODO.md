@@ -4137,13 +4137,13 @@ across documents* and *A join of a container to itself* is the record.
   INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) = 'Steel'`
   sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
   `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule registers
-  no pair over such a projection (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), and the residual projection moves no such
-  column beneath its filter, though it carries the paths the filter reads (*A path the residual projection carries under
-  a branch Calcite does not take*); but the view's own shape puts the projection there and the converter's width prefers
-  it to the item whole. The proper fix is legality where the statement's projection meets a filter Calcite evaluates
-  above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by
-  the theory once *Whether a reading can refuse is asked by its type alone* is done. No rule of the adapter asks it
-  there today.
+  no pair over such a projection, nor over a view above it (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), and the
+  residual projection moves no such column beneath its filter, though it carries the paths the filter reads (*A path the
+  residual projection carries under a branch Calcite does not take*); but the view's own shape puts the projection there
+  and the converter's width prefers it to the item whole. The proper fix is legality where the statement's projection
+  meets a filter Calcite evaluates above the converter: whether the column's reading can refuse, asked by
+  `CosmosJson.CanRefuse` of its type today and by the theory once *Whether a reading can refuse is asked by its type
+  alone* is done. No rule of the adapter asks it there today.
 - **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
   1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
   newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with

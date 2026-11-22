@@ -11587,7 +11587,9 @@ correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcit
 service's form
 (`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
 Nor does it register a pair over a projection the service may select holding a computed column whose
-reading can refuse a value, whatever the condition left above reads: beneath that condition the column
+reading can refuse a value, whatever the condition left above reads, nor over a projection or a filter above
+one, since the transpose carries the half beneath every projection of the stack and a column passed up as
+it is may be the one beneath: beneath that condition the column
 is read for every row the half returns, where Calcite computes it only for the rows that reach it, a
 `CASE` branch or a later operand of `COALESCE` only where it is reached, the reason the residual
 projection declines such a projection. Asked by type alone, as the residual projection asks it

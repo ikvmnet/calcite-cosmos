@@ -318,8 +318,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter
-        /// there, holds a computed column whose reading can refuse a value.
+        /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter or a
+        /// projection there, holds a computed column whose reading can refuse a value.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -344,8 +344,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// moves (<c>TODO.md</c>, section 7). Implementation reads a column of every type that can refuse as that type, its
         /// other readings being of text and of the document, which refuse nothing; the walk's reading is not implementation's,
         /// since it reads a <c>JSON_QUERY</c> returning an <c>INTEGER ARRAY</c> as JSON text where implementation reads the
-        /// array and refuses <c>[1.5]</c>. A bare reference is read by the scan either way. A projection Calcite implements is
-        /// its own evaluation, not the service's.
+        /// array and refuses <c>[1.5]</c>. A projection Calcite implements is its own evaluation, not the service's.
+        /// </para>
+        /// <para>
+        /// <b>Every projection beneath, too.</b> A bare reference stands for a column of the projection's input, which a
+        /// projection beneath may compute, and the transpose carries the half beneath every projection of the stack, where
+        /// the service may select each. Measured: a view passing up, as they are, the document and the column of a filtered
+        /// view beneath it selected that view's column under the condition kept in process and failed in the same way.
         /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
@@ -360,7 +365,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     if (seen.Add(member) == false || (member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention))
                         continue;
 
-                    if (member is Project project && Refuses(project))
+                    // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
+                    // one a projection beneath computes.
+                    if (member is Project project && (Refuses(project) || Holds(project.getInput())))
                         return true;
 
                     // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals.

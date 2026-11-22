@@ -1439,6 +1439,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// read it for every row, so it was selected there too and failed; and a <c>JSON_QUERY</c> returning an
         /// <c>INTEGER ARRAY</c> refuses <c>[1.5]</c>, though the walk reads it as JSON text.
         /// </para>
+        /// <para>
+        /// A view over a filtered view passes the column up as a bare reference, and the transpose carries the half beneath
+        /// both projections, so the statement selected the column the view beneath computes and failed the same way.
+        /// </para>
         /// </remarks>
         [Theory]
         [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
@@ -1455,6 +1459,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "(IS_DEFINED(c.name) AND (c.n > @p0))")]
         [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT u.\"d\"" + ThroughAFilteredViewOfARefusingReading,
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(false, "SELECT u.\"n\"" + ThroughAFilteredViewOfARefusingReading,
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(true, "SELECT t.\"n\", t.\"s\" FROM (SELECT u.\"DOC\", u.\"n\", UPPER(JSON_VALUE(u.\"DOC\", '$.s')) AS \"s\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS u WHERE JSON_VALUE(u.\"DOC\", '$.type') = 'Park') AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(true, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"n\" FROM (SELECT c.\"DOC\", c.\"$.category\" AS \"cat\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE t.\"cat\" = 'bikes') AS u WHERE INITCAP(JSON_VALUE(u.\"d\", '$.name')) = 'Steel'",
+            "((c.category = @p0) AND IS_DEFINED(c.name))")]
         public void ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(bool trimmed, string sql, string where)
         {
             var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
@@ -1476,6 +1488,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE ";
 
         /// <summary>
+        /// The rest of a statement over a view that passes up, as they are, the document and the <c>INTEGER</c> a filtered view
+        /// beneath it reads from it, filtered above on a case fold.
+        /// </summary>
+        const string ThroughAFilteredViewOfARefusingReading =
+            " FROM (SELECT t.\"DOC\" AS \"d\", t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE INITCAP(JSON_VALUE(u.\"d\", '$.name')) = 'Steel'";
+
+        /// <summary>
         /// Over a document the condition kept in process drops, and whose value at the view's column its reading refuses, the
         /// plan answers as Calcite does: no row, and no failure.
         /// </summary>
@@ -1495,6 +1514,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "{ \"id\": \"x1\", \"n\": 11.5, \"name\": \"x\" }")]
         [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "{ \"id\": \"x1\", \"n\": [1.5], \"name\": \"x\" }")]
+        [InlineData("SELECT u.\"n\"" + ThroughAFilteredViewOfARefusingReading,
+            "{ \"id\": \"x1\", \"type\": \"Park\", \"n\": 1.5, \"name\": \"x\" }")]
         public async Task ShouldAnswerAsCalciteOverAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(string sql, string document)
         {
             Given(document);
