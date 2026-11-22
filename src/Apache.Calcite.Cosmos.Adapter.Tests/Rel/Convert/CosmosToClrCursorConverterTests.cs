@@ -1345,6 +1345,148 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             total.Should().Contain("CosmosProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')]", "the DOUBLE moves beneath: " + total);
         }
 
+        /// <summary>
+        /// The document beside a column read from it, under a typed comparison that stays in process.
+        /// </summary>
+        const string DocumentBesideATypedResidual =
+            "SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12";
+
+        /// <summary>
+        /// A weakening is pushed once beneath a residual over a projection that carries the document, though the split
+        /// weakens a filter over a projection as it weakens any other.
+        /// </summary>
+        /// <remarks>
+        /// The trimmer leaves its projection of the document beneath the filter, and the residual projection and the
+        /// transpose put a projection between a residual and the half beneath it, where the weakening is already pushed.
+        /// What a filter beneath a projection applies is read through the rows it reads
+        /// (<c>CosmosFilterSplitRule.AlreadyApplied</c>), so the filter over the projection finds the weakening applied
+        /// there. Read only through its own rows, with the split weakening over a projection, the same plan sent
+        /// <c>IS_DEFINED(c.price) AND IS_DEFINED(c.price)</c> over two filters, as #210 found.
+        /// </remarks>
+        [Fact]
+        public void ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument()
+        {
+            var best = PlanToClrAsAHostDoes(DocumentBesideATypedResidual);
+            var plan = RelOptUtil.toString(best);
+
+            System.Text.RegularExpressions.Regex.Matches(plan, "CosmosFilter").Count.Should().Be(1, "the weakening is pushed in one filter: " + plan);
+
+            var sent = Sent(best).Should().ContainSingle(plan).Which;
+            System.Text.RegularExpressions.Regex.Matches(sent, System.Text.RegularExpressions.Regex.Escape("IS_DEFINED(c.price)")).Count.Should().Be(1, "and sent once: {0}", sent);
+        }
+
+        /// <summary>
+        /// Where a condition stays in process over the trimmer's projection of the document, the statement selects that
+        /// projection, or the view's, under the <c>WHERE</c> it sent before.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The split weakens the filter over the trimmer's projection as over any input, and its pair there is the plan
+        /// whose <c>SELECT</c> is that projection beneath the residual, which the converter's width prefers to the item
+        /// whole or to the document beside columns read from it: the condition kept in process reads the document anyway,
+        /// and what a column held is read from the document in process.
+        /// </para>
+        /// <para>
+        /// The <c>WHERE</c> is a regression pin: the conjuncts the statement sent while the split weakened nothing over a
+        /// projection, each once, so the same documents are read.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(DocumentBesideATypedResidual,
+            "SELECT VALUE { \"DOC\": c }",
+            "IS_DEFINED(c.price)")]
+        [InlineData("SELECT c.\"DOC\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 10",
+            "SELECT VALUE { \"DOC\": c }",
+            "(IS_DEFINED(c.name) AND (c.price > @p0))")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park') AS t WHERE UPPER(JSON_VALUE(t.\"DOC\", '$.name')) LIKE '%STEEL%'",
+            "SELECT VALUE { \"id\": c.id, \"DOC\": c }",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData("SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'st' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "SELECT VALUE { \"DOC\": c }",
+            "((IS_BOOL(c.name) OR (c.name > @p0)) AND ((c.name > @p1) OR NOT IS_STRING(c.name)) AND IS_DEFINED(c.region))")]
+        [InlineData("SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') = '30' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "SELECT VALUE { \"DOC\": c }",
+            "(((c.price = @p0) OR (IS_NUMBER(c.price) AND (c.price = @p1))) AND IS_DEFINED(c.region))")]
+        public void ShouldSelectTheTrimmersProjectionUnderTheSameWhereWhereAConditionStaysInProcess(string sql, string select, string where)
+        {
+            var best = PlanToClrAsAHostDoes(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var from = sent.IndexOf(" FROM products c", StringComparison.Ordinal);
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            from.Should().BePositive("{0}", sent);
+            conditions.Should().BeGreaterThan(from, "{0}", sent);
+
+            sent[..from].Should().Be(select, "the statement selects the projection beneath the condition kept in process: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "under the WHERE it sent before: {0}", sent);
+            ConjunctsOf(sent[(conditions + " WHERE ".Length)..]).Should().OnlyHaveUniqueItems("no conjunct is sent twice: {0}", sent);
+        }
+
+        /// <summary>
+        /// Renders the statement each pushed subtree of a plan sends.
+        /// </summary>
+        List<string> Sent(RelNode best)
+        {
+            var sent = new List<string>();
+            void Walk(RelNode node)
+            {
+                if (ReferenceEquals(node.getConvention(), _table.Convention))
+                {
+                    var implementor = new CosmosImplementor(node.getCluster().getRexBuilder(), Products);
+                    implementor.Visit(node);
+                    sent.Add(implementor.Build().Sql);
+                    return;
+                }
+
+                var inputs = node.getInputs();
+                for (var i = 0; i < inputs.size(); i++)
+                    Walk((RelNode)inputs.get(i));
+            }
+
+            Walk(best);
+            return sent;
+        }
+
+        /// <summary>
+        /// Returns the top-level conjuncts of a <c>WHERE</c> as the statement writes it: within the parentheses that wrap the
+        /// whole, the parts joined by <c>AND</c> outside any other.
+        /// </summary>
+        static List<string> ConjunctsOf(string where)
+        {
+            int Closes(int open)
+            {
+                var depth = 0;
+                for (var i = open; i < where.Length; i++)
+                    if (where[i] == '(')
+                        depth++;
+                    else if (where[i] == ')' && --depth == 0)
+                        return i;
+
+                return -1;
+            }
+
+            if (where.StartsWith('(') && Closes(0) == where.Length - 1)
+                where = where[1..^1];
+
+            var conjuncts = new List<string>();
+            var (level, start) = (0, 0);
+            for (var i = 0; i < where.Length; i++)
+            {
+                if (where[i] == '(')
+                    level++;
+                else if (where[i] == ')')
+                    level--;
+                else if (level == 0 && string.CompareOrdinal(where, i, " AND ", 0, 5) == 0)
+                {
+                    conjuncts.Add(where[start..i]);
+                    start = i + 5;
+                }
+            }
+
+            conjuncts.Add(where[start..]);
+            return conjuncts;
+        }
+
         // ── What a point read can read ────────────────────────────────────────────
 
         /// <remarks>

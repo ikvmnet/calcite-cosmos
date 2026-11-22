@@ -41,7 +41,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// The split terminates. It fires only where both parts are non-empty and something it would push is not yet
     /// applied beneath, compared as Calcite compares expressions. The inner is wholly renderable; the outer holds no
     /// term of a conjunct sent, or is the condition kept whole above the half sent, so split again it pushes only
-    /// weakenings not yet applied, or nothing new, and stops.
+    /// weakenings not yet applied, or nothing new, and stops. What is applied beneath is read through a projection
+    /// too (<see cref="AlreadyApplied"/>), so a filter over a projection weakens as any other does: a weakening the
+    /// transpose or the residual projection has already pushed beneath it is found applied over the rows the filter
+    /// there reads, and is pushed once. Reading beneath a projection only adds what is assumed, so it can take a push
+    /// away and never add one.
     /// </para>
     /// <para>
     /// <b>The outer is the conjuncts the inner does not decide, as written</b>, or what Calcite's simplification of
@@ -249,7 +253,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var written = Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList());
 
             // Beneath a second projection the condition would be read through both, as Calcite merges them.
-            if (project is not null && OverProjection(project.getInput()))
+            if (project is not null && ProjectOf(project.getInput()) is not null)
                 return written;
 
             var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
@@ -391,14 +395,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 
-            // No weakening over a projection. FILTER_PROJECT_TRANSPOSE gives every such filter an
-            // equivalent beneath the projection, where its weakenings are derived against the filters
-            // already applied. Derived here they are blind to those: a filter left over a pushed
-            // projection is a residual whose weakenings are already below it, and pushing them again
-            // put a redundant definedness test in the statement, or one a declared presence had
-            // deleted (#210).
-            var weakens = OverProjection(filter.getInput()) == false;
-
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
             // and the conjunct that proves the condition is a sibling of the one being lowered. Split
             // first and each conjunct would be weighed on its own, with nothing left to prove the
@@ -446,9 +442,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // Kept whatever happens: a weakening is a restriction the service can apply, not a
                 // replacement for the predicate, so the original is still rechecked above.
                 residual.Add(conjunct);
-
-                if (weakens == false)
-                    continue;
 
                 // S's weakening of it, read in the stratum a conjunct no round admitted is read in, which is never
                 // its own facts, as the Rex the builder writes: none where S gave none or the builder writes none.
@@ -732,18 +725,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE.config;
             return RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat());
-        }
-
-        /// <summary>
-        /// Determines whether any equivalent form of a subtree is a projection.
-        /// </summary>
-        static bool OverProjection(RelNode? node)
-        {
-            foreach (var member in Rel.CosmosPlanMembers.Of(node))
-                if (member is Project)
-                    return true;
-
-            return false;
         }
 
         static RexNode Compose(RexBuilder rexBuilder, List<RexNode> conjuncts)

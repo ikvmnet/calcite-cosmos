@@ -4102,11 +4102,21 @@ across documents* and *A join of a container to itself* is the record.
   row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
   proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
   step's own.
-- **The split rule weakens nothing over a projection** — *small, G10's remainder; after h15, before 3B closes.*
-  `CosmosFilterSplitRule.OverProjection` keeps a filter over a pushed projection from pushing a weakening, so that one
-  `FILTER_PROJECT_TRANSPOSE` already pushed beneath is not pushed again (#210): a C# rule of where a weakening is asked.
-  G10 deletes it with `AlreadyApplied` crossing a `Project` member and each conjunct bound through its own input; the
-  plan's order puts it after the switch and before 3B closes, being precision, never an answer, and the switch left it.
+- **A projected `RETURNING VARIANT` is sent and read back as the raw value** — *small, soundness.* `CosmosProject`
+  writes `JSON_VALUE(… RETURNING VARIANT)` as the bare path and the reader reads what arrives as a `VARIANT`, so an
+  array or an object there is a value where Calcite's column is null: a condition kept in process over the column reads
+  it so, and `SELECT JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT) IS NULL` answers false over `{"x":{}}` where Calcite
+  answers true. The binding binds nothing for it (`CosmosImplementor.Projected`), so no `WHERE` reads it. The proper fix
+  is the projection's: refuse the column, as `RETURNING DECIMAL` is refused, until a row measures how Calcite's value
+  reads back, or write it as the rendering graph chooses once the projection's writing moves there (Stage 3).
+- **An item of a `RETURNING VARIANT` is read as the raw value beneath it** — *small, soundness.* `CosmosRexPaths`
+  resolves an item chain over any accessor it resolves, `RETURNING VARIANT` among them, so the translator, the loader and
+  the binding read `JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT)['a']` as the raw value at `c.x.a`, where Calcite's is
+  null over an object at `x`, since the accessor holds what it reads in no box, and raises over a scalar. `IS NULL` of it
+  sends `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, which drops `{"x":{"a":1}}` where Calcite keeps it, written in the
+  filter or read from a view's column. The proper fix is the resolver's: no path for an item over a base
+  `CosmosRexShapes.IsVariantReturningJsonValue` names, so that a filter over it is Calcite's; it moves the translator's
+  projection of such an item with it.
 - **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
   1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
   newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with

@@ -777,7 +777,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A")]
         [InlineData("ws1k", "TwoTraversals",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND (c.n > @p1)) | @p0=A, @p1=50",
-            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1)) AND (c.n > @p2)) | @p0=A, @p1=7, @p2=50")]
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1)) AND (c.n > @p2)) | @p0=A, @p1=7, @p2=50")]
         [InlineData("j3n", "Traversed",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1))) | @p0=A, @p1=7")]

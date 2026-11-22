@@ -1174,7 +1174,7 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
-| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
+| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath — beneath a projection too, each read over its own relation — and the weakenings pushed before it (`Applied`) |
 | `CosmosFactRewriter`, the text sent made `FALSE`, and a projection's `CASE` conditions, in the text sent alone, through `RewriteConditions`; `CosmosImplementor.Build`, whether the statement is sent | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`); several filters' WHERE as one statement (`CosmosRowFacts.KeepsNothing`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
@@ -1491,7 +1491,9 @@ of what lies beneath, which kept the split rule from pushing a weakening under i
 oracle reads a weakening spelled as a conjunct beneath as assumed, before any run, so the loop cannot return. And it
 is more: `IS_DEFINED(c.id)`, which a comparison over `id` implies, is true of every document by the service's own
 statement, and pushed it filtered nothing while making a filter a host could plan in process, where the service's
-test has no body.
+test has no body. What lies beneath includes what a filter beneath a projection applies, each conjunct read over the
+relation it reads (`CosmosPredicateLoader.Loading.Through`), with what the loader cannot read numbered beside that
+relation's reader, so that a term means one thing within the question.
 
 #### How the oracle is checked: population D
 
@@ -10084,12 +10086,13 @@ only through its cast, so the whole weakening went unbuilt: partitions 1908 sent
 translator had sent the ordering beside it, and line 13 at the gate's size found thirteen weakenings not built. A
 weakening that is one of the filter's own conjuncts, read through its loading (`IsOwn`) or equal to one, is not pushed:
 a filter of weakenings that does not admit one weakens it in turn, and to itself it would be pushed under that filter
-for ever; nor is one the filters beneath apply (`IsApplied` over `AlreadyApplied`), nor one of which all the filter
-beneath admits is applied there. The filter left above asks the same weakening, which is not applied where only a weaker
-form of it was pushed, and that form would be pushed under itself for ever: measured as a stack overflow on the
-rendering check's inputs, a `RETURNING DECIMAL` comparison or a number past 2^53 whose weakening's `CASE` the filter
-beneath declines and whose weaker form it admits (`AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther`). The capture is
-told S's weakening as the printer writes it (`PrintWeakening`) where something of it is pushed, which line 12 reads.
+for ever; nor is one the filters beneath apply (`IsApplied` over `AlreadyApplied`, beneath a projection too), nor one
+of which all the filter beneath admits is applied there. The filter left above asks the same weakening, which is not
+applied where only a weaker form of it was pushed, and that form would be pushed under itself for ever: measured as a
+stack overflow on the rendering check's inputs, a `RETURNING DECIMAL` comparison or a number past 2^53 whose weakening's
+`CASE` the filter beneath declines and whose weaker form it admits (`AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther`).
+The capture is told S's weakening as the printer writes it (`PrintWeakening`) where something of it is pushed, which
+line 12 reads.
 
 **A filter folded onto a `WHERE` never fails where that `WHERE` excludes.** Filters stacked over one scan are conjoined
 (`Rel/CosmosFilter.cs`), which is sound at `Pos` for the truths, but the service then evaluates the upper form over every
@@ -11560,9 +11563,28 @@ narrow on purpose, and each limit was measured:
   paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
   path declared within bounds pays too (`TODO.md`, section 7).
 
-The split, for its part, no longer weakens a filter over a projection. `FILTER_PROJECT_TRANSPOSE`
-gives that filter an equivalent beneath the projection, where its weakenings are derived against what
-is already applied; derived above, they were blind to it and pushed a definedness test twice.
+The split weakens a filter over a projection as it weakens any other. What lies beneath reads through
+the projection: a filter beneath it applies its conjuncts to every row the projection returns, and
+each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`), its paths the
+statement's own terms and what the loader cannot read numbered beside that relation's reader, so a
+weakening the transpose or the residual projection has already pushed beneath is applied there, and
+the facts graph finds it so. Derived above and blind to what lies beneath, a weakening is pushed
+twice: read only through its own rows, `SELECT c."DOC", JSON_VALUE(c."DOC", '$.price') AS "p" FROM
+products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 = 12` sent
+`IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument`).
+The split still ends: each push adds to what is applied beneath its residual a predicate not applied
+there before, drawn from a finite set, and reading beneath a projection only adds what is assumed.
+The half a weakening rides in goes over a projection only where it reaches the service, through a
+member already part of a statement or through the transpose asked its own conditions (a window, a
+correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcite has no body for the
+service's form
+(`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
+So a filter over a projection is weakened as any other is, where its half reaches the service: over a
+view that renames the document, `INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's
+projection of the document the split offers the plan whose `SELECT` is that projection beneath the
+residual, which the converter's width prefers where the condition kept in process reads the document
+anyway; in the corpus such statements moved their `SELECT` alone, their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what

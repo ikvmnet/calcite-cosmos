@@ -510,8 +510,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var loading = new CosmosPredicateLoader.Loading(statement.BindingForCheck.Fields, statement.BindingForCheck.Readings, CosmosImplementor.DefaultRootAlias);
                 Builder built = form => RenderingRexBuilder.Build(form, statement.RexBuilderForCheck, accessors);
                 // A weakening over an input holding no document column, of a path read through a field as text alone: no node
-                // names its raw value, a cast to ANY being the text Calcite holds, so none is built, and the split rule weakens no
-                // filter over a projection (OverProjection), the only input that drops the column.
+                // names its raw value, a cast to ANY being the text Calcite holds, so over the one input that drops the column,
+                // a projection's, the builder writes no raw value and none is built.
                 if (HoldsNoRawValue(w.Mine!, accessors) && built(w.Mine!) is null)
                 {
                     declined.Add(shown + ": no raw value over an input holding no document column, not pushed");
