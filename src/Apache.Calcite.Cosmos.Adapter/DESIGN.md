@@ -2642,9 +2642,11 @@ written here, and the measurement, and a test against the code Calcite generates
 character, binary, boolean, datetime, interval, `UUID`, geometry, collection, `ANY` and `VARIANT` types, hold it to
 Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the validator makes every
 parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number,
-a string or a `java.util.UUID` bound to a `UUID`, a null bound to an interval it multiplies — fails the statement by
-name, where Calcite's plan fails reading it. A presence slot reads only whether a value is bound, so it is not
-converted, and a row count is read as Calcite's limit reads it, below. Calcite fails only once a row reaches the
+a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A
+parameter of an interval type is never sent, as a literal of one is not: the service holds no interval, and a null test
+of one, sent over the count Calcite holds it in, was answered from the value bound where Calcite's plan answers
+otherwise. A presence slot reads only whether a value is bound, so it is not converted, and a row count is read as
+Calcite's limit reads it, below. Calcite fails only once a row reaches the
 parameter's reading, which leaves a statement whose request reads the parameter failing where Calcite answers, over no
 row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to send answering where Calcite
 fails; `TODO.md` records both.

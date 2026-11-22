@@ -794,11 +794,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// weakened to a definedness test and rechecked in process, so an equality on <c>id</c> read
         /// the container whole rather than taking a point read.
         /// </para>
+        /// <para>
+        /// <b>A parameter of an interval type is refused, as a literal of one is</b>
+        /// (<see cref="CosmosRexLiterals.GetLiteralValue"/>): the service holds no interval. Calcite's planning leaves a
+        /// null test of a cast to one as a test of the parameter itself, which was sent over the count Calcite holds the
+        /// interval in and answered from the value bound, where Calcite's plan answers otherwise
+        /// (<c>CosmosConnectionPlanningTests.AnIntervalParametersNullTestAnswersAsCalcitesPlan</c>).
+        /// </para>
         /// </remarks>
         /// <param name="builder">The statement under construction.</param>
         /// <param name="parameter">The parameter to write.</param>
+        /// <exception cref="CosmosTranslationException">An interval parameter, or one the emulator stores escaped.</exception>
         void WriteDynamicParam(StringBuilder builder, org.apache.calcite.rex.RexDynamicParam parameter)
         {
+            if (parameter.getType()?.getSqlTypeName() is SqlTypeName type && SqlTypeName.INTERVAL_TYPES.contains(type))
+                throw new CosmosTranslationException($"A parameter of type '{type.getName()}' is computed in process: the service holds no interval, and no literal of one is sent either.");
+
             if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
                 throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
 

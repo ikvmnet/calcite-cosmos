@@ -281,6 +281,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Query("""SELECT c."id" FROM items AS c WHERE c."id" = ?""").Parameters.Should().Contain(p => p.Value is CosmosDynamicValue, "a parameter the service reads is sent");
         }
 
+        /// <summary>
+        /// A parameter of an interval type is never sent, as no literal of one is: the service holds no interval. A
+        /// null test of one is computed in process, and a conjunct beside it is still sent.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's planning leaves <c>CAST(? AS INTERVAL DAY) IS NULL</c> as a null test of the parameter itself,
+        /// which was sent as <c>IS_NULL(@p0)</c> over the count Calcite holds the interval in, answered from the value
+        /// bound, where Calcite's plan answers otherwise (<see cref="CosmosConnectionPlanningTests"/>).
+        /// </remarks>
+        [Theory]
+        [InlineData("""CAST(? AS INTERVAL DAY TO SECOND) IS NULL OR c."id" = 'a'""", false)]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NOT NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL YEAR) IS NULL AND c."id" = 'a'""", true)]
+        [InlineData("""CAST(? AS INTERVAL YEAR TO MONTH) IS NULL AND c."id" = 'a'""", true)]
+        public void AnIntervalParameterIsNeverSent(string predicate, bool besideSent)
+        {
+            var query = Query($"""SELECT c."id" FROM items AS c WHERE {predicate}""");
+
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Should().BeEmpty("no slot holds the interval: " + query.Sql);
+            if (besideSent)
+                query.Sql.Should().Contain("c.id = @p", "the conjunct beside it is sent");
+        }
+
         /// <remarks>
         /// Which is the whole of the fix. Nothing here has a value to record, and the ordinal is what
         /// the plan does know — a consumer that casts its parameters, as a provider generating SQL

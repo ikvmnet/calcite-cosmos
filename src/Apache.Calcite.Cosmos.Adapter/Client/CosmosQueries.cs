@@ -373,8 +373,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// string that spells no number bound to a numeric parameter, a NaN or an infinite double bound to any numeric one
         /// (<c>toBigDecimal</c> refuses both), a value of another class than its type's bound to a parameter of a type
         /// Calcite casts to, a string bound to a <c>BOOLEAN</c> or a <c>UUID</c> one, and a null bound to an interval the
-        /// step multiplies. Calcite fails only once a row reaches the parameter's reading, and answers where none does: no
-        /// rows over an input that holds none, and what the other arms decide where no row takes the <c>CASE</c> arm
+        /// step multiplies, which the code Calcite generates to read it raises over, though the translator writes no
+        /// interval parameter. Calcite fails only once a row reaches the parameter's reading, and answers where none does:
+        /// no rows over an input that holds none, and what the other arms decide where no row takes the <c>CASE</c> arm
         /// reading it. The bind fails whatever the input holds (TODO.md).
         /// </para>
         /// </remarks>

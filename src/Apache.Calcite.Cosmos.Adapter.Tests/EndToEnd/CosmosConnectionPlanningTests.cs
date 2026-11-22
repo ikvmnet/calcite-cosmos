@@ -99,14 +99,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// Runs a statement over a container declared nothing whose every request is answered with the same documents: the
-        /// plan implemented, and its first column read.
+        /// plan implemented, each <c>?</c> bound in order to a value of <paramref name="parameters"/>, and its first
+        /// column read.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, string[] documents)
+        static System.Collections.Generic.List<string> Answer(string sql, string[] documents, object?[]? parameters = null)
         {
             using var source = Open(null, new DocumentsExecutor(documents), null);
             using var connection = source.OpenConnection();
+            return Rows(connection, sql.Replace(" items AS ", " \"items\" AS "), parameters ?? []);
+        }
+
+        /// <summary>A statement's first column, each <c>?</c> bound in order, <c>null</c> as SQL null.</summary>
+        static System.Collections.Generic.List<string> Rows(System.Data.Common.DbConnection connection, string sql, object?[] parameters)
+        {
             using var command = connection.CreateCommand();
-            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            command.CommandText = sql;
+            foreach (var value in parameters)
+            {
+                var parameter = command.CreateParameter();
+                parameter.Value = value ?? DBNull.Value;
+                command.Parameters.Add(parameter);
+            }
+
             using var reader = command.ExecuteReader();
             var rows = new System.Collections.Generic.List<string>();
             while (reader.Read())
@@ -206,6 +220,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             {
                 for (Exception? x = e; x is not null; x = x.InnerException)
                     yield return x;
+            }
+        }
+
+        /// <summary>
+        /// A null test of a parameter of an interval type answers as Calcite's own plan answers it over the same rows,
+        /// whether a null, an integer or a long is bound: nothing sent holds the parameter, and the test is computed in
+        /// process, over a container whose every request answers both documents, whatever its <c>WHERE</c>.
+        /// </summary>
+        /// <remarks>
+        /// Sent, the test read the count Calcite holds the interval in, and a null bound failed the statement where
+        /// Calcite answers.
+        /// </remarks>
+        [Theory]
+        [InlineData("""CAST(? AS INTERVAL DAY TO SECOND) IS NULL OR {id} = 'a'""")]
+        [InlineData("""CAST(? AS INTERVAL DAY) IS NOT NULL""")]
+        [InlineData("""CAST(? AS INTERVAL YEAR) IS NULL""")]
+        [InlineData("""CAST(? AS INTERVAL YEAR TO MONTH) IS NULL OR {id} = 'a'""")]
+        public void AnIntervalParametersNullTestAnswersAsCalcitesPlan(string predicate)
+        {
+            string[] documents = ["""{"id":"a","category":"x"}""", """{"id":"b","category":"x"}"""];
+            using var calcite = Measurements.MaterialisedTable.Open();
+            var ids = Measurements.MaterialisedTable.Of(org.apache.calcite.sql.type.SqlTypeName.VARCHAR, ["\"a\"", "\"b\""]).AddTo(calcite);
+
+            foreach (var bound in new object?[] { null, 2, 2L })
+            {
+                var expected = Rows(calcite, $"SELECT \"v\" FROM \"{ids}\" WHERE " + predicate.Replace("{id}", "\"v\""), [bound]);
+                Answer("SELECT c.\"id\" FROM items AS c WHERE " + predicate.Replace("{id}", "c.\"id\""), documents, [bound])
+                    .Should().Equal(expected, $"bound to {bound?.GetType().Name ?? "null"}, the statement answers as Calcite's plan");
             }
         }
 
