@@ -4788,7 +4788,8 @@ ClrCursorProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
 
 **It fires only where the collation survives the transpose**, and that is what makes it sound rather
 than merely profitable. The guard declines unless every key is a plain reference, a cast that keeps the
-order of every value, or a conversion whose stored spelling the facts say orders as the converted value
+order of every value or, on the last key, one that narrows text, or a conversion whose stored spelling
+the facts say orders as the converted value
 — so ordering by a cast column, which is not ordering by the path underneath (rendered as text, `10`
 sorts before `9`), stays above the projection where it belongs. A
 transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
