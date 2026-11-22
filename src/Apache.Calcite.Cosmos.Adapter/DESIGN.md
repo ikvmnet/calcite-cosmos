@@ -6453,12 +6453,11 @@ read it. A key is bound as a number of that type, a decimal as a statement's dec
 how the service holds such a number; the join's own comparison then leaves out whatever else that double
 fetched. A key whose double is an infinity or NaN, an approximate key that is not finite or a decimal
 beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a string
-no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the probe's
-own statement without the restriction, rendered beside the restricted one, and the join's own comparison
-answers every key of it, which rests on nothing about what a document may hold. Reading every document the
-probe side keeps, it costs request units and fails where Calcite's own join fails on one of them, where a
-restricted batch answers (`TODO.md`'s *The lookup join answers where Calcite's own join fails on a document no
-key fetches*), and it is remembered for its own execution alone (*The lookup join's caches*).
+no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the probe's own
+statement without the restriction, rendered beside the restricted one. Reading every document the probe side
+keeps, it costs request units and fails where Calcite's own join fails on one of them, where a restricted
+batch answers (`TODO.md`'s *The lookup join answers where Calcite's own join fails on a document no key
+fetches*), and it is remembered for its own execution alone (*The lookup join's caches*).
 The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi key too,
 matches a null key with a null one, which no fetch by key finds.
 

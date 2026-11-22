@@ -757,8 +757,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 // alone, through the per-join cache, which this plan's reading both writes and reads.
                 var elements = _shared is null || unnamed ? null : new Dictionary<object, List<JsonElement>>();
 
-                // Every document the probe keeps, where the restriction cannot name a key of the batch; the join's own
-                // comparison below then answers every key of it.
+                // Every document the probe keeps, where the restriction cannot name a key of the batch.
                 var statement = unnamed
                     ? _unrestricted ?? throw new CosmosExecutionException("A lookup key has no number it can be sent as, and the join was given no statement to fetch its batch without the key restriction.")
                     : Bind(_query, _prefix, _batchSize, spelled);
