@@ -21,9 +21,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// that type (<see cref="TypeName"/>) and the length a sized text or binary type holds a value to
     /// (<see cref="Length"/>), because both change what Calcite reads. The other additions are what the
     /// plan chose from the comparison the value sits in: a spelling taken from the path it is compared
-    /// with, which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>); and, for a
-    /// <c>FETCH</c> or <c>OFFSET</c> count, its clause and the rounding policy Calcite's limit reads it
-    /// with (<see cref="RowCount"/>, <see cref="RowCountRounding"/>).
+    /// with, which <see cref="Form"/> says more about, and a bound (<see cref="Bound"/>). A <c>FETCH</c> or
+    /// <c>OFFSET</c> count's slot carries instead its clause and the rounding policy Calcite's limit reads
+    /// it with (<see cref="RowCount"/>, <see cref="RowCountRounding"/>).
     /// </para>
     /// </remarks>
     /// <param name="Ordinal">The dynamic parameter's index, as <c>RexDynamicParam</c> numbers them.</param>
