@@ -92,12 +92,11 @@ side first, never evaluates the small side and answers no rows (Chapter 23).
 ### How keys are matched
 
 Keys are matched as `=` matches them, after Calcite's cast to the type the join compares in. An `INTEGER`
-key beside a `BIGINT` one is compared as a `BIGINT`; two `BIGINT` keys past 2^53 that one double holds are
-told apart, as Calcite tells them apart, unless the join compares `DOUBLE`s, which hold both as one
-number; and a `REAL`, `FLOAT` or `DOUBLE` `-0.0` matches `0.0`. A `REAL`, `FLOAT` or `DOUBLE` key that
-is an infinity or NaN has no number to be sent as, so the batch holding it is fetched without the keys:
-every document the container side keeps is read, as Calcite's own join reads them, and not remembered
-across executions.
+key beside a `BIGINT` one is compared as a `BIGINT`; two keys past 2^53 that one double holds are told
+apart where the join compares `BIGINT`s, as Calcite tells them apart; and a `REAL`, `FLOAT` or `DOUBLE`
+`-0.0` matches `0.0`. A `REAL`, `FLOAT` or `DOUBLE` key that is an infinity or NaN has no number to be
+sent as, so the batch holding it is fetched without the keys: every document the container side keeps is
+read, as Calcite's own join reads them, and not remembered across executions.
 
 Calcite's own join of the same statement in process parts from `=` in one of those cases: it never
 matches `-0.0` with `0.0`. So a small side's `-0.0` is joined to the documents holding `0`, a row
