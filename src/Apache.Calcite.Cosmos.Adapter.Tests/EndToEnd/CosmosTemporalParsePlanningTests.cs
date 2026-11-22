@@ -920,17 +920,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A <c>TIMESTAMP</c> parameter against a calendar date read with a plain cast is rounded onto the date in the
-        /// direction the comparison does not see, and written as the stored date when the statement runs.
+        /// direction an ordering comparison does not see, written unrounded for an equality or an inequality, and written
+        /// as the stored date when the statement runs.
         /// </summary>
         /// <remarks>
         /// Noon of the 15th lies between the 15th's spelling and the 16th's: <c>&gt;</c> keeps what <c>&gt; 15th</c>
-        /// keeps and <c>&gt;=</c> what <c>&gt;= 16th</c> does. A value that lands is written as it is.
+        /// keeps and <c>&gt;=</c> what <c>&gt;= 16th</c> does. <c>=</c> and <c>&lt;&gt;</c> are not rounded: noon is
+        /// written past every date's spelling, so the equality keeps no stored date and the inequality every one, as in
+        /// Calcite, where rounded down it would keep the 15th. A value that lands is written as it is.
         /// </remarks>
         [Theory]
         [InlineData(">", "(c.at > @p0)", "2024-01-15")]
         [InlineData("<=", "(c.at <= @p0)", "2024-01-15")]
         [InlineData(">=", "(c.at >= @p0)", "2024-01-16")]
         [InlineData("<", "(c.at < @p0)", "2024-01-16")]
+        [InlineData("=", "(c.at = @p0)", "2024-01-15T12:00:00.0000000Z")]
+        [InlineData("<>", "(c.at != @p0)", "2024-01-15T12:00:00.0000000Z")]
         public void AParameterAgainstADateCastIsRoundedTheWayTheComparisonNeeds(string op, string rendered, string written)
         {
             var (query, plan) = PlanParameter($"""CAST({At} AS TIMESTAMP) {op} CAST(? AS TIMESTAMP)""", DatePattern);
