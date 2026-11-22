@@ -185,11 +185,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Legality: a weakening is the service's form, which Calcite has no body for, so the half split off holds one only
             // where it reaches the service: through a member already part of a statement, or over a projection through
             // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed). Where nothing carries it, the conjuncts
-            // admitted go alone, Calcite's own forms, and the weakenings of what is left above are not pushed by this split.
+            // admitted go alone, asked the same: a host's filter merge brings a split's weakening into the condition beside the
+            // conjunct it weakens, where it is admitted as the condition's own, and where nothing carries them either the split
+            // registers nothing.
             var half = Compose(rexBuilder, pushable);
             if (CosmosOperators.HoldsServiceForm(half) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half) == false)
             {
-                if (admitted.Count == 0)
+                var alone = Compose(rexBuilder, admitted);
+                if (admitted.Count == 0 || (CosmosOperators.HoldsServiceForm(alone) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), alone) == false))
                     return;
 
                 pushable = admitted;

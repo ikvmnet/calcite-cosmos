@@ -4371,6 +4371,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Under a host's rewrites, a split over a projection the transpose will not carry pushes nothing holding the service's
+        /// form that reaches nothing, the conjuncts it admits included. The host's filter merge brings a split's weakening
+        /// into a condition beside the conjunct it weakens, where it is admitted as the condition's own, and pushed with the
+        /// 80-way <c>LIKE</c> over the view computing <c>INITCAP</c> it grew past the transpose's bloat as the half did: a
+        /// filter holding the service's form that only Calcite could evaluate, kept out of the plan chosen by the cost model
+        /// alone. Planned with the host's rewrites, with what the split rule registers recorded before Volcano takes it: every
+        /// half holding the service's form reaches the service, as <c>Reaches</c> asks it of the half, and no filter Calcite
+        /// evaluates in the plan chosen holds the service's form.
+        /// </summary>
+        [Theory]
+        [InlineData(80, false)]
+        [InlineData(80, true)]
+        [InlineData(60, false)]
+        [InlineData(60, true)]
+        public void UnderAHostsRewritesASplitPushesNoServiceFormTheTransposeWillNotCarry(int ways, bool reduce)
+        {
+            var sql = "SELECT t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, ways).Select(i => $"t.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            var productions = new SplitProductions();
+            var best = PlanToAsync(sql, hostRewrites: true, reduce, productions);
+
+            var halves = productions.Halves.Select(half => (
+                Condition: half.getCondition(),
+                ServiceForm: CosmosOperators.HoldsServiceForm(half.getCondition()),
+                Reaches: Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(_table.Convention, half.getInput(), CosmosPlanMembers.NewSeen(), half.getCondition()))).ToList();
+            foreach (var half in halves)
+                TestContext.Current.TestOutputHelper?.WriteLine($"half: service form {half.ServiceForm}, reaches {half.Reaches}: {half.Condition.toString().Length} characters");
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            halves.Should().Contain(half => half.ServiceForm == false, "the split over the view pushes the disjunction it admits");
+            halves.Where(half => half.ServiceForm).Should().OnlyContain(half => half.Reaches, "a half holding the service's form is one that reaches the service");
+
+            var inProcess = Filters(best).Where(filter => filter is not CosmosRel).ToList();
+            inProcess.Should().NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+        }
+
+        /// <summary>
         /// A half over a filter the filter rule converts, over a projection the transpose will not carry it past, does not
         /// reach the service. The view computing <c>INITCAP</c> is filtered by a comparison that renders, and the filter
         /// above reads it through a second view: the half S's weakening rides in, beside the 80-way <c>LIKE</c> of the view's

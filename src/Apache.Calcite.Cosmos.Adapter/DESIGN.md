@@ -11590,7 +11590,9 @@ The half a weakening rides in goes over a projection only where it reaches the s
 member already part of a statement or through the transpose asked its own conditions (a window, a
 correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcite has no body for
 the service's form
-(`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
+(`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`),
+and they are asked the same, since a host's filter merge brings a split's weakening among them
+(`CosmosPlannerTests.UnderAHostsRewritesASplitPushesNoServiceFormTheTransposeWillNotCarry`).
 Nor does it register a pair over a projection the service may select holding a computed column whose
 reading can refuse a value, whatever the condition left above reads, nor over a projection or a
 filter above one, since the transpose carries the half beneath every projection of the stack and a
