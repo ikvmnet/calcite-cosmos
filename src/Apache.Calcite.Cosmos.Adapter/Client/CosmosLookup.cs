@@ -207,8 +207,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             new($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {(string.IsNullOrEmpty(e.getMessage()) ? e.getClass().getName() : e.getMessage())}", e);
 
         /// <summary>
-        /// Returns a number in the Java box Calcite holds a value of its type in, so that one conversion of Calcite's
-        /// reaches every key; or <c>null</c> for anything but a number.
+        /// Returns a number as a Java number, which Calcite's conversions take: a Java number as it is, and a CLR number
+        /// boxed; or <c>null</c> for anything but a number.
         /// </summary>
         /// <remarks>
         /// A CLR <see cref="byte"/> is Calcite's <c>TINYINT</c>, as <see cref="CosmosJson"/> reads one: a Java byte is
