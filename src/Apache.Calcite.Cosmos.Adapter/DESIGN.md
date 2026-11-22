@@ -6447,6 +6447,20 @@ is unmatched without being asked for. A right or full join is different in kind 
 keeps the *container's* unmatched documents, and a fetch by the other side's keys is exactly the read
 that never sees them. Those, and semi and anti joins, stay joins.
 
+**A joined row holds each field in the form Calcite's own join writes it.** Calcite's hash join makes its
+rows with `ClrEnumUtils.JoinSelector`, which the lookup cannot call, the class being internal to
+`Apache.Calcite.Extensions`; but it writes a field with public members of the physical types, and the
+lookup's selectors call the same ones. Each input field is read by `FieldReference` with the joined row's
+storage type for it, `object` in an `object[]` row, so a boxed value stays in the Java box Calcite holds
+it in; and the row is made by the joined row's own `Record`. The readers above the join (a sort, a
+grouping, a calc, a second join, the connection's reader) expect a boxed field in the Java box Calcite
+holds a value of its type in. It is the rule *Reading a value back* states for a row read from the
+service, and here the package already decides each box, so nothing in the adapter names a type. The key
+each side is matched by is boxed apart, for `CosmosLookup.Normalize`, which takes the CLR's boxes and
+Java's alike, and nothing else reads it. `CosmosLookupJoinRowTests` holds the operators above the join to
+Calcite's own plan of the same statement, box and all, and `CosmosLookupJoinRowEndToEndTests` holds the
+connection's reader to the rows Calcite's own join answers.
+
 **A `UUID` key is restricted where the container stores one spelling per value.** The key column is a
 cast, which binds to no path and has no parameter type, and that used to be the end of it. But the cast
 is of a text accessor, and where what is known of the probe's rows gives that path a UUID form — the
