@@ -4650,9 +4650,23 @@ to text is rendered by the reader and pushes; the rest — a width, a numeric ta
 and a sort and a row limit above it used to stay with it, so a bounded page over a view read every
 document the predicate matched.
 
-`CoreRules.SORT_PROJECT_TRANSPOSE` is registered for this, alongside the other Calcite rewrites the
-rule set carries because a bare Volcano planner has none. Transposed, the sort and its limit sit under
-the projection and push; the cast runs over the rows that come back.
+Calcite's transpose of a sort beneath its projection is registered for this, as
+`CosmosSortProjectTransposeRule`, alongside the other Calcite rewrites the rule set carries because a
+bare Volcano planner has none. Transposed, the sort and its limit sit under the projection and push; the
+cast runs over the rows that come back.
+
+**A host's planner has Calcite's own besides, and the convention takes it out.** A connection plans with
+Calcite's default rules, `CoreRules.SORT_PROJECT_TRANSPOSE` among them, unguarded: it maps a key that is
+a cast to the cast's operand wherever Calcite calls the cast monotonic, and Calcite calls a cast of text
+to a date, a time or an instant monotonic. The adapter sends the accessor and leaves the cast in
+process, so through the connection `ORDER BY CAST(t AS TIME)` over a declared clock was sent as
+`ORDER BY c.t`, which orders `12:30:99` before `12:31:00` where the cast reads the first as 12:31:39, a
+sort through `CAST … FORMAT` was sent on the stored text where the parse rolls it, and a sort through a
+cast of an undeclared date ordered the text in process, `2024-10-1` before `2024-9-1`. The bare
+planner the digests and the planning tests use has only the guarded rule, so none of them saw it.
+`CosmosConvention.register` removes Calcite's: what it moved that the guarded one does not is a sort
+whose order nothing proves. `CosmosConnectionPlanningTests` holds the sorts through the connection and
+the order they answer.
 
 **This section used to say the transpose declines unless every sort key is a plain reference, and that
 it is that condition which makes the transpose sound.** Measured, the first half is right and the
@@ -4672,9 +4686,10 @@ ClrCursorProject(id=[$1], p=[CAST(ITEM($0, 'price')):INTEGER])
 ```
 
 **It fires only where the collation survives the transpose**, and that is what makes it sound rather
-than merely profitable. Calcite maps the sort keys through the projection and declines unless every
-one is a plain reference — so ordering by a cast column, which is not ordering by the path underneath
-(rendered as text, `10` sorts before `9`), stays above the projection where it belongs. A
+than merely profitable. The guard declines unless every key is a plain reference, a cast that keeps the
+order of every value, or a conversion whose stored spelling the facts say orders as the converted value
+— so ordering by a cast column, which is not ordering by the path underneath (rendered as text, `10`
+sorts before `9`), stays above the projection where it belongs. A
 transformation adds an equivalence rather than replacing one, so the untransposed plan survives and
 the planner costs both.
 

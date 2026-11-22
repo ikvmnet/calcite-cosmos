@@ -35,6 +35,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// cast the first refused.
     /// </para>
     /// <para>
+    /// <b>And why Calcite's own is taken out.</b> A host's planner comes with Calcite's default rules, its transpose
+    /// among them, and with both registered the unguarded one moved what this refuses: a sort through a cast of a stored
+    /// time of day, or through a cast with a format, was sent as an <c>ORDER BY</c> on the stored text, and a sort through
+    /// a cast of an undeclared date ordered the text in process. <see cref="CosmosConvention.register"/> removes it.
+    /// </para>
+    /// <para>
     /// A transformation adds an equivalence rather than replacing one, so the untransposed plan survives and the planner
     /// costs both.
     /// </para>

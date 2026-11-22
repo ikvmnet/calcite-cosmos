@@ -63,7 +63,10 @@ planner.addRule(CoreRules.PROJECT_TO_LOGICAL_PROJECT_AND_WINDOW);
 The adapter's rule set includes the Calcite rewrites its pushdown depends on — filter and sort
 transposes, projection merge, distinct-aggregate expansion, aggregate reduction — because a bare
 Volcano planner has none of them and a pushdown must not depend on which rules a caller happened to
-add. Register `ConventionTraitDef.INSTANCE` and `RelCollationTraitDef.INSTANCE` on the planner.
+add. Its sort transpose is guarded, and a Cosmos table's convention takes Calcite's own out of the
+planner if a caller added it: Calcite's moves a sort beneath a cast of text to a date or a time, whose
+order is not the text's. Register `ConventionTraitDef.INSTANCE` and `RelCollationTraitDef.INSTANCE` on
+the planner.
 
 Ask for **`ClrCursorConvention`** as the root convention:
 
