@@ -1423,6 +1423,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// Not a view's column whose reading can refuse a value, under a condition a split over the view leaves in process
+        /// that does not read it: the statement selects no such column, under the <c>WHERE</c> it sends where the split
+        /// pushes beneath the view.
+        /// </summary>
+        /// <remarks>
+        /// The view's projection, the statement's <c>SELECT</c> beneath the condition kept in process, is read for every row
+        /// the service returns, and Calcite computes the column only for the rows the condition keeps: a stored 1.5 read as
+        /// an <c>INTEGER</c> is refused, and over a document whose name the case fold drops the statement failed where Calcite
+        /// answers.
+        /// </remarks>
+        [Theory]
+        [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        public void ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(bool trimmed, string sql, string where)
+        {
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var from = sent.IndexOf(" FROM products c", StringComparison.Ordinal);
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            from.Should().BePositive("{0}", sent);
+            conditions.Should().BeGreaterThan(from, "{0}", sent);
+
+            System.Text.RegularExpressions.Regex.IsMatch(sent[..from], @"c\.n\b").Should().BeFalse("the INTEGER the condition kept in process does not read is not selected beneath it: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "the split beneath the view sends what it pushes: {0}", sent);
+        }
+
+        /// <summary>
         /// Renders the statement each pushed subtree of a plan sends.
         /// </summary>
         List<string> Sent(RelNode best)

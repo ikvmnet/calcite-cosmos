@@ -213,6 +213,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (CosmosOperators.HoldsServiceForm(left))
                 return;
 
+            // Legality: the pair leaves the filter's input beneath what Calcite evaluates, and a projection there the service
+            // selects is read for every row the half returns, where Calcite computes it only for the rows the condition keeps.
+            // A column whose reading can refuse a value, and which what is left above does not read, then failed the statement
+            // over a row that condition drops, where Calcite answers (ReadsWhatCanRefuse). The transpose still carries the filter
+            // beneath such a projection, where it is split over the rows the projection reads.
+            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput(), left))
+                return;
+
             if (left.isAlwaysTrue())
             {
                 call.transformTo(filter.copy(filter.getTraitSet(), filter.getInput(), Compose(rexBuilder, admitted)));
@@ -306,6 +314,74 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     found = project;
 
             return found;
+        }
+
+        /// <summary>
+        /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter
+        /// there, holds a column whose reading can refuse a value that a condition kept above it does not read.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A filter and a projection commute in what they answer, not in what they raise: the service's projection is read
+        /// for every row the statement returns, and Calcite computes a column only for the rows the filter above keeps. A
+        /// reading that can refuse a value (<see cref="Client.CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>:
+        /// 1.5 as an <c>INTEGER</c>, text that is no date) then fails the statement over a row the condition drops, where
+        /// Calcite answers. Measured: <c>SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER)
+        /// AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'</c>, split over the view's
+        /// projection, selected the column under <c>WHERE IS_DEFINED(c.name)</c> and failed over <c>{"n":1.5,"name":true}</c>,
+        /// which Calcite drops on <c>INITCAP</c> before it computes the column
+        /// (<c>CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess</c>).
+        /// </para>
+        /// <para>
+        /// The question <see cref="CosmosProjectResidualRule"/> asks of the projection it moves beneath a filter kept in
+        /// process, with its exception: a column the condition reads is computed by Calcite for every row it tests, so the
+        /// reader refuses only where Calcite raises. A bare reference is read by the scan either way. A projection Calcite
+        /// implements is its own evaluation, not the service's.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The filter's input.</param>
+        /// <param name="kept">The condition left above, over the input's row.</param>
+        static bool ReadsWhatCanRefuse(RelNode? node, RexNode kept)
+        {
+            var read = RelOptUtil.InputFinder.bits(kept);
+            var seen = Rel.CosmosPlanMembers.NewSeen();
+
+            bool Holds(RelNode? candidate)
+            {
+                foreach (var member in Rel.CosmosPlanMembers.Of(candidate))
+                {
+                    if (seen.Add(member) == false || (member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention))
+                        continue;
+
+                    if (member is Project project && Refuses(project))
+                        return true;
+
+                    // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals.
+                    if (member is Filter filter && Holds(filter.getInput()))
+                        return true;
+                }
+
+                return false;
+            }
+
+            bool Refuses(Project project)
+            {
+                if (CosmosImplementor.TryBindOutput(project, out _, out var readings, out _) == false)
+                    return false;
+
+                var projects = project.getProjects();
+                for (var i = 0; i < projects.size(); i++)
+                {
+                    var expression = (RexNode)projects.get(i);
+                    if (expression is not RexInputRef && i < readings.Count && readings[i] == CosmosReading.Typed
+                        && Client.CosmosJson.CanRefuse(expression.getType()) && read.get(i) == false)
+                        return true;
+                }
+
+                return false;
+            }
+
+            return Holds(node);
         }
 
         /// <summary>

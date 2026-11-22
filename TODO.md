@@ -4117,6 +4117,17 @@ across documents* and *A join of a container to itself* is the record.
   filter or read from a view's column. The proper fix is the resolver's: no path for an item over a base
   `CosmosRexShapes.IsVariantReturningJsonValue` names, so that a filter over it is Calcite's; it moves the translator's
   projection of such an item with it.
+- **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness.* Where nothing of
+  a filter over a view reaches the service, the view's projection is still converted, and the statement selects it
+  beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING
+  INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) = 'Steel'`
+  sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
+  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule and the
+  residual projection place no such projection beneath a condition kept in process
+  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`, `CosmosProjectResidualRule`), but the view's own shape puts it there and
+  the converter's width prefers it to the item whole. The proper fix is legality where the statement's projection meets
+  a filter Calcite evaluates above the converter, the question `CosmosJson.CanRefuse` answers, which no rule of the
+  adapter asks there today.
 - **calcite-core's snapshot moves beneath the digests** — *note.* The Apache.Calcite packages resolve `calcite-core`
   1.43.0-SNAPSHOT, so the build a run converts is whichever its caches last resolved (§8, *The build follows Calcite's
   newest snapshot*). 3A's digests were taken over build 336 with Apache.Calcite 2.0.1-pre.267; over build 346 with
