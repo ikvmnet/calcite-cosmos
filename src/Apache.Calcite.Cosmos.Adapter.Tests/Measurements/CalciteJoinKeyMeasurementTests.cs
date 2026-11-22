@@ -39,10 +39,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// same pairs in every case: <c>BIGINT</c> 2^53 and 2^53 + 1 apart and <c>DOUBLE</c> 2^53 and 2^53 + 1 together,
         /// one double; <c>VARCHAR</c> by its units and <c>BOOLEAN</c> as itself; across types an <c>INTEGER</c> 7 with a
         /// <c>BIGINT</c> 7 and a <c>BIGINT</c> 2^53 + 1 with a <c>DOUBLE</c> 2^53, Calcite casting the narrower key to the
-        /// join's comparison type; and <c>DOUBLE</c> and <c>REAL</c> −0.0 with 0.0 and <c>DECIMAL</c> 1.0 with 1.00,
-        /// every pair of each. The merge join never matches −0.0 with 0.0, alone or beside one; it matches a lone −0.0 with
-        /// a lone −0.0, and with −0.0 and 0.0 on each side matches −0.0 with neither; and of 1.0 and 1.00 it matches one
-        /// pair each, along its sort's diagonal.
+        /// join's comparison type; and <c>DOUBLE</c>, <c>REAL</c> and <c>FLOAT</c> −0.0 with 0.0 and <c>DECIMAL</c> 1.0
+        /// with 1.00, every pair of each. The merge join never matches a <c>DOUBLE</c>, <c>REAL</c> or <c>FLOAT</c> −0.0
+        /// with 0.0, alone, either way round, or beside one on one side or both; it matches a lone −0.0 with a lone −0.0,
+        /// and with −0.0 and 0.0 on each side matches −0.0 with neither; and of 1.0 and 1.00 it matches one pair each,
+        /// along its sort's diagonal.
         /// </summary>
         [Fact, CosmosPins("Calcite.AnEquiJoinMatchesKeysAsEquality")]
         public void AnEquiJoinMatchesKeysAsEquality()
@@ -82,46 +83,60 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             flag.Equi.Should().Equal("(0,1)", "(1,0)");
             flag.Compared.Should().Equal("(0,1)", "(1,0)");
 
-            // Where the merge join parts from =: −0.0 and 0.0 on each side, where it matches −0.0 with neither, −0.0 alone
-            // against 0.0, and one DECIMAL value written to two scales. = itself, evaluated on each pair, matches every pair
-            // of each.
-            var zero = Join(connection, SqlTypeName.DOUBLE, ["-0.0", "0.0", "1.5"], SqlTypeName.DOUBLE, ["0.0", "-0.0", "1.5"]);
-            zero.Equi.Should().Equal("(1,0)", "(2,2)");
-            zero.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
-            zero.EquiPlan.Should().Contain("ClrCursorMergeJoin");
+            // Where the merge join parts from =: −0.0 and 0.0 of each approximate type, in each arrangement below, and one
+            // DECIMAL value written to two scales. = itself, evaluated on each pair, matches every pair of each.
+            var zeros = new List<Measured>();
+            foreach (var type in new[] { SqlTypeName.DOUBLE, SqlTypeName.REAL, SqlTypeName.FLOAT })
+            {
+                // −0.0 and 0.0 on each side: −0.0 is matched with neither.
+                var beside = Join(connection, type, ["-0.0", "0.0", "1.5"], type, ["0.0", "-0.0", "1.5"]);
+                beside.Equi.Should().Equal("(1,0)", "(2,2)");
+                beside.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
 
-            var lone = Join(connection, SqlTypeName.DOUBLE, ["-0.0"], SqlTypeName.DOUBLE, ["0.0"]);
-            lone.Equi.Should().BeEmpty();
-            lone.Compared.Should().Equal("(0,0)");
+                // A lone −0.0 against a lone 0.0, either way round: nothing.
+                var lone = Join(connection, type, ["-0.0"], type, ["0.0"]);
+                lone.Equi.Should().BeEmpty();
+                lone.Compared.Should().Equal("(0,0)");
 
-            // A lone −0.0 is matched with a lone −0.0, which with 0.0 beside it on each side, above, it is not.
-            var itself = Join(connection, SqlTypeName.DOUBLE, ["-0.0"], SqlTypeName.DOUBLE, ["-0.0"]);
-            itself.Equi.Should().Equal("(0,0)");
-            itself.Compared.Should().Equal("(0,0)");
+                var mirrored = Join(connection, type, ["0.0"], type, ["-0.0"]);
+                mirrored.Equi.Should().BeEmpty();
+                mirrored.Compared.Should().Equal("(0,0)");
 
-            var real = Join(connection, SqlTypeName.REAL, ["-0.0", "0.0", "1.5"], SqlTypeName.REAL, ["0.0", "-0.0", "1.5"]);
-            real.Equi.Should().Equal("(1,0)", "(2,2)");
-            real.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
+                // A lone −0.0 against a lone −0.0, and with 0.0 beside it on one side only: the −0.0s alone.
+                var itself = Join(connection, type, ["-0.0"], type, ["-0.0"]);
+                itself.Equi.Should().Equal("(0,0)");
+                itself.Compared.Should().Equal("(0,0)");
 
-            var realLone = Join(connection, SqlTypeName.REAL, ["-0.0"], SqlTypeName.REAL, ["0.0"]);
-            realLone.Equi.Should().BeEmpty();
-            realLone.Compared.Should().Equal("(0,0)");
+                var besideLeft = Join(connection, type, ["-0.0", "0.0"], type, ["-0.0"]);
+                besideLeft.Equi.Should().Equal("(0,0)");
+                besideLeft.Compared.Should().Equal("(0,0)", "(1,0)");
 
-            var realItself = Join(connection, SqlTypeName.REAL, ["-0.0"], SqlTypeName.REAL, ["-0.0"]);
-            realItself.Equi.Should().Equal("(0,0)");
-            realItself.Compared.Should().Equal("(0,0)");
+                var besideRight = Join(connection, type, ["-0.0"], type, ["-0.0", "0.0"]);
+                besideRight.Equi.Should().Equal("(0,0)");
+                besideRight.Compared.Should().Equal("(0,0)", "(0,1)");
+
+                // −0.0 with 0.0 beside it on one side only, against a lone 0.0: the 0.0s alone.
+                var besideLeftZero = Join(connection, type, ["-0.0", "0.0"], type, ["0.0"]);
+                besideLeftZero.Equi.Should().Equal("(1,0)");
+                besideLeftZero.Compared.Should().Equal("(0,0)", "(1,0)");
+
+                var besideRightZero = Join(connection, type, ["0.0"], type, ["-0.0", "0.0"]);
+                besideRightZero.Equi.Should().Equal("(0,1)");
+                besideRightZero.Compared.Should().Equal("(0,0)", "(0,1)");
+
+                zeros.AddRange([beside, lone, mirrored, itself, besideLeft, besideRight, besideLeftZero, besideRightZero]);
+            }
 
             var scaled = Join(connection, SqlTypeName.DECIMAL, ["1.0", "1.00", "2"], SqlTypeName.DECIMAL, ["1.00", "1.0", "2.0"]);
             scaled.Equi.Should().Equal("(0,0)", "(1,1)", "(2,2)");
             scaled.Compared.Should().Equal("(0,0)", "(0,1)", "(1,0)", "(1,1)", "(2,2)");
-            scaled.EquiPlan.Should().Contain("ClrCursorMergeJoin");
 
-            foreach (var measured in new[] { zero, lone, itself, real, realLone, realItself, scaled })
+            foreach (var measured in zeros.Append(scaled))
                 measured.EqualPlan.Should().Contain("=($t1, $t3)");
 
             // The comparison is never planned as an equi-join: it evaluates <= and >= on each pair it is offered. = is
             // evaluated on every pair of the cross join, and is true on exactly the pairs the comparison matches.
-            foreach (var measured in new[] { bigint, dbl, widened, approximate, text, flag, zero, lone, itself, real, realLone, realItself, scaled })
+            foreach (var measured in zeros.Concat([bigint, dbl, widened, approximate, text, flag, scaled]))
             {
                 measured.EquiPlan.Should().Contain("ClrCursorMergeJoin");
                 measured.ComparedPlan.Should().NotContain("MergeJoin").And.Contain("AND(<=(");
