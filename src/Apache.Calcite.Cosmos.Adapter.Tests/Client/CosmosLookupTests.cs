@@ -287,6 +287,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             CosmosLookup.Normalize(java.lang.Float.valueOf(0.1f), SqlTypeName.REAL).Should().Be((double)0.1f);
             BitConverter.DoubleToInt64Bits((double)CosmosLookup.Normalize(-0f, SqlTypeName.REAL)!).Should().Be(0L);
 
+            // Two NaN keys are one key here, where = finds them unequal; no container column reads NaN.
+            CosmosLookup.Normalize(java.lang.Double.valueOf(double.NaN), SqlTypeName.DOUBLE).Should().Be(CosmosLookup.Normalize(float.NaN, SqlTypeName.DOUBLE));
+
             // A CLR byte is a Java byte, Calcite's TINYINT, which is signed.
             CosmosLookup.Normalize(unchecked((byte)0xFF), SqlTypeName.TINYINT).Should().BeOfType<long>().Which.Should().Be(-1L);
             CosmosLookup.Normalize(unchecked((byte)0x80), SqlTypeName.TINYINT).Should().Be(-128L);

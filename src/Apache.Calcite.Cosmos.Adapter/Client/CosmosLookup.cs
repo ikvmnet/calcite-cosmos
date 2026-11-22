@@ -39,7 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
         /// <summary>
         /// Reduces a key to the form in which two keys are equal exactly where Calcite's <c>=</c> finds them equal,
-        /// after Calcite's cast to the join's comparison type.
+        /// after Calcite's cast to the join's comparison type, but for two NaN keys, which no planned lookup meets.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -66,6 +66,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <see cref="double"/> <c>-0.0</c> equals <c>0.0</c> here as it does under <c>=</c>, hashing alike, and is held as
         /// <c>0.0</c>, so that a batch never sends the minus zero no row says the service compares with a stored <c>0</c>;
         /// <c>TODO.md</c> records the departure.
+        /// </para>
+        /// <para>
+        /// <b>Two NaN keys are equal here, where <c>=</c> finds them unequal</b>, since a <see cref="double"/> NaN equals
+        /// another. No planned lookup meets it: no container column reads NaN, which JSON holds none of, so no document
+        /// holds a key a NaN could match either way.
         /// </para>
         /// <para>
         /// <b>Java's boxes as well as the CLR's, and the Java ones are the ordinary case.</b> A
