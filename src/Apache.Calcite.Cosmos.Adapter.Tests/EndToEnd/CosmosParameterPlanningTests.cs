@@ -43,7 +43,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         static readonly CosmosContainerMetadata Items = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/k" }));
 
-        static RelNode PlanToCosmos(string sql)
+        static RelNode PlanToCosmos(string sql) => PlanToCosmos(sql, null);
+
+        static RelNode PlanToCosmos(string sql, org.apache.calcite.plan.Context? context)
         {
             var typeFactory = new JavaTypeFactoryImpl();
             var table = new CosmosTable(Items);
@@ -62,7 +64,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             var validator = SqlValidatorUtil.newValidator(operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
 
-            var planner = new VolcanoPlanner();
+            var planner = context is null ? new VolcanoPlanner() : new VolcanoPlanner(context);
             planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
 
             var cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
@@ -104,9 +106,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// </summary>
         /// <param name="sql">The SQL to plan.</param>
         /// <returns>The statement.</returns>
-        static CosmosQuery Query(string sql)
+        static CosmosQuery Query(string sql, org.apache.calcite.plan.Context? context = null)
         {
-            var best = PlanToCosmos(sql);
+            var best = PlanToCosmos(sql, context);
             var implementor = new CosmosImplementor(best.getCluster().getRexBuilder(), Items);
             implementor.Visit(FindCosmos(best));
             return implementor.Build();
@@ -130,6 +132,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.Sql.Should().Contain("LIMIT @", "the name is written where the digits would have gone: " + query.Sql);
             query.Parameters.Should().ContainSingle(p => p.Value is CosmosDynamicValue,
                 "and the slot behind it is left for the execution");
+            query.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Single().RowCount.Should().Be("FETCH", "the slot holds a count, which the limit reads");
+        }
+
+        /// <summary>
+        /// A row count, literal or parameter, is the rows Calcite's limit takes for it: a fraction its ceiling, a count past
+        /// an int the most the statement writes, under the rounding policy the planner's context holds, which a
+        /// parameter's slot carries to the bind.
+        /// </summary>
+        /// <remarks>
+        /// <c>RexLiteral.intValue</c> cut a literal to its whole part, so <c>FETCH FIRST 2.5 ROWS ONLY</c> sent
+        /// <c>LIMIT 2</c> where Calcite takes three rows, and failed planning past an int, where Calcite takes every row
+        /// (<c>Calcite.ARowCountIsTakenToItsCeiling</c>).
+        /// </remarks>
+        [Fact]
+        public void ARowCountIsTheRowsCalcitesLimitTakes()
+        {
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 2.5 ROWS ONLY""").Sql.Should().EndWith("OFFSET 0 LIMIT 3");
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 3000000000 ROWS ONLY""").Sql.Should().EndWith("OFFSET 0 LIMIT 2147483647");
+            Query("""SELECT c."id" FROM items AS c ORDER BY c."_ts" OFFSET 2.5 ROWS FETCH NEXT 2 ROWS ONLY""").Sql.Should().EndWith("OFFSET 3 LIMIT 2");
+
+            var floor = org.apache.calcite.plan.Contexts.of(new Floor());
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST 2.5 ROWS ONLY""", floor).Sql.Should().EndWith("OFFSET 0 LIMIT 2", "the planner's rounding policy comes first");
+            Query("""SELECT c."id" FROM items AS c FETCH FIRST ? ROWS ONLY""", floor).Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>().Single().RowCountRounding
+                .Should().BeOfType<Floor>("and a parameter's slot carries it to the bind");
+        }
+
+        /// <summary>A rounding policy that takes a count down to its whole part.</summary>
+        sealed class Floor : org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy
+        {
+
+            public java.math.BigDecimal round(java.math.BigDecimal value) => value.setScale(0, java.math.RoundingMode.FLOOR);
+
         }
 
         /// <summary>

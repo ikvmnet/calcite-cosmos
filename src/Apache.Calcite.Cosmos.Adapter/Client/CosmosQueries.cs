@@ -61,7 +61,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     continue;
                 }
 
-                bound[i] = parameters[i] with { Value = slot.Presence ? Present(root, slot) : slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
+                bound[i] = parameters[i] with { Value = slot.Presence ? Present(root, slot) : slot.RowCount is string clause ? Counted(root, slot, clause) : slot.Form is Metadata.CosmosRepresentation form ? Stored(root, slot, form) : slot.Bound != CosmosAnchorBound.None ? Bounded(root, slot) : Value(root, slot) };
 
                 // In the stored spelling of the target, the emulator's, where the service compares the value with a path
                 // (Service.EmulatorComparesTheSpellingItIsSent): after Held's truncation, Calcite truncating what it was
@@ -219,6 +219,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                     return true;
 
             return false;
+        }
+
+        /// <summary>
+        /// Reads a row count's value out of the data context as Calcite's limit reads it, as the rows it takes or skips
+        /// (<see cref="CosmosRowLimit.Rows"/>).
+        /// </summary>
+        /// <param name="root">The data context.</param>
+        /// <param name="slot">The ordinal to read, and the planner's rounding policy.</param>
+        /// <param name="clause"><c>FETCH</c> or <c>OFFSET</c>.</param>
+        /// <returns>The count the statement is sent.</returns>
+        /// <exception cref="CosmosExecutionException">Calcite's limit refuses the value.</exception>
+        static object Counted(org.apache.calcite.DataContext root, CosmosDynamicValue slot, string clause)
+        {
+            try
+            {
+                return (long)CosmosRowLimit.Rows(root.get(slot.VariableName), clause, slot.RowCountRounding);
+            }
+            catch (java.lang.RuntimeException e)
+            {
+                throw new CosmosExecutionException($"Parameter {slot.VariableName} cannot be read as the {clause} count, as Calcite's limit reads it ({e.GetType().Name}: {e.Message}), so the statement fails as Calcite's own plan fails.", e);
+            }
         }
 
         /// <summary>

@@ -217,6 +217,12 @@ timestamp is compared. The message names the
 exception Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the
 adapter fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
 
+**"Parameter ?0 cannot be read as the FETCH count, as Calcite's limit reads it" (`CosmosExecutionException`)
+when a statement runs.**
+A row count was bound to a value Calcite's limit does not take: a string through Calcite's own driver, a
+NaN, a negative number or a null. Calcite's own plan fails the same way, so the adapter fails before
+anything is sent. Bind a number of rows. Chapter 9.
+
 **"Parameter ?0 holds Infinity, which the Cosmos DB SDK writes as a JSON string rather than a number"
 (`CosmosExecutionException`) when a statement runs.**
 A parameter was bound to a number past its type's range, the string `'1e400'` for a `DOUBLE` or the double

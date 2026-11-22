@@ -454,6 +454,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             };
         }
 
+        /// <summary>
+        /// Calcite's limit reads a <c>FETCH</c> or an <c>OFFSET</c> count, a literal's or a parameter's, as a decimal, and
+        /// takes or skips rows while their index is below it, so a fraction is taken to its ceiling and a count past an
+        /// <c>INTEGER</c> takes every row; a count that is no number, a NaN, a negative count or a null fails.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Each case is a statement over an in-process table of four rows that records what the data context holds for
+        /// <c>?0</c> when it is scanned, bound once through <c>jdbc:calcite:</c> and once through the ADO.NET driver, as
+        /// <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases; a literal count binds nothing.
+        /// </para>
+        /// <para>
+        /// <b>Through Calcite's own driver the data context holds the caller's class</b>, and the limit reads it
+        /// (<c>EnumUtils.numberToBigDecimal</c>): the double 2.5 takes three rows and skips three, 0.5 takes one, the
+        /// decimal 2.01 takes three, the integer 2 and the double 2.0 take two, and the long 3,000,000,000 takes every row
+        /// and skips every row; the literals 2.5 and 3,000,000,000 alike. It fails the string <c>'2'</c>, a negative count
+        /// and a null (<c>IllegalArgumentException</c>), and a NaN (<c>NumberFormatException</c>).
+        /// </para>
+        /// <para>
+        /// <b>The ADO.NET driver converts the value to a <c>DECIMAL</c> before Calcite sees it</b>, the type Calcite
+        /// gives a row count's parameter, so the string <c>'2'</c> takes two rows, and it refuses a NaN before the
+        /// statement runs; the limit reads the rest as through Calcite's own driver.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.ARowCountIsTakenToItsCeiling")]
+        public void ARowCountIsTakenToItsCeiling()
+        {
+            var four = MaterialisedTable.Of(SqlTypeName.INTEGER, ["0", "1", "2", "3"]);
+            const string Fetch = "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST ? ROWS ONLY";
+            const string Offset = "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET ? ROWS";
+
+            var cases = new Conversion[]
+            {
+                new("FETCH ?, double 2.5", four, Fetch, s => s.setDouble(1, 2.5), 2.5d,
+                    "java.lang.Double 2.5: rows [0, 1, 2]", "java.math.BigDecimal 2.5: rows [0, 1, 2]"),
+                new("FETCH ?, double 0.5", four, Fetch, s => s.setDouble(1, 0.5), 0.5d,
+                    "java.lang.Double 0.5: rows [0]", "java.math.BigDecimal 0.5: rows [0]"),
+                new("FETCH ?, decimal 2.01", four, Fetch, s => s.setBigDecimal(1, new java.math.BigDecimal("2.01")), 2.01m,
+                    "java.math.BigDecimal 2.01: rows [0, 1, 2]", "java.math.BigDecimal 2.01: rows [0, 1, 2]"),
+                new("FETCH ?, integer 2", four, Fetch, s => s.setInt(1, 2), 2,
+                    "java.lang.Integer 2: rows [0, 1]", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, double 2.0", four, Fetch, s => s.setDouble(1, 2.0), 2.0d,
+                    "java.lang.Double 2.0: rows [0, 1]", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, long 3,000,000,000", four, Fetch, s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows [0, 1, 2, 3]", "java.math.BigDecimal 3000000000: rows [0, 1, 2, 3]"),
+                new("FETCH ?, string '2'", four, Fetch, s => s.setString(1, "2"), "2",
+                    "java.lang.String 2: IllegalArgumentException", "java.math.BigDecimal 2: rows [0, 1]"),
+                new("FETCH ?, double NaN", four, Fetch, s => s.setDouble(1, double.NaN), double.NaN,
+                    "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"),
+                new("FETCH ?, long -1", four, Fetch, s => s.setLong(1, -1L), -1L,
+                    "java.lang.Long -1: IllegalArgumentException", "java.math.BigDecimal -1: IllegalArgumentException"),
+                new("FETCH ?, null", four, Fetch, s => s.setNull(1, java.sql.Types.INTEGER), null,
+                    "null: IllegalArgumentException", "null: IllegalArgumentException"),
+                new("OFFSET ?, double 2.5", four, Offset, s => s.setDouble(1, 2.5), 2.5d,
+                    "java.lang.Double 2.5: rows [3]", "java.math.BigDecimal 2.5: rows [3]"),
+                new("OFFSET ?, long 3,000,000,000", four, Offset, s => s.setLong(1, 3000000000L), 3000000000L,
+                    "java.lang.Long 3000000000: rows []", "java.math.BigDecimal 3000000000: rows []"),
+                new("FETCH FIRST 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 2.5 ROWS ONLY", _ => { }, null,
+                    "null: rows [0, 1, 2]", "null: rows [0, 1, 2]"),
+                new("FETCH FIRST 3,000,000,000", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" FETCH FIRST 3000000000 ROWS ONLY", _ => { }, null,
+                    "null: rows [0, 1, 2, 3]", "null: rows [0, 1, 2, 3]"),
+                new("OFFSET 2.5", four, "SELECT \"k\" FROM {t} ORDER BY \"k\" OFFSET 2.5 ROWS", _ => { }, null,
+                    "null: rows [3]", "null: rows [3]"),
+            };
+
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+        }
+
         /// <summary>One conversion case: a statement over a table, how each driver binds its one parameter, and what each answers.</summary>
         sealed record Conversion(string Label, MaterialisedTable Table, string Sql, Action<java.sql.PreparedStatement> Bind, object? Bound, string Calcite, string Ado);
 
@@ -491,9 +560,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     {
                         using var command = _ado.CreateCommand();
                         command.CommandText = sql;
-                        var parameter = command.CreateParameter();
-                        parameter.Value = conversion.Bound;
-                        command.Parameters.Add(parameter);
+                        if (sql.Contains('?'))
+                        {
+                            var parameter = command.CreateParameter();
+                            parameter.Value = conversion.Bound;
+                            command.Parameters.Add(parameter);
+                        }
+
                         var rows = new List<string>();
                         using var reader = command.ExecuteReader();
                         while (reader.Read())

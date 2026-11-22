@@ -996,20 +996,30 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// instead is what made a parameterised <c>FETCH</c> throw.
         /// </para>
         /// <para>
+        /// <b>A count is the rows Calcite's limit takes for it</b> (<see cref="Sql.CosmosRowLimit.Rows"/>): a literal's is
+        /// read now, and a parameter's slot carries its clause and the planner's rounding policy, so that
+        /// <see cref="Client.CosmosQueries.Bind"/> reads it so when the value arrives.
+        /// </para>
+        /// <para>
         /// Bound through the same list every other parameter goes through, so the value is filled in
         /// where every other value is — see <see cref="Sql.CosmosDynamicValue"/>.
         /// </para>
         /// </remarks>
+        /// <param name="rel">The node the count belongs to, whose planner's context holds the rounding policy.</param>
         /// <param name="node">The plan's <c>fetch</c> or <c>offset</c> expression.</param>
+        /// <param name="clause"><c>FETCH</c> or <c>OFFSET</c>.</param>
         /// <returns>The limit.</returns>
         /// <exception cref="CosmosTranslationException">The expression is neither a literal nor a parameter.</exception>
-        public Sql.CosmosRowLimit RowLimit(RexNode node)
+        public Sql.CosmosRowLimit RowLimit(RelNode rel, RexNode node, string clause)
         {
+            var rounding = (org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy?)rel.getCluster().getPlanner().getContext()
+                .unwrap((java.lang.Class)typeof(org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy));
+
             if (node is RexLiteral literal)
-                return RexLiteral.intValue(literal);
+                return Sql.CosmosRowLimit.Rows(RexLiteral.bigDecimalValue(literal), clause, rounding);
 
             if (node is org.apache.calcite.rex.RexDynamicParam parameter)
-                return Sql.CosmosRowLimit.Bound(_parameters.Add(new Sql.CosmosDynamicValue(parameter.getIndex())));
+                return Sql.CosmosRowLimit.Bound(_parameters.Add(new Sql.CosmosDynamicValue(parameter.getIndex()) { RowCount = clause, RowCountRounding = rounding }));
 
             throw new CosmosTranslationException("A row limit is neither a literal nor a parameter.");
         }

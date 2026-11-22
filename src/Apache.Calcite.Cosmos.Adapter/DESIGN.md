@@ -2635,14 +2635,15 @@ value by calling what Calcite's generated code calls (`RexToLixTranslator.visitD
 `EnumUtils.convert`): for a type in Calcite's numeric family, `SqlFunctions.toBigDecimal` and the conversion to the
 class Calcite holds the type in; for any other, the object's `toString()` where that class is a string, and otherwise a
 cast to it, which an `ANY`'s and a `VARIANT`'s class, `Object`, passes as it is. The classes come from Calcite's own
-type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the measurement, and a test against the code Calcite generates for a parameter of each type, hold it to Calcite's. The conversion is the boxed one, which wraps an integer past its type, since the
-validator makes every parameter's type nullable. A value it refuses — a string that spells no number, a NaN or an
-infinity bound to a number, a string or a `java.util.UUID` bound to a `UUID` — fails the statement by name, where
-Calcite's plan fails reading it. A presence slot reads only whether a value is bound, and the row limit's slot is read
-by the limit, which Calcite reads otherwise than a value, so neither is converted. Calcite fails only once a row reaches
-the parameter's reading, which leaves a statement over no row, or one no row of which takes the `CASE` arm reading the
-parameter, failing where Calcite answers, and one the facts graph decides not to send answering where Calcite fails;
-`TODO.md` records both.
+type factory and the leaf conversions are Calcite's, called; the dispatch between them is written here, and the
+measurement, and a test against the code Calcite generates for a parameter of each type, hold it to Calcite's. The
+conversion is the boxed one, which wraps an integer past its type, since the validator makes every parameter's type
+nullable. A value it refuses — a string that spells no number, a NaN or an infinity bound to a number, a string or a
+`java.util.UUID` bound to a `UUID` — fails the statement by name, where Calcite's plan fails reading it. A presence slot
+reads only whether a value is bound, so it is not converted, and a row count is read as Calcite's limit reads it, below.
+Calcite fails only once a row reaches the parameter's reading, which leaves a statement over no row, or one no row of
+which takes the `CASE` arm reading the parameter, failing where Calcite answers, and one the facts graph decides not to
+send answering where Calcite fails; `TODO.md` records both.
 
 **A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
 either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the
@@ -2657,6 +2658,17 @@ to a numeric parameter, but carries a finite value past an approximate type's ra
 failing (`Calcite.ANonFiniteDoubleParameterRaises`); and an `ANY` or a `VARIANT` parameter passes as bound, a NaN
 included. `CosmosQueries.Bind` refuses one in every slot, and the statement fails by name where Calcite may answer. The
 proper fix is the request decision reading the bound value, which no stage plans.
+
+**A row count is sent as the rows Calcite's limit takes for it.** Calcite's limit reads a `FETCH` or an `OFFSET` count,
+a literal's or a parameter's, as a decimal (`EnumUtils.numberToBigDecimal`, with the rounding policy the planner's
+context holds) and takes or skips rows while their index is below it (`Calcite.ARowCountIsTakenToItsCeiling`): 2.5 takes
+three rows, and 3,000,000,000 every row. A literal was read with `RexLiteral.intValue`, which cut
+`FETCH FIRST 2.5 ROWS ONLY` to `LIMIT 2` and failed planning past an `int`, and a parameter was sent as the caller held
+it, a fraction among them. So `CosmosRowLimit.Rows` writes the count's ceiling for both, held to `int.MaxValue`, the
+`LIMIT` the statement writes beside an `OFFSET` alone for no limit at all; both rest on no request reading more rows
+than that. A parameter's slot carries its clause and the policy, the bind reads the value so when it arrives, and a
+value the limit refuses — a string, a NaN, a negative count or a null — fails the statement by name, as Calcite's plan
+fails.
 
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =

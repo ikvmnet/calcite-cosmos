@@ -106,6 +106,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         public org.apache.calcite.sql.type.SqlTypeName? TypeName { get; init; }
 
         /// <summary>
+        /// Gets the clause the slot holds the row count of, <c>FETCH</c> or <c>OFFSET</c>, or <c>null</c> for a slot that
+        /// holds a value.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's limit reads a count otherwise than a row reads a value: as a decimal, whose ceiling is the rows it
+        /// takes or skips (<see cref="CosmosRowLimit.Rows"/>). So the slot says it holds a count, and
+        /// <see cref="Client.CosmosQueries.Bind"/> reads the value so.
+        /// </remarks>
+        public string? RowCount { get; init; }
+
+        /// <summary>
+        /// Gets the rounding policy the planner's context held for a row count, which Calcite's limit applies to it, or
+        /// <c>null</c> for none.
+        /// </summary>
+        public org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy? RowCountRounding { get; init; }
+
+        /// <summary>
         /// Gets the name Calcite binds the value under in the data context.
         /// </summary>
         /// <remarks>

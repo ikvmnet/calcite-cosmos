@@ -378,6 +378,54 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                     .WithMessage($"Parameter ?0 cannot be converted to its type, {type.getName()}, as Calcite converts it when a row reads it (ClassCastException: *");
         }
 
+        /// <summary>
+        /// A row count's slot is bound as the rows Calcite's limit takes for the value: the ceiling of the decimal it reads,
+        /// held to the most the statement writes, under the rounding policy the planner's context held; a value the limit
+        /// refuses fails by name, as Calcite's own plan fails.
+        /// </summary>
+        /// <remarks>
+        /// Bound as it was held, 2.5 was sent as a count the service refuses, and read by the ordered cursor as the 2 .NET
+        /// rounds it to, where Calcite takes three rows (<c>Calcite.ARowCountIsTakenToItsCeiling</c>).
+        /// </remarks>
+        [Fact]
+        public void ARowCountIsBoundAsTheRowsCalcitesLimitTakes()
+        {
+            object? Count(object? held, org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy? rounding = null) => CosmosQueries.Bind(
+                Query(new CosmosParameter("@p0", new CosmosDynamicValue(0) { RowCount = "FETCH", RowCountRounding = rounding })),
+                new Context(("?0", held))).Parameters[0].Value;
+
+            using (new AssertionScope())
+            {
+                Count(java.lang.Double.valueOf(2.5)).Should().Be(3L);
+                Count(java.lang.Double.valueOf(0.5)).Should().Be(1L);
+                Count(new java.math.BigDecimal("2.01")).Should().Be(3L);
+                Count(java.lang.Integer.valueOf(2)).Should().Be(2L);
+                Count(java.lang.Double.valueOf(2.0)).Should().Be(2L);
+                Count(java.lang.Long.valueOf(0L)).Should().Be(0L);
+                Count(java.lang.Long.valueOf(3000000000L)).Should().Be((long)int.MaxValue, "a count past an int reads every row, as the most the statement writes does");
+                Count(java.lang.Double.valueOf(2.5), new Floor()).Should().Be(2L, "the planner's rounding policy comes first");
+            }
+
+            using var scope = new AssertionScope();
+            foreach (var (held, raised) in new (object?, string)[]
+            {
+                ("2", "IllegalArgumentException"),
+                (java.lang.Double.valueOf(double.NaN), "NumberFormatException"),
+                (java.lang.Long.valueOf(-1L), "IllegalArgumentException"),
+                (null, "IllegalArgumentException"),
+            })
+                FluentActions.Invoking(() => Count(held)).Should().Throw<CosmosExecutionException>()
+                    .WithMessage($"Parameter ?0 cannot be read as the FETCH count, as Calcite's limit reads it ({raised}: *");
+        }
+
+        /// <summary>A rounding policy that takes a count down to its whole part.</summary>
+        sealed class Floor : org.apache.calcite.adapter.enumerable.FetchOffsetRoundingPolicy
+        {
+
+            public java.math.BigDecimal round(java.math.BigDecimal value) => value.setScale(0, java.math.RoundingMode.FLOOR);
+
+        }
+
         // -- A non-finite value ----------------------------------------------------------------------
 
         /// <summary>
