@@ -3447,16 +3447,16 @@ across documents* and *A join of a container to itself* is the record.
   same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
-- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches
-  it as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place of its unmatched one;
-  recorded, not planned.* Calcite's equi-join in
-  process, a hash join for the lookup join's own shape and a merge join between two in-process tables, never matches
-  `-0.0` with `0.0`, alone or beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot`
-  over each of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
-  compares it after Calcite's cast to the join's comparison type, so a small side's `-0.0` is joined to the documents
-  holding `0`, which Calcite's own join leaves unmatched. The service reads a stored `-0` or `-0.0` back as `0`
-  (`Service.IntegralNumbersReadBackAsHeld`), but a `REAL` column reads a negative number too small for a float, such as
-  a stored `-1e-50`, as `-0.0`
+- **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup
+  join matches it as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place
+  of its unmatched one; recorded, not planned.* Calcite's equi-join in process, a hash join for the lookup
+  join's own shape and a merge join between two in-process tables, never matches `-0.0` with `0.0`, alone or
+  beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot` over each
+  of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize`
+  compares a key as `=` compares it after Calcite's cast to the join's comparison type, so a small
+  side's `-0.0` is joined to the documents holding `0`, which Calcite's own join leaves unmatched. The
+  service reads a stored `-0` or `-0.0` back as `0` (`Service.IntegralNumbersReadBackAsHeld`), but a
+  `REAL` column reads a negative number too small for a float, such as a stored `-1e-50`, as `-0.0`
   (`CosmosLookupJoinTests.CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero`). Calcite's own
   join matches a small side's `-0.0` with that document, which the restriction, sending `0`, never fetches (the next
   entry); fetched, it would be joined to a small side's `0.0` as well, which Calcite's own join does not do. Following

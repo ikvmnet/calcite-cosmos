@@ -58,10 +58,9 @@ The lookup join is chosen by the planner where it is cheaper and **only** where:
   '$.category')` is the text key of the rule above, so it qualifies only where the container's schema
   declares `category` a string (Chapter 14). To keep a lookup on the partition key, declare it; without
   a declaration the join reads the container. A typed accessor over a number or a boolean —
-  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — qualifies as it is.
-  On the emulator, which stores U+0000 and U+FDD0 in another spelling
-  (Appendix E), a text key is sent in the stored one, so it finds what it names; Azure is sent each
-  key as written.
+  `JSON_VALUE(p."DOC", '$.price' RETURNING INTEGER)` — qualifies as it is. On the emulator, which
+  stores U+0000 and U+FDD0 in another spelling (Appendix E), a text key is sent in the stored one,
+  so it finds what it names; Azure is sent each key as written.
 - **Or both keys are `UUID`s, and the container's side is `CAST(JSON_VALUE(p."DOC", '$.x') AS UUID)`
   over a path the container's schema gives a UUID format** (Chapter 14), outright or for the kind the
   container side keeps. The path then holds one
@@ -80,10 +79,9 @@ predicates of its own push down.
 
 A condition on the container's side that stays above the join, as one beside an `IN` does once Calcite
 turns the `IN` into a join, is evaluated only on the documents the keys fetch, where Calcite evaluates
-it on every document. Where it can fail, on a cast of text to
-`INTEGER` say, on a document no key fetches, Calcite fails and the lookup join answers; with no keys,
-it answers no rows, and with no request where the schema rules out the small side (Chapter 14.2).
-That is not decided yet (Chapter 23).
+it on every document. Where it can fail, on a cast of text to `INTEGER` say, on a document no key
+fetches, Calcite fails and the lookup join answers; with no keys, it answers no rows, and with no
+request where the schema rules out the small side (Chapter 14.2). That is not decided yet (Chapter 23).
 
 Where the schema rules out what the container side's own `WHERE` keeps, the join still reads the
 small side, every row of it, and fetches no batch: `EXPLAIN` marks the join `probes=[nothing]`, and an
