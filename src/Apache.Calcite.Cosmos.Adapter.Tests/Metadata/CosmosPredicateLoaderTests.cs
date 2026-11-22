@@ -496,6 +496,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
+        /// A predicate over another relation, a conjunct a filter beneath a projection applies, is read through a reader of
+        /// that relation in the numbering of the loading that asks (<see cref="CosmosPredicateLoader.Loading.Through"/>): a
+        /// path it reads is the term the loading reads, and what it cannot read is numbered beside the relation that read
+        /// it, so one node over two relations is two terms even where their bindings are equal as lists, and over one
+        /// relation one. The reader is never the loading itself, and each statement reads its opaque terms through the
+        /// reader that numbered them, the loading's own as before.
+        /// </summary>
+        [Fact]
+        public void ThroughAReaderOfAnotherRelationReadsAPathAsOneTermAndWhatIsOpaqueApart()
+        {
+            var loading = new CosmosPredicateLoader.Loading(_fields, _readings, "c");
+            var soundex = Call(SqlStdOperatorTable.EQUALS, Call(SqlLibraryOperators.SOUNDEX, JsonValue("label")), Str("X"));
+            var statement = loading.Statement(CosmosFilterStatement.ConjunctsOf(soundex));
+            statement.Conjuncts.Should().Equal(Opaque(0));
+
+            // Two relations of the document alone, whose bindings are equal as lists and which are not one relation.
+            var (scan, view) = (new object(), new object());
+            IReadOnlyList<CosmosPath?> document = [CosmosPath.Root("c")];
+            IReadOnlyList<CosmosReading> typed = [CosmosReading.Typed];
+            var overScan = loading.Through(scan, document, typed);
+            var overView = loading.Through(view, document, typed);
+            overView.Should().NotBeSameAs(overScan, "two relations whose bindings are equal as lists are two relations");
+            loading.Through(scan, document, typed).Should().BeSameAs(overScan, "one relation has one reader");
+
+            // A path is one term through any reader.
+            var label = Call(SqlStdOperatorTable.EQUALS, JsonValue("label"), Str("x"));
+            overScan.Read(label).Should().Be(Eq(Text(Label), "x"));
+            overScan.Read(label).Should().Be(loading.Read(label));
+
+            // What is opaque is numbered beside the relation that read it: over two relations two terms, over one one.
+            var like = Call(SqlStdOperatorTable.LIKE, JsonValue("label"), Str("a%"), Str("!"));
+            loading.Read(like).Should().Be(Opaque(1));
+            overScan.Read(like).Should().Be(Opaque(2), "over another relation the node is another term");
+            overView.Read(like).Should().Be(Opaque(3), "over a third relation, its binding equal to the second's, a third");
+            overScan.Read(like).Should().Be(Opaque(2), "read again over one relation, the node is one term");
+            loading.Read(like).Should().Be(Opaque(1));
+
+            // Never the loading itself, even for a binding equal to its own.
+            var alike = loading.Through(new object(), _fields, _readings);
+            alike.Should().NotBeSameAs(loading);
+            alike.Read(like).Should().Be(Opaque(4));
+
+            // Each statement reads its opaque terms through the reader that numbered them.
+            var read = new SqlValue.Call("=", [new SqlValue.Call("SOUNDEX", [Text(Label)]), Lit("X")]);
+            statement.Opaques.Keys.Should().Equal(0L);
+            statement.Opaques[0].Should().Be(read);
+            var scanned = overScan.Statement(CosmosFilterStatement.ConjunctsOf(soundex));
+            scanned.Conjuncts.Should().Equal(Opaque(5));
+            scanned.Opaques.Keys.Should().Equal(5L);
+            scanned.Opaques[5].Should().Be(read);
+        }
+
+        /// <summary>
         /// The shapes the facts graph reads from h07: a boolean literal, the truth tests, <c>COALESCE(p, FALSE)</c>, the null
         /// test of a predicate and a boolean <c>CASE</c> as cases of what they define (<c>Calcite.TruthTestsAreCases</c>,
         /// <c>Calcite.CoalesceIsACase</c>), <c>LIKE</c> of text against a literal pattern, the type tests of the reading as it stands,
