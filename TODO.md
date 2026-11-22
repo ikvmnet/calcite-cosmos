@@ -2805,6 +2805,15 @@ across documents* and *A join of a container to itself* is the record.
 - **A `VARIANT`'s numeric equality is exact in type** — *small.* `"$.pk" = CAST(42 AS VARIANT)` is false of a stored 42
   in process, which reads it as a `BIGINT`; the service keeps it. Whether the translator writes such a comparison as
   `c.pk = 42` is unchecked.
+- **A `VARIANT` compared with a parameter bound through Calcite's own driver is sent** — *medium, a wrong answer.* The
+  rendering graph owns no conjunct that holds a parameter (`RenderingFamily.Owns`, until 3B), so the translator sends
+  `c."$.category" = ?` as `c.category = @p0`. Calcite's own JDBC driver hands the caller's class to the data context,
+  and the bind passes a `VARIANT` parameter's value as Calcite reads it, as it came: bound to the string `'bikes'`, the
+  service keeps the documents holding `"bikes"`, where Calcite compares the column's box with a value that is none and
+  keeps no row, its `<>` keeping every row instead (measured in process: `CAST('bikes' AS VARIANT) = ?` bound with
+  `setString` keeps nothing). The ADO.NET driver refuses any value but null for a `VARIANT` placeholder before the
+  statement runs, so only Calcite's own driver reaches it. The fix is the rendering graph owning parameter conjuncts
+  (3B), which leaves a `VARIANT` compared with a parameter in Calcite.
 - **A filter over `RETURNING VARIANT` runs in process** — *small; RU, never rows.* The loader reads `JSON_VALUE …
   RETURNING VARIANT` as a `RETURNING` of `VARIANT` (`typed:VARIANT`), whose value no row measures, so S proves nothing
   over it and Calcite evaluates every filter over it: a comparison, a null test and a type test. Calcite holds what it
