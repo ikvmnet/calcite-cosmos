@@ -3466,7 +3466,7 @@ across documents* and *A join of a container to itself* is the record.
   service holds the integer written. A key equal to what the column reads is sent as a number the document does not
   hold, so the document Calcite's own join matches is never fetched. On the emulator a `REAL` key `0.1` lost the
   document holding `0.1`, and a `BIGINT` key 2^53 joined to a `DOUBLE` column the one holding `9007199254740993`, in a
-  planned lookup and through an `IN` sub-query; against a stub returning every document the same joins agree. `main`
+  planned lookup; against a stub returning every document the same joins agree. `main`
   sends the same numbers, so the key match neither causes nor changes it. The rendering graph, asked of the bare
   equality the restriction is a disjunction of, leaves `REAL` unplaced and declines a `DOUBLE` comparison past 2^53;
   its tests should hold a `REAL` key `0.1` against a stored `0.1`, a `DOUBLE` key 2^53 against a stored
