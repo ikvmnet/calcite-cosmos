@@ -551,7 +551,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         /// A <c>REAL</c>, <c>FLOAT</c> or <c>DOUBLE</c> <c>-0.0</c> on the small side matches the container's <c>0</c> as
         /// <c>=</c> does, alone or beside a <c>0.0</c>, where Calcite's own join of the same statement, a hash join once the
         /// lookup is not offered, leaves it unmatched: the one place the lookup answers a row Calcite's own join does not
-        /// (<c>TODO.md</c>). The container side never holds <c>-0.0</c>, which the service reads back as <c>0</c>.
+        /// (<c>TODO.md</c>).
         /// </remarks>
         [Theory]
         [InlineData("REAL")]
@@ -580,6 +580,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
                 var own = Plan(Sql(values), lookup: false);
                 RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
                 (await Execute(own)).Should().BeEquivalentTo(calcites, values);
+            }
+        }
+
+        /// <remarks>
+        /// A <c>REAL</c> column reads a negative number too small for a float, a stored <c>-1e-50</c>, as <c>-0.0</c>, so the
+        /// container side can hold one. Calcite's own join of the same statement, a hash join once the lookup is not offered,
+        /// matches a small side's <c>-0.0</c> with that document and a <c>0.0</c> with the <c>0</c> alone. The lookup, where
+        /// its fetch brings the document back, as this stub's does, joins both keys to both documents, as <c>=</c> does. Its
+        /// restriction sends <c>0</c>, which a service does not find <c>-1e-50</c> equal to, so there the document is never
+        /// fetched (<c>TODO.md</c>).
+        /// </remarks>
+        [Fact]
+        public async Task CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero()
+        {
+            var products = new[] { """{"id":"p0","n":0}""", """{"id":"pm1em50","n":-1e-50}""" };
+
+            string Sql(string zero) => $"SELECT t.\"id\" FROM (VALUES (1, CAST('{zero}' AS REAL))) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+
+            foreach (var (zero, calcites) in new (string, object[])[] { ("-0.0", ["pm1em50"]), ("0.0", ["p0"]) })
+            {
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(Sql(zero), lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own)).Should().BeEquivalentTo(calcites, zero);
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var plan = Plan(Sql(zero));
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan)).Should().BeEquivalentTo(new object[] { "p0", "pm1em50" }, zero);
+                Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Distinct()
+                    .Should().Equal(new[] { BitConverter.DoubleToInt64Bits(0d) }, "either zero is sent as 0");
             }
         }
 

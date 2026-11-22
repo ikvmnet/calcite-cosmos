@@ -6459,10 +6459,13 @@ key too, matches a null key with a null one, which no fetch by key finds.
 process, a hash join for the lookup's own shape and a merge join between in-process tables, never matches a
 `REAL`, `FLOAT` or `DOUBLE` `-0.0` with `0.0`, where `=`, measured on every pair of a cross join, and the
 comparison join `ON a.v <= b.v AND a.v >= b.v` match them. The lookup answers what the condition says rather
-than what one of Calcite's physical joins happens to, and `TODO.md` records it. The container side never
-holds `-0.0`, which the service reads back as `0`, so what departs is a small side's `-0.0` joined to a
-stored `0`. That `-0.0` is held and sent as `0.0`, which `=` cannot tell from it, because no row says how
-the service compares a minus zero it is sent with a stored `0`.
+than what one of Calcite's physical joins happens to, and `TODO.md` records it. The service reads a stored
+`-0.0` back as `0`, but a `REAL` column reads a negative number too small for a float, such as `-1e-50`, as
+`-0.0`: Calcite's own join matches a small side's `-0.0` with that document, and the restriction, sending
+`0`, never fetches it (`TODO.md`); were it fetched, a small side's `0.0` would be joined to it too. What
+departs today is a small side's `-0.0` joined to a stored `0`. That `-0.0` is held and sent as `0.0`, which
+`=` cannot tell from it, because no row says how the service compares a minus zero it is sent with a
+stored `0`.
 
 **A traversal on the probe side is restricted per document, and the binding walk has to know both of
 its forms to say so.** The restriction is a `WHERE` the service evaluates after the `JOIN … IN`, and it

@@ -3453,9 +3453,13 @@ across documents* and *A join of a container to itself* is the record.
   `-0.0` with `0.0`, alone or beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot`
   over each of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`
   compares it after Calcite's cast to the join's comparison type, so a small side's `-0.0` is joined to the documents
-  holding `0`, which Calcite's own join leaves unmatched. The container side never holds `-0.0`, which the service reads
-  back as `0` (`Service.IntegralNumbersReadBackAsHeld`). Following Calcite's joins would answer by the plan Calcite
-  chose rather than by the condition the query wrote.
+  holding `0`, which Calcite's own join leaves unmatched. The service reads a stored `-0` or `-0.0` back as `0`
+  (`Service.IntegralNumbersReadBackAsHeld`), but a `REAL` column reads a negative number too small for a float, such as
+  a stored `-1e-50`, as `-0.0`
+  (`CosmosLookupJoinTests.CalcitesOwnJoinMatchesAMinusZeroKeyWithANumberARealColumnReadsAsMinusZero`). Calcite's own
+  join matches a small side's `-0.0` with that document, which the restriction, sending `0`, never fetches (the next
+  entry); fetched, it would be joined to a small side's `0.0` as well, which Calcite's own join does not do. Following
+  Calcite's joins would answer by the plan Calcite chose rather than by the condition the query wrote.
 - **The lookup join's restriction leaves out a document whose typed column reads its number as another value** —
   *medium, a wrong answer, older than the key match; settled when the rendering graph is asked for the restriction
   (3B).* `CosmosLookupJoinRule` restricts a typed key column outright (`IsRestrictedAsStored`), and the restriction
