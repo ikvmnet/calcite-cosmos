@@ -553,12 +553,12 @@ was sent as `WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that stri
 `2016-12-31T24:00:00Z`, `2016-12-31T23:60:00Z`, `2016-11-61T00:00:00Z` and the next day's it kept one
 document where Calcite keeps three.
 
-So the chain preserves nothing the bits say, and `CosmosTemporalForms.ParsesExactly` answers `false`
-for every form, format and type. Its consumers — the rewrite's licence, `CosmosServiceOrder.ReadConversion`
+So the chain preserves nothing the bits say, and `CosmosTemporalForms.ParsesExactly` answers `false` for
+every form, format and type. Its consumers — the rewrite's licence, `CosmosServiceOrder.ReadConversion`
 and `CosmosRexTranslator.TryStoredInstantProjection` — leave the parse to Calcite by that answer alone,
-and none of them changed. The formats stay in `ParseFormats` for the measurement, which runs each over
-the canonical strings and over the strings that roll. No profile of what a parse reads of a form
-exists, which the row says: a parse could reach the service again only as a reading the rendering
+and none of them decides differently. The formats stay in `ParseFormats` for the measurement, which runs
+each over the canonical strings and over the strings that roll. No profile of what a parse reads of a
+form exists, which the row says: a parse could reach the service again only as a reading the rendering
 graph proves a weaker comparison of, and `TODO.md` holds that.
 
 **The `TIME` cast was withdrawn on the same measurement** (`Calcite.TimeCastRollsAClocksFields`).

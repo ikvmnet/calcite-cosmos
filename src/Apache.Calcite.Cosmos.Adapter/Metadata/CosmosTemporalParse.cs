@@ -16,10 +16,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>This is the structural half of a form-preserving chain, and only the structural half.</b>
     /// What it answers is that an expression is <c>PARSE_x(&lt;format&gt;, &lt;text&gt;)</c>, or a cast
     /// carrying a format, over a literal format — which says nothing yet about whether the parse means anything for the path
-    /// underneath. Whether that particular format reads that particular stored shape faithfully is
+    /// underneath. Whether a format reads a stored shape faithfully is decided apart, by
     /// <see cref="CosmosTemporalForms.ParsesExactly"/>, a pure lookup the callers make for
-    /// themselves; keeping the two apart is what lets a rule and an implementation ask the same
-    /// question without a walk between them, exactly as <c>CosmosProject.OrderingCandidateOf</c> and
+    /// themselves, which answers <c>false</c> for every form now that every format is measured to carry a
+    /// field past its range over; keeping the two apart is what lets a rule and an implementation ask the
+    /// same question without a walk between them, exactly as <c>CosmosProject.OrderingCandidateOf</c> and
     /// <c>CosmosServiceOrder</c> already do.
     /// </para>
     /// <para>
@@ -33,14 +34,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <para>
     /// <b>And <c>CAST(&lt;text&gt; AS TIMESTAMP FORMAT '&lt;format&gt;')</c>, the standard spelling of
-    /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and
-    /// reads the format with the same model the <c>PARSE_</c> family does — measured, every spelling
+    /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and reads
+    /// the format with the same model the <c>PARSE_</c> family does — measured, every spelling
     /// <see cref="CosmosTemporalForms"/> lists reads its shape's canonical strings to the same instant
-    /// either way from 1582-10-16 on, before which what the cast to <c>TIMESTAMP</c> reads depends on the host's time zone,
-    /// which is what lets one table answer for both. What it has that the library functions do not is
-    /// a place in the core operator table, so it validates inside a model view, which Calcite analyzes under
-    /// its default configuration whatever the connection enabled: a federation presenting containers
-    /// through views has this spelling and no other.
+    /// either way, the cast to <c>TIMESTAMP</c> from 1582-10-16 on (before which what it reads depends on the
+    /// host's time zone), so one list of formats is measured for both. What it has that the library
+    /// functions do not is a place in the core operator table, so it validates inside a model view, which
+    /// Calcite analyzes under its default configuration whatever the connection enabled: a federation
+    /// presenting containers through views has this spelling and no other.
     /// </para>
     /// <para>
     /// <b><c>PARSE_TIMESTAMP</c> is recognised and goes no further, which is worth stating because it
