@@ -4118,10 +4118,12 @@ across documents* and *A join of a container to itself* is the record.
 - **A projected `RETURNING VARIANT` is sent and read back as the raw value** — *small, soundness.* `CosmosProject`
   writes `JSON_VALUE(… RETURNING VARIANT)` as the bare path and the reader reads what arrives as a `VARIANT`, so an
   array or an object there is a value where Calcite's column is null: a condition kept in process over the column reads
-  it so, and `SELECT JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT) IS NULL` answers false over `{"x":{}}` where Calcite
-  answers true. The binding binds nothing for it (`CosmosImplementor.Projected`), so no `WHERE` reads it. The proper fix
-  is the projection's: refuse the column, as `RETURNING DECIMAL` is refused, until a row measures how Calcite's value
-  reads back, or write it as the rendering graph chooses once the projection's writing moves there (Stage 3).
+  it so, `SELECT JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT) IS NULL` answers false over `{"x":{}}` where Calcite
+  answers true, and an item of the column computed in process over an array read back fails the statement
+  (`IndexOutOfRangeException`) where Calcite's item is null. The binding binds nothing for it
+  (`CosmosImplementor.Projected`), so no `WHERE` reads it. The proper fix is the projection's: refuse the column, as
+  `RETURNING DECIMAL` is refused, until a row measures how Calcite's value reads back, or write it as the rendering
+  graph chooses once the projection's writing moves there (Stage 3).
 - **An item of a `RETURNING VARIANT` is read as the raw value beneath it** — *small, soundness.* `CosmosRexPaths`
   resolves an item chain over any accessor it resolves, `RETURNING VARIANT` among them, so the translator and the loader
   read `JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT)['a']` as the raw value at `c.x.a`, where Calcite's is null over an

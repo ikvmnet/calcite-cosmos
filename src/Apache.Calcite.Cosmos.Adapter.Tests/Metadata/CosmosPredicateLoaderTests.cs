@@ -887,11 +887,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         };
 
         /// <summary>
-        /// Every column a projection binds reads through its field as its expression reads through the projection's input:
-        /// the same kind of reading, of the same path and of the same type, a raw reading's column naming the expression's
-        /// type, and the form a field is written apart in set aside. A <c>RETURNING VARIANT</c> bound to its path read through
-        /// its field as the raw value, where the expression is a <c>RETURNING</c> of its own, null over an array or an object;
-        /// it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing.
+        /// Every column a projection binds whose field reads anything reads through it as its expression reads through the
+        /// projection's input: the same kind of reading, of the same path and of the same type, a raw reading's column naming
+        /// the expression's type, and the form a field is written apart in set aside. A <c>RETURNING VARIANT</c> bound to its
+        /// path read through its field as the raw value, where the expression is a <c>RETURNING</c> of its own, null over an
+        /// array or an object; it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectedColumns))]

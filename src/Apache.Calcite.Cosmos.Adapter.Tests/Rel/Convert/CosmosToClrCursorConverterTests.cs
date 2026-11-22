@@ -1606,6 +1606,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// A filter over a view that renames the document sends the weakening of the condition it keeps in process.
+        /// </summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ShouldPushAWeakeningOverAViewThatRenamesTheDocument(bool trimmed)
+        {
+            const string sql = "SELECT t.\"d\" FROM (SELECT c.\"DOC\" AS \"d\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"d\", '$.name')) = 'Steel'";
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+
+            Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which
+                .Should().Be("SELECT VALUE { \"d\": c } FROM products c WHERE IS_DEFINED(c.name)", "the case fold of the name weakens to its definedness");
+        }
+
+        /// <summary>
         /// A filter over an item of a view's <c>RETURNING VARIANT</c> column, where the transpose will not carry it beneath the
         /// view, sends no test of the item's path.
         /// </summary>

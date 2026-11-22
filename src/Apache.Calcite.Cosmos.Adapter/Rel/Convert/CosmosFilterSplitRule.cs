@@ -369,6 +369,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="condition">The filter's condition, carried beneath each projection as the transpose writes it there.</param>
         static bool ReadsWhatCanRefuse(RelNode? node, RexNode condition)
         {
+            // What was asked is remembered by member alone, since keyed by the condition carried as well the walk need not end
+            // through a cycle of projections, so a member met again under another condition is not asked again, which errs
+            // toward registering the pair.
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             bool Holds(RelNode? candidate, RexNode carried)

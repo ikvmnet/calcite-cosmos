@@ -10993,7 +10993,8 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   wherever a path beneath is defined: bound to `c.x.a`, an item's null test over a view was weakened to `IS_NULL(c.x.a)
   OR … OR NOT IS_DEFINED(c.x.a)`, which drops `{"x":{"a":1}}` where Calcite keeps it
   (`CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`). Every other column a
-  projection binds is read through its field as the same kind of reading of the same path and type as its expression
+  projection binds is read through its field, where the field reads it at all, as the same kind of reading of the same
+  path and type as its expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
@@ -11606,11 +11607,12 @@ where the transpose declines, the filter stays above the projection whatever the
 declining the pair would leave the service to select the projection under less of a `WHERE`
 (`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`).
 So a filter over a projection is weakened as any other is, where these allow: over a view that
-renames the document, `INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's
-projection of the document the split offers the plan whose `SELECT` is that projection beneath the
-residual, which the converter's width prefers where the condition kept in process reads the document
-anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such statements moved
-their `SELECT` alone, their `WHERE` unchanged.
+renames the document, `INITCAP` of its name sends `IS_DEFINED(c.name)`
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewThatRenamesTheDocument`). And over
+the trimmer's projection of the document the split offers the plan whose `SELECT` is that projection
+beneath the residual, which the converter's width prefers where the condition kept in process reads
+the document anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such
+statements moved their `SELECT` alone, their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what
