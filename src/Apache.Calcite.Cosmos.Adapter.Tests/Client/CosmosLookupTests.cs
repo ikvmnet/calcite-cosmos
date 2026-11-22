@@ -752,6 +752,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
+        /// A string key holding a lone surrogate cannot be sent at all: the SDK's UTF-8 encoder refuses it while it writes
+        /// the statement (<c>Service.LoneSurrogateParameterIsNeverSent</c>). So the batch holding it is fetched by the
+        /// statement without the key restriction, as an infinity's is: the lone key pairs with nothing, not even the U+FFFD
+        /// the service stores an escaped one as, and the key beside it with its document, as Calcite's own join pairs them.
+        /// Sent restricted, the statement failed with the encoder's unnamed exception.
+        /// </summary>
+        [Fact]
+        public async Task AKeyHoldingALoneSurrogateIsFetchedWithoutTheRestriction()
+        {
+            var unrestricted = new CosmosQuery("SELECT VALUE c FROM products c", Array.Empty<CosmosParameter>());
+            string[] documents = ["""{"category":"p7"}""", """{"category":"x"}""", """{"category":"�"}"""];
+
+            async Task<(List<string> Rows, CosmosQuery Sent)> Joined(params string[] keys)
+            {
+                var executor = new RecordingExecutor(documents);
+                var rows = await Collect(CosmosLookup.Join(
+                    Async(keys),
+                    executor,
+                    null!,
+                    Query(),
+                    "@k",
+                    3,
+                    b => b,
+                    element => element.GetProperty("category").GetString()!,
+                    p => p,
+                    (b, p) => b + "/" + p,
+                    SqlTypeName.VARCHAR,
+                    unmatched: b => b + "/null",
+                    unrestricted: unrestricted));
+
+                return (rows, executor.Executed.Single());
+            }
+
+            foreach (var lone in new[] { "\uD800", "a\uDC00" })
+            {
+                var (rows, sent) = await Joined(lone, "p7");
+                rows.Should().Equal(lone + "/null", "p7/p7");
+                sent.Sql.Should().Be(unrestricted.Sql, "a lone surrogate cannot be sent, so the restriction cannot name it");
+                Keys(sent).Should().BeEmpty();
+            }
+
+            // A complete pair is sent as any string is.
+            var (paired, restricted) = await Joined("😀", "p7");
+            paired.Should().Equal("😀/null", "p7/p7");
+            restricted.Sql.Should().Be(Query().Sql);
+            Keys(restricted).Should().Equal("😀", "p7", "p7");
+        }
+
+        /// <summary>
         /// A <c>UUID</c> is one value however it was boxed: Calcite's <c>UuidValue</c>, Java's own, or a
         /// <see cref="Guid"/>.
         /// </summary>

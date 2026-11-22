@@ -158,7 +158,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </para>
         /// <para>
         /// The same statement without the restriction is rendered beside it: what a batch holding a key the
-        /// restriction cannot name, one with no number to be sent as (<c>CosmosLookup.Sent</c>), is fetched by.
+        /// restriction cannot name, one that cannot be sent (<c>CosmosLookup.Sent</c>), is fetched by.
         /// </para>
         /// </remarks>
         /// <param name="input">The subtree being restricted.</param>

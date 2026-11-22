@@ -4066,14 +4066,15 @@ name with MySQL's, which, as `||` is, is null over a null as the service's is un
 **A lone surrogate is never sent.** The SDK's UTF-8 encoder refuses one while it writes the statement
 (`Service.LoneSurrogateParameterIsNeverSent`), so a statement carrying one failed on both targets where Calcite
 answers. Only a `U&` literal can hold one, inside `POSITION` or `REPLACE`, Calcite refusing one against a column
-elsewhere; `CosmosParameterList.Add`, which every value a statement carries passes through, refuses it, wherever in
-the statement it stands, and the expression it stood in is computed in process. A parameter's value arrives only when
-the statement runs. A column computed from parameters alone is never sent — the service would only hand back what it
-was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter as a column for the function above to compute — so the
-translator refuses one in a projection and Calcite computes it above. A parameter the service reads, in a comparison,
-is refused by name when it is bound (`CosmosQueries.Bind`), before the encoder throws: the check is
-`Client/CosmosEncodable`'s, asked at both ends, a property of the value as the encoder is handed it and no class of the
-theory's, a stored string never holding a lone surrogate.
+elsewhere; `CosmosParameterList.Add` refuses it, wherever in the statement it stands, and the expression it stood in is
+computed in process. A parameter's value arrives only when the statement runs. A column computed from parameters alone
+is never sent — the service would only hand back what it was given, and `UPPER(CAST(? AS VARCHAR))` sent the parameter
+as a column for the function above to compute — so the translator refuses one in a projection and Calcite computes it
+above. A parameter the service reads, in a comparison, is refused by name when it is bound (`CosmosQueries.Bind`),
+before the encoder throws. A lookup key arrives with its batch, and one holding a lone surrogate is not sent: the batch
+is fetched without the key restriction (*What the lookup join reaches*). The check is `Client/CosmosEncodable`'s, asked
+at both ends, a property of the value as the encoder is handed it and no class of the theory's, a stored string never
+holding a lone surrogate.
 
 **What it costs, and what it gives back.** Timed against `702129b` in Release, interleaved, a fresh process a run,
 two passes of ten paired rounds after a dropped first. In the first another session's test run held the machine at
@@ -6453,11 +6454,12 @@ read it. A key is bound as a number of that type, a decimal as a statement's dec
 how the service holds such a number; the join's own comparison then leaves out whatever else that double
 fetched. A key whose double is an infinity or NaN, an approximate key that is not finite or a decimal
 beyond a double's range, has no number to be sent as: JSON holds none, and the SDK writes one as a string
-no stored number equals. So the restriction cannot name it: the batch holding it is fetched by the probe's own
-statement without the restriction, rendered beside the restricted one. Reading every document the probe side
-keeps, it costs request units and fails where Calcite's own join fails on one of them, where a restricted
-batch answers (`TODO.md`'s *The lookup join answers where Calcite's own join fails on a document no key
-fetches*), and it is remembered for its own execution alone (*The lookup join's caches*).
+no stored number equals. A string holding a lone surrogate cannot be sent at all (*A lone surrogate is
+never sent*). So the restriction cannot name such a key: the batch holding it is fetched by the probe's
+own statement without the restriction, rendered beside the restricted one. Reading every document the
+probe side keeps, it costs request units and fails where Calcite's own join fails on one of them, where a
+restricted batch answers (`TODO.md`'s *The lookup join answers where Calcite's own join fails on a
+document no key fetches*), and it is remembered for its own execution alone (*The lookup join's caches*).
 The condition is `=` itself: `IS NOT DISTINCT FROM`, which Calcite's `JoinInfo` counts as an equi key too,
 matches a null key with a null one, which no fetch by key finds.
 
@@ -6534,15 +6536,15 @@ no request units at all. Its decisions:
   shape cannot cross. The values are the ones the execution bound, not the slots a prepared
   statement carries: named by its slots, every execution of one plan would share answers whatever
   values it was run with. Rows are rebuilt from JSON per execution, which is the price of sharing.
-- **Only a restricted fetch is remembered.** A batch holding a key with no number to be sent as is fetched
-  without the restriction (*What the lookup join reaches*), and pairs every document the probe keeps with a
-  key by its own plan's reading. The `REAL`, `DOUBLE` and `FLOAT` plans of one probe render one restricted
+- **Only a restricted fetch is remembered.** A batch holding a key that cannot be sent is fetched without
+  the restriction (*What the lookup join reaches*), and pairs every document the probe keeps with a key by
+  its own plan's reading. The `REAL`, `DOUBLE` and `FLOAT` plans of one probe render one restricted
   statement and read a stored number differently: a `REAL` column reads `16777217` as `16777216` and `1e39`
   as an infinity, where a `DOUBLE` column does not. Remembered under that statement, a `REAL` plan's batch
-  answered a later `DOUBLE` or `FLOAT` plan with its own rows, and a `DOUBLE` plan's batch answered a `REAL`
-  plan's infinity as absent, each where Calcite's own join and a fresh cache answer otherwise
-  (`CosmosLookupJoinTests.ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone`). So such a
-  batch answers its keys for its own execution alone, through the cache within it.
+  answered a later `DOUBLE` or `FLOAT` plan with its own rows, and a `DOUBLE` plan's batch answered a
+  `REAL` plan's infinity as absent, each where Calcite's own join and a fresh cache answer otherwise
+  (`CosmosLookupJoinTests.ABatchFetchedWithoutTheRestrictionIsRememberedForItsOwnExecutionAlone`). So such
+  a batch answers its keys for its own execution alone, through the cache within it.
 - **Expire-after-write, and expiry is the only eviction.** A full cache purges what has expired and
   otherwise declines new entries — the same fill-to-bound honesty as the inner cache, with the TTL
   providing turnover. The bound counts rows, with an absence entry counting as one.

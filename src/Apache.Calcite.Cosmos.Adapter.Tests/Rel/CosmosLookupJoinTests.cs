@@ -317,7 +317,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// Beside the restricted statement the lookup is handed the same statement without the restriction, which a batch
-        /// holding a key with no number to be sent as is fetched by (<c>CosmosLookup.Sent</c>): the probe's own
+        /// holding a key that cannot be sent is fetched by (<c>CosmosLookup.Sent</c>): the probe's own
         /// <c>WHERE</c> alone, with its parameters and everything else the statement carries.
         /// </remarks>
         [Fact]
@@ -667,6 +667,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
             (await FluentActions.Awaiting(() => Execute(plan)).Should().ThrowAsync<CosmosMaterializationException>())
                 .Which.Message.Should().Be(calcites.Which.Message);
             Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Should().BeEmpty("the batch holds an infinity, which the restriction cannot name");
+        }
+
+        /// <remarks>
+        /// A small side's key bound to a string holding a lone surrogate, which the SDK's UTF-8 encoder refuses while it
+        /// writes a statement (<c>Service.LoneSurrogateParameterIsNeverSent</c>), is matched with nothing by Calcite's own
+        /// join of the same statement, a hash join once the lookup is not offered. The batch holding it is fetched by the
+        /// statement without the key restriction, so the lookup answers what Calcite's own join answers, and nothing it
+        /// sends holds a value the encoder refuses. Sent restricted, it failed with the encoder's unnamed
+        /// <c>EncoderFallbackException</c> on the emulator.
+        /// </remarks>
+        [Fact]
+        public async Task AKeyBoundToALoneSurrogateIsFetchedWithoutTheRestriction()
+        {
+            var products = new[] { """{"id":"p7"}""", """{"id":"p7 "}""", """{"id":"x"}""" };
+            const string sql = "SELECT t.\"id\" FROM (VALUES ('l1', CAST(? AS VARCHAR(5))), ('l2', CAST('p7' AS VARCHAR(5)))) AS v(l, k) LEFT JOIN (SELECT c.\"id\" FROM products AS c) AS t ON v.k = t.\"id\"";
+
+            foreach (var value in new[] { "\uD800", "a\uDC00" })
+            {
+                var values = new Dictionary<string, object> { ["?0"] = value };
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var own = Plan(sql, lookup: false);
+                RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
+                (await Execute(own, values)).Should().BeEquivalentTo(new object?[] { null, "p7" });
+
+                Given(orders: System.Array.Empty<string>(), products: products);
+                var plan = Plan(sql);
+                RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
+                (await Execute(plan, values)).Should().BeEquivalentTo(new object?[] { null, "p7" });
+
+                var sent = _productsExecutor.Executed.Should().ContainSingle().Which;
+                Keys(sent).Should().BeEmpty("a lone surrogate cannot be sent, so the restriction cannot name it");
+                sent.Parameters.Should().OnlyContain(p => CosmosEncodable.IsEncodable(p.Value));
+            }
         }
 
         /// <remarks>

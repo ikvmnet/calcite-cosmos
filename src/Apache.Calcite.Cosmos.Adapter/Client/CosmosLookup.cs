@@ -234,7 +234,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
         /// <summary>
         /// Returns the value a normalised key is bound as: a <c>DECIMAL</c> key as <c>CosmosQueries</c> sends a decimal
-        /// parameter, and every other key as it is; or <c>null</c> for a key with no number to be sent as.
+        /// parameter, and every other key as it is; or <c>null</c> for a key that cannot be sent.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -256,8 +256,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <para>
         /// <b>A key whose double is an infinity or NaN has no number to be sent as</b>: JSON holds no such number, and the
         /// SDK writes one as the string <c>"Infinity"</c>, <c>"-Infinity"</c> or <c>"NaN"</c>, which no stored number
-        /// equals. That is an approximate key that is not finite, and a decimal beyond a double's range. The restriction
-        /// cannot name it, so the batch holding it is fetched without the restriction and the join's own comparison of
+        /// equals. That is an approximate key that is not finite, and a decimal beyond a double's range. <b>Nor can a string
+        /// holding a lone surrogate be sent</b>: the SDK's UTF-8 encoder refuses it while it writes the statement
+        /// (<c>Service.LoneSurrogateParameterIsNeverSent</c>, <see cref="CosmosEncodable"/>). The restriction cannot name
+        /// such a key, so the batch holding it is fetched without the restriction and the join's own comparison of
         /// every document the probe keeps answers it, which rests on nothing about what a document may hold. Reading every
         /// one of them, the batch costs request units and fails where Calcite's own join fails on one, and what it fetched
         /// is remembered for its own execution alone, since it pairs each document with a key by its own plan's reading.
@@ -274,7 +276,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 _ => key,
             };
 
-            return sent is double number && double.IsFinite(number) == false ? null : sent;
+            return sent switch
+            {
+                double number when double.IsFinite(number) == false => null,
+                _ when CosmosEncodable.IsEncodable(sent) == false => null,
+                _ => sent,
+            };
         }
 
         /// <summary>
@@ -396,7 +403,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// bound as it is. A key spelled as <c>null</c> names no document and is not fetched.
         /// </param>
         /// <param name="unrestricted">
-        /// The statement without the key restriction, which a batch holding a key with no number to be sent as
+        /// The statement without the key restriction, which a batch holding a key that cannot be sent
         /// (<see cref="Sent"/>) is fetched by; the planned join always gives it. A batch holding such a key fails by name
         /// where none is given.
         /// </param>
@@ -728,7 +735,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                     keys.Add(key);
 
-                    // A key with no number to be sent as cannot be named by the restriction, so the batch is fetched
+                    // A key that cannot be sent cannot be named by the restriction, so the batch is fetched
                     // without it.
                     if (Sent(written) is { } value)
                         spelled.Add(value);
@@ -759,7 +766,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                 // Every document the probe keeps, where the restriction cannot name a key of the batch.
                 var statement = unnamed
-                    ? _unrestricted ?? throw new CosmosExecutionException("A lookup key has no number it can be sent as, and the join was given no statement to fetch its batch without the key restriction.")
+                    ? _unrestricted ?? throw new CosmosExecutionException("A lookup key cannot be sent, and the join was given no statement to fetch its batch without the key restriction.")
                     : Bind(_query, _prefix, _batchSize, spelled);
 
                 var cursor = await _executor.OpenAsync(statement, cancellationToken: cancellationToken).ConfigureAwait(false);
