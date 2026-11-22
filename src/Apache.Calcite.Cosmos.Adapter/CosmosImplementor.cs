@@ -623,9 +623,10 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// input's readings, so an accessor over a field read as text, which Calcite parses, binds nothing, as the translator
         /// refuses it. The element a traversal yields, which only the correlate rule's question binds, passes through as the
         /// field it is and no further: an accessor over it reads its text parsed, which is no path. It binds less than
-        /// implementation in one place, a <c>RETURNING VARIANT</c>, which <c>CosmosProject.Implement</c> still binds to its
-        /// path (see below); the walk may know less than implementation and never more
-        /// (<c>CosmosRelTests.TheWalkBindsNoMoreThanImplementation</c>).
+        /// implementation for a <c>RETURNING VARIANT</c>, which <c>CosmosProject.Implement</c> still binds to its path (see
+        /// below); the walk may know less than implementation and never more
+        /// (<c>CosmosRelTests.TheWalkBindsNoMoreThanImplementation</c>). And it reads a <c>JSON_QUERY</c> returning an array
+        /// as its JSON text, where implementation reads the array typed (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>).
         /// </remarks>
         /// <param name="expression">The projected expression, over the input's row.</param>
         /// <param name="resolver">The input's binding, with its readings.</param>

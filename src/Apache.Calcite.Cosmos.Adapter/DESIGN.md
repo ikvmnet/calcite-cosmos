@@ -11568,40 +11568,41 @@ narrow on purpose, and each limit was measured:
   paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
   path declared within bounds pays too (`TODO.md`, section 7).
 
-The split weakens a filter over a projection as it weakens any other. What lies beneath reads through
-the projection: a filter beneath it applies its conjuncts to every row the projection returns, and
-each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`), what the loader
-cannot read numbered beside that relation's reader, and, where the projection's columns carry
-everything it reads, also written over them and read as the statement reads its own rows (*A
-weakening the rest already implies is not pushed*). So a weakening the transpose or the residual
-projection has already pushed beneath is applied there, and the facts graph finds it so. Derived above and blind to what lies beneath, a weakening is pushed
-twice: read only through its own rows, `SELECT c."DOC", JSON_VALUE(c."DOC", '$.price') AS "p" FROM
-products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 = 12` sent
-`IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
+The split weakens a filter over a projection as it weakens any other. What lies beneath reads
+through the projection: a filter beneath it applies its conjuncts to every row the projection
+returns, and each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`),
+what the loader cannot read numbered beside that relation's reader, and, where the projection's
+columns carry everything it reads, also written over them and read as the rows the projection
+returns are read (*A weakening the rest already implies is not pushed*). So a weakening Calcite's
+`FILTER_PROJECT_TRANSPOSE` (the transpose) or the residual projection has already pushed beneath
+is applied there, and the facts graph finds it so. Derived above and blind to what lies beneath,
+a weakening is pushed twice: read only through its own rows, `SELECT c."DOC", JSON_VALUE(c."DOC",
+'$.price') AS "p" FROM products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 =
+12` sent `IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
 (`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument`).
-The split still ends: each push adds to what is applied beneath its residual a predicate not applied
-there before, drawn from a finite set, and reading beneath a projection only adds what is assumed.
-The half a weakening rides in goes over a projection only where it reaches the service, through a
-member already part of a statement or through the transpose asked its own conditions (a window, a
-correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcite has no body for the
-service's form
+The split still ends: each push adds to what is applied beneath its residual a predicate
+not applied there before, drawn from a finite set, and reading beneath a projection
+only adds what is assumed. The half a weakening rides in goes over a projection only
+where it reaches the service, through a member already part of a statement or through
+the transpose asked its own conditions (a window, a correlation, its bloat); elsewhere
+the conjuncts admitted go alone, since Calcite has no body for the service's form
 (`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`).
-Nor does it register a pair over a projection the service may select holding a computed column whose
-reading can refuse a value, whatever the condition left above reads, nor over a projection or a filter above
-one, since the transpose carries the half beneath every projection of the stack and a column passed up as
-it is may be the one beneath: beneath that condition the column
-is read for every row the half returns, where Calcite computes it only for the rows that reach it, a
-`CASE` branch or a later operand of `COALESCE` only where it is reached, the reason the residual
-projection declines such a projection. Asked by type alone, as the residual projection asks it
-(`TODO.md`, section 7). The transpose carries the filter beneath it instead
+Nor does it register a pair over a projection the service may select holding a computed
+column whose reading can refuse a value, whatever the condition left above reads, nor over a
+projection or a filter above one, since the transpose carries the half beneath every projection
+of the stack and a column passed up as it is may be the one beneath: beneath that condition
+the column is read for every row the half returns, where Calcite computes it only for the rows
+that reach it, a `CASE` branch or a later operand of `COALESCE` only where it is reached, the
+reason the residual projection declines such a projection. Asked by type alone, as the residual
+projection asks it (`TODO.md`, section 7). The transpose carries the filter beneath it instead
 (`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
 So a filter over a projection is weakened as any other is, where its half reaches the service and
 nothing it would select beneath the condition can refuse: over a view that renames the document,
-`INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's
-projection of the document the split offers the plan whose `SELECT` is that projection beneath the
-residual, which the converter's width prefers where the condition kept in process reads the document
-anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such statements moved
-their `SELECT` alone, their `WHERE` unchanged.
+`INITCAP` of its name sends `IS_DEFINED(c.name)`. And over the trimmer's projection of the document
+the split offers the plan whose `SELECT` is that projection beneath the residual, which the
+converter's width prefers where the condition kept in process reads the document anyway; in the corpus
+planned as a host plans, Calcite's field trimmer first, such statements moved their `SELECT` alone,
+their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what

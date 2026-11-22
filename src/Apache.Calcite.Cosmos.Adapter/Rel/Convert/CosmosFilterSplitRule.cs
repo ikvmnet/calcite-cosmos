@@ -197,8 +197,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Split no further where everything it would push is applied beneath already, compared as Calcite compares
             // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
-            // What its own rows hold alone: Calcite's equality compares nodes over one row type, and what a filter beneath a
-            // projection applies is over another.
+            // That half is a filter over these rows, so what the filters over them apply is asked alone (Own); what a filter
+            // beneath a projection applies is weighed in Split, by the facts graph.
             var (applied, _, _) = AlreadyApplied(filter.getInput());
             if (pushable.All(applied.Contains))
                 return;
