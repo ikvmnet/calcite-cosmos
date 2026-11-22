@@ -1178,8 +1178,10 @@ hand. Two tests pin both directions.
   of each form's strings, and proving a weaker comparison of the stored strings for the reader to recheck: a field carried over
   moves an instant by a bounded amount, at most a month back for a `00` and some years on for `99`, so
   a range of the stored strings wide enough to hold every spelling of the instants a comparison keeps
-  exists. What the profile has to hold, measured: 29 February of 0100 and of 1500 raises where that of
-  1900 rolls to 1 March; `0000-01-01` reads as `0001-01-01` and `0001-01-00` as `0001-12-31`;
+  exists. What the profile has to hold, measured: before 1582-10-15 a field is carried over by the
+  Julian calendar and the date that makes read as a proleptic Gregorian day, raising where there is
+  none, so 29 February of 0100 raises where that of 1900 rolls to 1 March, and a year before year one
+  is counted by its year of the era, `0000-01-01` read as `0001-01-01` and `0000-00-00` as `0002-11-30`;
   what `CAST … AS TIMESTAMP FORMAT` reads before 1582-10-16, and `PARSE_DATETIME` of a time a
   daylight-saving change skips, depends on the host's default time zone; and `PARSE_TIME` wraps at a
   day where the plain `TIME` cast does not.

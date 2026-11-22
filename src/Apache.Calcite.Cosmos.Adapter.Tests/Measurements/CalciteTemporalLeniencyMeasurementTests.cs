@@ -202,6 +202,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("0001-01-00T00:00:00", "0001-12-31 00:00:00"),
                 Alias("1500-02-29T00:00:00", null),
                 Alias("0100-02-29T00:00:00", null),
+                Alias("0200-02-29T00:00:00", null),
+                Alias("0000-02-29T00:00:00", null),
+                Alias("0100-03-00T00:00:00", null),
+                Alias("0100-02-28T24:00:00", null),
+                Alias("1000-02-30T00:00:00", "1000-03-01 00:00:00"),
+                Alias("0001-00-01T00:00:00", "0001-12-01 00:00:00"),
+                Alias("0000-01-00T00:00:00", "0002-12-31 00:00:00"),
+                Alias("0000-00-00T00:00:00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14T00:00:00", "1582-10-24 00:00:00"),
                 Alias("1582-10-05T00:00:00", "1582-10-15 00:00:00"),
             ],
@@ -231,6 +239,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("0000-01-01T00:00", "0001-01-01 00:00:00"),
                 Alias("0001-01-00T00:00", "0001-12-31 00:00:00"),
                 Alias("1500-02-29T00:00", null),
+                Alias("0100-03-00T00:00", null),
+                Alias("1000-02-30T00:00", "1000-03-01 00:00:00"),
+                Alias("0000-00-00T00:00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14T00:00", "1582-10-24 00:00:00"),
             ],
             [Family.Date] =
@@ -260,6 +271,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("0001-01-00", "0001-12-31 00:00:00"),
                 Alias("1500-02-29", null),
                 Alias("0100-02-29", null),
+                Alias("0200-02-29", null),
+                Alias("0000-02-29", null),
+                Alias("0100-03-00", null),
+                Alias("1000-02-30", "1000-03-01 00:00:00"),
+                Alias("0001-00-01", "0001-12-01 00:00:00"),
+                Alias("0000-01-00", "0002-12-31 00:00:00"),
+                Alias("0000-00-00", "0002-11-30 00:00:00"),
                 Alias("1582-10-14", "1582-10-24 00:00:00"),
                 Alias("1582-10-05", "1582-10-15 00:00:00"),
             ],
@@ -275,6 +293,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 Alias("2023-13", "2024-01-01 00:00:00"),
                 Alias("2023-00", "2022-12-01 00:00:00"),
                 Alias("0000-01", "0001-01-01 00:00:00"),
+                Alias("0000-00", "0002-12-01 00:00:00"),
             ],
             [Family.Clock] =
             [
@@ -535,9 +554,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Every listed format reads a string that rolls a field past its range as the value its fields make, raising
-        /// over none of them, so no format reads its form one for one; before 1582-10-15, <c>0000-01-01</c> is read as
-        /// <c>0001-01-01</c> and <c>0001-01-00</c> as <c>0001-12-31</c>, and 29 February of 0100 and of 1500 raises.
-        /// <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
+        /// over none of them, so no format reads its form one for one. Before 1582-10-15 a field is carried over by the
+        /// Julian calendar, a year before year one counted by its year of the era, and the date that makes read as a
+        /// proleptic Gregorian day, raising where there is none: <c>1000-02-30</c> is 1 March, <c>0000-00-00</c> is
+        /// <c>0002-11-30</c>, and 29 February of 0100 raises. <c>CAST … AS TIMESTAMP FORMAT</c> is asked from 1582-10-16 on.
         /// </summary>
         [Fact, CosmosPins("Calcite.ParsesReadTheirFieldsLeniently")]
         public void EveryListedFormatRollsAFieldPastItsRange()
