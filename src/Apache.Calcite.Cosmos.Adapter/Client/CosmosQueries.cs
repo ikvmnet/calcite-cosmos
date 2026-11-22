@@ -265,14 +265,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// its type in, so switching on that class is switching on the type, and a slot made without a type,
         /// or of one Calcite reads as it stands, is shaped by the class it arrived in.
         /// </para>
+        /// <para>
+        /// <b>A NaN or an infinity a comparison reads fails the statement by name: a bridge.</b> Calcite's conversion
+        /// refuses a NaN or an infinity bound to a numeric parameter (<see cref="Converted"/>), but it carries a finite
+        /// value past an approximate type's range to an infinity, the string <c>'1e400'</c> bound to a <c>DOUBLE</c>
+        /// parameter or the double 1e39 to a <c>REAL</c> one, and compares with it without failing
+        /// (<c>Calcite.ANonFiniteDoubleParameterRaises</c>). The SDK's default serializer, Newtonsoft's, writes a NaN or
+        /// an infinity as the JSON string <c>"NaN"</c>, <c>"Infinity"</c> or <c>"-Infinity"</c>, so the service would
+        /// compare a string where Calcite compares the number: every stored number is undefined against it, where
+        /// Calcite's <c>&lt;</c> keeps a finite one below +Infinity. That is legality of encoding: the value cannot be
+        /// sent as the value Calcite compares, so a slot a comparison reads (<see cref="CosmosDynamicValue.Compared"/>)
+        /// refuses it, and the statement fails where Calcite answers. One a projection carries is sent and computed with
+        /// as it is (TODO.md). The proper fix is the request decision reading the bound value, which could send what the
+        /// comparison means for an infinity; no stage plans it yet (TODO.md).
+        /// </para>
         /// </remarks>
         /// <param name="root">The data context.</param>
-        /// <param name="value">The ordinal to read, and the type it is converted to.</param>
+        /// <param name="value">The ordinal to read, the type it is converted to, and whether a comparison reads it.</param>
         /// <returns>The bound value.</returns>
-        /// <exception cref="CosmosExecutionException">Calcite cannot convert the value to the parameter's type.</exception>
+        /// <exception cref="CosmosExecutionException">
+        /// Calcite cannot convert the value to the parameter's type, or a comparison reads a value that is NaN or an
+        /// infinity once converted.
+        /// </exception>
         static object? Value(org.apache.calcite.DataContext root, CosmosDynamicValue value)
         {
-            return Converted(root.get(value.VariableName), value) switch
+            var bound = Converted(root.get(value.VariableName), value) switch
             {
                 string text when value.Length is int length => Held(text, length, value.Padded),
                 null => null,
@@ -288,6 +305,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 org.locationtech.jts.geom.Geometry g => CosmosJson.ToGeoJsonValue(g),
                 var other => other,
             };
+
+            // A bridge, until the request decision reads a bound value: see the remarks.
+            if (value.Compared && bound is double number && double.IsFinite(number) == false)
+                throw new CosmosExecutionException($"Parameter {value.VariableName} is {number.ToString(System.Globalization.CultureInfo.InvariantCulture)} once Calcite converts it to its type, and a comparison reads it: the Cosmos DB SDK writes a NaN or an infinity as a JSON string, which the service would compare as a string where Calcite compares the number, so the statement cannot be sent.");
+
+            return bound;
         }
 
         /// <summary>

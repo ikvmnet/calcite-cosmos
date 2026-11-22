@@ -2641,6 +2641,20 @@ Calcite's plan fails reading it. Calcite fails only once a row reaches the param
 no row failing where Calcite answers none, and one the facts graph decides not to send answering where Calcite fails;
 `TODO.md` records both.
 
+**An infinity a comparison reads is refused by name, a bridge.** The conversion refuses a NaN or an infinity bound to a
+numeric parameter, but carries a finite value past an approximate type's range to an infinity, `'1e400'` bound to a
+`DOUBLE` parameter or 1e39 to a `REAL` one through Calcite's own driver, and Calcite compares with it without failing
+(`Calcite.ANonFiniteDoubleParameterRaises`). No JSON number holds an infinity: the SDK's default serializer writes it as
+the string `"Infinity"`, which the service compares as a string. That is legality of encoding, so `Value` refuses a
+non-finite value in a slot a comparison reads, and the statement fails by name where Calcite answers. Which slots a
+comparison reads is the writer's to say, because the writer is where the parameter stands: the translator marks every
+parameter written anywhere beneath a comparison's operand (`CosmosDynamicValue.Compared`), so one added into a sum that
+is compared is refused as one compared bare is, Calcite comparing the infinity through the sum too. The test is of the
+value, not the type: after the conversion only an approximate type's value, or an `ANY` one's passed as it came, can be
+non-finite. A projection that computes with the value is not refused, so as to fail no statement Calcite answers there,
+and answers wrongly instead, a sum over the string being undefined at the service; `TODO.md` records it beside the
+projected parameter. The proper fix for both is the request decision reading the bound value, which no stage plans.
+
 **A null is the one value the type does not decide, and the statement tests for it.** A SQL `NULL`
 bound to a parameter arrives as a JSON null, and the service compares a JSON null as a value: `c.t =
 @p` is true of a document storing null, `c.t != @p` of every other, `c.t <= @p` of a stored null too, and

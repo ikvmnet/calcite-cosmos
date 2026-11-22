@@ -216,6 +216,15 @@ or an infinity bound to a numeric parameter, a string bound to a `BOOLEAN`. The 
 exception Calcite's conversion raised. Calcite's own plan fails the same way once it reads a row, so the
 adapter fails before anything is sent. Bind a value of the parameter's type. Chapter 8.7.
 
+**"Parameter ?0 is Infinity once Calcite converts it to its type, and a comparison reads it"
+(`CosmosExecutionException`) when a statement runs.**
+A parameter compared with a `DOUBLE`, `REAL` or `FLOAT` value was bound to a number past that type's range,
+the string `'1e400'` for a `DOUBLE` or the double `1e39` for a `REAL`, which Calcite's conversion makes an
+infinity. Calcite compares with the infinity, but the Cosmos DB SDK writes one as a JSON string, which the
+service would compare as a string, so the statement fails rather than answer otherwise. The adapter does not
+yet decide what a comparison with an infinity means before it sends one. Bind a value within the type's
+range. Chapter 8.7.
+
 **400 on a query with `SQRT`, `ASIN` or `ACOS`.**
 Cosmos fails the whole statement for an out-of-domain argument. Guard the input. Chapter 8.
 

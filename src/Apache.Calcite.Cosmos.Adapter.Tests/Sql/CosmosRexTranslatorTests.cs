@@ -891,6 +891,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Should().BeFalse("a POSITION is read through typed:INTEGER, which no row of SUBSTRING was measured through");
         }
 
+        /// <summary>
+        /// The writer that makes a parameter's slot says whether a comparison reads it: one compared with a path, and one
+        /// an arithmetic the comparison reads is computed from, are compared; one a projection computes with is not, nor
+        /// the guard's presence slot, which binds no value.
+        /// </summary>
+        /// <remarks>
+        /// The bind refuses a NaN or an infinity in a compared slot, which the SDK would send as a JSON string
+        /// (<c>CosmosQueriesTests.ANonFiniteValueAComparisonReadsIsRefusedByName</c>).
+        /// </remarks>
+        [Fact]
+        public void ASlotSaysWhetherAComparisonReadsIt()
+        {
+            var parameter = _rex.makeDynamicParam(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.DOUBLE), true), 0);
+            var price = Ref(1, SqlTypeName.DOUBLE);
+            var zero = _rex.makeApproxLiteral(java.math.BigDecimal.ZERO);
+
+            IEnumerable<CosmosDynamicValue> Slots() => _parameters.Parameters.Select(p => p.Value).OfType<CosmosDynamicValue>();
+
+            Translate(Call(SqlStdOperatorTable.EQUALS, price, parameter));
+            Slots().Should().Contain(s => s.Presence == false).And.OnlyContain(s => s.Compared != s.Presence, "the value slot is compared, and the guard's presence slot binds no value");
+
+            Translate(Call(SqlStdOperatorTable.GREATER_THAN, Call(SqlStdOperatorTable.PLUS, price, parameter), zero)).Should().Be("((c.price + @p0) > @p1)");
+            Slots().Should().ContainSingle().Which.Compared.Should().BeTrue("the comparison reads the sum the parameter is added into");
+
+            Translator().TranslateProjection(Call(SqlStdOperatorTable.PLUS, price, parameter), out _).Should().Be("(c.price + @p0)");
+            Slots().Should().ContainSingle().Which.Compared.Should().BeFalse("no comparison reads a projected sum");
+        }
+
         [Fact]
         public void TheSetFunctionsMapFromTheirSqlCounterparts()
         {

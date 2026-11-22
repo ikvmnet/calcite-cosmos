@@ -665,6 +665,17 @@ is not offered, and one thing that cannot be fixed here at all.
   keeps the shape and not the object. Declining to push a projection that is *only* a parameter or a
   literal would remove both, and nothing needs the value to have travelled. Left out of #154 because
   it changes which plans are chosen and the fix does not need it.
+
+  **A projected parameter that is an infinity once converted is sent as a JSON string** — *small, and a
+  wrong answer, as it was before the bind converted anything.* A column computed from parameters alone is
+  computed above the statement and never sent, but one that computes with a parameter and the document is,
+  and the bind refuses a NaN or an infinity only where a comparison reads it (*An infinity a comparison
+  reads fails where Calcite answers*). So `'1e400'` bound through Calcite's own driver to the `DOUBLE`
+  parameter of a projected `price + CAST(? AS DOUBLE)`, which Calcite converts to +Infinity and projects as
+  it (`Calcite.ANonFiniteDoubleParameterRaises`), is sent as the string `"Infinity"`; the service's sum
+  over a string is undefined (`Service.IntegerArithmeticIsExactWithinLong`), and the column comes back
+  null. Refused as a compared one is, it would fail where Calcite answers; answered, it waits for the same
+  proper fix, the request decision reading the bound value.
 - **`ST_ISVALIDDETAILED` is not offered** — *small.* The one Cosmos spatial function with no
   counterpart in the geography package, and rightly so: it is the service's own rather than a geodesic
   operation anyone else has. It belongs in `CosmosOperators` beside the full text functions, which is
@@ -2004,7 +2015,24 @@ reading, so two cases part from it:
 
 **The proper fix** is the request decision reading the bound value, so that a statement over no row answers none and
 one over any row fails. No stage plans it. Both are rare: a value of the parameter's type is the ordinary case, and
-the ADO.NET driver refuses a string that spells no number, and a NaN, bound to a `BIGINT` before the statement runs.
+the ADO.NET driver refuses a string that spells no number bound to a `BIGINT`, and a NaN bound to a `BIGINT`, an
+`INTEGER` or a `DECIMAL`, before the statement runs (`Calcite.ANonFiniteDoubleParameterRaises`).
+
+### An infinity a comparison reads fails where Calcite answers — *small, a bridge, and the fix is not planned*
+
+A NaN or an infinity bound to a numeric parameter is a value Calcite cannot convert, above. A finite value can still
+become an infinity in the conversion: through Calcite's own driver the string `'1e400'` bound to a `DOUBLE` parameter,
+or the double `1e39` bound to a `REAL` one, is converted to +Infinity, which Calcite compares under every operator
+without failing (`Calcite.ANonFiniteDoubleParameterRaises`). The Cosmos DB SDK writes a NaN or an infinity as the JSON
+string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the service would compare as a string, so the bind refuses one in
+a slot a comparison reads (`CosmosDynamicValue.Compared`, `CosmosQueries.Value`), and the statement fails by name over
+any input, where Calcite answers. It is legality of encoding, a bridge. The ADO.NET driver hands Calcite the same
+values already converted to an infinity, which Calcite's conversion refuses, so through it the two agree.
+
+**The proper fix** is the request decision reading the bound value, which can decide what a comparison with an
+infinity means before anything is sent, and the statement over no row with it. No stage plans it. A projection that
+computes with such a value is not refused, and answers wrongly: *A projected parameter that is an infinity once
+converted is sent as a JSON string*.
 
 ### The numeric forms stop at whole numbers — *small, and deliberate*
 

@@ -298,18 +298,147 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     "java.lang.Double NaN: NumberFormatException", "java.lang.Double NaN: NumberFormatException"),
             };
 
-            var jdbc = new org.apache.calcite.jdbc.Driver().connect("jdbc:calcite:", new java.util.Properties());
-            var schema = ((org.apache.calcite.jdbc.CalciteConnection)jdbc.unwrap(typeof(org.apache.calcite.jdbc.CalciteConnection))).getRootSchema();
-            using var ado = MaterialisedTable.Open();
-            var named = 0;
-            var measured = new List<string>();
-            try
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+        }
+
+        /// <summary>
+        /// A NaN or an infinite double bound to a parameter of an approximate type fails the statement in Calcite, through
+        /// either driver, under every comparison operator, once a row is read; one of an integer or a <c>DECIMAL</c> type
+        /// fails in Calcite, or in the ADO.NET driver first; and a finite value whose conversion to an approximate type
+        /// passes its range is converted to an infinity, compared with no failure and projected as the infinity.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The judge's probe, widened. Each case is a statement over an in-process table that records what the data
+        /// context holds for <c>?0</c> when it is scanned, bound once through <c>jdbc:calcite:</c> and once through the
+        /// ADO.NET driver, as <see cref="AParameterIsConvertedToItsTypeWhenRead"/> binds its cases.
+        /// </para>
+        /// <para>
+        /// <b>A NaN, +Infinity or −Infinity bound to a <c>DOUBLE</c>, a <c>REAL</c> or a <c>FLOAT</c> column's parameter,
+        /// or to a <c>RETURNING DOUBLE</c>'s,</b> fails under <c>=</c>, <c>&lt;&gt;</c>, <c>&lt;</c>, <c>&lt;=</c>,
+        /// <c>&gt;</c> and <c>&gt;=</c>, through either driver, with <c>NumberFormatException</c>: over a row holding a
+        /// value, over a row holding null, and over a row an earlier conjunct is false for; over a table holding no row it
+        /// answers no rows. The failure is the conversion's: the data context holds the double, and Calcite's generated
+        /// code reads a numeric parameter through <c>SqlFunctions.toBigDecimal</c>, which refuses it
+        /// (<c>Calcite.AParameterIsConvertedToItsTypeWhenRead</c>), before the comparison is asked.
+        /// </para>
+        /// <para>
+        /// <b>A NaN bound to a <c>BIGINT</c>, an <c>INTEGER</c> or a <c>DECIMAL</c> parameter</b> fails in Calcite the
+        /// same way through its own driver; the ADO.NET driver refuses it before the statement runs.
+        /// </para>
+        /// <para>
+        /// <b>A value the conversion carries past the approximate type's range</b> is no failure. Through Calcite's own
+        /// driver the string <c>'1e400'</c> bound to a <c>DOUBLE</c> parameter is projected as +Infinity, and the double
+        /// 1e39 bound to a <c>REAL</c> one as the float +Infinity; compared, under every operator and beneath arithmetic
+        /// too, each keeps 1.5 as a value above every finite one would, and its negative as one below. No finite stored
+        /// value tells the infinity from a value past every double, so the comparisons show only that none fails. Through
+        /// the ADO.NET driver the same values reach Calcite as an infinity of the type, which its conversion refuses.
+        /// </para>
+        /// </remarks>
+        [Fact, CosmosPins("Calcite.ANonFiniteDoubleParameterRaises")]
+        public void ANonFiniteDoubleParameterRaises()
+        {
+            var readings = new (string Name, Func<IEnumerable<string?>, MaterialisedTable> Table, string Expression)[]
             {
+                ("DOUBLE v", values => MaterialisedTable.Of(SqlTypeName.DOUBLE, values), "\"v\""),
+                ("REAL v", values => MaterialisedTable.Of(SqlTypeName.REAL, values), "\"v\""),
+                ("FLOAT v", values => MaterialisedTable.Of(SqlTypeName.FLOAT, values), "\"v\""),
+                ("RETURNING DOUBLE", Documents, "JSON_VALUE(\"d\", '$.v' RETURNING DOUBLE)"),
+            };
+
+            var inputs = new (string Name, string?[] Values, string Before)[]
+            {
+                ("one row", ["1.5"], ""),
+                ("a null row", [null], ""),
+                ("an earlier conjunct false", ["1.5"], "\"k\" < 0 AND "),
+                ("no row", [], ""),
+            };
+
+            var cases = new List<Conversion>();
+
+            // A non-finite double bound to an approximate parameter: every reading, every operator, every input.
+            foreach (var (reading, table, expression) in readings)
+                foreach (var (input, values, before) in inputs)
+                    foreach (var bound in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+                        foreach (var op in Ops)
+                        {
+                            var held = "java.lang.Double " + Java(bound);
+                            var answer = values.Length == 0 ? ": rows []" : ": NumberFormatException";
+                            var ado = (reading == "REAL v" ? "java.lang.Float " : "java.lang.Double ") + Java(bound);
+                            cases.Add(new($"{reading} {op} ?, {input}, double {Java(bound)}", table(values), $"SELECT \"k\" FROM {{t}} WHERE {before}{expression} {op} ?",
+                                s => s.setDouble(1, bound), bound, held + answer, ado + answer));
+                        }
+
+            // A NaN bound to an exact parameter.
+            foreach (var type in new[] { SqlTypeName.BIGINT, SqlTypeName.INTEGER, SqlTypeName.DECIMAL })
+                cases.Add(new($"{type.getName()} v = ?, double NaN", MaterialisedTable.Of(type, ["1", null]), "SELECT \"k\" FROM {t} WHERE \"v\" = ?",
+                    s => s.setDouble(1, double.NaN), double.NaN, "java.lang.Double NaN: NumberFormatException", "not read: OverflowException"));
+
+            // A finite value the conversion carries past the approximate type's range, both ways: every reading, every
+            // operator, over a row holding a value and a row holding null.
+            foreach (var (reading, table, expression) in readings)
+                foreach (var positive in new[] { true, false })
+                    foreach (var op in Ops)
+                    {
+                        var real = reading == "REAL v";
+                        var infinity = positive ? "Infinity" : "-Infinity";
+                        Action<java.sql.PreparedStatement> bind = real ? s => s.setDouble(1, positive ? 1e39 : -1e39) : s => s.setString(1, positive ? "1e400" : "-1e400");
+                        object bound = real ? positive ? 1e39 : -1e39 : positive ? "1e400" : "-1e400";
+                        var held = bound is double number ? "java.lang.Double " + Java(number) : "java.lang.String " + bound;
+                        var kept = Kept(op, positive) ? "0" : "";
+                        cases.Add(new($"{reading} {op} ?, {(bound is double ? Java((double)bound) : "'" + bound + "'")}", table(["1.5", null]), $"SELECT \"k\" FROM {{t}} WHERE {expression} {op} ?",
+                            bind, bound, $"{held}: rows [{kept}]", (real ? "java.lang.Float " : "java.lang.Double ") + infinity + ": NumberFormatException"));
+                    }
+
+            // The same beneath arithmetic, and projected.
+            cases.Add(new("DOUBLE v + CAST(? AS DOUBLE) > 0, '1e400'", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5", null]), "SELECT \"k\" FROM {t} WHERE \"v\" + CAST(? AS DOUBLE) > 0",
+                s => s.setString(1, "1e400"), "1e400", "java.lang.String 1e400: rows [0]", "java.lang.Double Infinity: NumberFormatException"));
+            cases.Add(new("projected DOUBLE, '1e400'", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS DOUBLE) FROM {t}",
+                s => s.setString(1, "1e400"), "1e400", "java.lang.String 1e400: rows [0 Infinity]", "java.lang.Double Infinity: NumberFormatException"));
+            cases.Add(new("projected REAL, 1.0E39", MaterialisedTable.Of(SqlTypeName.DOUBLE, ["1.5"]), "SELECT \"k\", CAST(? AS REAL) FROM {t}",
+                s => s.setDouble(1, 1e39), 1e39, "java.lang.Double 1.0E39: rows [0 Infinity]", "java.lang.Float Infinity: NumberFormatException"));
+
+            using var drivers = new Drivers();
+            drivers.Measure(cases).Should().Equal(Drivers.Expected(cases));
+
+            // Java's spelling of a double.
+            static string Java(double value) => java.lang.Double.toString(value);
+
+            // Whether the finite value 1.5 compares TRUE with +Infinity (positive) or -Infinity under an operator.
+            static bool Kept(string op, bool positive) => op switch
+            {
+                PredicateAtom.Equal => false,
+                PredicateAtom.NotEqual => true,
+                PredicateAtom.Less or PredicateAtom.LessOrEqual => positive,
+                _ => positive == false,
+            };
+        }
+
+        /// <summary>One conversion case: a statement over a table, how each driver binds its one parameter, and what each answers.</summary>
+        sealed record Conversion(string Label, MaterialisedTable Table, string Sql, Action<java.sql.PreparedStatement> Bind, object? Bound, string Calcite, string Ado);
+
+        /// <summary>
+        /// Calcite's own JDBC driver and the ADO.NET driver, each over a root schema a case's table is added to under a name
+        /// of its own.
+        /// </summary>
+        sealed class Drivers : IDisposable
+        {
+
+            readonly java.sql.Connection _jdbc = new org.apache.calcite.jdbc.Driver().connect("jdbc:calcite:", new java.util.Properties());
+            readonly DbConnection _ado = MaterialisedTable.Open();
+            int _named;
+
+            /// <summary>What each case answers through each driver, a line a driver, as <see cref="Expected"/> spells it.</summary>
+            public List<string> Measure(IEnumerable<Conversion> cases)
+            {
+                var schema = ((org.apache.calcite.jdbc.CalciteConnection)_jdbc.unwrap(typeof(org.apache.calcite.jdbc.CalciteConnection))).getRootSchema();
+                var measured = new List<string>();
                 foreach (var conversion in cases)
                 {
                     measured.Add(conversion.Label + " | jdbc:calcite | " + Run(conversion, schema.add, sql =>
                     {
-                        var statement = jdbc.prepareStatement(sql);
+                        var statement = _jdbc.prepareStatement(sql);
                         conversion.Bind(statement);
                         var result = statement.executeQuery();
                         var rows = new List<string>();
@@ -319,9 +448,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                         return rows;
                     }));
 
-                    measured.Add(conversion.Label + " | ADO.NET | " + Run(conversion, ((SchemaPlus)((Apache.Calcite.Data.CalciteConnection)ado).RootSchema).add, sql =>
+                    measured.Add(conversion.Label + " | ADO.NET | " + Run(conversion, ((SchemaPlus)((Apache.Calcite.Data.CalciteConnection)_ado).RootSchema).add, sql =>
                     {
-                        using var command = ado.CreateCommand();
+                        using var command = _ado.CreateCommand();
                         command.CommandText = sql;
                         var parameter = command.CreateParameter();
                         parameter.Value = conversion.Bound;
@@ -334,20 +463,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                         return rows;
                     }));
                 }
-            }
-            finally
-            {
-                jdbc.close();
+
+                return measured;
             }
 
-            measured.Should().Equal(cases.SelectMany(c => new[] { c.Label + " | jdbc:calcite | " + c.Calcite, c.Label + " | ADO.NET | " + c.Ado }));
+            /// <summary>What each case says each driver answers, a line a driver.</summary>
+            public static IEnumerable<string> Expected(IEnumerable<Conversion> cases) =>
+                cases.SelectMany(c => new[] { c.Label + " | jdbc:calcite | " + c.Calcite, c.Label + " | ADO.NET | " + c.Ado });
 
-            // One statement over a fresh recording of the case's table, named afresh: what the data context held when the
-            // table was scanned, or "not read" where the driver failed first, and the rows kept or the innermost exception.
+            /// <summary>
+            /// One statement over a fresh recording of the case's table, named afresh: what the data context held when the
+            /// table was scanned, or "not read" where the driver failed first, and the rows kept or the innermost exception.
+            /// </summary>
             string Run(Conversion conversion, Action<string, org.apache.calcite.schema.Table> add, Func<string, List<string>> rows)
             {
                 var recording = new Recording(conversion.Table);
-                var name = "c" + (++named).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var name = "c" + (++_named).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 add(name, recording);
                 try
                 {
@@ -362,10 +493,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     return $"{recording.Held}: {e.GetType().Name}";
                 }
             }
-        }
 
-        /// <summary>One conversion case: a statement over a table, how each driver binds its one parameter, and what each answers.</summary>
-        sealed record Conversion(string Label, MaterialisedTable Table, string Sql, Action<java.sql.PreparedStatement> Bind, object? Bound, string Calcite, string Ado);
+            public void Dispose()
+            {
+                _jdbc.close();
+                _ado.Dispose();
+            }
+
+        }
 
         /// <summary>
         /// A table that records what the data context holds for <c>?0</c> when it is scanned, and answers the rows of the

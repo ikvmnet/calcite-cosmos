@@ -91,6 +91,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         bool _comparing;
 
         /// <summary>
+        /// Whether the operand being written stands anywhere in what a comparison, a pattern or a search reads, so that a
+        /// parameter written there is compared (<see cref="CosmosDynamicValue.Compared"/>): set with
+        /// <see cref="_comparing"/>, and kept beneath every call, which hands what it computes to the comparison.
+        /// </summary>
+        bool _readByComparison;
+
+        /// <summary>
         /// Gets what is known of the documents this expression is evaluated over: the facts the
         /// caller's licence admits, or where it named none, what the container declares of every
         /// document.
@@ -802,7 +809,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (_spelled && _comparing == false && MayHoldText(parameter.getType()))
                 throw new CosmosTranslationException("Under the emulator a parameter that may hold text is computed in process where the service does not compare it: it stores U+0000 and U+FDD0 escaped, and what it does with either sent there was not measured.");
 
-            var name = _parameters.Add(SlotOf(parameter));
+            var name = _parameters.Add(SlotOf(parameter, _readByComparison));
             if (_spelled)
                 _parameters.Spell(name);
 
@@ -816,7 +823,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         void WriteCompared(StringBuilder builder, RexNode node)
         {
             var compared = _comparing;
+            var read = _readByComparison;
             _comparing = true;
+            _readByComparison = true;
 
             try
             {
@@ -825,6 +834,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             finally
             {
                 _comparing = compared;
+                _readByComparison = read;
             }
         }
 
@@ -855,8 +865,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             || name == SqlTypeName.ARRAY || name == SqlTypeName.MULTISET || name == SqlTypeName.MAP || name == SqlTypeName.ROW;
 
         /// <summary>
-        /// Returns the slot a parameter's value is bound into: its ordinal, its type, and the length its type holds a
-        /// string to.
+        /// Returns the slot a parameter's value is bound into: its ordinal, its type, the length its type holds a string
+        /// to, and whether a comparison reads it.
         /// </summary>
         /// <remarks>
         /// Calcite reads a parameter as its type (<c>RexToLixTranslator.visitDynamicParam</c>): its generated code
@@ -866,13 +876,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// compares with <c>'x'</c> in Calcite; sent as it was, the service compared with <c>'xa'</c> and kept the rows
         /// holding <c>'x'</c>. And a long bound to a <c>DOUBLE</c> parameter through Calcite's own driver compares as
         /// its double. So the slot carries the type and the length, and <see cref="Client.CosmosQueries.Bind"/> converts
-        /// the value and holds it to the length.
+        /// the value and holds it to the length. Where a comparison reads it, a NaN or an infinity cannot be sent as the
+        /// value Calcite compares, and the bind refuses one (<see cref="CosmosDynamicValue.Compared"/>).
         /// </remarks>
-        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter)
+        /// <param name="parameter">The parameter.</param>
+        /// <param name="compared">Whether a comparison reads its value where the writer writes it.</param>
+        static CosmosDynamicValue SlotOf(org.apache.calcite.rex.RexDynamicParam parameter, bool compared)
         {
             var type = parameter.getType();
             var name = type?.getSqlTypeName();
-            var slot = new CosmosDynamicValue(parameter.getIndex()) { TypeName = name };
+            var slot = new CosmosDynamicValue(parameter.getIndex()) { TypeName = name, Compared = compared };
 
             return (name == SqlTypeName.CHAR || name == SqlTypeName.VARCHAR) && type!.getPrecision() >= 0
                 ? slot with { Length = type.getPrecision(), Padded = name == SqlTypeName.CHAR }
@@ -3368,9 +3381,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             Write(subject, left);
             var expression = subject.ToString();
 
-            var name = _parameters.Add(SlotOf(parameter));
+            var name = _parameters.Add(SlotOf(parameter, compared: true));
             var lower = op is ">" or ">=";
-            var bound = _parameters.Add(SlotOf(parameter) with { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
+            var bound = _parameters.Add(SlotOf(parameter, compared: true) with { Bound = lower ? CosmosAnchorBound.Lower : CosmosAnchorBound.Upper });
             if (_spelled)
             {
                 _parameters.Spell(name);
