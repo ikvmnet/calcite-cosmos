@@ -102,7 +102,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// is given, as <c>CosmosQueries</c> reads a <c>UUID</c> parameter by this.
         /// </param>
         /// <returns>The comparable form, or <c>null</c> where the key is absent.</returns>
-        /// <exception cref="CosmosExecutionException">Calcite's cast of the key to an integer comparison type fails.</exception>
+        /// <exception cref="CosmosExecutionException">
+        /// Calcite's cast of the key to an integer comparison type fails, or a Java number Calcite holds no value in has no
+        /// decimal value.
+        /// </exception>
         public static object? Normalize(object? key, SqlTypeName? comparison = null)
         {
             return key switch
@@ -154,7 +157,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             }
             catch (java.lang.RuntimeException e)
             {
-                throw new CosmosExecutionException($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {e.getMessage()}", e);
+                throw new CosmosExecutionException($"A lookup key {number} cannot be cast to {type.getName()}, the type the join compares its keys in: {(string.IsNullOrEmpty(e.getMessage()) ? e.getClass().getName() : e.getMessage())}", e);
             }
         }
 
@@ -163,13 +166,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// reaches every key; or <c>null</c> for anything but a number.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A CLR <see cref="byte"/> is Calcite's <c>TINYINT</c>, as <see cref="CosmosJson"/> reads one: a Java byte is
         /// signed and IKVM surfaces it as a CLR byte, so a small side Calcite computes hands <c>-1</c> over as <c>0xFF</c>,
         /// which is boxed as the Java byte it is rather than read as 255.
+        /// </para>
+        /// <para>
+        /// A Java number Calcite holds no value in, a <see cref="java.math.BigInteger"/> or an <c>AtomicLong</c> a direct
+        /// caller hands over, is read as its decimal value, as a CLR <see cref="ulong"/> and <see cref="decimal"/> are, which
+        /// Calcite's cast to an integer type takes. Handed over as it was, Calcite's cast to <c>BIGINT</c>, which never
+        /// meets one, failed on it with an internal assertion.
+        /// </para>
         /// </remarks>
         static java.lang.Number? Boxed(object key) => key switch
         {
-            java.lang.Number number => number,
+            java.lang.Byte or java.lang.Short or java.lang.Integer or java.lang.Long or java.lang.Float or java.lang.Double or java.math.BigDecimal => (java.lang.Number)key,
+            java.lang.Number number => Decimal(number),
             sbyte value => java.lang.Byte.valueOf(unchecked((byte)value)),
             short value => java.lang.Short.valueOf(value),
             int value => java.lang.Integer.valueOf(value),
@@ -183,6 +195,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
             decimal value => new java.math.BigDecimal(value.ToString(CultureInfo.InvariantCulture)),
             _ => null,
         };
+
+        /// <summary>
+        /// Returns a Java number's decimal value, read from its decimal text, and fails by name where its text is none.
+        /// </summary>
+        /// <param name="number">A Java number Calcite holds no value in.</param>
+        /// <returns>The number's value.</returns>
+        /// <exception cref="CosmosExecutionException">The number's text is not a decimal, as a <c>DoubleAdder</c>'s NaN is not.</exception>
+        static java.math.BigDecimal Decimal(java.lang.Number number)
+        {
+            try
+            {
+                return new java.math.BigDecimal(number.toString());
+            }
+            catch (java.lang.NumberFormatException e)
+            {
+                throw new CosmosExecutionException($"A lookup key {number} of {number.getClass().getName()} has no decimal value it can be compared by.", e);
+            }
+        }
 
         /// <summary>
         /// Returns the value a normalised key is bound as: a <c>DECIMAL</c> key as <c>CosmosQueries</c> sends a decimal
