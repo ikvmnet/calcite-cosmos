@@ -3448,7 +3448,8 @@ across documents* and *A join of a container to itself* is the record.
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
 - **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches
-  it as `=` does** — *small, more rows than Calcite's own join answers; recorded, not planned.* Calcite's equi-join in
+  it as `=` does** — *small, a row Calcite's own join does not answer, in a left join in place of its unmatched one;
+  recorded, not planned.* Calcite's equi-join in
   process, a hash join for the lookup join's own shape and a merge join between two in-process tables, never matches
   `-0.0` with `0.0`, alone or beside one (`CosmosLookupJoinTests.ANegativeZeroKeyMatchesAStoredZeroWhereCalcitesOwnJoinDoesNot`
   over each of the three, `Calcite.AnEquiJoinMatchesKeysAsEquality`), where `=` matches them. `CosmosLookup.Normalize` compares a key as `=`

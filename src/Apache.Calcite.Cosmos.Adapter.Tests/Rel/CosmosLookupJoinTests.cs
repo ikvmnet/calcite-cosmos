@@ -549,9 +549,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
 
         /// <remarks>
         /// A <c>REAL</c>, <c>FLOAT</c> or <c>DOUBLE</c> <c>-0.0</c> on the small side matches the container's <c>0</c> as
-        /// <c>=</c> does, alone or beside a <c>0.0</c>, where Calcite's own join of the same statement, a hash join once the
-        /// lookup is not offered, leaves it unmatched: the one place the lookup answers a row Calcite's own join does not
-        /// (<c>TODO.md</c>).
+        /// <c>=</c> does, alone, beside a <c>0.0</c> or in a left join, where Calcite's own join of the same statement, a
+        /// hash join once the lookup is not offered, leaves it unmatched: the one place the lookup answers a row Calcite's
+        /// own join does not (<c>TODO.md</c>).
         /// </remarks>
         [Theory]
         [InlineData("REAL")]
@@ -561,23 +561,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel
         {
             var products = new[] { """{"id":"p0","n":0}""", """{"id":"p15","n":1.5}""" };
 
-            string Sql(string values) => $"SELECT t.\"id\" FROM (VALUES {values}) AS v(i, k) JOIN (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING {type}) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
+            string Sql(string join, string values) => $"SELECT t.\"id\" FROM (VALUES {values}) AS v(i, k) {join} (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING {type}) AS \"n\" FROM products AS c) AS t ON v.k = t.\"n\"";
 
-            foreach (var (values, matched, calcites) in new (string, object[], object[])[]
+            foreach (var (join, values, matched, calcites) in new (string, string, object?[], object?[])[]
             {
-                ($"(1, CAST('-0.0' AS {type})), (2, CAST(1.5 AS {type}))", ["p0", "p15"], ["p15"]),
-                ($"(1, CAST('-0.0' AS {type})), (2, CAST('0.0' AS {type})), (3, CAST(1.5 AS {type}))", ["p0", "p0", "p15"], ["p0", "p15"]),
+                ("JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST(1.5 AS {type}))", ["p0", "p15"], ["p15"]),
+                ("JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST('0.0' AS {type})), (3, CAST(1.5 AS {type}))", ["p0", "p0", "p15"], ["p0", "p15"]),
+                // In a left join the row matched to the 0 stands where Calcite's own join keeps the -0.0 unmatched.
+                ("LEFT JOIN", $"(1, CAST('-0.0' AS {type})), (2, CAST(1.5 AS {type}))", ["p0", "p15"], [null, "p15"]),
             })
             {
                 Given(orders: System.Array.Empty<string>(), products: products);
-                var plan = Plan(Sql(values));
+                var plan = Plan(Sql(join, values));
                 RelOptUtil.toString(plan).Should().Contain("CosmosLookupJoin");
                 (await Execute(plan)).Should().BeEquivalentTo(matched, values);
                 Keys(_productsExecutor.Executed.Should().ContainSingle().Which).Select(k => BitConverter.DoubleToInt64Bits((double)k!)).Distinct()
                     .Should().BeEquivalentTo(new[] { BitConverter.DoubleToInt64Bits(0d), BitConverter.DoubleToInt64Bits(1.5d) }, "the minus zero is sent as the 0 the service reads back");
 
                 Given(orders: System.Array.Empty<string>(), products: products);
-                var own = Plan(Sql(values), lookup: false);
+                var own = Plan(Sql(join, values), lookup: false);
                 RelOptUtil.toString(own).Should().Contain("ClrCursorHashJoin").And.NotContain("CosmosLookupJoin");
                 (await Execute(own)).Should().BeEquivalentTo(calcites, values);
             }
