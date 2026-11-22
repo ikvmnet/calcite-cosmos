@@ -178,7 +178,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Split no further where everything it would push is applied beneath already, compared as Calcite compares
             // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
-            var applied = AlreadyApplied(filter.getInput());
+            // What its own rows hold alone: Calcite's equality compares nodes over one row type, and what a filter beneath a
+            // projection applies is over another.
+            var (applied, _) = AlreadyApplied(filter.getInput());
             if (pushable.All(applied.Contains))
                 return;
 
@@ -403,13 +405,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var residual = new List<RexNode>();
 
             // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
-            // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
+            // filters beneath apply, and the weakenings pushed before it; and beside them what a filter beneath
+            // a projection applies, each conjunct with the relation it reads. A weakening they, the admitted
             // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
             // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
             // Nor is one equal to a conjunct of this filter, which a filter not admitting it would push under
             // itself for ever (h15). Equal, not implied: every weakening is implied by its own conjunct, which
             // is not applied.
             List<RexNode>? beneath = null;
+            IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across = null;
             var own = Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition());
 
             // What the filter split off holds beside a weakening: every conjunct admitted, and the weakenings pushed before it.
@@ -438,19 +442,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 if (statement.WeakeningOf(i).Rex is not RexNode weakened)
                     continue;
 
-                beneath ??= AlreadyApplied(filter.getInput()).ToList();
-                if (own.Contains(weakened) || statement.IsOwn(weakened) || statement.IsApplied(weakened, beneath))
+                if (beneath is null)
+                {
+                    var applied = AlreadyApplied(filter.getInput());
+                    beneath = applied.Own.ToList();
+                    across = applied.Across;
+                }
+
+                if (own.Contains(weakened) || statement.IsOwn(weakened) || statement.IsApplied(weakened, beneath, across))
                     continue;
 
                 // Of it, what the filter it is pushed in admits through S: a member that filter declined would stay in
                 // process beneath the conjunct it weakens, where it restricts nothing that conjunct does not, and where
                 // Calcite has no body for a Cosmos type test nor an order between a raw value's kinds (h15).
-                var kept = admit ? Admitted(weakened, held, beneath, fields, readings, container, rexBuilder) : new List<RexNode> { weakened };
+                var kept = admit ? Admitted(weakened, held, beneath, across, fields, readings, container, rexBuilder) : new List<RexNode> { weakened };
 
                 // Nor where what is admitted of it is applied beneath, all of it: the filter left above is matched next and
                 // asks the same weakening, which is not applied where only what was admitted of it was pushed, and pushed
                 // again that would be under itself for ever (h15, measured as TryBindOutput recursing through the filters).
-                if (kept.Count == 0 || (admit && kept.All(k => statement.IsApplied(k, beneath))))
+                if (kept.Count == 0 || (admit && kept.All(k => statement.IsApplied(k, beneath, across))))
                     continue;
 
                 pushable.AddRange(kept);
@@ -500,8 +510,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// asked in its stead, and so on, each asked once.
         /// </para>
         /// </remarks>
-        static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<CosmosPath?> fields,
-            IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
+        static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across,
+            IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
         {
             var kept = new List<RexNode>();
             var asked = new HashSet<RexNode> { weakening };
@@ -520,7 +530,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     if (statement.IsAdmitted(k))
                         kept.Add(conjunct);
-                    else if (statement.WeakeningOf(k).Rex is RexNode weaker && asked.Add(weaker) && statement.IsOwn(weaker) == false && statement.IsApplied(weaker, beneath) == false)
+                    else if (statement.WeakeningOf(k).Rex is RexNode weaker && asked.Add(weaker) && statement.IsOwn(weaker) == false && statement.IsApplied(weaker, beneath, across) == false)
                         next.Add(weaker);
                 }
 
@@ -531,7 +541,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies, once each.
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each (<c>Own</c>), and what a filter
+        /// beneath a projection there applies, each conjunct beside the relation it reads and that relation's binding
+        /// (<c>Across</c>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -548,12 +560,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// depends on how far the planner has got. Reading the whole set is stable, because once a
         /// weakening has been pushed the filter carrying it stays in the set.
         /// </para>
+        /// <para>
+        /// <b>And beneath a projection.</b> Every row a projection returns is a row its input returned, so what a filter
+        /// beneath it applies holds of the document behind each, read through the binding of the rows that filter reads.
+        /// It is written over the input's ordinals, not this relation's, so it is kept apart from <c>Own</c>, which is
+        /// compared by Calcite's equality over one row type: each conjunct beside the relation it reads, the projection's
+        /// input, and that relation's binding, which the statement reads it through. Each projection met at the subtree or
+        /// beneath a filter there is crossed once, and one met beneath it the same way with its own input; one set of
+        /// what was seen keeps a graph finite, and reads a filter once, in <c>Own</c> where the first walk met it.
+        /// </para>
         /// </remarks>
-        internal static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
+        internal static (IReadOnlyList<RexNode> Own, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct> Across) AlreadyApplied(RelNode? node)
         {
             // Once each by Calcite's equality, which compares types where the digest prints none.
             var applied = new List<RexNode>();
             var once = new HashSet<RexNode>();
+            var across = new List<Metadata.CosmosFilterStatement.BoundConjunct>();
+            var projections = new List<Project>();
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             // Through a stack of filters as well as across a set's members: a filter keeps its input's
@@ -563,6 +586,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // halves the estimated rows, was then the plan chosen (#210).
             void Collect(RelNode? candidate)
             {
+                if (candidate is Project project)
+                    projections.Add(project);
+
                 if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
@@ -580,7 +606,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
                 Collect(member);
 
-            return applied;
+            // Beneath a projection, each conjunct beside the relation it reads and that relation's binding.
+            void Beneath(RelNode? candidate, RelNode relation, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings)
+            {
+                if (candidate is Project project)
+                    Cross(project);
+
+                if (candidate is not Filter filter || seen.Add(filter) == false)
+                    return;
+
+                foreach (var conjunct in Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()))
+                    across.Add(new(conjunct, relation, fields, readings));
+
+                foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
+                    Beneath(member, relation, fields, readings);
+            }
+
+            // Each projection once, over its input's binding; one whose input binds nothing gives nothing.
+            void Cross(Project project)
+            {
+                if (seen.Add(project) == false || CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _) == false)
+                    return;
+
+                foreach (var member in Rel.CosmosPlanMembers.Of(project.getInput()))
+                    Beneath(member, project.getInput(), fields, readings);
+            }
+
+            foreach (var project in projections)
+                Cross(project);
+
+            return (applied, across);
         }
 
         /// <summary>

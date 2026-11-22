@@ -4221,6 +4221,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     yield return below;
         }
 
+        /// <summary>
+        /// What a filter beneath a projection applies is read through its own rows. Over a view's projection the filter above
+        /// has no filter beneath it over its own rows, and the view's filter applies both its conjuncts to every row the
+        /// projection returns: each is read beside the relation it reads, the projection's input, and that relation's
+        /// binding, the scan's. So the weakening of the filter above, the name's definedness, which the view's null test of
+        /// the same text implies, is applied there, and is not without what is read beneath the projection.
+        /// </summary>
+        [Fact]
+        public void WhatAFilterBeneathAProjectionAppliesIsReadThroughItsOwnRows()
+        {
+            var logical = PlanLogical("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL AND c.\"$.category\" = 'bikes') AS t WHERE UPPER(JSON_VALUE(t.\"DOC\", '$.name')) LIKE '%STEEL%'");
+            var filter = Filters(logical).Single(f => f.getCondition().toString().Contains("UPPER"));
+            var view = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the filter above reads the view's projection").Subject;
+            var viewFilter = Filters(view).Single();
+
+            var (own, across) = Adapter.Rel.Convert.CosmosFilterSplitRule.AlreadyApplied(filter.getInput());
+            TestContext.Current.TestOutputHelper?.WriteLine($"own: {string.Join(" | ", own)}");
+            foreach (var b in across)
+                TestContext.Current.TestOutputHelper?.WriteLine($"across: {b.Conjunct} over [{string.Join(", ", b.Fields.Select(f => f?.ToString() ?? "-"))}]");
+
+            own.Should().BeEmpty("no filter beneath the filter above reads its rows");
+            across.Select(b => b.Conjunct).Should().Equal(CosmosFilterStatement.ConjunctsOf(viewFilter.getCondition()), "the view's filter applies both its conjuncts");
+            across.Should().OnlyContain(b => ReferenceEquals(b.Relation, view.getInput()), "each conjunct is read over the relation it reads, the projection's input");
+
+            CosmosImplementor.TryBindOutput(view.getInput(), out var beneathFields, out var beneathReadings, out _).Should().BeTrue();
+            string.Join(", ", beneathFields.Select(f => f?.ToString() ?? "-")).Should().Be("c, c.id, c._ts, c._etag, c.category", "the rows the view's filter reads are the scan's");
+            across.Should().OnlyContain(b => b.Fields.SequenceEqual(beneathFields) && b.Readings.SequenceEqual(beneathReadings), "each beside that relation's binding");
+
+            CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _).Should().BeTrue();
+            var statement = CosmosFilterStatement.Of(filter.getCondition(), fields, readings, _table.Container, filter.getCluster().getRexBuilder());
+            var weakening = statement.WeakeningOf(0).Rex;
+            weakening.Should().NotBeNull("S weakens a case fold of the name to its definedness");
+            weakening!.ToString().Should().Be("IS_DEFINED(JSON_VALUE($1, '$.name'))");
+            statement.IsApplied(weakening, own).Should().BeFalse("without what is read beneath the projection, nothing applies it");
+            statement.IsApplied(weakening, own, across).Should().BeTrue("the view's null test of the same text implies it");
+        }
+
         /// <summary>Counts each match the planner fires of the split rule.</summary>
         sealed class SplitMatches : RelOptListener
         {
