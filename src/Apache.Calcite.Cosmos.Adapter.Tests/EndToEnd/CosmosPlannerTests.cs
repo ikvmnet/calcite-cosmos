@@ -1,9 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
@@ -3058,6 +3063,82 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c", "no reading of the path is sent: " + Plan(best));
             Plan(best).Should().Contain("ClrCursorFilter", "the filter is Calcite's to evaluate: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A view's <c>RETURNING VARIANT</c> column is no raw value, so nothing derived through it drops a document Calcite
+        /// keeps: each form the split rule pushes of a filter over the view, read beneath the view as the filter rule reads
+        /// it there, is judged on both targets over every document Calcite keeps of the whole condition, the column's path
+        /// absent, a JSON null, a number, an empty and a full array and object, each with and without the name.
+        /// </summary>
+        /// <remarks>
+        /// Bound to its path, the column read through its field as the raw value, and S, asked to weaken the filter over the
+        /// view, proved <c>IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)</c> of the disjunction and <c>IS_NULL(c.x)
+        /// OR NOT IS_DEFINED(c.x)</c> beside <c>IS_DEFINED(c.name)</c> of the <c>CASE</c>, each false over <c>{"x":[]}</c>, which
+        /// Calcite keeps: Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an
+        /// object. A projection binds no path for it (<c>CosmosImplementor.Projected</c>), so no weakening is derived
+        /// through the column.
+        /// </remarks>
+        [Fact]
+        public void AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps()
+        {
+            const string View = "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT) AS \"v\" FROM products AS c) AS t WHERE ";
+            var values = new J?[]
+            {
+                null, new J.Null(), new J.Num(1m), new J.Arr([]), new J.Arr([new J.Num(1m)]),
+                new J.Obj(new SortedDictionary<string, J>()), new J.Obj(new SortedDictionary<string, J> { ["a"] = new J.Num(1m) }),
+            };
+            var documents = values.SelectMany(value => new[] { false, true }.Select(named =>
+            {
+                var properties = new SortedDictionary<string, J> { ["id"] = new J.Str("x1") };
+                if (value is not null)
+                    properties["x"] = value;
+                if (named)
+                    properties["name"] = new J.Str("steel");
+                return new J.Obj(properties);
+            })).ToList();
+
+            foreach (var condition in new[]
+            {
+                "t.\"v\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+                "CASE WHEN t.\"v\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            })
+            {
+                var filter = Filters(PlanLogical(View + condition)).Single();
+                var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+                CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _).Should().BeTrue();
+
+                // Calcite in process: the whole condition over the scan's binding.
+                var calcite = CalciteInProcess.Compile(RelOptUtil.pushPastProject(filter.getCondition(), project), fields, readings);
+                calcite.Should().NotBeNull(condition);
+
+                // The half as the rule splits it, read beneath the view as the filter rule reads it there.
+                var rex = filter.getCluster().getRexBuilder();
+                var (pushable, _) = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(filter, _table.Container, admit: true);
+                var forms = new List<ServiceForm>();
+                if (pushable.Count > 0)
+                {
+                    var beneath = RelOptUtil.pushPastProject(RexUtil.composeConjunction(rex, Java(pushable)), project);
+                    var planned = CosmosFactRewriter.Planned(beneath, fields, _table.Container, CosmosImplementor.DefaultRootAlias, rex, readings);
+                    var statement = CosmosFilterStatement.Of(planned, fields, readings, _table.Container, rex);
+                    forms.AddRange(Enumerable.Range(0, statement.Conjuncts.Count).Select(statement.Form).OfType<ServiceForm>());
+                }
+
+                var kept = documents.Where(document => calcite!(document) == Truths.True).ToList();
+                kept.Should().NotBeEmpty(condition);
+                kept.SelectMany(document => forms.SelectMany(form => new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
+                        .Where(target => CosmosEval.On(form, document, target) is { } outcome && outcome != ServiceOutcomes.True)
+                        .Select(target => $"Calcite keeps {Documents.Json(document)}; {target} drops it under {form}")))
+                    .Should().BeEmpty($"{condition} pushes [{string.Join(" & ", pushable)}]");
+            }
+
+            static java.util.List Java(IEnumerable<RexNode> nodes)
+            {
+                var list = new java.util.ArrayList();
+                foreach (var node in nodes)
+                    list.add(node);
+                return list;
+            }
         }
 
         /// <summary>

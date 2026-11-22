@@ -800,6 +800,75 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
                     Opaque(0));
         }
 
+        /// <summary>
+        /// Each kind of expression a view projects beside the document: the document, the id, <c>_ts</c> and the promoted
+        /// column passed through, the text of a path and of an element, every scalar <c>RETURNING</c>, <c>RETURNING DECIMAL</c>
+        /// and <c>RETURNING VARIANT</c> of a path and of an element, a behaviour clause, <c>JSON_QUERY</c>, item chains over the
+        /// promoted column, two casts, a call and a constant.
+        /// </summary>
+        public static readonly TheoryData<string, string> ProjectedColumns = new()
+        {
+            { "doc", "c.\"DOC\"" },
+            { "id", "c.\"id\"" },
+            { "ts", "c.\"_ts\"" },
+            { "promoted", "c.\"$.category\"" },
+            { "text", "JSON_VALUE(c.\"DOC\", '$.name')" },
+            { "text-element", "JSON_VALUE(c.\"DOC\", '$.tags[0]')" },
+            { "returning-varchar", "JSON_VALUE(c.\"DOC\", '$.name' RETURNING VARCHAR(20))" },
+            { "returning-integer", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)" },
+            { "returning-bigint", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING BIGINT)" },
+            { "returning-double", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE)" },
+            { "returning-boolean", "JSON_VALUE(c.\"DOC\", '$.flag' RETURNING BOOLEAN)" },
+            { "returning-decimal", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING DECIMAL(10, 2))" },
+            { "returning-variant", "JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)" },
+            { "returning-variant-element", "JSON_VALUE(c.\"DOC\", '$.tags[0]' RETURNING VARIANT)" },
+            { "returning-integer-null-on-empty", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER NULL ON EMPTY)" },
+            { "json-query", "JSON_QUERY(c.\"DOC\", '$.obj')" },
+            { "item-of-promoted", "c.\"$.category\"['a']" },
+            { "item-of-promoted-index", "c.\"$.category\"[1]" },
+            { "item-of-item", "c.\"$.category\"['a']['b']" },
+            { "cast-integer", "CAST(JSON_VALUE(c.\"DOC\", '$.price') AS INTEGER)" },
+            { "cast-varchar-of-promoted", "CAST(c.\"$.category\" AS VARCHAR)" },
+            { "upper", "UPPER(JSON_VALUE(c.\"DOC\", '$.name'))" },
+            { "constant", "'k'" },
+        };
+
+        /// <summary>
+        /// Every column a projection binds reads through its field as its expression reads through the projection's input:
+        /// the same kind of reading, of the same path and of the same type, a raw reading's column naming the expression's
+        /// type, and the form a field is written apart in set aside. A <c>RETURNING VARIANT</c> bound to its path read through
+        /// its field as the raw value, where the expression is a <c>RETURNING</c> of its own, null over an array or an object;
+        /// it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(ProjectedColumns))]
+        public void EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads(string name, string expression)
+        {
+            var project = new EndToEnd.Corpus.PlannerHarness().ToLogical($"SELECT {expression} AS \"e\", c.\"DOC\" AS \"d\" FROM products AS c")
+                .Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            CosmosImplementor.TryBindOutput(project, out var fields, out var readings, out _).Should().BeTrue();
+            CosmosImplementor.TryBindOutput(project.getInput(), out var inputFields, out var inputReadings, out _).Should().BeTrue();
+
+            var projected = (RexNode)project.getProjects().get(0);
+            var throughField = new CosmosPredicateLoader.Loading(fields, readings, CosmosImplementor.DefaultRootAlias).ReadValue(new RexInputRef(0, projected.getType()));
+            if (throughField is null)
+                return;
+
+            var itself = new CosmosPredicateLoader.Loading(inputFields, inputReadings, CosmosImplementor.DefaultRootAlias).ReadValue(projected);
+            ReadingOf(throughField, (throughField as SqlValue.Raw)?.Column).Should().Be(ReadingOf(itself, projected.getType().getSqlTypeName().getName()),
+                $"{name}: {projected} bound to {fields[0]?.ToString() ?? "nothing"} reads through its field as {throughField} and itself as {itself?.ToString() ?? "nothing"}");
+        }
+
+        /// <summary>A reading's kind, path and type, a raw reading's type the column given, and its form left out.</summary>
+        static string? ReadingOf(SqlValue? value, string? column) => value switch
+        {
+            null => null,
+            SqlValue.Raw raw => $"raw {SqlValue.Spell(raw.Path)} {column}",
+            SqlValue.Typed typed => $"typed {SqlValue.Spell(typed.Path)} {typed.Type}",
+            SqlValue.Text text => $"text {SqlValue.Spell(text.Path)}",
+            _ => (value with { Form = null }).ToString(),
+        };
+
     }
 
 }

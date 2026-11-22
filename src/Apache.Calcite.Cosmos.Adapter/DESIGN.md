@@ -10975,7 +10975,14 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over
   it and Calcite evaluates every filter over it, a comparison, a null test and a type test
   (`CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`, over a path and an element). No corpus statement reads
-  one, so no digest line moves for it.
+  one, so no digest line moves for it. A projection binds no path for it either (`CosmosImplementor.Projected`): a typed
+  `VARIANT` field is read as the raw value a promoted column holds, so bound to its path, a view's `RETURNING VARIANT`
+  column was read as the raw value, its null test sent as the raw value's, and S, asked to weaken `t."v" IS NULL OR
+  INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)`, which drops
+  `{"x":[]}` where Calcite keeps it. Bound to nothing, as `RETURNING DECIMAL` is, no weakening is derived through the
+  column (`CosmosPlannerTests.AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps`). Every other column a
+  projection binds is read through its field as the same kind of reading of the same path and type as its expression
+  (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
   (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no

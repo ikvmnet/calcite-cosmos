@@ -144,6 +144,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> is <c>VARIANT</c>: typed as a document
+        /// value, and no raw value.
+        /// </summary>
+        /// <remarks>
+        /// Calcite holds what it reads in no box, so it equals no value cast to <c>VARIANT</c>, and it is null where the path
+        /// holds an array or an object (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), where a promoted column holding the same
+        /// value is the value. So a projection binds no path for it (<c>CosmosImplementor.Projected</c>). See DESIGN.md,
+        /// <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
+        /// </remarks>
+        internal static bool IsVariantReturningJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            return call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT;
+        }
+
+        /// <summary>
         /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses an array in the
         /// document rather than parsing one out of a string.
         /// </summary>
