@@ -158,10 +158,9 @@ without a schema   WHERE (c.status = @p0 OR c.status = @p1) AND c.carrier = @p2
 with one           WHERE c.carrier = @p0
 ```
 
-The same holds of `<>` a value outside the enum, `IS NOT NULL` of a required path that is never null, a
-range through `CAST(… AS DOUBLE)` that the declared `minimum` and `maximum` already satisfy, and a
-disjunction one of whose branches another conjunct asserts: `kind = 'shipment' AND (kind = 'shipment'
-OR …)` sends the first conjunct alone. Where every conjunct goes, the statement has no `WHERE` at all.
+The same holds of `<>` a value outside the enum, `IS NOT NULL` of a required path that is never null,
+and a disjunction one of whose branches another conjunct asserts: `kind = 'shipment' AND (kind =
+'shipment' OR …)` sends the first alone. Where every conjunct goes, the statement has no `WHERE` at all.
 `required` matters: without it a document may lack the path, and a comparison over an absent path keeps
 no row, so the conjunct is not guaranteed. A range through `CAST(… AS INTEGER)` is not dropped either:
 Calcite's integer cast of the text raises on numbers past an `INTEGER`, which an `"integer"`
@@ -174,6 +173,16 @@ INTEGER) = 1 AND JSON_VALUE(c."DOC", '$.kind') = 'C')`, where no `kind` is `C`, 
 query fails on a `body` that is no number. One the service takes, and one in a projected `CASE`
 condition or beside a `DELETE` of a whole partition (Chapter 13), may answer where Calcite fails
 (Chapter 23).
+
+The other conjuncts count only where the adapter's reasoning about the schema reads them as Calcite
+does. A comparison through a number's `RETURNING` (`RETURNING INTEGER`, `DOUBLE`, `DECIMAL`), through a
+cast of the text to `DOUBLE`, or through the partition key's column cast to text makes no other conjunct
+redundant, nor the presence sent beside an equality with text an integer renders as, even where it is
+itself sent exactly (Chapter 8.3), so
+`JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) > 3 AND JSON_VALUE(c."DOC", '$.n') IS NOT NULL` sends the
+null test beside the comparison. Nor is such a comparison itself dropped where the schema and the
+other conjuncts guarantee it, a range through the cast to `DOUBLE` that the declared `minimum` and
+`maximum` satisfy among them.
 
 ### A predicate no document can satisfy
 
@@ -588,6 +597,12 @@ the branch takes a conjunct the service will evaluate; it composes with point re
 lookup by id still becomes one. And what the proved branch declares is used by the rest of the
 statement too — the select list, `ORDER BY` and `GROUP BY` read the rows the `WHERE` kept — and by
 routing, where the filter and the schema together leave the partition key one value (Chapter 8.5).
+Beside the proving conjunct, a comparison is written in the branch's stored form, and a conjunct the
+branch guarantees is dropped (14.2), only where the adapter reads the proving conjunct as Calcite does,
+as it reads `JSON_VALUE(c."DOC", '$.kind') = 'shipment'`. Proved through the partition key's column
+cast to text — `CAST(c."$.kind" AS VARCHAR) = 'shipment'` where `kind` is the key — or through a
+number's `RETURNING` over a numeric discriminator, a UUID comparison on `trackingId` beside it is
+rechecked in process, and a guaranteed conjunct is sent.
 
 A query can also prove the branch in other ways:
 

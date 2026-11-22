@@ -2901,7 +2901,10 @@ across documents* and *A join of a container to itself* is the record.
   round may rest on is a row*). The strata still rest only on the exactly-read rows, so the push is not back. The gate
   stays: G12's and G16b's planted runs, every condition read exactly, now keep the document too, so for this case the
   gate is redundant beside `Kept`, but retiring it gives the label's push back, a plan change to predict and digest on
-  its own, beside an audit that `Kept` over-approximates every reading a stratum may rest on.
+  its own, beside an audit that `Kept` over-approximates every reading a stratum may rest on (*What a filter keeps rests
+  on `Kept`*, below). The deletion and the lowering read the same relation (`CosmosStatementScope.Beside` and
+  `ExactSiblings`), so the argument that retires the gate retires theirs too, which gives back the implied conjuncts
+  they send beside a coarse sibling: 11 of the pull-request digests' 1,181 lines and 20 of the gate's 3,492.
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
@@ -2927,7 +2930,7 @@ across documents* and *A join of a container to itself* is the record.
   `CAST(c."$.category" AS VARCHAR) = '30'`, which S sends exact as `c.category = @p0`, now routes to `"30"`
   (`CosmosPlannerTests.ACastAgainstTextANumberRendersAsIsTakenOverAVariant`). What is left is the facts graph's reading
   of the cells: the coarse `On` and `Over` verdicts, so `NOT (CAST(raw(flag) AS VARCHAR) = 'x')` is still decided
-  `Always` and deleted, and over a `VARIANT`'s number the cast's `IN` of two texts `AlwaysFalse` where Calcite answers
+  `Always`, and over a `VARIANT`'s number the cast's `IN` of two texts `AlwaysFalse` where Calcite answers
   `UNKNOWN` (population D's long run drew it once in 5,000, seed 20263941, and draws the cast through no named column
   since, as it draws the cast elsewhere: `Statements.Besides`, to name the column again with the fix); the unnamed
   `IrEval`; and the translator's column. The column reads it so too (review 3): a projected or grouped
@@ -3707,29 +3710,27 @@ across documents* and *A join of a container to itself* is the record.
     Measured: over a key the declaration lists as `[5.5, 7.25]`, `CAST(… AS DOUBLE) = 5` and `= 6` pin `5.5` and send
     `WHERE (c.ref = @p0)`, which finds nothing, where `RETURNING DOUBLE = 5` sends nothing; over one listed `[5, 7]`,
     `= 5.5` pins `5`; over one listed `[5, 6]`, `= 5.5` is sent with `WHERE (c.category = @p0)` and pins neither.
-  - *Over a key the declaration fixes to one value.* Measured: over a required `const` of `5`, and a required
-    one-member `enum` of `5`, `CAST(… AS DOUBLE) = 5` and `RETURNING DECIMAL = 5` are sent with no `WHERE` and pin
-    nothing, while `RETURNING INTEGER`, `BIGINT` and `DOUBLE = 5`, `CAST(… AS INTEGER) = 5` and `= '5'` keep their
-    `WHERE` and pin `5`; over an optional `const` of `5`, `RETURNING DECIMAL` and the cast keep and pin. Over a required
-    `const` of `5.5`, or a one-member `enum` of it, the cast's `= 5.5` is sent with no `WHERE` and no pin, and
-    `RETURNING DOUBLE = 5.5` is kept and pins. Over a required `const` of `"bikes"`, `= 'bikes'` is sent with no
-    `WHERE` and no pin; over an optional one it is kept and pins. Over a required `const` of `true`,
-    `c."$.ref" = CAST(TRUE AS VARIANT)` is dropped. Over a required `const` of `0.1`, `= '0.1'` stays in Calcite over a
-    request with no `WHERE` and no pin, and so does `c."$.category" = CAST(5 AS VARIANT)` over a required `const` of
-    `5`, which over an optional one sends `IS_DEFINED(c.category)` pinned to `5`. Beside the rest of a `WHERE` the pin
-    stays: over a required `const` of `5`, `CAST(… AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'` and
-    `RETURNING DECIMAL = 5 AND k = 'x'` send `WHERE (c.k = @p0)` pinned to `5`, and `k = 'x'` alone is pinned to `5`;
-    over a required `const` of `"bikes"`, `= 'bikes' AND k = 'x'` is pinned to `bikes`, of `5.5` to `5.5`, and over a
-    required one-member `enum` of `5` to `5`. A presence test drops a comparison of a key that is not required: over
-    an optional `const` of `5`, `JSON_VALUE(c."DOC", '$.category') IS NOT NULL AND CAST(… AS DOUBLE) = 5` sends only the
-    key's presence in the host Chapter 21 describes, and `IS NOT NULL AND RETURNING DECIMAL = 5` drops the equality in
-    both hosts; over an optional `const` of `"bikes"`, `IS NOT NULL AND = 'bikes'` drops it in the host Chapter 21
-    describes; each is still pinned. Read in the code: `CosmosPartitionKeyExtractor.TryExtractPrefix` reads the key's
-    one value from the declaration under whatever condition is sent (`Pinned(OracleLicence.Kept)`), and
-    `CosmosFilter.Implement` returns before routing where every conjunct is deleted, and a comparison kept in Calcite
-    builds no `CosmosFilter`, so the pin is lost only where the request has no `WHERE`. A deletion is a verdict on the
-    coarse reading (*A conjunct through an integer parse its declared bounds satisfy is still sent*). The fix is
-    routing a statement with no `WHERE` by what the declaration says of the key, which the facts graph already holds.
+  - *Over a key the declaration fixes to one value.* Measured: over a required `const` of `5`, and a required one-member
+    `enum` of `5`, `RETURNING INTEGER`, `BIGINT`, `DOUBLE` and `DECIMAL = 5`, `CAST(… AS INTEGER) = 5`, `CAST(… AS
+    DOUBLE) = 5` and `= '5'` keep their `WHERE` and pin `5`, the cast to `DOUBLE` and `RETURNING DECIMAL` because the
+    facts graph reads them coarsely and deletes neither; over an optional `const` of `5`, `RETURNING DECIMAL` and the
+    cast keep and pin. Over a required `const` of `5.5`, or a one-member `enum` of it, the cast's `= 5.5` and `RETURNING
+    DOUBLE = 5.5` are kept and pin. Over a required `const` of `"bikes"`, `= 'bikes'` is sent with no `WHERE` and no
+    pin; over an optional one it is kept and pins. Over a required `const` of `true`, `c."$.ref" = CAST(TRUE AS
+    VARIANT)` is dropped. Over a required `const` of `0.1`, `= '0.1'` stays in Calcite over a request with no `WHERE`
+    and no pin, and so does `c."$.category" = CAST(5 AS VARIANT)` over a required `const` of `5`, which over an optional
+    one sends `IS_DEFINED(c.category)` pinned to `5`. Beside the rest of a `WHERE` the pin stays: over a required
+    `const` of `5`, `CAST(… AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'` sends both pinned to `5`, and `k = 'x'`
+    alone is pinned to `5`; over a required `const` of `"bikes"`, `= 'bikes' AND k = 'x'` is pinned to `bikes`, of `5.5`
+    to `5.5`, and over a required one-member `enum` of `5` to `5`. A presence test drops a comparison of a key that is
+    not required: over an optional `const` of `"bikes"`, `JSON_VALUE(c."DOC", '$.category') IS NOT NULL AND = 'bikes'`
+    drops it in the host Chapter 21 describes, and it is still pinned. Read in the code:
+    `CosmosPartitionKeyExtractor.TryExtractPrefix` reads the key's one value from the declaration under whatever
+    condition is sent (`Pinned(OracleLicence.Kept)`), and `CosmosFilter.Implement` returns before routing where every
+    conjunct is deleted, and a comparison kept in Calcite builds no `CosmosFilter`, so the pin is lost only where the
+    request has no `WHERE`. A deletion is a verdict on the coarse reading (*A conjunct through an integer parse its
+    declared bounds satisfy is still sent*). The fix is routing a statement with no `WHERE` by what the declaration says
+    of the key, which the facts graph already holds.
 - **A cast to `DOUBLE` is read more loosely than a double rounds** — *small, precision; older than "fail like Calcite",
   the same on `main`, and left for a change of its own.* `NumberCast.KeptOrder` meets the numbers a comparison
   through the cast keeps with a window (`Window`), which holds whichever way a conversion rounds, and keeps every string
@@ -3788,8 +3789,7 @@ across documents* and *A join of a container to itself* is the record.
   tolerance stands beside "fail like Calcite" is left for a change of its own.
 - **A conjunct through an integer parse its declared bounds satisfy is still sent** — *small, precision.* Over a
   required integer from 0 to 100, or listed `[1, 2, 3]`, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and
-  `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)` where the same
-  range through `CAST(… AS DOUBLE)` is dropped
+  `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)`
   (`CosmosDeclaredFactPlanningTests.ARangeAnIntegerParseItsBoundsSatisfyIsStillSent`). A deletion is a verdict
   (`AlwaysTrue`), and the verdicts read the coarse reading (`PredicateAtom.Over`, from `On(state)`), which reads no
   spelling the service returns: `NumberCast` puts the parse's raise beside every number (`_parse`), and the typed
@@ -3799,7 +3799,8 @@ across documents* and *A join of a container to itself* is the record.
   (`PredicateAtomTests.AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber`: `Over` of a stored 30 is TRUE beside a raise,
   `RaisesOver` false). The proper fix is the coarse integer readings reading the served spelling as the cells do
   (`Renderings.ServedAsDigits`); it moves plans, so it is a change of its own, and the planning test above flips with
-  it.
+  it for the cast to `INTEGER`, and for `RETURNING INTEGER` once the facts graph reads it exactly, since only a conjunct
+  it reads exactly is deleted.
 - **A weakening true of every document is pushed where the regroup reads no complement** — *nit, RU.* Partitions 464's
   `CASE` weakens to `IS_NULL(c.category) OR IS_DEFINED(c.category) OR NOT IS_DEFINED(c.category)`, true of every document,
   and S pushes it: the regroup rules read a junction's unit, its own connective and a part twice, not a part beside its
@@ -4093,15 +4094,37 @@ across documents* and *A join of a container to itself* is the record.
   failing so, by an ordering's cast or a type test with no body. Since then the split rule pushes of a weakening only
   what the filter beneath admits through S and drops the rest (`CosmosFilterSplitRule.Admitted`), so no member is left
   in process to raise, and an ordering that filter admits is the service's.
-- **The rewrite's licences read siblings F reads coarsely** — *small, soundness; with the rewrite's templates (Stage 3).*
-  A later round's stratum and an arm assume only what F reads exactly (§5.2; since h15 F's `Exactness` ruleset,
-  `StatementTerms.ReadsExactly`), but the licences the fact rewriter and the conjunct deletion ask,
-  `OracleQuestion.DeleteConjunct`, `Siblings` and `Kept`, assume every sibling conjunct as F reads it, a typed number,
-  `DECIMAL`, a double or a cast of a raw value among them, which may read a document otherwise than Calcite (*A stratum
-  resting on a coarse reading*, above): a conjunct deleted or lowered on what such a sibling establishes could drop a
-  row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
-  proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
-  step's own.
+- **What a filter keeps rests on `Kept`, audited over a list of readings written by hand** — *small, soundness.* A
+  conjunct is deleted from the text sent, or a comparison inside it lowered, only on the siblings the facts graph reads
+  exactly, as a later round's stratum and an arm are (`CosmosStatementScope.Beside` and `ExactSiblings`, F's `inexact`).
+  Everything else that reads what a filter keeps assumes the conjuncts its licence names, however the facts graph reads
+  them, a typed number, `DECIMAL`, a double or a cast of a raw value to text among them: routing, the row count, a
+  stack's clauses and the self-join (`Kept`); a single filter's projection, sort, grouping and lookup key (the last
+  stratum); a point read's pins; and the reduce. That stands: what a coarse sibling establishes is what its reading's
+  `Kept` keeps, which holds every value Calcite gives that truth on
+  (`PredicateAtomCellTests.WhatEveryReadingKeepsHoldsEveryValueCalciteGivesThatTruthOn`), so each is provable today, and
+  gating them on `readsexactly` would decline pushes that are provable: routes on the key's cast to text and on a
+  numeric key through `RETURNING` (Chapters 7.3, 8.5) and sorts at the service beneath a filter through a typed number,
+  10 of the pull-request digests' 1,181 lines and 17 of the gate's 3,492 (`DESIGN.md`, *Which facts may justify what*).
+  The translator's later rounds, which write a parameter or an opaque comparison from the chain node, rest on `Kept`
+  too, a bridge: 3B moves parameter comparisons into S's rounds, which read `StratumFor`, and the rest goes with the
+  translator (h42). The exposure left is a reading added later whose `Kept` is too narrow, which reaches every one of
+  these: planted, the narrow `Kept` a typed number had before 2026-11-11 routed a statement through a declared
+  conditional past documents Calcite keeps, grouped apart at the service what Calcite groups together, and let the
+  translator send a parameter comparison bare. The audit's list of readers (`PredicateAtomCellTests.KeptReaders`) is
+  written by hand, and a raw value read through `CHAR` is on it nowhere (below). The proper fix is an audit that takes
+  its readers from what the loader builds, so that no reading reaches anything resting on `Kept` unaudited, beside the
+  `CHAR` entry's own fix.
+- **A raw value read through `CHAR` is read exactly by its reading's name** — *small, soundness.*
+  `Calcite.TheFactsGraphReadsTheseReadingsExactly` names the raw value beside anything but a number, and
+  `PredicateAtom.ReadExactly` keys a reading by its reader without its raw column (`Columnless`). A field typed `CHAR`,
+  which the loader reads as the raw value through that column (`PredicateAtom.UnionColumns`, read as the measured
+  columns' union until a row measures its padding), is then read exactly though no row measured it, and neither the
+  cells' readers nor the audit of what every reading keeps names the column (`PredicateAtomCellTests`, whose raw readers
+  are `RawColumns`'). Whether the facts graph reads it as Calcite does is unknown, and a deletion, a lowering, a later
+  round's stratum or an arm may rest on it; whether a plan reaches one is unchecked. The proper fix keys the row's raw
+  value by the columns it measured, so that a `CHAR` is coarse until a row measures it, and names the column in both
+  lists: a change of the row's and of `PredicateAtom.ReadExactly`, not of the licences.
 - **The split rule weakens nothing over a projection** — *small, G10's remainder; after h15, before 3B closes.*
   `CosmosFilterSplitRule.OverProjection` keeps a filter over a pushed projection from pushing a weakening, so that one
   `FILTER_PROJECT_TRANSPOSE` already pushed beneath is not pushed again (#210): a C# rule of where a weakening is asked.
