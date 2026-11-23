@@ -1002,9 +1002,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <summary>
         /// Determines whether <see cref="CosmosProjectRule"/> converts a logical projection: its operand asked as the planner
         /// asks it, and what its match and its conversion decline, which they repeat here, a projection holding a correlation
-        /// or naming a field the container's target stores escaped.
+        /// or naming a field the container's target stores escaped
+        /// (<c>CosmosPlannerTests.TheSplitAsksWhetherTheProjectRuleConvertsAProjectionAsTheRuleAnswers</c>).
         /// </summary>
-        static bool Converts(CosmosConvention convention, Project project)
+        internal static bool Converts(CosmosConvention convention, Project project)
         {
             if (CosmosProjectRule.Create(convention).getOperand().matches(project) == false)
                 return false;

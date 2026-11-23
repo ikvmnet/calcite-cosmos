@@ -4546,6 +4546,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Where the split asks whether the project rule converts a projection, it answers as the rule does: over a view naming
+        /// a field the target stores escaped, which the rule's conversion declines on the emulator alone, and over a projection
+        /// holding a correlation, which its match declines, as its operand's translation of the column does too.
+        /// </summary>
+        /// <remarks>
+        /// The split repeats those two declines (<c>CosmosFilterSplitRule.Converts</c>), since the rule's match and conversion
+        /// are asked only by a planner's call; this holds the repeat to the rule. Each projection is planned alone to the
+        /// convention with the project rule the only rule registered, which converts it or leaves it unplanned.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, false)]
+        [InlineData(CosmosServiceTarget.Emulator, false)]
+        [InlineData(CosmosServiceTarget.Azure, true)]
+        [InlineData(CosmosServiceTarget.Emulator, true)]
+        public void TheSplitAsksWhetherTheProjectRuleConvertsAProjectionAsTheRuleAnswers(CosmosServiceTarget target, bool correlated)
+        {
+            var harness = new Corpus.PlannerHarness(null, target);
+            var convention = harness.Tables["products"].Convention;
+            var view = harness.ToLogical("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.region') AS \"r﷐\" FROM products AS c")
+                .Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+
+            var project = view;
+            if (correlated)
+            {
+                var rex = view.getCluster().getRexBuilder();
+                var input = view.getInput();
+                var projects = new java.util.ArrayList(view.getProjects());
+                projects.add(rex.makeFieldAccess(rex.makeCorrel(input.getRowType(), new org.apache.calcite.rel.core.CorrelationId(0)), 1));
+                project = org.apache.calcite.rel.logical.LogicalProject.create(input, java.util.Collections.emptyList(), projects, java.util.Arrays.asList("id", "r", "k"));
+            }
+
+            var planner = (VolcanoPlanner)project.getCluster().getPlanner();
+            planner.addRule(Adapter.Rel.Convert.CosmosProjectRule.Create(convention));
+            planner.setRoot(planner.changeTraits(project, project.getTraitSet().replace(convention)));
+
+            bool converted;
+            try
+            {
+                converted = planner.findBestExp() is CosmosRel;
+            }
+            catch (RelOptPlanner.CannotPlanException)
+            {
+                converted = false;
+            }
+
+            converted.Should().Be(correlated == false && target == CosmosServiceTarget.Azure, "the rule declines a correlation, and an escaped name where the target stores it so");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Converts(convention, project).Should().Be(converted, "the split asks the project rule as the rule answers");
+        }
+
+        /// <summary>
         /// A half stacked on a filter reaches the service only where the filter rule translates it onto that filter's
         /// <c>WHERE</c>. A filter over a filtered view, planned as the harness plans for a host, with no filter merge, then
         /// the calc pass a host runs: no filter Calcite evaluates in the plan chosen holds the service's form, and the plan
