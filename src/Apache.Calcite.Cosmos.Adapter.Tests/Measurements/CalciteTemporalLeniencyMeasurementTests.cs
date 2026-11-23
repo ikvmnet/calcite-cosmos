@@ -46,17 +46,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// 1900.
     /// </para>
     /// <para>
-    /// <b>What it asserts holds in every host time zone.</b> Two readings depend on the zone the host's JVM defaults to,
-    /// whatever the session's: <c>CAST … AS TIMESTAMP FORMAT</c> before 1582-10-16, which is asked only from that day on,
-    /// and <c>PARSE_DATETIME</c> over a time of day the zone skips, at a daylight-saving change or any other change of
-    /// its offset, which the canonical cases keep clear of and
-    /// <see cref="EveryListedFormatReadsTheCanonicalStringsOfItsForm"/> asks against the host's own zone. Measured in
-    /// fresh processes, the zone set before any connection opened: under America/Chicago and America/Los_Angeles the
-    /// cast reads <c>0001-01-01</c> as <c>0002-01-01</c> and <c>1582-10-15</c> as <c>1582-10-05</c>, and under UTC as
-    /// the rest of the family does; from 1582-10-16 on it reads as the rest under those three, Asia/Tokyo and
-    /// Pacific/Kiritimati. Under America/Chicago the parse reads 02:30 on 2024-03-10, a daylight-saving change, and on
-    /// 1936-03-01, when Chicago moved from Central to Eastern Standard Time, as 03:30. A zone set while the process runs is not a measurement: what a
-    /// connection opened after it reads is shifted by the zone the process began in.
+    /// <b>What it asserts holds in every host time zone.</b> Three readings depend on the zone the host's JVM defaults
+    /// to, whatever the session's: <c>CAST … AS TIMESTAMP FORMAT</c> before 1582-10-16, which is asked only from that day
+    /// on; <c>PARSE_DATETIME</c> over a time of day the zone skips, at a daylight-saving change or any other change of its
+    /// offset, a date's midnight among them, which the canonical cases keep clear of and
+    /// <see cref="EveryListedFormatReadsTheCanonicalStringsOfItsForm"/> asks against the host's own zone; and
+    /// <c>PARSE_DATE</c> and <c>CAST … AS DATE FORMAT</c> over a date whose midnight the zone skips, which the canonical
+    /// cases keep clear of and nothing asserts. Measured in fresh processes, the zone set before any connection opened:
+    /// under America/Chicago and America/Los_Angeles the cast reads <c>0001-01-01</c> as <c>0002-01-01</c> and
+    /// <c>1582-10-15</c> as <c>1582-10-05</c>, and under UTC as the rest of the family does; from 1582-10-16 on it reads as
+    /// the rest under those three, Asia/Tokyo and Pacific/Kiritimati. Under America/Chicago the parse reads 02:30 on
+    /// 2024-03-10, a daylight-saving change, and on 1936-03-01, when Chicago moved from Central to Eastern Standard Time,
+    /// as 03:30. Under Pacific/Apia, which skipped 2011-12-30 whole, <c>PARSE_DATE</c> and the cast to <c>DATE</c> with a
+    /// format read <c>2011-12-30</c> as 2011-12-31, and under America/Sao_Paulo they read some of its skipped midnights as
+    /// the next day, 1914-01-01 and 1949-12-01 among them, and others as spelled, those of 2000 to 2005 among them. A zone
+    /// set while the process runs is not a measurement: what a connection opened after it reads is shifted by the zone the
+    /// process began in.
     /// </para>
     /// </remarks>
     public class CalciteTemporalLeniencyMeasurementTests
@@ -534,14 +539,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// Every listed format reads the canonical strings of its form as Calcite's literal of the same spelling, through
         /// the parse family, <c>CAST … AS TIMESTAMP FORMAT</c> asked from 1582-10-16 on; and over a time of day the host's
-        /// default time zone skips, at a daylight-saving change or any other change of its offset, whatever the session's
-        /// zone, <c>PARSE_DATETIME</c> reads the time the zone moves it to and the cast reads it as spelled.
+        /// default time zone skips, at a daylight-saving change or any other change of its offset, a date's midnight among
+        /// them, whatever the session's zone, <c>PARSE_DATETIME</c> reads the time the zone moves it to and the cast reads it
+        /// as spelled. What <c>PARSE_DATE</c> and <c>CAST … AS DATE FORMAT</c> read of a date whose midnight the zone skips
+        /// is not asserted, and the canonical cases keep clear of such dates.
         /// </summary>
         /// <remarks>
         /// The skipped times are 02:30 on 2024-03-10, the spring change where a zone keeps the second Sunday of March, and
-        /// 02:30 on 1936-03-01, when America/Chicago changed its standard time from Central to Eastern, no daylight saving.
+        /// 02:30 on 1936-03-01, when America/Chicago changed its standard time from Central to Eastern, no daylight saving,
+        /// read from every instant and minutes form; and the midnight of every day the host's zone skips from 1582-10-16 to
+        /// the end of 2099, read from those and from every date form, a year and month where it is the month's first day.
         /// What the host's zone moves each to is asked of that zone, so the assertion holds in every zone: under one that
-        /// skips nothing there, both read it as spelled.
+        /// skips nothing there, both read it as spelled, and one that skips no midnight, as America/Chicago does not, adds
+        /// none.
         /// </remarks>
         [Fact, CosmosPins("Calcite.ParseSpellingsReadTheirShapes")]
         public void EveryListedFormatReadsTheCanonicalStringsOfItsForm()
@@ -551,9 +561,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             canonical.Should().NotBeEmpty();
             string.Join(Environment.NewLine, Disagreements(canonical)).Should().BeEmpty("a canonical string reads as the literal of its own spelling");
 
+            var zone = java.time.ZoneId.systemDefault();
             var instant = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            var midnights = SkippedMidnights(zone);
             var skipped = new[] { java.time.LocalDateTime.of(2024, 3, 10, 2, 30), java.time.LocalDateTime.of(1936, 3, 1, 2, 30) }
-                .Select(t => (Spelled: instant.format(t), Moved: instant.format(t.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime())))
+                .Concat(midnights.Select(d => d.atStartOfDay()))
+                .Select(t => (Time: t, Spelled: instant.format(t), Moved: instant.format(t.atZone(zone).toLocalDateTime())))
                 .ToArray();
 
             var problems = new List<string>();
@@ -562,22 +575,78 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 using var connection = new CalciteConnection(new CalciteConnectionStringBuilder { Fun = "all" }.ConnectionString + session);
                 connection.Open();
 
-                foreach (var form in Forms.Where(f => f.Family is Family.Instant or Family.Minutes))
-                    foreach (var (spelled, moved) in skipped)
-                    {
-                        var fields = spelled.Replace(' ', 'T');
-                        var stored = form.Write(form.Family == Family.Instant ? fields : fields[..16], "000");
-                        var table = MaterialisedTable.Of([Document(stored)]);
+                foreach (var form in Forms.Where(f => f.Family is not (Family.Clock or Family.ClockMinutes)))
+                {
+                    // A date holds a skipped time only at its midnight, and a year and month only at its first day's.
+                    var rows = skipped
+                        .Where(t => form.Family is Family.Instant or Family.Minutes
+                            || t.Time.toLocalTime().equals(java.time.LocalTime.MIDNIGHT) && (form.Family == Family.Date || t.Time.getDayOfMonth() == 1))
+                        .Select(t => (Stored: form.Write(FieldsOf(form.Family, t.Spelled), "000"), t.Spelled, t.Moved))
+                        .ToArray();
 
-                        foreach (var format in CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(form.Pattern)!.Value))
-                            foreach (var (conversion, reads) in new[] { (Conversion.ParseDatetime, moved), (Conversion.CastFormatTimestamp, spelled) })
-                                if (table.Ask(connection, $"({Expression(conversion, format)}) = {Literal("TIMESTAMP", reads, "000")}")[0] != "T")
-                                    problems.Add($"{form.Name} {conversion} '{format}' over '{stored}' (session '{session}'): expected {reads}, read {table.Values(connection, $"CAST({Expression(conversion, format)} AS VARCHAR)")[0]}");
-                    }
+                    if (rows.Length == 0)
+                        continue;
+
+                    var table = MaterialisedTable.Of(rows.Select(r => Document(r.Stored)));
+                    foreach (var format in CosmosStoredForms.ParseFormats(CosmosStoredForms.Recognise(form.Pattern)!.Value))
+                        foreach (var conversion in new[] { Conversion.ParseDatetime, Conversion.CastFormatTimestamp })
+                        {
+                            string Reads((string Stored, string Spelled, string Moved) row) => conversion == Conversion.ParseDatetime ? row.Moved : row.Spelled;
+
+                            var letters = table.Ask(connection, $"({Expression(conversion, format)}) = CASE \"k\" {string.Join(" ", rows.Select((r, k) => $"WHEN {k} THEN {Literal("TIMESTAMP", Reads(r), "000")}"))} END")[0];
+                            if (letters.All(l => l == 'T'))
+                                continue;
+
+                            var read = table.Values(connection, $"CAST({Expression(conversion, format)} AS VARCHAR)");
+                            problems.AddRange(rows
+                                .Select((r, k) => (Row: r, Letter: letters[k], Read: read[k]))
+                                .Where(x => x.Letter != 'T')
+                                .Select(x => $"{form.Name} {conversion} '{format}' over '{x.Row.Stored}' (session '{session}'): expected {Reads(x.Row)}, read {x.Read}"));
+                        }
+                }
             }
 
             string.Join(Environment.NewLine, problems).Should().BeEmpty(
-                $"the parse reads a time the host's zone, {java.time.ZoneId.systemDefault()}, skips as {string.Join(" and ", skipped.Select(t => t.Spelled + " as " + t.Moved))}, and the cast as spelled");
+                $"the parse reads a time the host's zone, {zone}, skips as the zone moves it, {string.Join(", ", skipped.Take(2).Select(t => t.Spelled + " as " + t.Moved))} and {midnights.Count} midnights from {TimestampFormatFrom}, and the cast as spelled");
+        }
+
+        /// <summary>
+        /// A case's fields in a family's extended layout, from a reading <c>yyyy-MM-dd HH:mm:ss</c> of an instant: the date
+        /// and the clock, to the minute, the date, or the year and month.
+        /// </summary>
+        static string FieldsOf(Family family, string spelled) => family switch
+        {
+            Family.Instant => spelled.Replace(' ', 'T'),
+            Family.Minutes => spelled.Replace(' ', 'T')[..16],
+            Family.Date => spelled[..10],
+            _ => spelled[..7],
+        };
+
+        /// <summary>
+        /// The days whose midnight a zone skips, from <see cref="TimestampFormatFrom"/> to the end of 2099, its rules
+        /// repeating after their last change: each a time of day the zone skips and a date it may read as another.
+        /// </summary>
+        static IReadOnlyList<java.time.LocalDate> SkippedMidnights(java.time.ZoneId zone)
+        {
+            var rules = zone.getRules();
+            var end = java.time.LocalDateTime.of(2100, 1, 1, 0, 0).toInstant(java.time.ZoneOffset.UTC);
+            var found = new List<java.time.LocalDate>();
+
+            for (var t = rules.nextTransition(java.time.LocalDate.parse(TimestampFormatFrom).atStartOfDay().toInstant(java.time.ZoneOffset.UTC));
+                t is not null && t.getInstant().isBefore(end);
+                t = rules.nextTransition(t.getInstant()))
+            {
+                if (t.isGap() == false)
+                    continue;
+
+                var before = t.getDateTimeBefore();
+                for (var midnight = before.toLocalTime().equals(java.time.LocalTime.MIDNIGHT) ? before : before.toLocalDate().plusDays(1).atStartOfDay();
+                    midnight.isBefore(t.getDateTimeAfter());
+                    midnight = midnight.plusDays(1))
+                    found.Add(midnight.toLocalDate());
+            }
+
+            return found;
         }
 
         /// <summary>

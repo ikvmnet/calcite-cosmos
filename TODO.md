@@ -1182,9 +1182,9 @@ hand. Two tests pin both directions.
   Julian calendar and the date that makes read as a proleptic Gregorian day, raising where there is
   none, so 29 February of 0100 raises where that of 1900 rolls to 1 March, and a year before year one
   is counted by its year of the era, `0000-01-01` read as `0001-01-01` and `0000-00-00` as `0002-11-30`;
-  what `CAST … AS TIMESTAMP FORMAT` reads before 1582-10-16, and `PARSE_DATETIME` of a time the
-  host's default time zone skips, at a daylight-saving change or any other change of its offset,
-  depends on that zone; and `PARSE_TIME` wraps at a day where the plain `TIME` cast does not.
+  what `CAST … AS TIMESTAMP FORMAT` reads before 1582-10-16, `PARSE_DATETIME` of a time the
+  host's default time zone skips, at a daylight-saving change or any other change of its offset, and
+  `PARSE_DATE` and `CAST … AS DATE FORMAT` of a date whose midnight it skips depend on that zone; and `PARSE_TIME` wraps at a day where the plain `TIME` cast does not.
   `Calcite.ParsesReadTheirFieldsLeniently` names no evaluator, so nothing reads a parse today.
 - **The date cast's day zero** — *small, soundness; for filters with 3C's stored lowering, for projected
   conditions with 3D, and for the sort with the order family.* `CAST(<text> AS DATE)` and `AS TIMESTAMP` over

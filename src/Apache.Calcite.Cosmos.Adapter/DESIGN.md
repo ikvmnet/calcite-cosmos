@@ -551,8 +551,13 @@ default time zone skips, at a daylight-saving change or any other change of its 
 zone makes of them, whatever the session's: under America/Chicago the cast reads `0001-01-01` as
 `0002-01-01` and `1582-10-15` as `1582-10-05`, and the parse reads `2024-03-10T02:30:00Z`, a
 daylight-saving change, and `1936-03-01T02:30:00Z`, when Chicago moved from Central to Eastern Standard
-Time, as 03:30; under UTC each reads as spelled. So the measurement asks the cast from 1582-10-16 on and
-the skipped times against the host's own zone, and holds wherever it runs. Through the adapter as it
+Time, as 03:30; under UTC each reads as spelled. `PARSE_DATE` and `CAST … AS DATE FORMAT` over a date
+whose midnight that zone skips depend on it too: under Pacific/Apia, which skipped 2011-12-30 whole, both
+read `2011-12-30` as the 31st, where the cast to `TIMESTAMP` with a format reads it as written, and under
+America/Sao_Paulo they read some of its skipped midnights as the next day and others as written. So the
+measurement asks the cast from 1582-10-16 on and the skipped times, every skipped midnight among them,
+against the host's own zone, asserts nothing of the date conversions over a skipped midnight, and holds
+wherever it runs. Through the adapter as it
 stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form was sent as
 `WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that string, `2016-12-31T24:00:00Z`,
 `2016-12-31T23:60:00Z`, `2016-11-61T00:00:00Z` and the next day's it kept one document where Calcite
