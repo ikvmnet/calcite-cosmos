@@ -439,11 +439,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>Asked by what the cast's type holds, a place in a zone among it.</b> A cast to
         /// <c>TIMESTAMP WITH LOCAL TIME ZONE</c> or <c>TIMESTAMP WITH TIME ZONE</c> holds an instant's
-        /// halves as a <c>TIMESTAMP</c> does, and raises over every calendar date
-        /// (<c>Calcite.TemporalCastReadsFewShapes</c>), so its type is read with
-        /// <see cref="CosmosTemporalParts.Zone"/> beside the halves, which no row lists. It was read as
-        /// the halves alone, and a sort through a cast of a declared date to one was sent on the stored
-        /// text, answering where the query raises.
+        /// halves as a <c>TIMESTAMP</c> does, and raises over every string of <c>iso8601-date</c>, the
+        /// two times of day and the ISO-8601 instants, <c>TIMESTAMP WITH TIME ZONE</c> reading a run
+        /// of digits, the basic date's among them (<c>Calcite.TemporalCastReadsFewShapes</c>), so its
+        /// type is read with <see cref="CosmosTemporalParts.Zone"/> beside the halves, which no row
+        /// lists. It was read as the halves alone, and a sort through a cast of a declared date to one
+        /// was sent on the stored text, answering where the query raises.
         /// </para>
         /// <para>
         /// <b>The two times of day are read, and not as the form's strings denote, so they are not

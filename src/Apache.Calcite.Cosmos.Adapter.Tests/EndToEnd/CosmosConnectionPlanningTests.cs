@@ -940,7 +940,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>ORDER BY</c> on the stored text, which orders <c>12:30:99</c> before <c>12:31:00</c> where Calcite's cast
         /// reads the first as 12:31:39 (<c>Calcite.TimeCastRollsAClocksFields</c>). The convention takes that rule out of
         /// the planner and leaves its own guarded one, <c>CosmosSortProjectTransposeRule</c>. The last five cast the
-        /// declared date or clock to a type placed in a zone, which the plain cast reads no stored string into
+        /// declared date or clock to a type placed in a zone, which the plain cast reads no string of either form into
         /// (<c>Calcite.TemporalCastReadsFewShapes</c>): the guarded rule moved the first four onto the stored date, the
         /// plain cast's table having read a zoned timestamp as a <c>TIMESTAMP</c>.
         /// </remarks>
