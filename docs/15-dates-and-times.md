@@ -141,7 +141,8 @@ a query that, run anywhere else, raises an error. They stay in process, where th
 always would.
 
 **A calendar date read with a cast pushes**, where the container declares `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`:
-a comparison as `DATE` or `TIMESTAMP` with a literal or a parameter, and a sort and a page on it.
+a comparison as `DATE` or `TIMESTAMP` with a literal that falls on a day's midnight or with a parameter,
+and a sort and a page on it.
 
 ```sql
 WHERE CAST(JSON_VALUE(c."DOC", '$.day') AS DATE) > DATE '2024-01-15'
