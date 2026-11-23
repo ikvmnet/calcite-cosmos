@@ -1154,9 +1154,10 @@ hand. Two tests pin both directions.
   the default type system caps `TIMESTAMP` at 3, so `TIMESTAMP(6)` and up come back as `(3)`, and
   `FF4` through `FF9` read the digits as milliseconds exactly as `FF3` does (`.6789` is 6.789 s).
 - **And the chain is withdrawn: measured over every string a form admits, no format reads its form one
-  for one.** A temporal form is a run of digits per field, and every parse reads a field past its range
-  as the instant its fields make once carried over, raising nothing over these: `2016-12-31T24:00:00Z`
-  and `…T23:60:00Z` are `2017-01-01T00:00:00Z`'s instant (`Calcite.ParsesReadTheirFieldsLeniently`,
+  for one.** A temporal form is a run of digits per field, and every listed format reads a string of its
+  own form whose field is past its range as the value its fields make once carried over:
+  `2016-12-31T24:00:00Z` and `…T23:60:00Z` are `2017-01-01T00:00:00Z`'s instant through `PARSE_DATETIME`
+  and `CAST … AS TIMESTAMP FORMAT`, which raise over neither (`Calcite.ParsesReadTheirFieldsLeniently`,
   `CalciteTemporalLeniencyMeasurementTests`). An equality sent on the stored strings kept one of three
   such spellings where Calcite kept all three. `ParsesExactly` answers `false` for every form, so both
   sites and the projection decline a parse by that answer alone, and the formats stay for the
