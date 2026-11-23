@@ -2663,6 +2663,15 @@ across documents* and *A join of a container to itself* is the record.
   nothing for an item of an array or a map, a view's column of one included (`CosmosImplementor.Projected`), so no
   weakening is derived through such a column. The proper fix decides once whether the member is a path, refused as
   `RETURNING VARIANT` is or written under the element type, and asks it of every clause.
+- **A selected `JSON_QUERY … RETURNING VARIANT ARRAY` is read back with its elements boxed** — *small, soundness; on
+  `main`.* Calcite's `JSON_QUERY` holds each element of a `VARIANT ARRAY` in no box, and the reader returns a selected
+  column of one with each element in a `VARIANT` box (`CosmosJson`'s collection reading). So where a plan selects the
+  array beneath a condition kept in process, `SELECT t."id" FROM (SELECT c."id", c."DOC", JSON_QUERY(c."DOC", '$.x'
+  RETURNING VARIANT ARRAY) AS "a" FROM products AS c) AS t WHERE t."a"[1] = CAST('a' AS VARIANT) AND
+  INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'` keeps `{"x":["a"],"name":"steel"}`, which Calcite drops, `<>`
+  answers otherwise than Calcite too, and `SELECT t."a"[1]` reads `a` in a box where Calcite's holds none. The proper
+  fix is the read-back's: read a `VARIANT` collection's elements unboxed, as Calcite's `JSON_QUERY` holds them, or
+  refuse the column, as `RETURNING VARIANT` is refused, until a row measures how Calcite's value reads back.
 
 ---
 
