@@ -996,11 +996,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A calendar date, declared.
-        /// </summary>
-        const string DatePattern = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
-
-        /// <summary>
         /// A time of day to the second, declared.
         /// </summary>
         const string TimePattern = "^[0-9]{2}:[0-9]{2}:[0-9]{2}$";
@@ -1046,7 +1041,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             query.Sql.Should().Contain(rendered, query.Sql);
             plan.Should().NotContain("ClrCursorFilter", plan);
-            Slot(query).Form.Should().Be(CosmosTemporalForms.Iso8601Date, "the slot carries the spelling to write the value in");
+            StoredSlots(query).Single().Form.Should().Be(CosmosTemporalForms.Iso8601Date, "the slot carries the spelling to write the value in");
         }
 
         /// <summary>
