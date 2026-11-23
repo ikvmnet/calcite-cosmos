@@ -137,7 +137,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             return rows;
         }
 
-        static System.Data.Common.DbDataSource Open(string? schema, ICosmosQueryExecutor executor, CosmosServiceTarget? target)
+        static System.Data.Common.DbDataSource Open(string? schema, ICosmosQueryExecutor executor, CosmosServiceTarget? target, bool functions = false)
         {
             var metadata = TestReasoning.Bind(new CosmosContainerMetadata("items", ["/category"]));
             if (schema is not null)
@@ -152,7 +152,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 Schema = "adhoc",
                 CaseSensitive = true,
             }.ConnectionString)
-                .ConfigureRootSchema(root => root.add("items", table))
+                .ConfigureRootSchema(root =>
+                {
+                    root.add("items", table);
+
+                    // The functions a Cosmos schema names, where the statement calls one.
+                    if (functions)
+                        for (var entries = Adapter.Sql.CosmosSchemaFunctions.Instance.entries().iterator(); entries.hasNext();)
+                        {
+                            var entry = (java.util.Map.Entry)entries.next();
+                            root.add((string)entry.getKey(), (org.apache.calcite.schema.Function)entry.getValue());
+                        }
+                })
                 .Build();
         }
 
@@ -952,6 +963,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var adapter = Run(() => Answer("SELECT JSON_VALUE(c.\"DOC\", '$.category' RETURNING VARIANT) AS \"v\" FROM items AS c", new Rel.Convert.CosmosToClrCursorConverterTests.SelectingExecutor(document)));
             var calcite = Run(() => Answer("SELECT JSON_VALUE('{\"category\": " + value + "}', '$.category' RETURNING VARIANT) AS \"v\" FROM (VALUES (1)) AS t(\"k\")", new NoExecutor()));
 
+            adapter.Should().Be(calcite, document);
+        }
+
+        /// <summary>
+        /// A type test of an item of a <c>JSON_VALUE … RETURNING VARIANT</c>, or of an accessor over one, fails through this
+        /// connection as Calcite's own does over the same documents: Calcite has a body for a type test only of
+        /// <c>JSON_VALUE</c> or <c>JSON_QUERY</c> of a path, and nothing of it is sent.
+        /// </summary>
+        /// <remarks>
+        /// Resolved to the path beneath, the item was sent as the service's test of that path, <c>IS_DEFINED(c.x.a)</c>, and
+        /// answered where Calcite fails. It addresses no path now, nor does what reads through it
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>). Calcite's own answer is the same statement over the documents written as
+        /// a <c>VALUES</c> list, which no rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData("IS_DEFINED({0}['a'])", """{ "id": "x1", "x": { "a": 1 } }""")]
+        [InlineData("IS_NUMBER({0}['a'])", """{ "id": "x1", "x": { "a": 1 } }""")]
+        [InlineData("IS_STRING(JSON_VALUE({0}, '$.a'))", """{ "id": "x1", "x": { "a": "s" } }""")]
+        public void ATypeTestOfAnItemOfAReturningVariantFailsAsCalcitesOwnOverTheSameDocuments(string test, string document)
+        {
+            static string Run(string sql, ICosmosQueryExecutor executor)
+            {
+                try
+                {
+                    using var source = Open(null, executor, null, functions: true);
+                    using var connection = source.OpenConnection();
+                    return "rows " + string.Join(", ", Rows(connection, sql, []));
+                }
+                catch (Exception e)
+                {
+                    TestContext.Current.TestOutputHelper?.WriteLine(e.ToString());
+                    return e.ToString().Contains("Unable to implement", StringComparison.Ordinal) ? "fails to implement" : "fails: " + e.GetBaseException().Message;
+                }
+            }
+
+            var condition = string.Format(test, "JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)");
+            var adapter = Run($"SELECT c.\"id\" FROM \"items\" AS c WHERE {condition}", new Rel.Convert.CosmosToClrCursorConverterTests.SelectingExecutor(document));
+            var calcite = Run($"SELECT c.\"id\" FROM (VALUES ('x1', '{document}')) AS c(\"id\", \"DOC\") WHERE {condition}", new NoExecutor());
+
+            calcite.Should().Be("fails to implement", "Calcite has a body for a type test only of a path");
             adapter.Should().Be(calcite, document);
         }
 
