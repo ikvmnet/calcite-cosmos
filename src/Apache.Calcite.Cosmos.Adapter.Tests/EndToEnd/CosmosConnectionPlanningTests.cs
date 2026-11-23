@@ -1007,6 +1007,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A null test through an accessor typed <c>TIME WITH TIME ZONE</c> over a time of day, declared or not, on both
+        /// targets, is computed in process and raises as Calcite's <c>RETURNING</c> clause does over every stored string,
+        /// rather than sent as the path's presence.
+        /// </summary>
+        /// <remarks>
+        /// <c>RETURNING TIME WITH TIME ZONE</c> asserts its type as every temporal <c>RETURNING</c> does, and raises over a
+        /// string of every registered form (<c>Calcite.ReturningReadsNoStoredString</c>). The type was read as holding no
+        /// part of an instant, so the accessor was let through as no temporal one, and its null test was written as the text
+        /// accessor's null set, <c>(IS_DEFINED(c.t) AND NOT IS_NULL(c.t) AND IS_PRIMITIVE(c.t))</c>, answering every row
+        /// where the query raises.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NOT NULL""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NULL""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) = JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE)""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NULL OR c."id" = '0'""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME(3) WITH TIME ZONE) IS NOT NULL""")]
+        public void ANullTestThroughAnAccessorTypedTimeWithTimeZoneRaisesAsCalciteDoes(string sql)
+        {
+            string[] documents =
+            [
+                """{ "id": "0", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "13:00:00", "m": "12:30" }""",
+                """{ "id": "1", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "24:00:00", "m": "12:30" }""",
+            ];
+
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                foreach (var declared in new[] { true, false })
+                {
+                    Sends(sql, declared, Temporal, target, new Infrastructure.PlannersSeen())
+                        .Should().NotContain("WHERE", $"{target}, declared {declared}: the clause raises over the stored string, so nothing stands for the test");
+
+                    var answer = () => AnswerInStoredOrder(sql, declared ? Temporal : null, target, documents);
+                    answer.Should().Throw<Exception>($"{target}, declared {declared}: RETURNING TIME WITH TIME ZONE raises over a stored time of day")
+                        .Where(e => e.ToString().Contains("this executor answers") == false, "the raise is the clause's, not a request the executor refuses");
+                }
+        }
+
+        /// <summary>
         /// A sort keyed by a cast orders the rows by the value the cast reads: a time of day whose second is past its range
         /// after the time it rolls past, and an unpadded date by its day rather than by its text.
         /// </summary>

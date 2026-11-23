@@ -806,8 +806,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// A plain cast to a temporal type reads the canonical strings of three forms as Calcite's literal of the same
         /// spelling, a calendar date into <c>DATE</c> and <c>TIMESTAMP</c> and a time of day at seconds or minutes into
         /// <c>TIME</c>, and raises into each of the three over a sample of every registered form holding a <c>T</c>; into a
-        /// type placed in a zone, <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, <c>TIMESTAMP WITH TIME ZONE</c> and <c>TIME WITH
-        /// LOCAL TIME ZONE</c>, it raises over all of them.
+        /// type placed in a zone, <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, <c>TIMESTAMP WITH TIME ZONE</c>, <c>TIME WITH
+        /// LOCAL TIME ZONE</c> and <c>TIME WITH TIME ZONE</c>, it raises over all of them.
         /// </summary>
         /// <remarks>
         /// <see cref="CosmosStoredForms.EngineReads"/>, the table a cast is asked of by what its type holds
@@ -846,6 +846,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 ("TIMESTAMP WITH LOCAL TIME ZONE", SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE, "2024-01-15 12:30:00 UTC"),
                 ("TIMESTAMP WITH TIME ZONE", SqlTypeName.TIMESTAMP_TZ, "1705321800000"),
                 ("TIME WITH LOCAL TIME ZONE", SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE, "12:30:00 UTC"),
+                ("TIME WITH TIME ZONE", SqlTypeName.TIME_TZ, "45000000"),
             };
 
             foreach (var (type, _, control) in zoned)
@@ -868,17 +869,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
-        /// <c>JSON_VALUE(… RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c> raise over a string of
-        /// every registered temporal form, the strings the plain cast reads among them and those that roll a field, and
-        /// read a JSON number: of days since the epoch, of milliseconds into the day, of milliseconds since the epoch. Over
-        /// an absent path each is null.
+        /// <c>JSON_VALUE(… RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>, and <c>RETURNING</c>
+        /// each type placed in a zone, raise over a string of every registered temporal form, the strings the plain cast
+        /// reads among them and those that roll a field, and read a JSON number: of days since the epoch, of milliseconds
+        /// into the day, of milliseconds since the epoch, and a number each zoned type reads. Over an absent path each is
+        /// null.
         /// </summary>
         /// <remarks>
         /// The clause asserts the extracted type rather than converting to it (<c>Calcite.ReturningAsserts</c>), so no
         /// stored string is a value of it, and an accessor so typed over a declared form has no column the service could
         /// send in its place. The numbers and the absent path are the controls: the raise is the string's, not the
         /// clause's, and it is told apart from a null. <see cref="CosmosStoredForms.ReturningReads"/> is held to it for
-        /// every registered form and type.
+        /// every registered form and type, each type read as a temporal one (<see cref="CosmosTemporalParse.PartsOf"/>),
+        /// which the accessor asks this reading of.
         /// </remarks>
         [Fact, CosmosPins("Calcite.ReturningReadsNoStoredString")]
         public void AReturningClauseRaisesOverEveryStoredString()
@@ -904,30 +907,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             strings.Should().Contain(["2024-02-29", "00:00:00", "00:00", "2024-01-15T12:30:00Z"], "the forms the plain cast reads, and an instant, are among them");
 
+            var zoned = new (string Type, SqlTypeName Name, int Reads)[]
+            {
+                ("TIME WITH TIME ZONE", SqlTypeName.TIME_TZ, 1),
+                ("TIME WITH LOCAL TIME ZONE", SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE, 1),
+                ("TIMESTAMP WITH LOCAL TIME ZONE", SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE, 2),
+                ("TIMESTAMP WITH TIME ZONE", SqlTypeName.TIMESTAMP_TZ, 2),
+            };
+
             var table = MaterialisedTable.Of(strings.Select(Document));
             var problems = new List<string>();
-            foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" })
+            foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" }.Concat(zoned.Select(z => z.Type)))
                 problems.AddRange(table.Values(connection, $"CAST(JSON_VALUE(\"d\", '$.s' RETURNING {type}) AS VARCHAR)")
                     .Select((v, k) => (Stored: strings[k], Read: v))
                     .Where(r => r.Read is not Exception)
                     .Select(r => $"RETURNING {type} over '{r.Stored}': expected a raise, read {r.Read ?? "null"}"));
 
-            string.Join(Environment.NewLine, problems).Should().BeEmpty("RETURNING asserts its type, and a string is none of the three");
+            string.Join(Environment.NewLine, problems).Should().BeEmpty("RETURNING asserts its type, and a string is none of these");
 
             var numbers = MaterialisedTable.Of(["{\"s\":19737}", "{\"s\":45000000}", "{\"s\":1705321800000}"]);
             numbers.Values(connection, "CAST(JSON_VALUE(\"d\", '$.s' RETURNING DATE) AS VARCHAR)")[0].Should().Be("2024-01-15", "a number of days is a date");
             numbers.Values(connection, "CAST(JSON_VALUE(\"d\", '$.s' RETURNING TIME) AS VARCHAR)")[1].Should().Be("12:30:00", "a number of milliseconds into the day a time");
             numbers.Values(connection, "CAST(JSON_VALUE(\"d\", '$.s' RETURNING TIMESTAMP) AS VARCHAR)")[2].Should().Be("2024-01-15 12:30:00", "and of milliseconds since the epoch an instant");
+            foreach (var (type, _, reads) in zoned)
+                numbers.Values(connection, $"CAST(JSON_VALUE(\"d\", '$.s' RETURNING {type}) AS VARCHAR)")[reads].Should().NotBeNull($"RETURNING {type} reads a number")
+                    .And.NotBeAssignableTo<Exception>($"RETURNING {type} reads a number, so the raise over a string is the string's");
 
             var absent = MaterialisedTable.Of(["{}"]);
-            foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" })
+            foreach (var type in new[] { "DATE", "TIME", "TIMESTAMP" }.Concat(zoned.Select(z => z.Type)))
                 absent.Values(connection, $"JSON_VALUE(\"d\", '$.s' RETURNING {type})")[0].Should().BeNull($"RETURNING {type} over an absent path is null, not a raise");
 
             // And the reading an accessor so typed asks before it is sent, and the order family asks of a column so typed,
-            // says the same of every form.
-            foreach (var representation in CosmosTemporalForms.Registered)
-                foreach (var parts in new[] { CosmosTemporalParts.Date, CosmosTemporalParts.Time, CosmosTemporalParts.Instant })
-                    CosmosStoredForms.ReturningReads(representation, parts).Should().BeFalse($"RETURNING reads no string of {representation.Name} into {parts}");
+            // says the same of every form, each type read as a temporal one: a type read as none is let through as no
+            // temporal accessor.
+            foreach (var name in new[] { SqlTypeName.DATE, SqlTypeName.TIME, SqlTypeName.TIMESTAMP }.Concat(zoned.Select(z => z.Name)))
+            {
+                var parts = CosmosTemporalParse.PartsOf(name);
+                parts.Should().NotBe(CosmosTemporalParts.None, $"{name.getName()} is a temporal type, whose accessor asks what RETURNING reads");
+                foreach (var representation in CosmosTemporalForms.Registered)
+                    CosmosStoredForms.ReturningReads(representation, parts).Should().BeFalse($"RETURNING reads no string of {representation.Name} into {name.getName()}");
+            }
         }
 
     }

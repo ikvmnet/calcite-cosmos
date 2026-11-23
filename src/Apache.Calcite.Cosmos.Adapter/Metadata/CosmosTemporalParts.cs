@@ -40,15 +40,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         Instant = Date | Time,
 
         /// <summary>
-        /// A place in a time zone, which a <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, a <c>TIMESTAMP WITH TIME ZONE</c> and a
-        /// <c>TIME WITH LOCAL TIME ZONE</c> hold beside their halves, and a zone-less type does not.
+        /// A place in a time zone, which a <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, a <c>TIMESTAMP WITH TIME ZONE</c>, a
+        /// <c>TIME WITH LOCAL TIME ZONE</c> and a <c>TIME WITH TIME ZONE</c> hold beside their halves, and a zone-less type
+        /// does not.
         /// </summary>
         /// <remarks>
         /// Kept apart because Calcite's plain cast does not read a zone-less string into such a type as it reads it into
         /// the zone-less one: measured, it raises over every string of the calendar date and of the two times of day
         /// (<c>Calcite.TemporalCastReadsFewShapes</c>), where the cast to <c>DATE</c> and <c>TIMESTAMP</c> reads the date.
         /// So <see cref="CosmosTemporalForms.EngineReads"/>, asked by what a cast's type holds, lists no target holding
-        /// this, and a cast to a zoned type reads no form.
+        /// this, and a cast to a zoned type reads no form. Into a zoned type, as into a zone-less one, a <c>RETURNING</c>
+        /// clause raises over every stored string (<c>Calcite.ReturningReadsNoStoredString</c>).
         /// </remarks>
         Zone = 4,
 

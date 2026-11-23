@@ -521,7 +521,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>JSON_VALUE(…, RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>
         /// assert the extracted type rather than converting to it, and raise over a string of every
         /// registered temporal form, reading only a JSON number of days, of milliseconds into the
-        /// day or of milliseconds since the epoch (<c>Calcite.ReturningReadsNoStoredString</c>). Every
+        /// day or of milliseconds since the epoch, and <c>RETURNING</c> each type placed in a zone
+        /// raises over every one of those strings too (<c>Calcite.ReturningReadsNoStoredString</c>). Every
         /// form here is a language of strings, so the accessor reads none of them, and an accessor so
         /// typed is computed in process, where it raises as the query does. The plain cast, which does
         /// read a calendar date, is <see cref="EngineReads"/>'s.

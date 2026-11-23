@@ -156,8 +156,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// it holds one.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A zoned type is not its zone-less sibling to the plain cast, which raises over every stored string a zone-less
         /// type reads (<see cref="CosmosTemporalParts.Zone"/>), so it is read as what it holds and not as the halves alone.
+        /// </para>
+        /// <para>
+        /// Every temporal type is read, <c>TIME WITH TIME ZONE</c> among them. A type read as none of these is no temporal
+        /// one to the accessor's reading, which sends an accessor so typed as it sends any other: one typed <c>TIME WITH
+        /// TIME ZONE</c>, whose <c>RETURNING</c> clause raises over every stored string, had its null test sent as the
+        /// path's presence.
+        /// </para>
         /// </remarks>
         /// <param name="type">The type, or <c>null</c>.</param>
         /// <returns>The parts, or <see cref="CosmosTemporalParts.None"/> for a type that is none of these.</returns>
@@ -169,7 +177,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.TIME)
                 return CosmosTemporalParts.Time;
 
-            if (type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE)
+            if (type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIME_TZ)
                 return CosmosTemporalParts.Time | CosmosTemporalParts.Zone;
 
             if (type == SqlTypeName.TIMESTAMP)

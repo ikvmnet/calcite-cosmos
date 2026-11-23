@@ -477,7 +477,7 @@ Calcite's own runtime:
 | `CAST(<s> AS TIME)` | `12:60:00`, `12:30:60`, `24:00:00`, `99:99:99` | the fields added as they stand: 13:00:00, 12:31:00, and two clocks later than every time of day; no raise |
 | `CAST(<s> AS TIME)` | `12:30:00.123` | `12:30:00` — the fraction is dropped |
 | `CAST(<s> AS TIME)` | `20240115` | `09:37:03` — a value, silently wrong |
-| `CAST(<s> AS TIMESTAMP WITH LOCAL TIME ZONE)`, `WITH TIME ZONE`, `CAST(<s> AS TIME WITH LOCAL TIME ZONE)` | `2024-01-15`, `12:30:00`, any instant | raises |
+| `CAST(<s> AS TIMESTAMP WITH LOCAL TIME ZONE)`, `WITH TIME ZONE`, `CAST(<s> AS TIME WITH LOCAL TIME ZONE)`, `WITH TIME ZONE` | `2024-01-15`, `12:30:00`, any instant | raises |
 | `JSON_VALUE(…, RETURNING TIMESTAMP)` | any string at all | raises |
 | `JSON_VALUE(…, RETURNING TIMESTAMP)` | the JSON *number* `1705321800000` | ✔ |
 
@@ -596,6 +596,14 @@ to `TIME WITH LOCAL TIME ZONE`, raise over every calendar date, time of day and 
 one over a declared date was moved onto the stored text and answered where the query raises. A zoned type
 is read with its place in a zone beside the halves (`CosmosTemporalParts.Zone`), which no row lists, so
 the order family and the guarded transpose refuse such a cast by the table alone.
+
+**An accessor typed `TIME WITH TIME ZONE` was read as no temporal one** (`Calcite.ReturningReadsNoStoredString`).
+`CosmosTemporalParse.PartsOf` answered none for the type, and `RequireTheEngineCouldRead` sends an
+accessor whose type holds no part of an instant as it sends any other, so a null test through one was
+written as the text accessor's null set and answered every row, where `RETURNING TIME WITH TIME ZONE`
+raises over every stored string, as `RETURNING` into each zoned type does. The type is read as a time
+of day with its place in a zone, as `TIME WITH LOCAL TIME ZONE` is, so the accessor asks `ReturningReads`,
+which no form answers, and is computed in process, declared or not.
 
 **The calendar date's row stays, and its day zero is recorded rather than fixed**
 (`Calcite.DateCastReadsDayZeroAsTheMonthBefore`). The cast reads `2024-03-00` as 29 February and
