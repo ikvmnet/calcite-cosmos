@@ -2775,14 +2775,14 @@ one, compared with a parameter, bound as the count of days or milliseconds Calci
 the value in, which the SDK writes as an object, were answered where Calcite's plan fails reading the path; and a
 `RETURNING` array's `<>`, bound as the `java.util.List` of Java boxes Calcite holds the array in, whose numbers the SDK
 writes as objects, kept the document Calcite drops. Shaping the elements would not make that sound, nobody having shown
-the service's comparison of an array or an object to be Calcite's. A `UUID`, a date or an instant compared with a path
-declared to spell one is written in that spelling, through a slot of its own. So no statement reaches the step's
-interval multiplication or its binary length; both are kept so that the conversion is Calcite's for every type, as the
-test against Calcite's generated code holds it. A presence slot reads only whether a value is bound, so it is not
-converted, and a row count is read as Calcite's limit reads it, below. Calcite fails only once a row reaches the
-parameter's reading, which leaves a statement whose request reads the parameter failing where Calcite answers, over no
-row or where no row takes the `CASE` arm reading it, and one the facts graph decides not to send answering where Calcite
-fails; `TODO.md` records both.
+the service's comparison of an array or an object to be Calcite's. A `UUID` compared with a path declared to spell one,
+and a date or an instant compared with a path declared to spell a calendar date and read with a plain cast, are written
+in that spelling, through a slot of their own. So no statement reaches the step's interval multiplication or its binary
+length; both are kept so that the conversion is Calcite's for every type, as the test against Calcite's generated code
+holds it. A presence slot reads only whether a value is bound, so it is not converted, and a row count is read as
+Calcite's limit reads it, below. Calcite fails only once a row reaches the parameter's reading, which leaves a statement
+whose request reads the parameter failing where Calcite answers, over no row or where no row takes the `CASE` arm
+reading it, and one the facts graph decides not to send answering where Calcite fails; `TODO.md` records both.
 
 **A NaN or an infinity is never sent, and a parameter holding one fails by name, a bridge.** No JSON number holds
 either, and the SDK's default serializer writes one as the string `"NaN"`, `"Infinity"` or `"-Infinity"`, which the

@@ -1155,20 +1155,22 @@ hand. Two tests pin both directions.
   `FF4` through `FF9` read the digits as milliseconds exactly as `FF3` does (`.6789` is 6.789 s).
 - **And the chain is withdrawn: measured over every string a form admits, no format reads its form one
   for one.** A temporal form is a run of digits per field, and every listed format reads a string of its
-  own form whose field is past its range as the value its fields make once carried over:
-  `2016-12-31T24:00:00Z` and `…T23:60:00Z` are `2017-01-01T00:00:00Z`'s instant through `PARSE_DATETIME`
-  and `CAST … AS TIMESTAMP FORMAT`, which raise over neither (`Calcite.ParsesReadTheirFieldsLeniently`,
-  `CalciteTemporalLeniencyMeasurementTests`). An equality sent on the stored strings kept one of three
-  such spellings where Calcite kept all three. `ParsesExactly` answers `false` for every form, so both
-  sites and the projection decline a parse by that answer alone, and the formats stay for the
-  measurement. `DESIGN.md` has the whole of what was measured, under *A fact says which relations it
-  preserves*. The two times of day left `EngineTargets` on the same measurement, the `TIME` cast adding
-  a clock's fields as they stand (`Calcite.TimeCastRollsAClocksFields`). And an accessor's `RETURNING`
-  clause, which had been asking that table, was measured on its own: `RETURNING DATE`, `TIME` and
-  `TIMESTAMP` raise over a string of every registered form (`Calcite.ReturningReadsNoStoredString`), so an
-  accessor so typed over a declared calendar date or time of day, sent as the bare path, answered every
-  row where the query raises. It asks `CosmosTemporalForms.ReturningReads` now, which no form answers,
-  and is computed in process, and the order family reads such a column by the same answer.
+  own form whose field is past its range as the value its fields make once carried over (before 1582-10-15
+  by the Julian calendar, the date that makes read as a proleptic Gregorian day, raising where there is
+  none): `2016-12-31T24:00:00Z` and `…T23:60:00Z` are `2017-01-01T00:00:00Z`'s instant through
+  `PARSE_DATETIME` and `CAST … AS TIMESTAMP FORMAT`, which raise over neither
+  (`Calcite.ParsesReadTheirFieldsLeniently`, `CalciteTemporalLeniencyMeasurementTests`). An equality sent
+  on the stored strings kept one of three such spellings where Calcite kept all three. `ParsesExactly`
+  answers `false` for every form, so both sites and the projection decline a parse by that answer alone,
+  and the formats stay for the measurement. `DESIGN.md` has the whole of what was measured, under *A fact
+  says which relations it preserves*. The two times of day left `EngineTargets` on the same measurement,
+  the `TIME` cast adding a clock's fields as they stand (`Calcite.TimeCastRollsAClocksFields`). And an
+  accessor's `RETURNING` clause, which had been asking that table, was measured on its own:
+  `RETURNING DATE`, `TIME` and `TIMESTAMP` raise over a string of every registered form
+  (`Calcite.ReturningReadsNoStoredString`), so an accessor so typed over a declared calendar date or time
+  of day, sent as the bare path, answered every row where the query raises. It asks
+  `CosmosTemporalForms.ReturningReads` now, which no form answers, and is computed in process, and the
+  order family reads such a column by the same answer.
 
 **Not built, and each for a stated reason:**
 

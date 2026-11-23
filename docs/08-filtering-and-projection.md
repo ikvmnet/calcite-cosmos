@@ -488,8 +488,9 @@ A parameter is sent as a Cosmos parameter, exactly as a literal of the same type
 includes the row limit — `OFFSET ? ROWS FETCH NEXT ? ROWS ONLY` becomes `OFFSET @p0 LIMIT @p1` — so one
 prepared statement serves every page. A parameter of an interval, a date or a time, a `UUID`, a binary
 type, an array, a multiset or a map is never sent, as no literal of one is: what reads it is computed in
-process. A `UUID`, a date or an instant compared with a property declared to spell one is the exception,
-sent in that spelling (Chapters 14.2 and 15.2).
+process. A `UUID` compared with a property declared to spell one is the exception, and so is a date or an
+instant compared with a property declared to spell a calendar date and read with a plain `CAST`: each is
+sent in that spelling (Chapters 14.2 and 15.3).
 
 **A number is sent as one Cosmos reads as itself.** Cosmos reads a number written with a decimal point
 as a double, and keeps a stored integer exact. So a whole number beyond 2^53

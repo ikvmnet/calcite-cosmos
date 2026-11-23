@@ -402,12 +402,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <c>2016-12-31T23:60:00Z</c> beside <c>2017-01-01T00:00:00Z</c>, and measured,
         /// <c>PARSE_DATETIME</c> and <c>CAST … AS TIMESTAMP FORMAT</c> read each of those strings as
         /// <c>2017-01-01T00:00:00Z</c>'s instant, raising over neither, and every listed format reads a
-        /// string of its own form whose field is past its range as the value its fields make
-        /// (<c>Calcite.ParsesReadTheirFieldsLeniently</c>). Those three are one instant to Calcite, so
-        /// an equality on the stored strings keeps one of them where Calcite keeps all three, and an
-        /// order of the stored strings is not the order of the instants. No format reads a form one
-        /// for one, so this answers <c>false</c>, and every caller leaves the parse to Calcite by that
-        /// answer alone.
+        /// string of its own form whose field is past its range as the value its fields make (before
+        /// 1582-10-15 a field is carried over by the Julian calendar and the date read as a proleptic
+        /// Gregorian day, raising where there is none; <c>Calcite.ParsesReadTheirFieldsLeniently</c>).
+        /// Those three are one instant to Calcite, so an equality on the stored strings keeps one of
+        /// them where Calcite keeps all three, and an order of the stored strings is not the order of
+        /// the instants. No format reads a form one for one, so this answers <c>false</c>, and every
+        /// caller leaves the parse to Calcite by that answer alone.
         /// </para>
         /// <para>
         /// <b>The formats stay, for the measurement.</b> <see cref="ParseFormats"/> lists, per form, the
