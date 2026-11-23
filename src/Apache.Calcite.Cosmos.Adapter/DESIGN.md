@@ -11608,7 +11608,9 @@ binding of the rows above reads
 (`CosmosPlannerTests.AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands`); on a
 filter no host merges it with, that is onto the filter's `WHERE`, which takes only a statement that
 never fails there
-(`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere`).
+(`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere`),
+and only where that filter reaches the service itself, asked of its own condition
+(`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereThatFilterDoes`).
 Nor does the split register a pair over a projection the service may select holding a computed column
 whose reading can refuse a value, whatever the condition left above reads, nor over a projection or a
 filter above one, since the transpose carries the half beneath every projection of the stack and a

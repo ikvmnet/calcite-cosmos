@@ -818,7 +818,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
         /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
         /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
-        /// asked of the half as it stands; and where it lands, over a member part of a statement, a filter, the scan or a
+        /// asked of the half as it stands, and the filter itself of its own condition, over a projection the project rule
+        /// converts or through the transpose; and where it lands, over a member part of a statement, a filter, the scan or a
         /// traversal, the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there.
         /// </summary>
         /// <remarks>
@@ -849,7 +850,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// service's form, and the statement failed to implement. Over a filter, where no host merges the two, the half lands
         /// on the filter itself, and onto a <c>WHERE</c> the filter rule folds only a statement that never fails there: a
         /// half holding a <c>RETURNING REAL</c> comparison beside <c>IS_DEFINED(c.name)</c>, over a view's filter, was asked
-        /// only of the scan beneath it, stayed a filter Calcite evaluates, and failed the statement the same way.
+        /// only of the scan beneath it, stayed a filter Calcite evaluates, and failed the statement the same way. And the filter
+        /// is part of a statement only where it reaches the service itself, over a projection the project rule converts or
+        /// through the transpose: a view's filter on an item of its map, a projection no statement selects, reaches it only
+        /// through the transpose, which writes an item of a <c>JSON_QUERY</c> the filter rule does not translate, and the case
+        /// fold's weakening stacked on that filter stayed one Calcite evaluates.
         /// </para>
         /// </remarks>
         /// <param name="convention">The convention whose statements the filter would be part of.</param>
@@ -858,6 +863,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="half">The condition of the filter split off, where it holds the service's form; <c>null</c> asks
         /// whether any filter over the subtree can reach the service.</param>
         internal static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen, RexNode? half = null)
+        {
+            return Reaches(convention, node, seen, half, new Dictionary<RelNode, bool>(System.Collections.Generic.ReferenceEqualityComparer.Instance), converted: false);
+        }
+
+        /// <inheritdoc cref="Reaches(CosmosConvention, RelNode?, HashSet{RelNode}, RexNode?)" />
+        /// <param name="reached">Whether each filter a half lands on reaches the service with its own condition, asked once a
+        /// question; a filter still being asked answers no, which keeps a graph finite.</param>
+        /// <param name="converted">Whether a filter of the condition lands over a projection the project rule converts, as a
+        /// filter the half lands on is asked of itself; the half is carried beneath a projection only by the transpose, and a
+        /// later split pushes what it drops over one the project rule converts.</param>
+        static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen, RexNode? half, Dictionary<RelNode, bool> reached, bool converted)
         {
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
             {
@@ -883,11 +899,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var reaches = member switch
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention) && Lands(scan),
-                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen, half) && Lands(filter),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && (half is null || ReachesItself(filter)) && Reaches(convention, filter.getInput(), seen, half, reached, converted) && Lands(filter),
                     Project project => half is null
-                        ? Reaches(convention, project.getInput(), seen)
-                        : Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath),
-                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen) && Lands(correlate),
+                        ? Reaches(convention, project.getInput(), seen, null, reached, converted)
+                        : (Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath, reached, converted))
+                            || (converted && Converts(convention, project) && Reaches(convention, project.getInput(), Rel.CosmosPlanMembers.NewSeen(), null, reached, converted) && Lands(project)),
+                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen, null, reached, converted) && Lands(correlate),
                     _ => false,
                 };
 
@@ -900,6 +917,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // Where the half lands it is a filter over the member, which the filter rule converts only where it translates the
             // half there.
             bool Lands(RelNode member) => half is null || CosmosFilterRule.IsTranslatable(convention, org.apache.calcite.rel.logical.LogicalFilter.create(member, half));
+
+            // A filter the half lands on is part of a statement only as a filter of its own condition over its input that reaches
+            // the service: over a projection, only where the project rule converts it or the transpose carries the filter
+            // beneath, landing where the filter rule translates it.
+            bool ReachesItself(Filter filter)
+            {
+                if (reached.TryGetValue(filter, out var known))
+                    return known;
+
+                reached[filter] = false;
+                return reached[filter] = Reaches(convention, filter.getInput(), Rel.CosmosPlanMembers.NewSeen(), filter.getCondition(), reached, converted: true);
+            }
+        }
+
+        /// <summary>
+        /// Determines whether <see cref="CosmosProjectRule"/> converts a logical projection: its operand asked as the planner
+        /// asks it, and what its match and its conversion decline, which they repeat here, a projection holding a correlation
+        /// or naming a field the container's target stores escaped.
+        /// </summary>
+        static bool Converts(CosmosConvention convention, Project project)
+        {
+            if (CosmosProjectRule.Create(convention).getOperand().matches(project) == false)
+                return false;
+
+            var projects = project.getProjects();
+            for (var i = 0; i < projects.size(); i++)
+                if (RexUtil.containsCorrelation((RexNode)projects.get(i)))
+                    return false;
+
+            return CosmosImplementor.TryBindOutput(project.getInput(), out _, out _, out _, out _, out var container)
+                && CosmosImplementor.NamesAnEscape(project.getRowType(), container) == false;
         }
 
         /// <summary>

@@ -4532,7 +4532,52 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("SELECT t.\"id\", t.\"nm\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.name') AS \"nm\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"r\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE t.\"r\" > 10 AND INITCAP(t.\"nm\") > 'M'")]
         public void AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere(string sql)
         {
-            var best = new Corpus.PlannerHarness().PlanToAsync(sql);
+            ImplementsWithNoServiceFormInProcess(new Corpus.PlannerHarness().PlanToAsync(sql));
+        }
+
+        /// <summary>
+        /// A half stacked on a filter reaches the service only where that filter reaches it, with its own condition. A view's
+        /// map column, filtered on an item of it beside a disjunction reading the column thirty times and a case fold, planned
+        /// as the harness plans for a host, with no filter merge, then the calc pass a host runs: no filter Calcite evaluates
+        /// in the plan chosen holds the service's form, and the plan implements.
+        /// </summary>
+        /// <remarks>
+        /// The split over the view pushes the item's equality, which the filter rule translates over the view's binding. A
+        /// projected map has no Cosmos form, so that filter reaches the service only by the transpose carrying it beneath the
+        /// view, where it reads an item of a <c>JSON_QUERY</c>, which the filter rule does not translate; and the disjunction
+        /// grows past the transpose's bloat, so nothing of the rest moves beneath the view. The split of the rest pushed the
+        /// case fold's weakening onto the item's filter: asked whether the filter rule translates that filter, whether the
+        /// half lands over the filter's input and whether it lands onto the filter, it reached the service, was chosen by
+        /// cost, and stayed a filter Calcite evaluates holding <c>IS_DEFINED</c>, where <c>main</c> answers.
+        /// </remarks>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AHalfStackedOnAFilterReachesTheServiceOnlyWhereThatFilterDoes(bool items)
+        {
+            ImplementsWithNoServiceFormInProcess(new Corpus.PlannerHarness().PlanToAsync(OnAnItemOfAViewsMap(items)));
+        }
+
+        /// <summary>
+        /// A filter over a view's map column on an item of it, beside a disjunction reading the column thirty times, of its
+        /// cardinality alone or of its cardinality and twenty-nine more items, and a case fold of the name.
+        /// </summary>
+        static string OnAnItemOfAViewsMap(bool items)
+        {
+            List<string> disjuncts = items
+                ? ["CARDINALITY(t.\"m\") = 1", .. Enumerable.Range(1, 29).Select(i => $"t.\"m\"['k{i}'] = 'v{i}'")]
+                : [.. Enumerable.Range(1, 30).Select(i => $"CARDINALITY(t.\"m\") = {i}")];
+
+            return "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>) AS \"m\" FROM products AS c) AS t "
+                + $"WHERE t.\"m\"['a'] = '5' AND ({string.Join(" OR ", disjuncts)}) AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+        }
+
+        /// <summary>
+        /// Holds a plan chosen to what Calcite can evaluate: no filter outside the convention holds the service's form, and the
+        /// plan implements after the calc pass a host runs.
+        /// </summary>
+        static void ImplementsWithNoServiceFormInProcess(RelNode best)
+        {
             TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
 
             Filters(best).Where(filter => filter is not CosmosRel).Should()
