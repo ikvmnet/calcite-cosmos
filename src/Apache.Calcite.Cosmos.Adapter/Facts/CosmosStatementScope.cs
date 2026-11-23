@@ -469,9 +469,10 @@ namespace Apache.Calcite.Cosmos.Facts
         /// </para>
         /// <para>
         /// <b>Asked only of a conjunct the facts graph reads exactly</b>, as its siblings are (<see cref="Beside"/>): a
-        /// coarse conjunct's own verdict is no more measured than what it establishes. The partition key's column cast to
-        /// text = 'true' reads a stored <c>true</c> as its rendering, so beside the kind's type test it is decided always
-        /// true; deleted, it would keep the document, where Calcite's cast of a <c>VARIANT</c> boolean is null.
+        /// coarse conjunct's own verdict is no more measured than what it establishes. Over a partition key declared as the
+        /// enum <c>"true"</c> or <c>true</c>, its column cast to text = 'true' reads a stored <c>true</c> as its rendering,
+        /// so beside the kind's type test it is decided always true; deleted, it would keep the document, where Calcite's
+        /// cast of a <c>VARIANT</c> boolean is null.
         /// </para>
         /// </remarks>
         public IReadOnlyList<int> RedundantConjuncts()

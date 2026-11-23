@@ -1084,20 +1084,21 @@ test's list of readings audits it
 S's later rounds (`StratumFor`) and the arm assume only the siblings the facts graph reads exactly
 (`StatementTerms.ReadsExactly`), one criterion, opt-in by that row, and a reading added later whose `Kept` is too narrow
 reaches none of them unless the row names it. Nor is a conjunct read coarsely deleted, its own verdict being no more
-measured (`CosmosStatementScope.RedundantConjuncts`): the partition key's column cast to text = 'true' reads a stored
-`true` as its rendering, so deleted beside the kind's type test it would keep the document, where Calcite's cast is
-null. What that costs is a conjunct sent that a coarse sibling implied (*A deletion keeps what the service applies*,
-below) or that is itself coarse, such as a range through the cast to `DOUBLE` that the declared bounds satisfy, or `NOT
-(CAST(c."$.category" AS VARCHAR) = '1')` beside `c."$.category" = 'SPRINT'`, one more of the gate's lines, and a
-comparison left as written where only a coarse sibling gave its stored form. Routing, the row count, a stack's clauses
-and the self-join (`Kept`), a single filter's projection, sort, grouping and lookup key (the last stratum), a point
-read's pins and the reduce assume the conjuncts their rows above name, however the facts graph reads them, and rest on
-that audit by decision: each is provable on what each reading keeps, and gating them on exactness would decline pushes
-that are provable, losing routes the manual documents (Chapters 7.3 and 8.5) and sorts the service runs, 10 of the
-pull-request digests' 1,181 lines and 17 of the gate's 3,492, measured on Production. The translator's later rounds,
-which write a parameter or an opaque comparison from the chain node, rest on it too, a bridge that 3B ends for the
-parameter comparisons it moves into S's rounds, and the translator's removal (h42) for the rest. What the audit leaves
-open — a reading added later whose `Kept` is too narrow, and the raw value read through `CHAR`, which no list names — is
+measured (`CosmosStatementScope.RedundantConjuncts`): over a partition key declared as the enum `"true"` or `true`, its
+column cast to text = 'true' reads a stored `true` as its rendering, so deleted beside the kind's type test it would
+keep the document, where Calcite's cast is null. What that costs is a conjunct sent that a coarse sibling implied (*A
+deletion keeps what the service applies*, below) or that is itself coarse, such as a range through the cast to `DOUBLE`
+that the declared bounds satisfy, or `NOT (CAST(c."$.category" AS VARCHAR) = '1')` beside `c."$.category" = 'SPRINT'`, a
+21st of the gate's 3,492 lines beside the 20 that *A deletion keeps what the service applies* counts, and a comparison
+left as written where only a coarse sibling gave its stored form. Routing, the row count, a stack's clauses and the
+self-join (`Kept`), a single filter's projection, sort, grouping and lookup key (the last stratum), a point read's pins
+and the reduce assume the conjuncts their rows above name, however the facts graph reads them, and rest on that audit by
+decision: each is provable on what each reading keeps, and gating them on exactness would decline pushes that are
+provable, losing routes the manual documents (Chapters 7.3 and 8.5) and sorts the service runs, 10 of the pull-request
+digests' 1,181 lines and 17 of the gate's 3,492, measured on Production. The translator's later rounds, which write a
+parameter or an opaque comparison from the chain node, rest on it too, a bridge that 3B ends for the parameter
+comparisons it moves into S's rounds, and the translator's removal (h42) for the rest. What the audit leaves open — a
+reading added later whose `Kept` is too narrow, and the raw value read through `CHAR`, which no list names — is
 `TODO.md`'s.
 
 **An order the service computes is read through `CosmosServiceOrder` under the consumer's own row, and nowhere

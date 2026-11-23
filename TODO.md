@@ -3728,9 +3728,9 @@ across documents* and *A join of a container to itself* is the record.
     `CosmosPartitionKeyExtractor.TryExtractPrefix` reads the key's one value from the declaration under whatever
     condition is sent (`Pinned(OracleLicence.Kept)`), and `CosmosFilter.Implement` returns before routing where every
     conjunct is deleted, and a comparison kept in Calcite builds no `CosmosFilter`, so the pin is lost only where the
-    request has no `WHERE`. A deletion is a verdict on the coarse reading (*A conjunct through an integer parse its
-    declared bounds satisfy is still sent*). The fix is routing a statement with no `WHERE` by what the declaration says
-    of the key, which the facts graph already holds.
+    request has no `WHERE`. A deletion is the facts graph's own verdict (`PredicateAtom.Over`), asked only of a conjunct
+    it reads exactly (*A conjunct through an integer parse its declared bounds satisfy is still sent*). The fix is
+    routing a statement with no `WHERE` by what the declaration says of the key, which the facts graph already holds.
 - **A cast to `DOUBLE` is read more loosely than a double rounds** — *small, precision; older than "fail like Calcite",
   the same on `main`, and left for a change of its own.* `NumberCast.KeptOrder` meets the numbers a comparison
   through the cast keeps with a window (`Window`), which holds whichever way a conversion rounds, and keeps every string

@@ -67,11 +67,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>What is true is the oracle's; what is written is this.</b> Every fact a rewrite reads is
     /// asked of <see cref="CosmosFilterStatement"/> under the licence the rewrite has: the filter is
     /// <c>FALSE</c> where no document the declaration admits makes the WHERE true, and none makes it
-    /// raise; a conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered
-    /// on what its siblings establish, never what it does; inside the arm of a <c>CASE</c>, on that and
-    /// the conditions the arm is read under; and an arm is written <c>FALSE</c> where those contradict
-    /// and the WHERE raises nowhere. What is left here is the shapes, the stored spellings and the
-    /// licence a form gives an operator.
+    /// raise; a conjunct the facts graph reads exactly is deleted where the siblings it reads exactly
+    /// imply it, one at a time; a comparison is lowered on what those siblings establish, never what it
+    /// does; inside the arm of a <c>CASE</c>, on that and the conditions the arm is read under; and an
+    /// arm is written <c>FALSE</c> where those contradict and the WHERE raises nowhere. What is left
+    /// here is the shapes, the stored spellings and the licence a form gives an operator.
     /// </para>
     /// <para>
     /// <b>Two forms: one planned, one sent.</b> What a node holds is read by Calcite: its filters merge it, its
@@ -137,8 +137,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Returns the rendering form of a predicate, the text sent: the planning form (<see cref="Planned"/>), each
-        /// conjunct the rest imply deleted, each arm never read written <c>FALSE</c>, and the whole <c>FALSE</c> where the
-        /// WHERE keeps nothing and fails on nothing; or the predicate unchanged.
+        /// conjunct the facts graph reads exactly deleted where the siblings it reads exactly imply it, each arm never
+        /// read written <c>FALSE</c>, and the whole <c>FALSE</c> where the WHERE keeps nothing and fails on nothing; or
+        /// the predicate unchanged.
         /// </summary>
         /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>

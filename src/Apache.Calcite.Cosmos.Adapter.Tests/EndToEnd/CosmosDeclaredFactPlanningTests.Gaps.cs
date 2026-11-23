@@ -230,7 +230,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// (<c>CosmosStatementScope.RedundantConjuncts</c>). The parse's cells read the service's spelling and raise on no
         /// integer the bounds admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the
         /// coarse reading, and that puts the parse's raise beside every number (<c>TODO.md</c>, <em>A conjunct through an
-        /// integer parse its declared bounds satisfy is still sent</em>). Its fix flips this test for the parse.
+        /// integer parse its declared bounds satisfy is still sent</em>). Its fix flips this test for the cast to
+        /// <c>INTEGER</c>, and for <c>RETURNING INTEGER</c> only once the facts graph reads it exactly.
         /// </summary>
         [Fact]
         public void ARangeAnIntegerParseItsBoundsSatisfyIsStillSent()
