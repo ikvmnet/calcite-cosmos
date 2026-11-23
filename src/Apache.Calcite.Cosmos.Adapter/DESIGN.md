@@ -10986,26 +10986,22 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   one, so no digest line moves for it. It addresses no path either (`CosmosRexShapes.IsJsonAccessor`), as `RETURNING
   DECIMAL` addresses none, and so neither does an item of it, an accessor over it or `StringToArray` over it: Calcite
   reads each through the accessor's value, null wherever a path beneath it is defined. Resolved to its path, a view's
-  `RETURNING VARIANT` column was read through its field as the raw value a promoted column holds, and S, asked to weaken
-  `t."v" IS NULL OR INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT
-  IS_DEFINED(c.x)`, which drops `{"x":[]}` where Calcite keeps it; an item of it, resolved to `c.x.a`, had its null test
-  sent as the raw value's, `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, which drops `{"x":{"a":1}}`; and written as
-  `c.x` in a select list, the column was read back as the raw value, an array or an object where Calcite's column is
-  null, so an item computed over it failed over `[1]` and read 1 over `{"a":1}`, whether the select list, a view or the
-  residual projection held the column. Refused, it is Calcite's to compute from the document, in a filter and in a
-  select list alike
+  column of it read as the raw value and a weakening over the view dropped `{"x":[]}`, an item's null test was sent as
+  the raw value's and dropped `{"x":{"a":1}}`, and the column selected as `c.x` was read back raw, so an item computed
+  over it failed over `[1]`. Refused, it is Calcite's to compute from the document, in a filter and in a select list
+  alike
   (`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereAPlanWouldSelectAReturningVariant`,
   `CosmosToClrCursorConverterTests.ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter`,
   `CosmosPlannerTests.AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps`,
   `CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`), and the loader still reads
-  the accessor itself as `typed:VARIANT`
-  (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`). `StringToArray` over it, which
-  only a host chaining the adapter's operators into its own validator can write (a connection's finds no
-  `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. A projection binds nothing for an item of
-  a `JSON_QUERY` returning an array either (`CosmosImplementor.Projected`): Calcite casts the element stored to the
-  array's element type and raises over another kind, where a field of its path reads what the document holds there.
-  Every other column a projection binds is read through its field, where the field reads it at all, as the same kind of
-  reading of the same path and type as its expression
+  the accessor itself as `typed:VARIANT` (`CosmosPredicateLoaderTests.AReturningVariantIsATypedReadingAndNoRawValue`),
+  its path still resolved for that (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`).
+  `StringToArray` over it, which only a host chaining the adapter's operators into its own validator can write (a
+  connection's finds no `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. A projection binds
+  nothing for an item of a `JSON_QUERY` returning an array either (`CosmosImplementor.Projected`): Calcite casts the
+  element stored to the array's element type and raises over another kind, where a field of its path reads what the
+  document holds there. Every other column a projection binds is read through its field, where the field reads it at
+  all, as the same kind of reading of the same path and type as its expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises

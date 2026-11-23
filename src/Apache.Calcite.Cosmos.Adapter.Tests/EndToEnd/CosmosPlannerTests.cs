@@ -3047,8 +3047,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>RETURNING</c> of its own type, whose value no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
         /// An item of it was resolved to the path beneath and its null test sent as the raw value's there, <c>(NOT
         /// IS_DEFINED(c.category.a) OR IS_NULL(c.category.a))</c>, dropping a document holding <c>{"a":1}</c> at the
-        /// path, whose item Calcite reads as null because the accessor is; no path is resolved through it now
-        /// (<c>CosmosRexPaths</c>).
+        /// path, whose item Calcite reads as null because the accessor is; it addresses no path now, nor does what reads
+        /// through it (<c>CosmosRexShapes.IsJsonAccessor</c>).
         /// </remarks>
         [Theory]
         [InlineData("$.category", "{0} = 'bikes'")]
@@ -3088,8 +3088,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// Calcite keeps: Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an
         /// object. An item of it, resolved to <c>c.x.a</c>, proved the same of <c>c.x.a</c>, false over <c>{"x":{"a":1}}</c>,
         /// where Calcite's item is null because the accessor is, whether a view's column held it or the filter read it from the
-        /// document the view passes up or renames. A projection binds no path for the column
-        /// (<c>CosmosImplementor.Projected</c>), and no path is resolved through it (<c>CosmosRexPaths</c>), so no weakening is
+        /// document the view passes up or renames. It addresses no path, nor does what reads through it
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>, the gate the resolver and a projection's binding ask), so no weakening is
         /// derived through either.
         /// </remarks>
         [Theory]

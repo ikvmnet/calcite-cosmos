@@ -1732,8 +1732,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// transpose's bloat, so the split weakens the filter over the view, through the binding of its columns. Bound to
         /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
         /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
-        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c> (<c>CosmosRexPaths</c>),
-        /// so a projection binds none for the item and the split sends what it derives of the rest.
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c>
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), so a projection binds none for the item and the split sends what it derives
+        /// of the rest.
         /// </remarks>
         [Theory]
         [InlineData(false, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
@@ -1767,8 +1768,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// filter over the view, through the binding of its columns, where the document is bound to the root. Resolved to
         /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
         /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
-        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c> (<c>CosmosRexPaths</c>),
-        /// so the split sends what it derives of the rest.
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c>
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), so the split sends what it derives of the rest.
         /// </remarks>
         [Theory]
         [InlineData(false, "DOC", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
