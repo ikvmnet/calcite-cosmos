@@ -4511,6 +4511,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A half stacked on a filter reaches the service only where the filter rule translates it onto that filter's
+        /// <c>WHERE</c>. A filter over a filtered view, planned as the harness plans for a host, with no filter merge, then
+        /// the calc pass a host runs: no filter Calcite evaluates in the plan chosen holds the service's form, and the plan
+        /// implements.
+        /// </summary>
+        /// <remarks>
+        /// The split over the view's projection builds the half of a <c>RETURNING REAL</c> comparison, which only the
+        /// translator admits, beside the weakening of the case fold. Asked only whether the filter rule converts the view's
+        /// filter and whether the half lands over the filter's input, it reached the service; but with no merge it sits on
+        /// the filter, and onto a <c>WHERE</c> the filter rule folds only a statement that never fails there, so it stayed a
+        /// filter Calcite evaluates holding <c>IS_DEFINED</c>, chosen by cost, and the plan failed to implement where
+        /// <c>main</c> answers. The last two, a view passing every column up and one projecting the columns compared, failed
+        /// on <c>main</c> too, by the half the split stacked on the view's filter.
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"r\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE t.\"r\" > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.region')) > 'M'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.region')) > 'M'")]
+        [InlineData("SELECT t.\"id\", t.\"nm\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.name') AS \"nm\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"r\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE t.\"r\" > 10 AND INITCAP(t.\"nm\") > 'M'")]
+        public void AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere(string sql)
+        {
+            var best = new Corpus.PlannerHarness().PlanToAsync(sql);
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            Filters(best).Where(filter => filter is not CosmosRel).Should()
+                .NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+
+            var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.CalcRules())
+                program.addRuleInstance(rule);
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
+            hep.setRoot(best);
+            var calcs = hep.findBestExp();
+
+            var implement = () => new Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRelImplementor(calcs.getCluster().getRexBuilder(), new java.util.HashMap())
+                .ImplementRoot((Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRel)calcs, Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorPrefer.Array);
+            implement.Should().NotThrow("what Calcite evaluates holds nothing it has no body for: " + Plan(calcs));
+        }
+
+        /// <summary>
         /// Records the half of each pair the split rule registers, before Volcano takes it: the filter beneath the one left
         /// above, or the filter registered alone where nothing is left above.
         /// </summary>

@@ -797,8 +797,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
         /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
         /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
-        /// asked of the half as it stands; and where it lands, over a member part of a statement, the scan or a traversal,
-        /// the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there.
+        /// asked of the half as it stands; and where it lands, over a member part of a statement, a filter, the scan or a
+        /// traversal, the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -816,17 +816,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// service only by the transpose moving the half beneath it, and the transpose declines a projection holding a
         /// window, a condition holding a correlation, and one that read through the projection's expressions grows past its
         /// bloat, as a half holding an 80-way <c>LIKE</c> of a view's column beside a weakening does over a view that also
-        /// computes <c>INITCAP</c>. A filter keeps its row type, so the half sits over its input as it sits over the filter,
-        /// and a projection beneath a filter the filter rule converts is asked of the half too. Asked without the half, the
-        /// projection counts wherever its input reaches, the transpose taken for granted, which is the cheap question
-        /// <see cref="matches"/> asks before the half is built.
+        /// computes <c>INITCAP</c>. A filter keeps its row type, so a projection beneath a filter the filter rule converts is
+        /// asked of the half too, as it stands. Asked without the half, the projection counts wherever its input reaches, the
+        /// transpose taken for granted, which is the cheap question <see cref="matches"/> asks before the half is built.
         /// </para>
         /// <para>
         /// <b>Where the half lands</b> it is asked of the filter rule, whatever the binding of the rows above read. A view's
         /// column holding an item of a map, bound to the member's path, read as the value stored there, and the split over the
         /// view registered a half holding <c>IS_DEFINED(c.name) OR c.x.a = "5"</c>: written beneath the view it read the item
         /// of the map, which the filter rule does not translate, so it stayed a filter Calcite evaluates holding the
-        /// service's form, and the statement failed to implement.
+        /// service's form, and the statement failed to implement. Over a filter, where no host merges the two, the half lands
+        /// on the filter itself, and onto a <c>WHERE</c> the filter rule folds only a statement that never fails there: a
+        /// half holding a <c>RETURNING REAL</c> comparison beside <c>IS_DEFINED(c.name)</c>, over a view's filter, was asked
+        /// only of the scan beneath it, stayed a filter Calcite evaluates, and failed the statement the same way.
         /// </para>
         /// </remarks>
         /// <param name="convention">The convention whose statements the filter would be part of.</param>
@@ -857,7 +859,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 var reaches = member switch
                 {
                     TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention) && Lands(scan),
-                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen, half),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen, half) && Lands(filter),
                     Project project => half is null
                         ? Reaches(convention, project.getInput(), seen)
                         : Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath),
