@@ -4466,6 +4466,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A condition read through a projection is the one Calcite's transpose writes beneath it, each conjunct comparing a
+        /// null written as its match writes it.
+        /// </summary>
+        /// <remarks>
+        /// The transpose reads the condition through the projection's expressions, then writes each conjunct that compares a
+        /// null literal as false, and takes away a cast of nullability alone, before it copies the filter beneath. Read
+        /// without those two, a condition over a view's column projecting a null was asked of the filter rule as a comparison
+        /// with the null, where the filter registered beneath holds <c>FALSE</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData("t.\"z\" = 'a'")]
+        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'")]
+        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'")]
+        public void AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt(string condition)
+        {
+            var harness = new Corpus.PlannerHarness();
+            var filter = Filters(harness.ToLogical($"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", CAST(NULL AS VARCHAR) AS \"z\" FROM products AS c) AS t WHERE {condition}")).Single();
+            var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE).build());
+            hep.setRoot(org.apache.calcite.rel.logical.LogicalFilter.create(project, filter.getCondition()));
+            var beneath = Filters(hep.findBestExp()).Should().ContainSingle("the transpose carries the filter beneath the projection").Subject;
+
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Transposed(filter.getCondition(), project).Should().Be(beneath.getCondition(), "the transpose writes {0} beneath", beneath.getCondition());
+        }
+
+        /// <summary>
         /// A half holding the service's form reaches the service only where the filter rule translates a filter of it where it
         /// lands, whatever the binding of the rows it sits over reads: over a member already part of a statement, the
         /// container's scan in its logical form, or a traversal. The half is the one a view's column holding an item of a map

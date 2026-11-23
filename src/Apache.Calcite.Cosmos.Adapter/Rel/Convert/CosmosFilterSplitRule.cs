@@ -1019,14 +1019,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <summary>
-        /// Returns a condition read through a projection's expressions as Calcite's <c>FILTER_PROJECT_TRANSPOSE</c> reads it,
-        /// asked that rule's own conditions, or <c>null</c> where it declines: the projection holds a window, the condition a
-        /// correlation, or the condition so read grows past the rule's bloat.
+        /// Returns a condition read through a projection's expressions as Calcite's <c>FILTER_PROJECT_TRANSPOSE</c> writes it
+        /// beneath, asked that rule's own conditions, or <c>null</c> where it declines: the projection holds a window, the
+        /// condition a correlation, or the condition so read grows past the rule's bloat.
         /// </summary>
         /// <remarks>
         /// The rule the adapter registers (<see cref="CosmosRules"/>). Its operand is asked of a filter of the condition over the
-        /// projection, and of the projection, as the planner asks it, and its bloat is read from its configuration; the window
-        /// repeats what its match asks in the Calcite build the adapter resolves.
+        /// projection, and of the projection, as the planner asks it, and its bloat is read from its configuration; the window,
+        /// and the two simplifications its match makes of what it reads before it copies the filter, repeat its match in the
+        /// Calcite build the adapter resolves
+        /// (<c>CosmosPlannerTests.AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt</c>).
         /// </remarks>
         internal static RexNode? Transposed(RexNode condition, Project project)
         {
@@ -1038,7 +1040,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return null;
 
             var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)rule.config;
-            return RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat());
+            if (RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat()) is not RexNode pushed)
+                return null;
+
+            // Each conjunct that compares a null literal written as false, and a cast of nullability alone taken away, as the
+            // match writes the condition before it copies the filter beneath.
+            var rexBuilder = project.getCluster().getRexBuilder();
+            var conjuncts = RelOptUtil.conjunctions(pushed);
+            var written = new java.util.ArrayList();
+            for (var i = 0; i < conjuncts.size(); i++)
+                written.add(RexSimplify.simplifyComparisonWithNull((RexNode)conjuncts.get(i), rexBuilder));
+
+            return RexUtil.removeNullabilityCast(rexBuilder.getTypeFactory(), RexUtil.composeConjunction(rexBuilder, written));
         }
 
         static RexNode Compose(RexBuilder rexBuilder, List<RexNode> conjuncts)
