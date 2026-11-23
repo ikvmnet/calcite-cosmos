@@ -1700,9 +1700,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "(SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t";
 
         /// <summary>
-        /// Over a view's filter the transpose will not carry beneath the view, the split of a condition stacked on it still
-        /// pushes that condition's weakening, and the plan answers as Calcite does over a document the weakening excludes: no
-        /// row, and no failure.
+        /// Over a filter on a view that the transpose will not carry beneath the view, the split of a condition stacked on it
+        /// still pushes that condition's weakening, and the plan answers as Calcite does over a document the weakening
+        /// excludes: no row, and no failure.
         /// </summary>
         /// <remarks>
         /// Sixty equalities of the view's text column, read through the view's projection, grow past the transpose's bloat, so

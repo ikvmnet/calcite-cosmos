@@ -364,8 +364,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// pair only narrows. Measured: sixty <c>LIKE</c>s of a case fold of the view's column beside <c>t."a" = 'k'</c>,
         /// the pair declined, sent no <c>WHERE</c> and failed over <c>{"a":"z","n":1.5}</c>, which the equality drops. Beneath
         /// a filter the filter is stacked on, likewise only where the transpose carries that filter beneath as well, which it
-        /// moves first: over a view's filter too wide for it, the pair declined sent no weakening of the case fold above, and
-        /// the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over <c>["5",5]</c>.
+        /// moves first: over a filter on a view too wide for it, the pair declined sent no weakening of the case fold above,
+        /// and the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over <c>["5",5]</c>.
         /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
@@ -875,9 +875,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// half holding a <c>RETURNING REAL</c> comparison beside <c>IS_DEFINED(c.name)</c>, over a view's filter, was asked
         /// only of the scan beneath it, stayed a filter Calcite evaluates, and failed the statement the same way. And the filter
         /// is part of a statement only where it reaches the service itself, over a projection the project rule converts or
-        /// through the transpose: a view's filter on an item of its map, a projection no statement selects, reaches it only
-        /// through the transpose, which writes an item of a <c>JSON_QUERY</c> the filter rule does not translate, and the case
-        /// fold's weakening stacked on that filter stayed one Calcite evaluates. The rule binds the set the half sits over
+        /// through the transpose: a filter over a view on an item of its map column, a view no statement selects, reaches it
+        /// only through the transpose, which writes an item of a <c>JSON_QUERY</c> the filter rule does not translate, and the
+        /// case fold's weakening stacked on that filter stayed one Calcite evaluates. The rule binds the set the half sits over
         /// through the member it was built from, so it is asked there too: a traversal holding its element's filter writes no
         /// <c>WHERE</c>, but in one set with that filter over the traversal the rule binds the filter, which writes one, and a
         /// half holding a <c>RETURNING REAL</c> comparison landed over the traversal where the rule would not fold it. And the

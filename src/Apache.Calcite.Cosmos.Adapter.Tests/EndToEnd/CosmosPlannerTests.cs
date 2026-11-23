@@ -4666,8 +4666,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <para>
         /// A half holding a weakening that no statement takes stays a filter Calcite evaluates, which has no body for the
-        /// service's form, and only the cost model keeps it out of the plan chosen. Stacked on a view's filter on an item of
-        /// its map, the case fold's weakening was asked of the filter rule onto that filter, which never reaches the service.
+        /// service's form, and only the cost model keeps it out of the plan chosen. Stacked on a filter over a view on an item
+        /// of its map column, the case fold's weakening was asked of the filter rule onto that filter, which never reaches the
+        /// service.
         /// </para>
         /// <para>
         /// Over a traversal holding its element's filter, beside the same filter over the traversal in one set, the half was
