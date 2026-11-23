@@ -4138,13 +4138,13 @@ across documents* and *A join of a container to itself* is the record.
   row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
   proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
   step's own.
-- **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness.* Where nothing of a
-  filter over a view reaches the service, the view's projection is still converted, and the statement selects it beneath
-  the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
-  FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) = 'Steel'` sends `SELECT
-  VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over `{"n":1.5,"name":true}`, which
-  Calcite drops on the case fold before it computes the column. The split rule registers no pair over such a projection,
-  nor over a view above it, where the transpose carries the filter beneath it
+- **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness; on `main`.* Where
+  nothing of a filter over a view reaches the service, the view's projection is still converted, and the statement
+  selects it beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n'
+  RETURNING INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) =
+  'Steel'` sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
+  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule registers
+  no pair over such a projection, nor over a view above it, where the transpose carries the filter beneath it
   (`CosmosFilterSplitRule.ReadsWhatCanRefuse`); where the transpose declines, the filter stays above the view either way
   and the pair is registered, so sixty `LIKE`s of a case fold of one text column of the view beside `t."a" = 'k'` on
   another select the column under `WHERE (c.a = @p0)` and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`,
