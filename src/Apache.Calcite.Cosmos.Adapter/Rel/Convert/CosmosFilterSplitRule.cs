@@ -840,7 +840,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
         /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
         /// asked of the half as it stands, and the filter itself of its own condition, over a projection the project rule
-        /// converts or through the transpose; and where it lands, over a member part of a statement, a filter, the scan or a
+        /// converts or through the transpose; a traversal carries it only over a left side part of a statement as it stands
+        /// (<see cref="IsStatement"/>); and where it lands, over a member part of a statement, a filter, the scan or a
         /// traversal, the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there and
         /// over the set, which the rule binds through the member the set was built from.
         /// </summary>
@@ -879,7 +880,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// fold's weakening stacked on that filter stayed one Calcite evaluates. The rule binds the set the half sits over
         /// through the member it was built from, so it is asked there too: a traversal holding its element's filter writes no
         /// <c>WHERE</c>, but in one set with that filter over the traversal the rule binds the filter, which writes one, and a
-        /// half holding a <c>RETURNING REAL</c> comparison landed over the traversal where the rule would not fold it.
+        /// half holding a <c>RETURNING REAL</c> comparison landed over the traversal where the rule would not fold it. And the
+        /// unnest rule converts a traversal only over a left side part of a statement, which nothing carries a projection out
+        /// of: over a traversal of a view computing <c>INITCAP</c>, its left side asked only whether a filter over it could
+        /// reach the service, the case fold's weakening was registered over the traversal with no form the service evaluates.
         /// </para>
         /// </remarks>
         /// <param name="convention">The convention whose statements the filter would be part of.</param>
@@ -929,8 +933,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     Project project => half is null
                         ? Reaches(convention, project.getInput(), seen, null, reached, converted)
                         : (Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath, reached, converted))
-                            || (converted && Converts(convention, project) && Reaches(convention, project.getInput(), Rel.CosmosPlanMembers.NewSeen(), null, reached, converted) && Lands(project)),
-                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen, null, reached, converted) && Lands(correlate),
+                            || (converted && IsStatement(convention, project, Rel.CosmosPlanMembers.NewSeen()) && Lands(project)),
+                    Correlate correlate => (half is null
+                        ? CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen, null, reached, converted)
+                        : IsStatement(convention, correlate, Rel.CosmosPlanMembers.NewSeen())) && Lands(correlate),
                     _ => false,
                 };
 
@@ -958,6 +964,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 reached[filter] = false;
                 return reached[filter] = Reaches(convention, filter.getInput(), Rel.CosmosPlanMembers.NewSeen(), filter.getCondition(), reached, converted: true);
             }
+        }
+
+        /// <summary>
+        /// Determines whether some equivalent form of a subtree is part of a statement as it stands: a member already in the
+        /// convention, this container's scan, or a filter <see cref="CosmosFilterRule"/>, a projection
+        /// <see cref="CosmosProjectRule"/> or a traversal <see cref="CosmosUnnestRule"/> converts over a subtree that is.
+        /// </summary>
+        /// <remarks>
+        /// What a projection the project rule converts, or a traversal, sits on: each rule converts only over an input in the
+        /// convention, and nothing carries a projection out of one, so a projection there counts only where the project rule
+        /// converts it, not wherever its input reaches.
+        /// </remarks>
+        static bool IsStatement(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
+        {
+            foreach (var member in Rel.CosmosPlanMembers.Of(node))
+            {
+                if (seen.Add(member) == false || (member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention))
+                    continue;
+
+                var statement = member.getConvention() is CosmosConvention || member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && IsStatement(convention, filter.getInput(), seen),
+                    Project project => Converts(convention, project) && IsStatement(convention, project.getInput(), seen),
+                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && IsStatement(convention, correlate.getLeft(), seen),
+                    _ => false,
+                };
+
+                if (statement)
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

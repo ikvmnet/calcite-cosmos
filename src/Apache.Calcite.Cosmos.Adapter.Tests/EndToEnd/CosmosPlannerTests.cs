@@ -3606,9 +3606,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce) => PlanToAsync(sql, hostRewrites, reduce, null);
 
-        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce, RelOptListener? listener)
+        /// <param name="sql">The statement.</param>
+        /// <param name="hostRewrites">Whether the three rewrites above are registered.</param>
+        /// <param name="reduce">Whether <c>FILTER_REDUCE_EXPRESSIONS</c> is registered.</param>
+        /// <param name="listener">A listener added to the planner before the search, or <c>null</c>.</param>
+        /// <param name="trimmed">Whether Calcite's field trimmer runs before the search, as a host's prepare runs it.</param>
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce, RelOptListener? listener, bool trimmed = false)
         {
             var logical = PlanLogical(sql);
+            if (trimmed)
+                logical = new org.apache.calcite.sql2rel.RelFieldTrimmer(null, org.apache.calcite.tools.RelBuilder.proto(Contexts.EMPTY_CONTEXT).create(logical.getCluster(), null)).trim(logical);
+
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
             if (listener is not null)
                 planner.addListener(listener);
@@ -4591,20 +4599,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// not fold. That statement fails to implement on <c>main</c> too, for the traversal's own reason, so the plan chosen
         /// says nothing of the half.
         /// </para>
+        /// <para>
+        /// Over a traversal of a view computing <c>INITCAP</c>, raw and after the field trimmer, the case fold's weakening was
+        /// registered over the traversal, its left side asked only whether a filter over it could reach the service, the
+        /// transpose taken for granted beneath it; but the unnest rule converts a traversal only over a left side part of a
+        /// statement, and nothing carries a projection out of one. The plan chosen took the correlate's transposition instead.
+        /// </para>
         /// </remarks>
         [Theory]
         [InlineData("map", false)]
-        [InlineData("map", true)]
+        [InlineData("map of items", false)]
         [InlineData("traversal", false)]
-        public void EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates(string shape, bool items)
+        [InlineData("traversal of a view", false)]
+        [InlineData("traversal of a view's array", true)]
+        public void EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates(string shape, bool trimmed)
         {
-            var sql = shape == "map"
-                ? OnAnItemOfAViewsMap(items)
-                : "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS u WHERE CAST(u AS VARCHAR) = 'red') AS t "
-                    + "WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'";
+            const string view = "(SELECT c.\"id\", c.\"DOC\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t";
+            var sql = shape switch
+            {
+                "map" => OnAnItemOfAViewsMap(items: false),
+                "map of items" => OnAnItemOfAViewsMap(items: true),
+                "traversal" => "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS u WHERE CAST(u AS VARCHAR) = 'red') AS t "
+                    + "WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'",
+                "traversal of a view" => $"SELECT t.\"id\" FROM {view}, UNNEST(StringToArray(JSON_QUERY(t.\"DOC\", '$.tags'))) AS u WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+                _ => $"SELECT t.\"id\", t.\"ic\" FROM {view}, UNNEST(JSON_QUERY(t.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS u(e) WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            };
 
             var productions = new SplitProductions();
-            var best = PlanToAsync(sql, hostRewrites: false, reduce: false, productions);
+            var best = PlanToAsync(sql, hostRewrites: false, reduce: false, productions, trimmed);
             var planner = (VolcanoPlanner)best.getCluster().getPlanner();
 
             productions.Halves.Should().NotBeEmpty("the split fires: " + Plan(best));
