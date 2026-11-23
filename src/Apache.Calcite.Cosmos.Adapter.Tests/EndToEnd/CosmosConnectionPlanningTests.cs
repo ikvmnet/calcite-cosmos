@@ -836,9 +836,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// An item of a map a view reads, in the view or in a second view over the first's map column across a filter, beside
-        /// a condition kept in process, answers through this connection as Calcite does, on either target: a
-        /// <c>MAP&lt;VARCHAR, VARCHAR&gt;</c> reads the stored 5 as '5', so <c>{"x":{"a":5}}</c> is kept, as is each document
-        /// whose name the case fold keeps.
+        /// a condition kept in process, answers through this connection as Calcite's own does over the same documents, on
+        /// either target: a <c>MAP&lt;VARCHAR, VARCHAR&gt;</c> reads the stored 5 as '5', so <c>{"x":{"a":5}}</c> is kept, as
+        /// is each document whose name the case fold keeps.
         /// </summary>
         /// <remarks>
         /// Bound to the member's path, <c>c.x.a</c>, the view's item column was read through its field as the value stored
@@ -866,8 +866,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 """{ "id": "x7", "k": "a", "x": { "a": 5.5 } }""",
             ];
 
-            Answer(sql, new ServiceExecutor(documents, target), target)
-                .Should().BeEquivalentTo(["x1", "x2", "x4", "x5"], "Calcite reads the stored 5 as '5' and keeps each name the case fold keeps");
+            // Calcite's own answer: the same statement over the same documents written as a VALUES list, which no rule of the
+            // adapter reads.
+            static string Row(string document)
+            {
+                using var parsed = JsonDocument.Parse(document);
+                return $"('{parsed.RootElement.GetProperty("id").GetString()}', '{document}')";
+            }
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(Row))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().BeEquivalentTo(["x1", "x2", "x4", "x5"], "Calcite reads the stored 5 as '5' and keeps each name the case fold keeps");
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does");
         }
 
         /// <summary>A view holding an item of a map, filtered on it beside a case fold.</summary>
