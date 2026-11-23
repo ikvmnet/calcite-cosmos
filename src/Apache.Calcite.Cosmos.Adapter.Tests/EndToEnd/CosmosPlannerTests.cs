@@ -4573,6 +4573,58 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// Every half the split registers holding the service's form has a form the service evaluates once the search is
+        /// done: its set holds a statement, or a logical projection over a set that does, the projection Calcite's and what it
+        /// reads the service's. Planned as the harness plans for a host, with what the split rule registers recorded before
+        /// Volcano takes it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A half holding a weakening that no statement takes stays a filter Calcite evaluates, which has no body for the
+        /// service's form, and only the cost model keeps it out of the plan chosen. Stacked on a view's filter on an item of
+        /// its map, the case fold's weakening was asked of the filter rule onto that filter, which never reaches the service.
+        /// </para>
+        /// <para>
+        /// Over a traversal holding its element's filter, beside the same filter over the traversal in one set, the half was
+        /// asked of the filter rule over the traversal, whose binding writes no <c>WHERE</c>; the rule binds the set through
+        /// the filter it was built from, which writes one, onto which a <c>RETURNING REAL</c> comparison, which can fail, does
+        /// not fold. That statement fails to implement on <c>main</c> too, for the traversal's own reason, so the plan chosen
+        /// says nothing of the half.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("map", false)]
+        [InlineData("map", true)]
+        [InlineData("traversal", false)]
+        public void EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates(string shape, bool items)
+        {
+            var sql = shape == "map"
+                ? OnAnItemOfAViewsMap(items)
+                : "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS u WHERE CAST(u AS VARCHAR) = 'red') AS t "
+                    + "WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'";
+
+            var productions = new SplitProductions();
+            var best = PlanToAsync(sql, hostRewrites: false, reduce: false, productions);
+            var planner = (VolcanoPlanner)best.getCluster().getPlanner();
+
+            productions.Halves.Should().NotBeEmpty("the split fires: " + Plan(best));
+
+            foreach (var half in productions.Halves.Where(half => CosmosOperators.HoldsServiceForm(half.getCondition())))
+                Evaluated(planner.ensureRegistered(half, null), 0).Should().BeTrue("a half holding the service's form is one the service evaluates: {0}", half.getCondition());
+
+            // A set holds a statement where its subset in the convention has a best; or a logical projection among its members,
+            // Calcite's, reads a set that does, to three projections.
+            bool Evaluated(RelNode set, int depth)
+            {
+                if (planner.getSubset(set, set.getTraitSet().replace(_table.Convention))?.getBest() is not null)
+                    return true;
+
+                return depth < 3 && CosmosPlanMembers.Of(set).OfType<org.apache.calcite.rel.core.Project>()
+                    .Any(project => project.getConvention() == Convention.NONE && Evaluated(project.getInput(), depth + 1));
+            }
+        }
+
+        /// <summary>
         /// Holds a plan chosen to what Calcite can evaluate: no filter outside the convention holds the service's form, and the
         /// plan implements after the calc pass a host runs.
         /// </summary>

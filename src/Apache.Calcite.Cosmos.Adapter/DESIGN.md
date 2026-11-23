@@ -11605,7 +11605,9 @@ and they are asked the same, since a host's filter merge brings a split's weaken
 Where the half lands, over a member already part of a statement, a filter, the scan or a traversal,
 it reaches the service only where the filter rule translates a filter of it there, whatever the
 binding of the rows above reads
-(`CosmosPlannerTests.AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands`); on a
+(`CosmosPlannerTests.AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands`), and
+over the set it sits over, which the rule binds through the member the set was built from
+(`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`); on a
 filter no host merges it with, that is onto the filter's `WHERE`, which takes only a statement that
 never fails there
 (`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere`),
