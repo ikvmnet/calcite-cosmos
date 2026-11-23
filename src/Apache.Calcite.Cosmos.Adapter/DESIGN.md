@@ -11609,8 +11609,8 @@ binding of the rows above reads
 filter no host merges it with, that is onto the filter's `WHERE`, which takes only a statement that
 never fails there
 (`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere`).
-Nor does it register a pair over a projection the service may select holding a computed column whose
-reading can refuse a value, whatever the condition left above reads, nor over a projection or a
+Nor does the split register a pair over a projection the service may select holding a computed column
+whose reading can refuse a value, whatever the condition left above reads, nor over a projection or a
 filter above one, since the transpose carries the half beneath every projection of the stack and a
 column passed up as it is may be the one beneath: beneath that condition the column is read for
 every row the half returns, where Calcite computes it only for the rows that reach it, a `CASE`
