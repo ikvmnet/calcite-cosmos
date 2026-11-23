@@ -760,7 +760,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             string.Join(Environment.NewLine, problems).Should().BeEmpty("day 00 is the month before's last day, the gap's days are the days they spell, and every other field out of range raises");
 
             var dayZero = MaterialisedTable.Of([Document("0001-01-00")]);
-            dayZero.Values(connection, $"CAST(CAST({Text} AS DATE) AS VARCHAR)")[0].Should().Be("0000-12-31", "which no string of the form reads as, year 0000 raising");
+            dayZero.Values(connection, $"CAST(CAST({Text} AS DATE) AS VARCHAR)")[0].Should().Be("0000-12-31", "which no canonical string of the form spells, 0000-12-31 itself raising");
             dayZero.Ask(connection, $"CAST({Text} AS DATE) < DATE '0001-01-01'", $"CAST({Text} AS TIMESTAMP) < TIMESTAMP '0001-01-01 00:00:00'")
                 .Should().Equal(["T", "T"], "it is before year one");
 
