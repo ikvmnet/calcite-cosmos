@@ -11001,9 +11001,11 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   the accessor itself as `typed:VARIANT`
   (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`). `StringToArray` over it, which
   only a host chaining the adapter's operators into its own validator can write (a connection's finds no
-  `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. Every other column a projection binds is
-  read through its field, where the field reads it at all, as the same kind of reading of the same path and type as its
-  expression
+  `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. A projection binds nothing for an item of
+  a `JSON_QUERY` returning an array either (`CosmosImplementor.Projected`): Calcite casts the element stored to the
+  array's element type and raises over another kind, where a field of its path reads what the document holds there.
+  Every other column a projection binds is read through its field, where the field reads it at all, as the same kind of
+  reading of the same path and type as its expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises

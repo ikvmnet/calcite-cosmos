@@ -856,8 +856,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <summary>
         /// Each kind of expression a view projects beside the document: the document, the id, <c>_ts</c> and the promoted
         /// column passed through, the text of a path and of an element, every scalar <c>RETURNING</c>, <c>RETURNING DECIMAL</c>
-        /// and <c>RETURNING VARIANT</c> of a path and of an element, a behaviour clause, <c>JSON_QUERY</c>, item chains over the
-        /// promoted column, two casts, a call and a constant.
+        /// and <c>RETURNING VARIANT</c> of a path and of an element, a behaviour clause, <c>JSON_QUERY</c>, one returning an
+        /// <c>INTEGER ARRAY</c> and an item of one returning an <c>INTEGER ARRAY</c> and a <c>VARCHAR ARRAY</c>, item chains over
+        /// the promoted column, two casts, a call and a constant.
         /// </summary>
         public static readonly TheoryData<string, string> ProjectedColumns = new()
         {
@@ -877,6 +878,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             { "returning-variant-element", "JSON_VALUE(c.\"DOC\", '$.tags[0]' RETURNING VARIANT)" },
             { "returning-integer-null-on-empty", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER NULL ON EMPTY)" },
             { "json-query", "JSON_QUERY(c.\"DOC\", '$.obj')" },
+            { "json-query-integer-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING INTEGER ARRAY)" },
+            { "item-of-json-query-integer-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING INTEGER ARRAY)[1]" },
+            { "item-of-json-query-varchar-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY)[1]" },
             { "item-of-promoted", "c.\"$.category\"['a']" },
             { "item-of-promoted-index", "c.\"$.category\"[1]" },
             { "item-of-item", "c.\"$.category\"['a']['b']" },
@@ -891,7 +895,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// projection's input: the same kind of reading, of the same path and of the same type, a raw reading's column naming
         /// the expression's type, and the form a field is written apart in set aside. A <c>RETURNING VARIANT</c> bound to its
         /// path read through its field as the raw value, where the expression is a <c>RETURNING</c> of its own, null over an
-        /// array or an object; it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing.
+        /// array or an object; it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing. An item of a <c>JSON_QUERY</c>
+        /// returning an array binds nothing too: bound to the element's path, it read through its field as the value stored
+        /// there, where Calcite casts that value to the array's element type and raises over another kind.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectedColumns))]

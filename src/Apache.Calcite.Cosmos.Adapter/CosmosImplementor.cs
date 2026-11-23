@@ -624,7 +624,8 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// refuses it. The element a traversal yields, which only the correlate rule's question binds, passes through as the
         /// field it is and no further: an accessor over it reads its text parsed, which is no path. It reads a
         /// <c>JSON_QUERY</c> returning an array as its JSON text, where implementation reads the array typed
-        /// (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>): the walk may know less than implementation and never more
+        /// (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>), and binds nothing for an item of one, which implementation binds
+        /// to the element's path: the walk may know less than implementation and never more
         /// (<c>CosmosRelTests.TheWalkBindsNoMoreThanImplementation</c>).
         /// </remarks>
         /// <param name="expression">The projected expression, over the input's row.</param>
@@ -632,7 +633,20 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="inputReadings">How each of the input's fields is read.</param>
         internal static (CosmosPath? Path, CosmosReading Reading) Projected(RexNode expression, CosmosRexPaths resolver, IReadOnlyList<CosmosReading> inputReadings)
         {
-            var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef) ? resolved : null;
+            // An item of a JSON_QUERY returning an array is the stored element cast to the array's element type, and Calcite
+            // raises where the element is of another kind, where a field of the element's path reads what the document holds
+            // there. No reading of a field says what the column holds, so it binds nothing, as RETURNING DECIMAL binds nothing.
+            static bool ItemOfACollection(RexNode node)
+            {
+                for (; node is RexCall item && CosmosRexShapes.KindOf(item) == nameof(org.apache.calcite.sql.SqlKind.__Enum.ITEM); node = (RexNode)item.getOperands().get(0))
+                    if (CosmosRexTranslator.IsCollectionJsonQuery((RexNode)item.getOperands().get(0)))
+                        return true;
+
+                return false;
+            }
+
+            var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef)
+                && ItemOfACollection(expression) == false ? resolved : null;
             return (path,
                 path is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
                 : path is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText
