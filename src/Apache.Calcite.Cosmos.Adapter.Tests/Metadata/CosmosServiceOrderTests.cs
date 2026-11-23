@@ -404,6 +404,33 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             }
         }
 
+        /// <remarks>
+        /// The plain cast reads a calendar date into <c>DATE</c> and <c>TIMESTAMP</c>, and no string of it into a type placed
+        /// in a zone: the casts to <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, <c>TIMESTAMP WITH TIME ZONE</c> and <c>TIME WITH
+        /// LOCAL TIME ZONE</c> raise over every one (<c>Calcite.TemporalCastReadsFewShapes</c>). So over a declared calendar
+        /// date the order of a cast to one of those is not the stored text's, and the order family answers so by the parts
+        /// the cast's type holds, the zone among them, which the plain cast's table lists for no form.
+        /// </remarks>
+        [Fact]
+        public void ACastOfADeclaredDateToAZonedTypeIsNotOrderedByTheStoredText()
+        {
+            var facts = Declared("""{ "type": "object", "required": ["at"], "properties": { "at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } }""");
+
+            foreach (var type in new[] { SqlTypeName.DATE, SqlTypeName.TIMESTAMP })
+            {
+                var cast = CosmosOrderOperand.ForConversion(At("at"), null, CosmosTemporalParse.PartsOf(type));
+                CosmosServiceOrder.OrderBy(facts, new[] { Key(cast) }, RenderingSet.Production).IsProved.Should().BeTrue($"the plain cast reads the form into {type.getName()}");
+            }
+
+            foreach (var type in new[] { SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE, SqlTypeName.TIMESTAMP_TZ, SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE })
+            {
+                var cast = CosmosOrderOperand.ForConversion(At("at"), null, CosmosTemporalParse.PartsOf(type));
+                var verdict = CosmosServiceOrder.OrderBy(facts, new[] { Key(cast) }, RenderingSet.Production);
+                verdict.IsProved.Should().BeFalse($"the cast to {type.getName()} raises over the stored string: {verdict.Reason}");
+                CosmosServiceOrder.Extreme(facts, cast, RenderingSet.Production).IsProved.Should().BeFalse($"nor is its extreme the stored text's, as {type.getName()}");
+            }
+        }
+
 /// <remarks>
         /// Text over a path that may hold a number is a rendering, compared as text in Calcite and as another type at
         /// the service.

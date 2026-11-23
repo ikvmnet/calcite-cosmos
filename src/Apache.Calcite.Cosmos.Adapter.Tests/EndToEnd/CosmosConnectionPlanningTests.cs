@@ -939,7 +939,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// The projection is split, the accessor sent and the cast left in process, so the sort beneath it was sent as an
         /// <c>ORDER BY</c> on the stored text, which orders <c>12:30:99</c> before <c>12:31:00</c> where Calcite's cast
         /// reads the first as 12:31:39 (<c>Calcite.TimeCastRollsAClocksFields</c>). The convention takes that rule out of
-        /// the planner and leaves its own guarded one, <c>CosmosSortProjectTransposeRule</c>.
+        /// the planner and leaves its own guarded one, <c>CosmosSortProjectTransposeRule</c>. The last five cast the
+        /// declared date or clock to a type placed in a zone, which the plain cast reads no stored string into
+        /// (<c>Calcite.TemporalCastReadsFewShapes</c>): the guarded rule moved the first four onto the stored date, the
+        /// plain cast's table having read a zoned timestamp as a <c>TIMESTAMP</c>.
         /// </remarks>
         [Theory]
         [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME) AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
@@ -950,6 +953,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(0) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''') DESC""")]
         [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.d') AS DATE FORMAT 'YYYY-MM-DD') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
         [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME(0) FORMAT 'HH24:MI:SS') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) DESC OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT COUNT(*) FROM (SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY) AS x""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.t') AS TIME WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
         public void ASortThroughACastTheTransposeCannotProveIsNotSentOnTheStoredText(string sql)
         {
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
@@ -968,6 +976,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
                 Sends("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.d') AS DATE) AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""", true, Temporal, target, new Infrastructure.PlannersSeen())
                     .Should().Contain("ORDER BY c.d ASC", $"{target}: the declaration proves the date's text orders as the dates");
+        }
+
+        /// <summary>
+        /// A sort keyed by a cast of a declared calendar date to a timestamp placed in a zone raises, as Calcite's cast
+        /// does over every string of the form, rather than answering in the order of the stored text.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST('2024-02-29' AS TIMESTAMP WITH LOCAL TIME ZONE)</c> and the cast to <c>TIMESTAMP WITH TIME ZONE</c> raise
+        /// (<c>Calcite.TemporalCastReadsFewShapes</c>). The plain cast's table, asked by the parts a type holds, read both as
+        /// a <c>TIMESTAMP</c>, so the adapter's transpose moved the sort beneath the cast onto the stored date and a count
+        /// over the page answered 2 where the query raises.
+        /// </remarks>
+        [Fact]
+        public void ASortThroughACastOfADateToAZonedTimestampRaisesAsCalciteDoes()
+        {
+            string[] documents =
+            [
+                """{ "id": "a", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-02-29", "t": "12:30:00", "m": "12:30" }""",
+                """{ "id": "b", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-03-01", "t": "12:30:00", "m": "12:30" }""",
+            ];
+
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                foreach (var type in new[] { "TIMESTAMP WITH LOCAL TIME ZONE", "TIMESTAMP WITH TIME ZONE" })
+                {
+                    var answer = () => AnswerInStoredOrder($"""SELECT COUNT(*) FROM (SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS {type}) FETCH NEXT 2 ROWS ONLY) AS x""", Temporal, target, documents);
+                    answer.Should().Throw<Exception>($"{target}: the cast to {type} raises over a calendar date")
+                        .Where(e => e.ToString().Contains("this executor answers") == false, "the raise is the cast's, not a request the executor refuses");
+                }
         }
 
         /// <summary>

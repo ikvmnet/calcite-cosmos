@@ -5,7 +5,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
     /// <summary>
     /// Which halves of an instant something holds — a stored shape, or the SQL type a function
-    /// answers.
+    /// answers — and, for a type, whether it holds a place in a zone beside them.
     /// </summary>
     /// <remarks>
     /// <b>The two questions a parse has to answer are both about these.</b> A parse truncates where the
@@ -38,6 +38,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Both, which is what an instant is and what a <c>TIMESTAMP</c> holds.
         /// </summary>
         Instant = Date | Time,
+
+        /// <summary>
+        /// A place in a time zone, which a <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, a <c>TIMESTAMP WITH TIME ZONE</c> and a
+        /// <c>TIME WITH LOCAL TIME ZONE</c> hold beside their halves, and a zone-less type does not.
+        /// </summary>
+        /// <remarks>
+        /// Kept apart because Calcite's plain cast does not read a zone-less string into such a type as it reads it into
+        /// the zone-less one: measured, it raises over every string of the calendar date and of the two times of day
+        /// (<c>Calcite.TemporalCastReadsFewShapes</c>), where the cast to <c>DATE</c> and <c>TIMESTAMP</c> reads the date.
+        /// So <see cref="CosmosTemporalForms.EngineReads"/>, asked by what a cast's type holds, lists no target holding
+        /// this, and a cast to a zoned type reads no form.
+        /// </remarks>
+        Zone = 4,
 
     }
 

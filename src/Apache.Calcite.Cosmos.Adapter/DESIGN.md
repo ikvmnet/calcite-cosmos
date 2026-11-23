@@ -477,6 +477,7 @@ Calcite's own runtime:
 | `CAST(<s> AS TIME)` | `12:60:00`, `12:30:60`, `24:00:00`, `99:99:99` | the fields added as they stand: 13:00:00, 12:31:00, and two clocks later than every time of day; no raise |
 | `CAST(<s> AS TIME)` | `12:30:00.123` | `12:30:00` — the fraction is dropped |
 | `CAST(<s> AS TIME)` | `20240115` | `09:37:03` — a value, silently wrong |
+| `CAST(<s> AS TIMESTAMP WITH LOCAL TIME ZONE)`, `WITH TIME ZONE`, `CAST(<s> AS TIME WITH LOCAL TIME ZONE)` | `2024-01-15`, `12:30:00`, any instant | raises |
 | `JSON_VALUE(…, RETURNING TIMESTAMP)` | any string at all | raises |
 | `JSON_VALUE(…, RETURNING TIMESTAMP)` | the JSON *number* `1705321800000` | ✔ |
 
@@ -582,6 +583,14 @@ extremes and its groups answered every row where the query raises. The accessor 
 raises as Calcite does; `EngineTargets` is the cast's alone. The order family's reading of a path so
 typed (`CosmosServiceOrder.ReadPath`) asks the same, so it no longer calls such a column's order the
 stored text's where nothing sends it.
+
+**A cast to a zoned timestamp was read as a `TIMESTAMP`** (`Calcite.TemporalCastReadsFewShapes`). The
+table is asked by what a cast's type holds, and `TIMESTAMP WITH LOCAL TIME ZONE` and `TIMESTAMP WITH TIME
+ZONE` were read as an instant's two halves, which a calendar date's row lists. But the casts to them, and
+to `TIME WITH LOCAL TIME ZONE`, raise over every calendar date, time of day and instant, so a sort through
+one over a declared date was moved onto the stored text and answered where the query raises. A zoned type
+is read with its place in a zone beside the halves (`CosmosTemporalParts.Zone`), which no row lists, so
+the order family and the guarded transpose refuse such a cast by the table alone.
 
 **The calendar date's row stays, and its day zero is recorded rather than fixed**
 (`Calcite.DateCastReadsDayZeroAsTheMonthBefore`). The cast reads `2024-03-00` as 29 February and

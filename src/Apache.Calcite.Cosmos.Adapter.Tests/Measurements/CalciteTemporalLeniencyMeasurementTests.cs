@@ -10,6 +10,8 @@ using Apache.Calcite.Data;
 
 using FluentAssertions;
 
+using org.apache.calcite.sql.type;
+
 using Xunit;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
@@ -734,8 +736,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// A plain cast to a temporal type reads the canonical strings of three forms as Calcite's literal of the same
         /// spelling, a calendar date into <c>DATE</c> and <c>TIMESTAMP</c> and a time of day at seconds or minutes into
-        /// <c>TIME</c>, and raises into each of the three over a sample of every registered form holding a <c>T</c>.
+        /// <c>TIME</c>, and raises into each of the three over a sample of every registered form holding a <c>T</c>; into a
+        /// type placed in a zone, <c>TIMESTAMP WITH LOCAL TIME ZONE</c>, <c>TIMESTAMP WITH TIME ZONE</c> and <c>TIME WITH
+        /// LOCAL TIME ZONE</c>, it raises over all of them.
         /// </summary>
+        /// <remarks>
+        /// <see cref="CosmosStoredForms.EngineReads"/>, the table a cast is asked of by what its type holds
+        /// (<see cref="CosmosTemporalParse.PartsOf"/>), is held to it for every registered form and each of the six types.
+        /// Each zoned type reads a string of another spelling, the controls, so a raise is the stored string's.
+        /// </remarks>
         [Fact, CosmosPins("Calcite.TemporalCastReadsFewShapes")]
         public void APlainCastReadsThreeFormsAndRaisesOverEveryInstant()
         {
@@ -763,7 +772,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             foreach (var type in new[] { "TIMESTAMP", "DATE", "TIME" })
                 problems.AddRange(Plain(connection, type, instants.Select(s => (s, (string?)null))));
 
-            string.Join(Environment.NewLine, problems).Should().BeEmpty("a calendar date and a time of day are read, and an instant raises");
+            var zoned = new (string Type, SqlTypeName Name, string Control)[]
+            {
+                ("TIMESTAMP WITH LOCAL TIME ZONE", SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE, "2024-01-15 12:30:00 UTC"),
+                ("TIMESTAMP WITH TIME ZONE", SqlTypeName.TIMESTAMP_TZ, "1705321800000"),
+                ("TIME WITH LOCAL TIME ZONE", SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE, "12:30:00 UTC"),
+            };
+
+            foreach (var (type, _, control) in zoned)
+            {
+                problems.AddRange(Plain(connection, type, dates.Concat(clocks).Concat(instants).Select(s => (s, (string?)null))));
+
+                if (MaterialisedTable.Of([Document(control)]).Values(connection, $"CAST(CAST({Text} AS {type}) AS VARCHAR)")[0] is var read && (read is null or Exception))
+                    problems.Add($"CAST('{control}' AS {type}): expected a value, the control, {(read is Exception e ? "raises: " + e.Message : "null")}");
+            }
+
+            string.Join(Environment.NewLine, problems).Should().BeEmpty("a calendar date and a time of day are read, an instant raises, and so does every one of them into a zoned type");
+
+            // And the table a cast is asked of says the same, by what each type holds.
+            var types = new[] { SqlTypeName.DATE, SqlTypeName.TIMESTAMP, SqlTypeName.TIME }.Concat(zoned.Select(z => z.Name)).ToArray();
+            CosmosTemporalForms.Registered
+                .SelectMany(r => types.Select(t => (Form: r, Type: t)))
+                .Where(c => CosmosStoredForms.EngineReads(c.Form, CosmosTemporalParse.PartsOf(c.Type)) != (c.Form.Name == "iso8601-date" && (c.Type == SqlTypeName.DATE || c.Type == SqlTypeName.TIMESTAMP)))
+                .Select(c => $"{c.Form.Name} into {c.Type.getName()}: the table says {CosmosStoredForms.EngineReads(c.Form, CosmosTemporalParse.PartsOf(c.Type))}")
+                .Should().BeEmpty("the plain cast reads a calendar date into DATE and TIMESTAMP and no form into any other type");
         }
 
         /// <summary>

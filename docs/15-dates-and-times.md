@@ -127,6 +127,7 @@ and not in Calcite:
 | `CAST(<s> AS TIMESTAMP)` | `2024-01-15 12:30:00` (space, no zone) | ✔ — the only instant it reads |
 | `CAST(<s> AS DATE)` or `AS TIMESTAMP` | `2024-01-15` | ✔ — and day `00` as the month before's last day; any other field out of range raises |
 | `CAST(<s> AS TIME)` | `12:30:00`, `12:30` | ✔ — and a field past its range added on: `12:60:00` is 13:00 |
+| `CAST(<s> AS TIMESTAMP WITH LOCAL TIME ZONE)`, `WITH TIME ZONE`, `CAST(<s> AS TIME WITH LOCAL TIME ZONE)` | `2024-01-15`, `12:30:00`, any instant | raises |
 | `JSON_VALUE(… RETURNING TIMESTAMP)` | any string | raises |
 | `JSON_VALUE(… RETURNING TIMESTAMP)` | the number `1705321800000` | ✔ — epoch milliseconds |
 | `JSON_VALUE(… RETURNING DATE)` | any string, `2024-01-15` included | raises |

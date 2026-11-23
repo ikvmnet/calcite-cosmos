@@ -152,8 +152,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Maps the type a parse answers onto the halves of an instant it holds.
+        /// Maps the type a parse or a cast answers onto the halves of an instant it holds, and the place in a zone where
+        /// it holds one.
         /// </summary>
+        /// <remarks>
+        /// A zoned type is not its zone-less sibling to the plain cast, which raises over every stored string a zone-less
+        /// type reads (<see cref="CosmosTemporalParts.Zone"/>), so it is read as what it holds and not as the halves alone.
+        /// </remarks>
         /// <param name="type">The type, or <c>null</c>.</param>
         /// <returns>The parts, or <see cref="CosmosTemporalParts.None"/> for a type that is none of these.</returns>
         public static CosmosTemporalParts PartsOf(SqlTypeName? type)
@@ -161,11 +166,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.DATE)
                 return CosmosTemporalParts.Date;
 
-            if (type == SqlTypeName.TIME || type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE)
+            if (type == SqlTypeName.TIME)
                 return CosmosTemporalParts.Time;
 
-            if (type == SqlTypeName.TIMESTAMP || type == SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIMESTAMP_TZ)
+            if (type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE)
+                return CosmosTemporalParts.Time | CosmosTemporalParts.Zone;
+
+            if (type == SqlTypeName.TIMESTAMP)
                 return CosmosTemporalParts.Instant;
+
+            if (type == SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIMESTAMP_TZ)
+                return CosmosTemporalParts.Instant | CosmosTemporalParts.Zone;
 
             return CosmosTemporalParts.None;
         }
