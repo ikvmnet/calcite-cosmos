@@ -111,7 +111,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// An executor that serves one document as each statement's select list selects it, whatever its <c>WHERE</c>: the item
         /// whole, or an object of the item, its paths and its guarded paths, as a projection writes them.
         /// </summary>
-        sealed class SelectingExecutor(string document) : ICosmosQueryExecutor
+        internal sealed class SelectingExecutor(string document) : ICosmosQueryExecutor
         {
 
             public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
@@ -124,7 +124,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             /// </summary>
             string Select(string sql)
             {
-                var statement = System.Text.RegularExpressions.Regex.Match(sql, @"^SELECT VALUE (c|\{ (?<members>.*) \}) FROM products c( WHERE .*)?$");
+                var statement = System.Text.RegularExpressions.Regex.Match(sql, @"^SELECT VALUE (c|\{ (?<members>.*) \}) FROM \w+ c( WHERE .*)?$");
                 if (statement.Success == false)
                     throw new InvalidOperationException("No row is served for " + sql);
 
@@ -1533,7 +1533,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <para>
         /// A condition that reads the column only in a <c>CASE</c> branch, or in a later operand of <c>COALESCE</c>, does not
         /// read it for every row, so it was selected there too and failed; and a <c>JSON_QUERY</c> returning an
-        /// <c>INTEGER ARRAY</c> refuses <c>[1.5]</c>, though the walk reads it as JSON text.
+        /// <c>INTEGER ARRAY</c> refuses <c>[1.5]</c>, though the walk reads it as JSON text, and one returning a
+        /// <c>VARCHAR ARRAY</c> refuses <c>[1]</c>, an element the array's guard lets through.
         /// </para>
         /// <para>
         /// A view over a filtered view passes the column up as a bare reference, and the transpose carries the half beneath
@@ -1554,6 +1555,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         [InlineData(false, ViewOfARefusingReading + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN t.\"n\" > 10 ELSE FALSE END",
             "(IS_DEFINED(c.name) AND (c.n > @p0))")]
         [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "IS_DEFINED(c.name)")]
         [InlineData(false, "SELECT u.\"d\"" + ThroughAFilteredViewOfARefusingReading,
             "((c.type = @p0) AND IS_DEFINED(c.name))")]
@@ -1599,7 +1604,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// statement selects it: the item whole. Calcite drops the document on the case fold, or reads the column only in a
         /// branch or an operand it never reaches there, so it never reads the 1.5 or the 11.5 at <c>n</c>, and a statement that
         /// selected the column beneath the condition failed with "A JSON number of '1.5' is not a whole number and cannot be
-        /// read as INTEGER".
+        /// read as INTEGER", and over a <c>VARCHAR ARRAY</c> holding 1 with "Expected a JSON string".
         /// </remarks>
         [Theory]
         [InlineData(ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
@@ -1610,6 +1615,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "{ \"id\": \"x1\", \"n\": 11.5, \"name\": \"x\" }")]
         [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
             "{ \"id\": \"x1\", \"n\": [1.5], \"name\": \"x\" }")]
+        [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": [1], \"name\": \"x\" }")]
         [InlineData("SELECT u.\"n\"" + ThroughAFilteredViewOfARefusingReading,
             "{ \"id\": \"x1\", \"type\": \"Park\", \"n\": 1.5, \"name\": \"x\" }")]
         public async Task ShouldAnswerAsCalciteOverAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(string sql, string document)

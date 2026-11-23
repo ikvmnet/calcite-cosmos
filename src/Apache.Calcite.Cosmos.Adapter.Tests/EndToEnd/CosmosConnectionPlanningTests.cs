@@ -777,7 +777,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A")]
         [InlineData("ws1k", "TwoTraversals",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND (c.n > @p1)) | @p0=A, @p1=50",
-            "SELECT VALUE { \"DOC\": c, \"id\": c.id, \"$f5\": (IS_ARRAY(c.tags) ? c.tags : null) } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1)) AND (c.n > @p2)) | @p0=A, @p1=7, @p2=50")]
+            "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1)) AND (c.n > @p2)) | @p0=A, @p1=7, @p2=50")]
         [InlineData("j3n", "Traversed",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE (c.kind = @p0) | @p0=A",
             "SELECT VALUE { \"DOC\": c, \"id\": c.id } FROM items c WHERE ((c.kind = @p0) AND IS_DEFINED(c.body) AND (NOT IS_NUMBER(c.body) OR (c.body = @p1))) | @p0=A, @p1=7")]
@@ -801,6 +801,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             }
 
             wrong.Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// A traversal through this connection, over a document the condition kept in process drops whose array the traversal
+        /// reads holds a number or a boolean: no row, as Calcite answers; and over one that condition keeps, the row. ws1k
+        /// traverses a view, and its condition casts <c>body</c>; the other traverses the container beneath a case fold.
+        /// </summary>
+        /// <remarks>
+        /// The host's trimmer leaves the array the traversal reads in the projection beneath that condition, and the split
+        /// over the projection, in ws1k, or the residual projection, beneath the case fold, selected it, read as the
+        /// <c>VARCHAR ARRAY</c> the traversal names for every row the service sends, where Calcite reads it only for the rows
+        /// the condition keeps. The guard is the array's, so an element of another kind arrives and is refused, and the
+        /// statement failed where Calcite answers. A collection whose elements are read to a type can refuse
+        /// (<c>CosmosJson.CanRefuse</c>), so neither selects it there. The stub serves each document as the statement's select
+        /// list selects it, whatever its <c>WHERE</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData("ws1k", """{ "id": "x1", "kind": "A", "body": "8", "n": 60, "tags": [1], "more": ["x"] }""", null)]
+        [InlineData("ws1k", """{ "id": "x1", "kind": "A", "body": "8", "n": 60, "tags": [true], "more": ["x"] }""", null)]
+        [InlineData("ws1k", """{ "id": "x1", "kind": "A", "body": "7", "n": 60, "tags": ["1"], "more": ["x"] }""", "x1")]
+        [InlineData("fold", """{ "id": "x1", "name": "steel2", "tags": [1] }""", null)]
+        [InlineData("fold", """{ "id": "x1", "name": "steel2", "tags": [true] }""", null)]
+        [InlineData("fold", """{ "id": "x1", "name": "steel", "tags": ["1"] }""", "x1")]
+        public void AnArrayATraversalReadsIsReadOnlyForTheRowsTheConditionKeptInProcessKeeps(string name, string document, string? row)
+        {
+            var sql = name == "ws1k"
+                ? CosmosDeclaredFactPlanningTests.BesideACorrelate("ws1k", "items")
+                : "SELECT c.\"id\" FROM items AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE u.t IS NOT NULL AND INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Steel'";
+
+            Answer(sql, new Rel.Convert.CosmosToClrCursorConverterTests.SelectingExecutor(document))
+                .Should().Equal(row is null ? Array.Empty<string>() : new[] { row }, "Calcite reads the array only for the rows the condition keeps: {0}", document);
+        }
+
+        /// <summary>
+        /// Runs a statement over a container declared nothing whose every request the executor given answers: the plan
+        /// implemented, and its first column read.
+        /// </summary>
+        static System.Collections.Generic.List<string> Answer(string sql, ICosmosQueryExecutor executor)
+        {
+            using var source = Open(null, executor, null);
+            using var connection = source.OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            using var reader = command.ExecuteReader();
+            var rows = new System.Collections.Generic.List<string>();
+            while (reader.Read())
+                rows.Add(Convert.ToString(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture)!);
+
+            return rows;
         }
 
         /// <summary>
