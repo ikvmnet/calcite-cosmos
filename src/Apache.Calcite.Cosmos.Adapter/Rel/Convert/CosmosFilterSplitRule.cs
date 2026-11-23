@@ -372,10 +372,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// <param name="condition">The filter's condition, carried beneath each projection as the transpose writes it there.</param>
         static bool ReadsWhatCanRefuse(RelNode? node, RexNode condition)
         {
-            // What was asked is remembered by member alone, since keyed by the condition carried as well the walk need not end
-            // through a cycle of projections, so a member met again under another condition is not asked again, which errs
-            // toward registering the pair.
-            var seen = Rel.CosmosPlanMembers.NewSeen();
+            // What was asked is remembered by member and the conditions carried, compared as Calcite compares expressions: a
+            // member met again by another route may be carried beneath where the first route's conditions grew past the
+            // transpose's bloat, as one met through a filter's reduction to a SEARCH, in the filter's set, is. A member already
+            // on the route is not asked again, which ends a cycle.
+            var asked = new Dictionary<RelNode, List<IReadOnlyList<RexNode>>>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+            var route = Rel.CosmosPlanMembers.NewSeen();
 
             // Carried: the filter's condition, then that of each filter it is stacked on above the candidate, each as the
             // transpose writes it there.
@@ -383,21 +385,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             {
                 foreach (var member in Rel.CosmosPlanMembers.Of(candidate))
                 {
-                    if (seen.Add(member) == false || (member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention))
+                    if ((member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention) || route.Contains(member) || Asks(member, carried) == false)
                         continue;
 
-                    // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
-                    // one a projection beneath computes; asked where it carries the filter itself beneath.
-                    if (member is Project project && Beneath(carried, project) is { } beneath && (Refuses(project) || Holds(project.getInput(), beneath)))
-                        return true;
+                    route.Add(member);
 
-                    // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals;
-                    // the transpose carries this filter beneath one only once it has carried that filter there.
-                    if (member is Filter filter && Holds(filter.getInput(), [.. carried, filter.getCondition()]))
+                    // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
+                    // one a projection beneath computes; asked where it carries the filter itself beneath. A filter keeps its row
+                    // type, so a projection beneath it holds this relation's columns in the same ordinals; the transpose carries
+                    // this filter beneath one only once it has carried that filter there.
+                    var holds = member switch
+                    {
+                        Project project => Beneath(carried, project) is { } beneath && (Refuses(project) || Holds(project.getInput(), beneath)),
+                        Filter filter => Holds(filter.getInput(), [.. carried, filter.getCondition()]),
+                        _ => false,
+                    };
+
+                    route.Remove(member);
+                    if (holds)
                         return true;
                 }
 
                 return false;
+            }
+
+            // Whether a member is yet to be asked under the conditions carried, remembering that it is.
+            bool Asks(RelNode member, IReadOnlyList<RexNode> carried)
+            {
+                if (asked.TryGetValue(member, out var conditions) == false)
+                    asked[member] = conditions = [];
+                else if (conditions.Any(each => each.SequenceEqual(carried)))
+                    return false;
+
+                conditions.Add(carried);
+                return true;
             }
 
             // Each condition carried as the transpose writes it beneath the projection, or null where it declines any.

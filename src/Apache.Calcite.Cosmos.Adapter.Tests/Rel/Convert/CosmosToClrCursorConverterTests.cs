@@ -381,7 +381,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// survives.
         /// </para>
         /// </remarks>
-        RelNode PlanToClrWithHostRules(string sql)
+        /// <param name="sql">The statement.</param>
+        /// <param name="reduce">Whether the engine's <c>FILTER_REDUCE_EXPRESSIONS</c> is registered too, which every
+        /// connection-based host has.</param>
+        RelNode PlanToClrWithHostRules(string sql, bool reduce = false)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -391,6 +394,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
+
+            if (reduce)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_REDUCE_EXPRESSIONS);
 
             var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
@@ -1724,6 +1730,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
 
             (await Execute(best)).Should().BeEmpty("Calcite drops a document with no name on the case fold without reading the view's array: {0}", sent);
+        }
+
+        /// <summary>
+        /// Over a filter on a view that the transpose carries beneath the view only as the engine reduces it, the split of a
+        /// condition stacked on it is declined as over any filter the transpose carries, and the plan answers as Calcite does
+        /// over a document the condition drops: no row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Sixty equalities of the view's text column grow past the transpose's bloat as written, and the engine's reduction
+        /// writes them, in the same set, as one <c>SEARCH</c>, which the transpose carries. Asked whether a projection the
+        /// service may select beneath the filter holds a reading that can refuse, the walk met the view's projection first
+        /// through the equalities, which the transpose declines, remembered it by itself alone, and met through the
+        /// <c>SEARCH</c> did not ask it again. So the split of the case fold was registered, the statement selected the
+        /// view's <c>VARCHAR ARRAY</c> or <c>INTEGER</c> under the condition kept in process, and its reading refused the
+        /// element that is no string, or 1.5, of a document Calcite drops on the case fold without reading the column. Planned
+        /// bare, with the engine's rules, its reduction of filters and the calc pass, and run over the stub, which answers
+        /// each request as the service does on the target.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\"")]
+        [InlineData(CosmosServiceTarget.Azure, "JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\"")]
+        [InlineData(CosmosServiceTarget.Emulator, "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\"")]
+        [InlineData(CosmosServiceTarget.Emulator, "JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\"")]
+        public async Task ShouldAnswerAsCalciteOverAViewsReadingBeneathAFilterTheTransposeCarriesOnceReduced(CosmosServiceTarget target, string column)
+        {
+            const string document = "{ \"id\": \"d1\", \"a\": \"w1\", \"name\": \"iron\", \"region\": \"north\", \"x\": [\"5\", 5], \"n\": 1.5 }";
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor([document], target)));
+
+            var sql = "SELECT q.\"id\" FROM (SELECT * FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", " + column + " FROM products AS c) AS v WHERE "
+                + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"v.\"a\" = 'w{i}'")) + ") AS q WHERE INITCAP(JSON_VALUE(q.\"DOC\", '$.name')) = 'Steel'";
+            var best = PlanToClrWithHostRules(sql, reduce: true);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops the document on the case fold without reading the view's column: {0}", sent);
         }
 
         /// <summary>
