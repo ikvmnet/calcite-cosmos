@@ -533,33 +533,32 @@ would follow, so the chain would preserve whatever the shape preserves and the t
 unchanged. It was measured over canonical samples alone, and that is where it was wrong.
 
 **Measured over every string a form admits, no format reads its form one for one**
-(`Calcite.ParsesReadTheirFieldsLeniently`). A form's language is a run of digits per field, and
-each listed format, through the conversions the form's fields are read into, reads a field past its
-range as the value its fields make once carried over, raising over none of these:
-`2016-12-31T24:00:00Z`, `2016-12-31T23:60:00Z` and `2016-12-31T23:59:60Z` are `2017-01-01T00:00:00Z`'s
-instant, 30 February of a common year is 2 March and of a leap year 1 March, 29 February of 1900 or 2100
-1 March, month 13 the next January, day and month `00` the last of the ones before, and a day of 1582's
-gap ten days on, the field carried over first and the gap's ten days applied to the day that results:
-`1582-10-14T24:00:00` is `1582-10-15`, earlier than `1582-10-14T12:00:00`, which is `1582-10-24`. Before
-1582-10-15 the family carries a field over by the Julian calendar, which holds every fourth year leap,
-counts a year before year one by its year of the era, and reads the date that makes as a proleptic
-Gregorian day, raising where there is none: `1000-02-30` is 1 March, `0000-01-01` is `0001-01-01`,
-`0000-00-00` is `0002-11-30`, and 29 February of 0100 or of 1500, and `0100-03-00`, raise. Into `TIME`
-the clock wraps at a day: `24:00:00` is midnight and `99:99:99` is 04:40:39.
-`CAST … AS TIMESTAMP FORMAT` before 1582-10-16, and `PARSE_DATETIME` over a time of day the host's
-default time zone skips, at a daylight-saving change or any other change of its offset, read what that
-zone makes of them, whatever the session's: under America/Chicago the cast reads `0001-01-01` as
-`0002-01-01` and `1582-10-15` as `1582-10-05`, and the parse reads `2024-03-10T02:30:00Z`, a
-daylight-saving change, and `1936-03-01T02:30:00Z`, when Chicago moved from Central to Eastern Standard
-Time, as 03:30; under UTC each reads as spelled. `PARSE_DATE` and `CAST … AS DATE FORMAT` over a date
-whose midnight that zone skips depend on it too: under Pacific/Apia, which skipped 2011-12-30 whole, both
-read `2011-12-30` as the 31st, where the cast to `TIMESTAMP` with a format reads it as written, and under
-America/Sao_Paulo they read some of its skipped midnights as the next day and others as written. So the
-measurement asks the cast from 1582-10-16 on and the skipped times, every skipped midnight among them,
-against the host's own zone, asserts nothing of the date conversions over a skipped midnight, and holds
-wherever it runs. Through the adapter as it
-stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form was sent as
-`WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that string, `2016-12-31T24:00:00Z`,
+(`Calcite.ParsesReadTheirFieldsLeniently`). A form's language is a run of digits per field, and each
+listed format, through the conversions the form's fields are read into, reads a field past its range as
+the value its fields make once carried over, raising over none of these: `2016-12-31T24:00:00Z`,
+`2016-12-31T23:60:00Z` and `2016-12-31T23:59:60Z` are `2017-01-01T00:00:00Z`'s instant, 30 February of a
+common year is 2 March and of a leap year 1 March, 29 February of 1900 or 2100 1 March, month 13 the next
+January, day and month `00` the last of the ones before, and a day of 1582's gap ten days on, the field
+carried over first and the gap's ten days applied to the day that results: `1582-10-14T24:00:00` is
+`1582-10-15`, earlier than `1582-10-14T12:00:00`, which is `1582-10-24`. Before 1582-10-15 the family
+carries a field over by the Julian calendar, which holds every fourth year leap, counts a year before
+year one by its year of the era, and reads the date that makes as a proleptic Gregorian day, raising
+where there is none: `1000-02-30` is 1 March, `0000-01-01` is `0001-01-01`, `0000-00-00` is `0002-11-30`,
+and 29 February of 0100 or of 1500, and `0100-03-00`, raise. Into `TIME` the clock wraps at a day:
+`24:00:00` is midnight and `99:99:99` is 04:40:39. `CAST … AS TIMESTAMP FORMAT` before 1582-10-16, and
+`PARSE_DATETIME` over a time of day the host's default time zone skips, at a daylight-saving change or
+any other change of its offset, read what that zone makes of them, whatever the session's: under
+America/Chicago the cast reads `0001-01-01` as `0002-01-01` and `1582-10-15` as `1582-10-05`, and the
+parse reads `2024-03-10T02:30:00Z`, a daylight-saving change, and `1936-03-01T02:30:00Z`, when Chicago
+moved from Central to Eastern Standard Time, as 03:30; under UTC each reads as spelled. `PARSE_DATE` and
+`CAST … AS DATE FORMAT` over a date whose midnight that zone skips depend on it too: under Pacific/Apia,
+which skipped 2011-12-30 whole, both read `2011-12-30` as the 31st, where the cast to `TIMESTAMP` with a
+format reads it as written, and under America/Sao_Paulo they read some of its skipped midnights as the
+next day and others as written. So the measurement asks the cast from 1582-10-16 on and the skipped
+times, every midnight the zone skips to the end of 2099 among them, against the host's own zone, asserts
+nothing of the date conversions over a skipped midnight, and holds wherever it runs. Through the adapter
+as it stood, `PARSE_DATETIME(…) = TIMESTAMP '2017-01-01 00:00:00'` over a declared seconds form was sent
+as `WHERE (c.at = @p0)` with `2017-01-01T00:00:00Z`, and over that string, `2016-12-31T24:00:00Z`,
 `2016-12-31T23:60:00Z`, `2016-11-61T00:00:00Z` and the next day's it kept one document where Calcite
 keeps three.
 
