@@ -2596,6 +2596,14 @@ across documents* and *A join of a container to itself* is the record.
   because the two halves disagreeing is how #149 happened.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
+- **A null test through `RETURNING VARBINARY` is sent as the path's presence** — *small, soundness.*
+  `JSON_VALUE(… RETURNING VARBINARY) IS NOT NULL` is written `(IS_DEFINED(c.t) AND NOT IS_NULL(c.t) AND
+  IS_PRIMITIVE(c.t))`, the text accessor's null set, and `IS NULL` as its complement, declared or not and
+  on both targets. Measured in process, the clause raises over a string, a number and a boolean alike
+  (*Unable to cast … to type `ByteString`*), so the request answers rows where the query raises. An
+  accessor typed `TIME WITH TIME ZONE` did the same until its type was read as a temporal one. The fix
+  belongs to the accessor's reading: a `RETURNING` type with no reading tests, whose clause raises over
+  every stored string, should not have its null test written as the text accessor's.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
   numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
   so the basis is asked of the service per row.
