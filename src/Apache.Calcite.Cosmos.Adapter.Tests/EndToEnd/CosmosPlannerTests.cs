@@ -4458,6 +4458,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A half holding the service's form reaches the service only where the filter rule translates a filter of it where it
+        /// lands, whatever the binding of the rows it sits over reads: over a member already part of a statement, the
+        /// container's scan in its logical form, or a traversal. The half is the one a view's column holding an item of a map
+        /// gave while that column was bound to the member's path: its equality beside the definedness of the name. Written
+        /// beneath the view, or over a traversal of the container, it reads the item of the map, which the filter rule does not
+        /// translate; the definedness alone it does.
+        /// </summary>
+        [Fact]
+        public void AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands()
+        {
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            const string item = "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)['a']";
+            const string fold = "INITCAP(JSON_VALUE({0}.\"DOC\", '$.name')) = 'Steel'";
+
+            // Over the view: its scan is a member of a statement as the table makes it.
+            var overView = Filters(harness.ToLogical($"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", {item} AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = '5' OR " + string.Format(fold, "t"))).Single();
+            var view = overView.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            var (half, defined) = BesideTheName(overView);
+            CosmosOperators.HoldsServiceForm(half).Should().BeTrue("the definedness of the name is the service's form");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, view, CosmosPlanMembers.NewSeen(), defined).Should().BeTrue("the definedness alone is translated beneath the view");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, view, CosmosPlanMembers.NewSeen(), half).Should().BeFalse("beneath the view the half reads an item of a map");
+
+            // The container's scan in its logical form, the half written beneath the view.
+            var scan = view.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.TableScan>().Subject;
+            var logical = org.apache.calcite.rel.logical.LogicalTableScan.create(scan.getCluster(), scan.getTable(), java.util.Collections.emptyList());
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, logical, CosmosPlanMembers.NewSeen(), RelOptUtil.pushPastProject(defined, view)).Should().BeTrue("the definedness alone is translated over the scan");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, logical, CosmosPlanMembers.NewSeen(), RelOptUtil.pushPastProject(half, view)).Should().BeFalse("over the scan the half reads an item of a map");
+
+            // Over a traversal of the container, the same half written over the document; the projection naming the element
+            // removed, as the planner removes it, so the unnest rule converts the traversal.
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(org.apache.calcite.rel.rules.CoreRules.PROJECT_REMOVE).build());
+            hep.setRoot(harness.ToLogical($"SELECT c.\"id\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE {item} = '5' OR " + string.Format(fold, "c")));
+            var overTraversal = Filters(hep.findBestExp()).Single();
+            var traversal = overTraversal.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Correlate>().Subject;
+            var (crossed, definedCrossed) = BesideTheName(overTraversal);
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, traversal, CosmosPlanMembers.NewSeen(), definedCrossed).Should().BeTrue("the definedness alone is translated over the traversal");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, traversal, CosmosPlanMembers.NewSeen(), crossed).Should().BeFalse("over the traversal the half reads an item of a map");
+
+            // The filter's disjunction of a comparison and the case fold of the name, the fold weakened to the name's definedness.
+            static (RexNode Half, RexNode Defined) BesideTheName(org.apache.calcite.rel.core.Filter filter)
+            {
+                var rex = filter.getCluster().getRexBuilder();
+                var disjuncts = RelOptUtil.disjunctions(filter.getCondition()).toArray().Cast<RexNode>().ToList();
+                var fold = disjuncts.Should().ContainSingle(d => RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, d) != null).Subject;
+                var comparison = disjuncts.Should().ContainSingle(d => ReferenceEquals(d, fold) == false).Subject;
+                var initcap = (RexCall)RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, fold)!;
+                var defined = rex.makeCall(CosmosOperators.IsDefined, (RexNode)initcap.getOperands().get(0));
+                return (rex.makeCall(SqlStdOperatorTable.OR, comparison, defined), defined);
+            }
+        }
+
+        /// <summary>
         /// Records the half of each pair the split rule registers, before Volcano takes it: the filter beneath the one left
         /// above, or the filter registered alone where nothing is left above.
         /// </summary>

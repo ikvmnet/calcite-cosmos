@@ -184,10 +184,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             // Legality: a weakening is the service's form, which Calcite has no body for, so the half split off holds one only
             // where it reaches the service: through a member already part of a statement, or over a projection through
-            // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed). Where nothing carries it, the conjuncts
-            // admitted go alone, asked the same: a host's filter merge brings a split's weakening into the condition beside the
-            // conjunct it weakens, where it is admitted as the condition's own, and where nothing carries them either the split
-            // registers nothing.
+            // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed), landing only where the filter rule
+            // translates it (Reaches). Where nothing carries it, the conjuncts admitted go alone, asked the same: a host's
+            // filter merge brings a split's weakening into the condition beside the conjunct it weakens, where it is admitted
+            // as the condition's own, and where nothing carries them either the split registers nothing.
             var half = Compose(rexBuilder, pushable);
             if (CosmosOperators.HoldsServiceForm(half) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half) == false)
             {
@@ -797,7 +797,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
         /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
         /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
-        /// asked of the half as it stands.
+        /// asked of the half as it stands; and where it lands, over a member part of a statement, the scan or a traversal,
+        /// the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -820,6 +821,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// projection counts wherever its input reaches, the transpose taken for granted, which is the cheap question
         /// <see cref="matches"/> asks before the half is built.
         /// </para>
+        /// <para>
+        /// <b>Where the half lands</b> it is asked of the filter rule, whatever the binding of the rows above read. A view's
+        /// column holding an item of a map, bound to the member's path, read as the value stored there, and the split over the
+        /// view registered a half holding <c>IS_DEFINED(c.name) OR c.x.a = "5"</c>: written beneath the view it read the item
+        /// of the map, which the filter rule does not translate, so it stayed a filter Calcite evaluates holding the
+        /// service's form, and the statement failed to implement.
+        /// </para>
         /// </remarks>
         /// <param name="convention">The convention whose statements the filter would be part of.</param>
         /// <param name="node">The subtree the filter sits over.</param>
@@ -834,7 +842,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     continue;
 
                 if (member.getConvention() is CosmosConvention)
-                    return true;
+                {
+                    if (Lands(member))
+                        return true;
+
+                    continue;
+                }
 
                 // A form Calcite implements says nothing of what the service can be handed: a set holds one beside its
                 // logical forms once Volcano has converted any of them.
@@ -843,12 +856,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 var reaches = member switch
                 {
-                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention) && Lands(scan),
                     Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen, half),
                     Project project => half is null
                         ? Reaches(convention, project.getInput(), seen)
                         : Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath),
-                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen),
+                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen) && Lands(correlate),
                     _ => false,
                 };
 
@@ -857,6 +870,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             return false;
+
+            // Where the half lands it is a filter over the member, which the filter rule converts only where it translates the
+            // half there.
+            bool Lands(RelNode member) => half is null || CosmosFilterRule.IsTranslatable(convention, org.apache.calcite.rel.logical.LogicalFilter.create(member, half));
         }
 
         /// <summary>
