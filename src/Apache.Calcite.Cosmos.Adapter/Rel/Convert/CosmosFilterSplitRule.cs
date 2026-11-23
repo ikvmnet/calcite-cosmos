@@ -362,7 +362,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// filter is split over the rows the projection reads. Where the transpose declines, the filter stays above the
         /// projection whatever the split does, and the service selects the projection under what lies beneath it, which the
         /// pair only narrows. Measured: sixty <c>LIKE</c>s of a case fold of the view's column beside <c>t."a" = 'k'</c>,
-        /// the pair declined, sent no <c>WHERE</c> and failed over <c>{"a":"z","n":1.5}</c>, which the equality drops.
+        /// the pair declined, sent no <c>WHERE</c> and failed over <c>{"a":"z","n":1.5}</c>, which the equality drops. Beneath
+        /// a filter the filter is stacked on, likewise only where the transpose carries that filter beneath as well, which it
+        /// moves first: over a view's filter too wide for it, the pair declined sent no weakening of the case fold above, and
+        /// the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over <c>["5",5]</c>.
         /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
@@ -374,7 +377,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // toward registering the pair.
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
-            bool Holds(RelNode? candidate, RexNode carried)
+            // Carried: the filter's condition, then that of each filter it is stacked on above the candidate, each as the
+            // transpose writes it there.
+            bool Holds(RelNode? candidate, IReadOnlyList<RexNode> carried)
             {
                 foreach (var member in Rel.CosmosPlanMembers.Of(candidate))
                 {
@@ -383,15 +388,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
                     // one a projection beneath computes; asked where it carries the filter itself beneath.
-                    if (member is Project project && Transposed(carried, project) is RexNode beneath && (Refuses(project) || Holds(project.getInput(), beneath)))
+                    if (member is Project project && Beneath(carried, project) is { } beneath && (Refuses(project) || Holds(project.getInput(), beneath)))
                         return true;
 
-                    // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals.
-                    if (member is Filter filter && Holds(filter.getInput(), carried))
+                    // A filter keeps its row type, so a projection beneath it holds this relation's columns in the same ordinals;
+                    // the transpose carries this filter beneath one only once it has carried that filter there.
+                    if (member is Filter filter && Holds(filter.getInput(), [.. carried, filter.getCondition()]))
                         return true;
                 }
 
                 return false;
+            }
+
+            // Each condition carried as the transpose writes it beneath the projection, or null where it declines any.
+            static List<RexNode>? Beneath(IReadOnlyList<RexNode> carried, Project project)
+            {
+                var beneath = new List<RexNode>();
+                foreach (var each in carried)
+                {
+                    if (Transposed(each, project) is not RexNode transposed)
+                        return null;
+
+                    beneath.Add(transposed);
+                }
+
+                return beneath;
             }
 
             bool Refuses(Project project)
@@ -407,7 +428,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 return false;
             }
 
-            return Holds(node, condition);
+            return Holds(node, [condition]);
         }
 
         /// <summary>

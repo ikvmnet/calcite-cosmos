@@ -19,12 +19,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
     /// A request that reads whole documents, <c>SELECT VALUE { "DOC": c, … } FROM items c</c> with or without a <c>WHERE</c>,
     /// answered over documents as the service answers it: the <c>WHERE</c> read by <see cref="CosmosSqlFormReader"/> and
     /// evaluated on each document by <see cref="CosmosEval"/>, which <c>CosmosEvalServiceTests</c> holds to the service, and
-    /// the projection's paths read off each document kept.
+    /// the projection's paths read off each document kept, a path guarded by a type test, <c>(IS_ARRAY(c.x) ? c.x : null)</c>
+    /// as a column is written, read as null where the test fails.
     /// </summary>
     /// <remarks>
     /// Anything else is refused, loudly: another statement shape, a point read or a partition's request, a projection of
-    /// anything but a path, a <c>WHERE</c> the reader does not read back as sent or reads any part of as opaque, and a
-    /// document on which no row says what the service makes of it.
+    /// anything but a path or a guarded one, a <c>WHERE</c> the reader does not read back as sent or reads any part of as
+    /// opaque, and a document on which no row says what the service makes of it.
     /// </remarks>
     internal static partial class DocumentRequests
     {
@@ -62,9 +63,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
 
                 var node = JsonNode.Parse(json)!;
                 var row = new JsonObject();
-                foreach (var (name, path) in projected)
-                    if (At(node, path) is (true, var value))
+                foreach (var (name, path, test) in projected)
+                {
+                    var (found, value) = At(node, path);
+                    if (test is not null)
+                        row[name] = found && Holds(test, value) ? value?.DeepClone() : null;
+                    else if (found)
                         row[name] = value?.DeepClone();
+                }
 
                 rows.Add(row.ToJsonString());
             }
@@ -85,14 +91,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
             return read.Form;
         }
 
-        /// <summary>The projection's names and the paths they read, or <c>null</c> where an item is anything but a path.</summary>
-        static List<(string Name, List<object> Path)>? Projection(string items)
+        /// <summary>
+        /// The projection's names, the paths they read and the type test guarding each, or <c>null</c> where an item is anything
+        /// but a path or a guarded one.
+        /// </summary>
+        static List<(string Name, List<object> Path, string? Test)>? Projection(string items)
         {
-            var projected = new List<(string, List<object>)>();
+            var projected = new List<(string, List<object>, string?)>();
             var at = 0;
             foreach (Match item in Item().Matches(items))
             {
-                if (item.Index != at)
+                var test = item.Groups["test"].Success ? item.Groups["test"].Value : null;
+                if (item.Index != at || test is not (null or "ARRAY" or "OBJECT" or "STRING" or "NUMBER" or "BOOL" or "NULL" or "PRIMITIVE"))
                     return null;
 
                 var path = new List<object>();
@@ -101,11 +111,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
                         : step.Groups["quoted"].Success ? JsonSerializer.Deserialize<string>(step.Groups["quoted"].Value)!
                         : int.Parse(step.Groups["index"].Value, System.Globalization.CultureInfo.InvariantCulture));
 
-                projected.Add((JsonSerializer.Deserialize<string>(item.Groups["name"].Value)!, path));
+                projected.Add((JsonSerializer.Deserialize<string>(item.Groups["name"].Value)!, path, test));
                 at = item.Index + item.Length;
             }
 
             return at == items.Length && projected.Count > 0 ? projected : null;
+        }
+
+        /// <summary>Whether a value found at a path is of the kind a type test names, as the service tests it.</summary>
+        static bool Holds(string test, JsonNode? value)
+        {
+            var kind = value switch
+            {
+                null => "NULL",
+                JsonArray => "ARRAY",
+                JsonObject => "OBJECT",
+                _ => value.GetValueKind() switch { JsonValueKind.String => "STRING", JsonValueKind.Number => "NUMBER", _ => "BOOL" },
+            };
+
+            return test == kind || (test == "PRIMITIVE" && kind is "NULL" or "STRING" or "NUMBER" or "BOOL");
         }
 
         /// <summary>The value at a path, or not found where a step reads nothing, as the service leaves an undefined property out.</summary>
@@ -150,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
         [GeneratedRegex("""^SELECT VALUE \{ (?<items>.+) \} FROM [A-Za-z_][A-Za-z0-9_]* c(?: WHERE (?<where>.+))?$""", RegexOptions.Singleline)]
         private static partial Regex Shape();
 
-        [GeneratedRegex("""(?:, )?(?<name>"(?:[^"\\]|\\.)*"): (?<path>c(?:\.[A-Za-z_][A-Za-z0-9_]*|\["(?:[^"\\]|\\.)*"\]|\[[0-9]+\])*)(?=, "|$)""")]
+        [GeneratedRegex("""(?:, )?(?<name>"(?:[^"\\]|\\.)*"): (?:(?<path>c(?:\.[A-Za-z_][A-Za-z0-9_]*|\["(?:[^"\\]|\\.)*"\]|\[[0-9]+\])*)|\(IS_(?<test>[A-Z]+)\((?<path>c(?:\.[A-Za-z_][A-Za-z0-9_]*|\["(?:[^"\\]|\\.)*"\]|\[[0-9]+\])*)\) \? \k<path> : null\))(?=, "|$)""")]
         private static partial Regex Item();
 
         [GeneratedRegex("""\.(?<name>[A-Za-z_][A-Za-z0-9_]*)|\[(?<quoted>"(?:[^"\\]|\\.)*")\]|\[(?<index>[0-9]+)\]""")]

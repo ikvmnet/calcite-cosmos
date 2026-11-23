@@ -11620,7 +11620,9 @@ section 7), and only of a projection the transpose would carry the filter beneat
 (`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`):
 where the transpose declines, the filter stays above the projection whatever the split does, and
 declining the pair would leave the service to select the projection under less of a `WHERE`
-(`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`).
+(`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`);
+beneath a filter it is stacked on, likewise, only where the transpose carries that filter as well
+(`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteOverAViewsArrayBeneathAFilterTheTransposeWillNotCarry`).
 A collection whose elements are read to a type can refuse too (`CosmosJson.CanRefuse`): its guard
 is the collection's, so an element of another kind arrives, and neither this pair nor the residual
 projection selects a `VARCHAR ARRAY` a traversal above reads beneath the condition, where it would

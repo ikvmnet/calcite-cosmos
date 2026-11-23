@@ -197,6 +197,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// An executor that answers each request over the documents given as the service answers it on a target, its
+        /// <c>WHERE</c> evaluated on each document (<see cref="DocumentRequests"/>).
+        /// </summary>
+        sealed class AnsweringExecutor(string[] documents, CosmosServiceTarget target) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                return new(ListCursor.Documents(DocumentRequests.Answer(query, partitionKey, documents, target)));
+            }
+
+        }
+
+        /// <summary>
         /// The minimum a compiled plan needs to find its way back to the table it reads.
         /// </summary>
         sealed class TestDataContext : DataContext
@@ -1678,6 +1692,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// </summary>
         const string ViewOfTextBesideARefusingReading =
             "(SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t";
+
+        /// <summary>
+        /// Over a view's filter the transpose will not carry beneath the view, the split of a condition stacked on it still
+        /// pushes that condition's weakening, and the plan answers as Calcite does over a document the weakening excludes: no
+        /// row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Sixty equalities of the view's text column, read through the view's projection, grow past the transpose's bloat, so
+        /// they stay a filter over the view, the service's <c>WHERE</c> beneath the view's projection, and the case fold of
+        /// the name is left above. Its split was declined as though the transpose would carry it beneath the view, which it
+        /// does only once it has carried the filter there, so the statement selected the view's <c>VARCHAR ARRAY</c> under
+        /// the equalities alone, and over a document with no name, which Calcite drops on the case fold without reading the
+        /// array, its reading refused the element that is no string. Planned bare, with the engine's rules and the calc pass,
+        /// and run over the stub, which answers each request as the service does on the target.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q1\", \"a\": \"w1\", \"x\": [\"5\", 5] }")]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q2\", \"a\": \"w1\", \"x\": [\"5\", 1.5] }")]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q3\", \"a\": \"w1\", \"x\": [\"5\", { \"b\": 1 }] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q1\", \"a\": \"w1\", \"x\": [\"5\", 5] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q2\", \"a\": \"w1\", \"x\": [\"5\", 1.5] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q3\", \"a\": \"w1\", \"x\": [\"5\", { \"b\": 1 }] }")]
+        public async Task ShouldAnswerAsCalciteOverAViewsArrayBeneathAFilterTheTransposeWillNotCarry(CosmosServiceTarget target, string document)
+        {
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor([document], target)));
+
+            var sql = "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"t.\"a\" = 'w{i}'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+            var best = PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops a document with no name on the case fold without reading the view's array: {0}", sent);
+        }
 
         /// <summary>
         /// A weakening over a projection's typed or text column, a view's or the query's own select list, is pushed once,
