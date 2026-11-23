@@ -400,8 +400,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// chain <c>PARSE(&lt;format&gt;, &lt;path&gt;)</c> preserves whatever the shape preserves. A
         /// form's language is a run of digits per field, so it admits <c>2016-12-31T24:00:00Z</c> and
         /// <c>2016-12-31T23:60:00Z</c> beside <c>2017-01-01T00:00:00Z</c>, and measured,
-        /// <c>PARSE_DATETIME</c>, <c>PARSE_DATE</c>, <c>PARSE_TIME</c> and <c>CAST … FORMAT</c> read every
-        /// such string as the instant its fields make once rolled over, and raise over none
+        /// <c>PARSE_DATETIME</c>, <c>PARSE_DATE</c>, <c>PARSE_TIME</c> and <c>CAST … FORMAT</c> read each
+        /// of those strings as the instant its fields make once rolled over, raising over none of them
         /// (<c>Calcite.ParsesReadTheirFieldsLeniently</c>). Those three are one instant to Calcite, so
         /// an equality on the stored strings keeps one of them where Calcite keeps all three, and an
         /// order of the stored strings is not the order of the instants. No format reads a form one
