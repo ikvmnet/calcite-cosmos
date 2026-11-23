@@ -136,10 +136,10 @@ and not in Calcite:
 
 `RETURNING TIMESTAMP` asserts that the property already holds a timestamp — a JSON number of epoch
 milliseconds — and does not parse text; `RETURNING DATE` wants a number of days and `RETURNING TIME` one
-of milliseconds into the day. Because the engine cannot evaluate a cast or a `RETURNING`
-clause over an ISO-8601 instant, the adapter does not push them either: pushing would return rows for
-a query that, run anywhere else, raises an error. They stay in process, where they raise as they
-always would.
+of milliseconds into the day. Because the engine cannot evaluate a cast over an ISO-8601 instant, a
+cast into a type placed in a zone over any string the table shows, or a `RETURNING` clause over any
+string, the adapter does not push them either: pushing would return rows for a query that, run
+anywhere else, raises an error. They stay in process, where they raise as they always would.
 
 **A calendar date read with a cast pushes**, where the container declares `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`:
 a comparison as `DATE` or `TIMESTAMP` with a literal that falls on a day's midnight or with a parameter,
