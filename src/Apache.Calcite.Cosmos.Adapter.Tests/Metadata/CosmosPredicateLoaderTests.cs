@@ -914,9 +914,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
 
         /// <summary>
         /// A projection binds no path for a <c>RETURNING VARIANT</c>, nor for what reads through one: an item of it, an item of
-        /// that, or an accessor over it. Calcite reads each through the accessor, which is null where the path holds an array
-        /// or an object, and so wherever a path beneath it is defined; a field of that path reads the value the document holds
-        /// there.
+        /// that, an accessor over it, or <c>StringToArray</c> over it. Calcite reads each through the accessor, which is null
+        /// where the path holds an array or an object, and so wherever a path beneath it is defined; a field of that path reads
+        /// the value the document holds there.
         /// </summary>
         [Theory]
         [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)")]
@@ -927,6 +927,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         [InlineData("JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a')")]
         [InlineData("JSON_VALUE(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a' RETURNING INTEGER)")]
         [InlineData("JSON_QUERY(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT), '$.a')")]
+        [InlineData("StringToArray(JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT))")]
         public void AProjectionBindsNoPathForWhatReadsThroughAReturningVariant(string expression)
         {
             var project = new EndToEnd.Corpus.PlannerHarness().ToLogical($"SELECT {expression} AS \"e\", c.\"DOC\" AS \"d\" FROM products AS c")

@@ -3036,7 +3036,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>RETURNING VARIANT</c> holds what it reads in no box, so its equality with a string is FALSE and its
         /// inequality TRUE wherever the path holds the string, and its null test TRUE where the path holds an object:
         /// every filter over it is Calcite's, a comparison, a null test and a type test, of a path and of an element
-        /// alike.
+        /// alike, and so is one over an item of it or an accessor over it, which Calcite reads through its value.
         /// </summary>
         /// <remarks>
         /// The loader read the accessor typed <c>VARIANT</c> as the raw value, as it reads the one re-typed <c>ANY</c>,
@@ -3045,6 +3045,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// IS_DEFINED(c.category) OR IS_NULL(c.category)</c>, dropping a document holding an object there, which
         /// Calcite keeps; once an element's raw value was read as a path's, an element's was sent so too. It is a
         /// <c>RETURNING</c> of its own type, whose value no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
+        /// An item of it was resolved to the path beneath and its null test sent as the raw value's there, <c>(NOT
+        /// IS_DEFINED(c.category.a) OR IS_NULL(c.category.a))</c>, dropping a document holding <c>{"a":1}</c> at the
+        /// path, whose item Calcite reads as null because the accessor is; no path is resolved through it now
+        /// (<c>CosmosRexPaths</c>).
         /// </remarks>
         [Theory]
         [InlineData("$.category", "{0} = 'bikes'")]
@@ -3057,6 +3061,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("$.tags[0]", "{0} IS NULL")]
         [InlineData("$.tags[0]", "{0} IS NOT NULL")]
         [InlineData("$.tags[0]", "IS_STRING({0})")]
+        [InlineData("$.category", "{0}['a'] IS NULL")]
+        [InlineData("$.category", "{0}['a'] IS NOT NULL")]
+        [InlineData("$.category", "{0}['a']['b'] IS NULL")]
+        [InlineData("$.category", "{0}[1] IS NULL")]
+        [InlineData("$.category", "JSON_VALUE({0}, '$.a') IS NULL")]
         public void AFilterOverAReturningVariantIsCalcites(string path, string filter)
         {
             var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE " + string.Format(filter, $"JSON_VALUE(c.\"DOC\", '{path}' RETURNING VARIANT)"));
@@ -3066,26 +3075,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A view's <c>RETURNING VARIANT</c> column, or an item of one, is no raw value, so nothing derived through it drops a
-        /// document Calcite keeps: each form the split rule pushes of a filter over the view, read beneath the view as the
-        /// filter rule reads it there, is judged on both targets over every document Calcite keeps of the whole condition, the
-        /// column's path absent, a JSON null, a number, an empty and a full array, and an empty, a full and a nested object,
-        /// each with and without the name.
+        /// A <c>RETURNING VARIANT</c>, or an item of one, is no raw value, whether a view's column holds it or a filter over the
+        /// view reads it from the view's document, so nothing derived through it drops a document Calcite keeps: each form the
+        /// split rule pushes of a filter over the view, read beneath the view as the filter rule reads it there, is judged on
+        /// both targets over every document Calcite keeps of the whole condition, the path absent, a JSON null, a number, an
+        /// empty and a full array, and an empty, a full and a nested object, each with and without the name.
         /// </summary>
         /// <remarks>
         /// Bound to its path, the column read through its field as the raw value, and S, asked to weaken the filter over the
         /// view, proved <c>IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)</c> of the disjunction and <c>IS_NULL(c.x)
         /// OR NOT IS_DEFINED(c.x)</c> beside <c>IS_DEFINED(c.name)</c> of the <c>CASE</c>, each false over <c>{"x":[]}</c>, which
         /// Calcite keeps: Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an
-        /// object. An item of it, bound to <c>c.x.a</c>, proved the same of <c>c.x.a</c>, false over <c>{"x":{"a":1}}</c>, where
-        /// Calcite's item is null because the accessor is. A projection binds no path for either
-        /// (<c>CosmosImplementor.Projected</c>), so no weakening is derived through the column.
+        /// object. An item of it, resolved to <c>c.x.a</c>, proved the same of <c>c.x.a</c>, false over <c>{"x":{"a":1}}</c>,
+        /// where Calcite's item is null because the accessor is, whether a view's column held it or the filter read it from the
+        /// document the view passes up or renames. A projection binds no path for the column
+        /// (<c>CosmosImplementor.Projected</c>), and no path is resolved through it (<c>CosmosRexPaths</c>), so no weakening is
+        /// derived through either.
         /// </remarks>
         [Theory]
-        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)")]
-        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']")]
-        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']")]
-        public void AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps(string column)
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)", "t.\"v\"")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']", "t.\"v\"")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']", "t.\"v\"")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"DOC\", '$.x' RETURNING VARIANT)['a']")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"v\", '$.x' RETURNING VARIANT)['a']")]
+        public void AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps(string column, string tested)
         {
             var view = $"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", {column} AS \"v\" FROM products AS c) AS t WHERE ";
             var values = new J?[]
@@ -3106,8 +3120,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             foreach (var condition in new[]
             {
-                "t.\"v\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
-                "CASE WHEN t.\"v\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+                $"{tested} IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+                $"CASE WHEN {tested} IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
             })
             {
                 var filter = Filters(PlanLogical(view + condition)).Single();

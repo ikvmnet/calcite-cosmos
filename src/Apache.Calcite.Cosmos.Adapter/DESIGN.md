@@ -10988,13 +10988,19 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   column was read as the raw value, its null test sent as the raw value's, and S, asked to weaken `t."v" IS NULL OR
   INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)`, which drops
   `{"x":[]}` where Calcite keeps it. Bound to nothing, as `RETURNING DECIMAL` is, no weakening is derived through the
-  column (`CosmosPlannerTests.AWeakeningThroughAViewsReturningVariantColumnKeepsWhatCalciteKeeps`). What reads through
-  it, an item of it or an accessor over it, is bound to nothing too, since Calcite reads it through the accessor's null
-  wherever a path beneath is defined: bound to `c.x.a`, an item's null test over a view was weakened to `IS_NULL(c.x.a)
-  OR … OR NOT IS_DEFINED(c.x.a)`, which drops `{"x":{"a":1}}` where Calcite keeps it
-  (`CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`). Every other column a
-  projection binds is read through its field, where the field reads it at all, as the same kind of reading of the same
-  path and type as its expression
+  column (`CosmosPlannerTests.AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps`). What reads through it,
+  an item of it, an accessor over it or `StringToArray` over it, is no path at all (`CosmosRexPaths.TryResolveBase`),
+  since Calcite reads it through the accessor's value, null wherever a path beneath is defined: resolved to `c.x.a`, an
+  item's null test was sent as the raw value's, `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, and weakened, over the scan
+  and over a view, written in the filter or held in the view's column, to `IS_NULL(c.x.a) OR … OR NOT
+  IS_DEFINED(c.x.a)`, each of which drops `{"x":{"a":1}}` where Calcite keeps it. Resolving nothing, the translator, the
+  loader and a projection's binding read nothing of it, and a filter over it is Calcite's
+  (`CosmosToClrCursorConverterTests.ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter`,
+  `CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`,
+  `CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`), over the document or, where
+  the plan selects the accessor's own column, over that column as it is read back, which `TODO.md` records. Every other
+  column a projection binds is read through its field, where the field reads it at all, as the same kind of reading of
+  the same path and type as its expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises

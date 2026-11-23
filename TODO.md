@@ -4119,21 +4119,11 @@ across documents* and *A join of a container to itself* is the record.
   writes `JSON_VALUE(… RETURNING VARIANT)` as the bare path and the reader reads what arrives as a `VARIANT`, so an
   array or an object there is a value where Calcite's column is null: a condition kept in process over the column reads
   it so, `SELECT JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT) IS NULL` answers false over `{"x":{}}` where Calcite
-  answers true, and an item of the column computed in process over an array read back fails the statement
-  (`IndexOutOfRangeException`) where Calcite's item is null. The binding binds nothing for it
+  answers true, and an item of the column computed in process, selected or tested, fails the statement over an array
+  read back (`IndexOutOfRangeException`) where Calcite's item is null. The binding binds nothing for it
   (`CosmosImplementor.Projected`), so no `WHERE` reads it. The proper fix is the projection's: refuse the column, as
   `RETURNING DECIMAL` is refused, until a row measures how Calcite's value reads back, or write it as the rendering
   graph chooses once the projection's writing moves there (Stage 3).
-- **An item of a `RETURNING VARIANT` is read as the raw value beneath it** — *small, soundness.* `CosmosRexPaths`
-  resolves an item chain over any accessor it resolves, `RETURNING VARIANT` among them, so the translator and the loader
-  read `JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT)['a']` as the raw value at `c.x.a`, where Calcite's is null over an
-  object at `x`, since the accessor is null where the path holds an object (`Calcite.VariantEqualsOnlyItsOwnBox`), and
-  raises over a scalar. `IS NULL` of it sends `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, which drops `{"x":{"a":1}}`
-  where Calcite keeps it, written in the filter or read from a view's column. The binding binds nothing for it, nor for
-  an accessor over a `RETURNING VARIANT` (`CosmosImplementor.Projected`), so the split derives no weakening through a
-  view's column of either. The proper fix is the resolver's: no path for an item of, or an accessor over, a base
-  `CosmosRexShapes.IsVariantReturningJsonValue` names, so that a filter over it is Calcite's; it moves the translator's
-  projection of such an item with it.
 - **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness.* Where nothing of a
   filter over a view reaches the service, the view's projection is still converted, and the statement selects it beneath
   the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"

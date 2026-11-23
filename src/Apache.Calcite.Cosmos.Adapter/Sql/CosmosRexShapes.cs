@@ -150,8 +150,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// Calcite holds what it reads in no box, so it equals no value cast to <c>VARIANT</c>, and it is null where the path
         /// holds an array or an object (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), where a promoted column holding the same
-        /// value is the value. So a projection binds no path for it (<c>CosmosImplementor.Projected</c>). See DESIGN.md,
-        /// <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
+        /// value is the value. So a projection binds no path for it (<c>CosmosImplementor.Projected</c>), and no path is
+        /// resolved through it (<c>CosmosRexPaths</c>). See DESIGN.md, <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
         /// </remarks>
         internal static bool IsVariantReturningJsonValue(RexNode node)
         {

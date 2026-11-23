@@ -1629,8 +1629,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// transpose's bloat, so the split weakens the filter over the view, through the binding of its columns. Bound to
         /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
         /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
-        /// the accessor is null over an object. A projection binds no path for an item of a <c>RETURNING VARIANT</c>
-        /// (<c>CosmosImplementor.Projected</c>), so the split sends what it derives of the rest.
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c> (<c>CosmosRexPaths</c>),
+        /// so a projection binds none for the item and the split sends what it derives of the rest.
         /// </remarks>
         [Theory]
         [InlineData(false, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
@@ -1652,6 +1652,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
             conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
             sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the item's path is sent: {0}", sent);
+        }
+
+        /// <summary>
+        /// A filter over a view that tests an item of a <c>RETURNING VARIANT</c>, or an accessor over one, read from the
+        /// document the view passes up or renames, sends no test of the path beneath it where the transpose will not carry the
+        /// filter beneath the view.
+        /// </summary>
+        /// <remarks>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's text column grow past the transpose's bloat, so the split weakens the
+        /// filter over the view, through the binding of its columns, where the document is bound to the root. Resolved to
+        /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
+        /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c> (<c>CosmosRexPaths</c>),
+        /// so the split sends what it derives of the rest.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "DOC", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "DOC", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(false, "DOC", "CASE WHEN {0}['a'] IS NULL THEN {1} ELSE FALSE END", "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(true, "DOC", "CASE WHEN {0}['a'] IS NULL THEN {1} ELSE FALSE END", "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(false, "d", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "d", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(false, "DOC", "JSON_VALUE({0}, '$.a') IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "DOC", "JSON_VALUE({0}, '$.a') IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        public void ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string document, string condition, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP(t.\"a\") LIKE 'W{i}%'")) + ")";
+            var tested = string.Format(condition, $"JSON_VALUE(t.\"{document}\", '$.x' RETURNING VARIANT)", $"INITCAP(JSON_VALUE(t.\"{document}\", '$.name')) = 'Steel'");
+            var sql = $"SELECT t.\"{document}\" FROM (SELECT c.\"DOC\" AS \"{document}\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", "
+                + "INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE (" + tested + ") AND " + likes;
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the path beneath the RETURNING VARIANT is sent: {0}", sent);
         }
 
         /// <summary>
