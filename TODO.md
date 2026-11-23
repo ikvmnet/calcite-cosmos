@@ -2653,6 +2653,15 @@ across documents* and *A join of a container to itself* is the record.
   `{"n":1.5,"name":"x","s":"q"}`, which Calcite drops without computing the cast. The fix is the one *A refusing reading
   under a branch Calcite does not take* names: a path read only under a branch, where its reading can refuse, is not
   carried.
+- **An item of a `JSON_QUERY` returning an array is read as the stored element** — *small, soundness; on `main`.*
+  `CosmosRexPaths` resolves `JSON_QUERY(c."DOC", '$.x' RETURNING INTEGER ARRAY)[1]` to `c.x[0]`, whatever the array's
+  element type, where Calcite casts the element stored to that type and raises over another kind (`[5.0]`, `["5"]`,
+  `[true]`, an object at `x`). The translator writes `ITEM` only over a field or another `ITEM`, so over a view's column
+  of such an item, carried onto the scan, a comparison fails to implement where Calcite answers (`t."e" = 5`), and a
+  null test is sent as the element's, `(IS_DEFINED(c.x[0]) AND NOT IS_NULL(c.x[0]))`, which answers where Calcite
+  raises. A projection binds nothing for it (`CosmosImplementor.Projected`), so no weakening is derived through such a
+  column. The proper fix decides once whether the element is a path, refused as `RETURNING VARIANT` is or written under
+  the array's element type, and asks it of every clause.
 
 ---
 
@@ -4128,12 +4137,15 @@ across documents* and *A join of a container to itself* is the record.
   (`CosmosFilterSplitRule.ReadsWhatCanRefuse`); where the transpose declines, the filter stays above the view either way
   and the pair is registered, so sixty `LIKE`s of a case fold of one text column of the view beside `t."a" = 'k'` on
   another select the column under `WHERE (c.a = @p0)` and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`,
-  which Calcite drops on the `LIKE`s. The residual projection moves no such column beneath its filter, though it carries
-  the paths the filter reads (*A path the residual projection carries under a branch Calcite does not take*); but the
-  view's own shape puts the projection there and the converter's width prefers it to the item whole. The proper fix is
-  legality where the statement's projection meets a filter Calcite evaluates above the converter: whether the column's
-  reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by the theory once *Whether a reading can
-  refuse is asked by its type alone* is done. No rule of the adapter asks it there today.
+  which Calcite drops on the `LIKE`s. A `VARCHAR ARRAY` holding a number is refused there even where the filter reads
+  it, which Calcite reads without refusing: over a view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`,
+  `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'` selects the array and fails over `[5]`, where Calcite answers. The residual
+  projection moves no such column beneath its filter, though it carries the paths the filter reads (*A path the residual
+  projection carries under a branch Calcite does not take*); but the view's own shape puts the projection there and the
+  converter's width prefers it to the item whole. The proper fix is legality where the statement's projection meets a
+  filter Calcite evaluates above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse`
+  of its type today and by the theory once *Whether a reading can refuse is asked by its type alone* is done. No rule of
+  the adapter asks it there today.
 - **A traversal over a view projecting a reading that can refuse** — *small, soundness; on `main`.* `SELECT v."n" FROM
   (SELECT t."DOC" AS "d", t."n", x AS "tag" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
   FROM products AS c) AS t, UNNEST(StringToArray(JSON_QUERY(t."DOC", '$.tags'))) AS x) AS v WHERE
