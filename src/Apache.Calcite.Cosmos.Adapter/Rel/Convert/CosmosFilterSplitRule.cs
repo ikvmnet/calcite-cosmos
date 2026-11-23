@@ -840,6 +840,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         {
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
             {
+                // Remembered by member alone, since keyed by the half as well the walk need not end through a cycle of
+                // projections: a member met again under another spelling of the half is not asked again, which errs toward
+                // the half reaching nothing, its weakenings dropped, never toward a half the service cannot take.
                 if (seen.Add(member) == false)
                     continue;
 
