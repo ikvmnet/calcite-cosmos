@@ -265,7 +265,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// Against a seconds path, <c>&gt; '…12:30:00.5'</c> truncated to <c>&gt; '…12:30:00Z'</c>
         /// would admit the stored value <c>12:30:00Z</c>, which is earlier than the literal. So the
-        /// comparison stays where it was and is applied in process.
+        /// comparison stays where it was and is applied in process. Every parse is declined now, a format that reads the
+        /// shape included (<c>Calcite.ParsesReadTheirFieldsLeniently</c>), and this keeps its reason for any later reading of
+        /// a parse; the refusal of a literal that does not land on the form is held over the plain date cast by
+        /// <see cref="ATimestampLiteralOffADaysMidnightLowersNothingThroughADateCast"/>.
         /// </remarks>
         [Fact]
         public void ALiteralFinerThanTheStoredShapeLowersNothing()
@@ -273,6 +276,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(@"%Y-%m-%d'T'%H:%M:%S'Z'"), Instant("2024-01-15 12:30:00.500"));
 
             Rewrite(condition, Seconds).Should().Be(condition.ToString(), "truncating the literal would select different rows");
+        }
+
+        /// <summary>
+        /// A <c>TIMESTAMP</c> literal off a day's midnight lowers nothing through a calendar date's plain cast, whatever the
+        /// comparison, where one at a day's midnight is written as the stored date.
+        /// </summary>
+        /// <remarks>
+        /// Noon of the 15th lies between the 15th's spelling and the 16th's. Rounded down onto the 15th, <c>&gt;=</c> and
+        /// <c>=</c> would keep a stored 15th, which the cast reads as its midnight and Calcite drops, and <c>&lt;</c> and
+        /// <c>&lt;&gt;</c> would drop it where Calcite keeps it. So the literal is not written in the form, and the
+        /// comparison stays where it was. The 15th is no month's last day, where the cast's day zero parts the stored strings
+        /// from the dates (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>).
+        /// </remarks>
+        [Theory]
+        [InlineData(">")]
+        [InlineData(">=")]
+        [InlineData("<")]
+        [InlineData("<=")]
+        [InlineData("=")]
+        [InlineData("<>")]
+        public void ATimestampLiteralOffADaysMidnightLowersNothingThroughADateCast(string op)
+        {
+            var comparison = op switch
+            {
+                ">" => SqlStdOperatorTable.GREATER_THAN,
+                ">=" => SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                "<" => SqlStdOperatorTable.LESS_THAN,
+                "<=" => SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                "=" => SqlStdOperatorTable.EQUALS,
+                _ => SqlStdOperatorTable.NOT_EQUALS,
+            };
+
+            var noon = _rex.makeCall(comparison, AsInstant(), Instant("2024-01-15 12:30:00"));
+            Rewrite(noon, CalendarDate).Should().Be(noon.ToString(), "noon of the 15th is no stored date, and rounding it onto one keeps other rows");
+
+            Rewrite(_rex.makeCall(comparison, AsInstant(), Instant("2024-01-15 00:00:00")), CalendarDate)
+                .Should().Be($"{op}($0, '2024-01-15')", "midnight of the 15th lands on the stored date and is written as it");
         }
 
         /// <summary>

@@ -919,6 +919,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A <c>TIMESTAMP</c> literal off a day's midnight, compared with a calendar date read with a plain cast, is computed
+        /// in process whatever the comparison, where one at a day's midnight is sent written as the stored date.
+        /// </summary>
+        /// <remarks>
+        /// A literal is written in the form only where it lands on it: rounded down onto the 15th, noon would keep a stored
+        /// 15th under <c>&gt;=</c> and <c>=</c>, which Calcite drops, and drop it under <c>&lt;</c> and <c>&lt;&gt;</c>, where
+        /// Calcite keeps it. A parameter is rounded the way its comparison needs when the statement runs (below).
+        /// </remarks>
+        [Theory]
+        [InlineData(">", "(c.at > @p0)")]
+        [InlineData(">=", "(c.at >= @p0)")]
+        [InlineData("<", "(c.at < @p0)")]
+        [InlineData("<=", "(c.at <= @p0)")]
+        [InlineData("=", "(c.at = @p0)")]
+        [InlineData("<>", "(c.at != @p0)")]
+        public void ATimestampLiteralOffMidnightAgainstADateCastIsComputedInProcess(string op, string rendered)
+        {
+            var container = Container(DatePattern);
+
+            var noon = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE CAST({At} AS TIMESTAMP) {op} TIMESTAMP '2024-01-15 12:30:00'""", container);
+            Query(FindCosmos(noon), container).Sql.Should().NotContain("c.at", "noon is no stored date: " + PlanText(noon));
+            PlanText(noon).Should().Contain("ClrCursorFilter", "the comparison is computed in process: " + PlanText(noon));
+
+            var midnight = PlanToCosmos($"""SELECT c."DOC" FROM items AS c WHERE CAST({At} AS TIMESTAMP) {op} TIMESTAMP '2024-01-15 00:00:00'""", container);
+            var query = Query(FindCosmos(midnight), container);
+            query.Sql.Should().Contain(rendered, "midnight lands on the stored date: " + query.Sql);
+            query.Parameters.Select(p => p.Value).Should().Contain("2024-01-15", "and is written as it");
+            PlanText(midnight).Should().NotContain("ClrCursorFilter", PlanText(midnight));
+        }
+
+        /// <summary>
         /// A <c>TIMESTAMP</c> parameter against a calendar date read with a plain cast is rounded onto the date in the
         /// direction an ordering comparison does not see, written unrounded for an equality or an inequality, and written
         /// as the stored date when the statement runs.
