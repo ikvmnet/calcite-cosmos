@@ -964,15 +964,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// correlation, or the condition so read grows past the rule's bloat.
         /// </summary>
         /// <remarks>
-        /// The rule the adapter registers (<see cref="CosmosRules"/>). Its bloat is read from its own configuration; the window
-        /// and the correlation repeat what its match and its default operand ask in the Calcite build the adapter resolves.
+        /// The rule the adapter registers (<see cref="CosmosRules"/>). Its operand is asked of a filter of the condition over the
+        /// projection, and of the projection, as the planner asks it, and its bloat is read from its configuration; the window
+        /// repeats what its match asks in the Calcite build the adapter resolves.
         /// </remarks>
         internal static RexNode? Transposed(RexNode condition, Project project)
         {
-            if (project.containsOver() || RexUtil.containsCorrelation(condition))
+            var rule = org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE;
+            var operand = rule.getOperand();
+            if (project.containsOver()
+                || operand.matches(org.apache.calcite.rel.logical.LogicalFilter.create(project, condition)) == false
+                || ((RelOptRuleOperand)operand.getChildOperands().get(0)).matches(project) == false)
                 return null;
 
-            var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE.config;
+            var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)rule.config;
             return RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat());
         }
 
