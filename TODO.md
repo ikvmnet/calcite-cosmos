@@ -2842,7 +2842,8 @@ across documents* and *A join of a container to itself* is the record.
   reads in no box: it equals no value cast to `VARIANT`, `=` false and `<>` true where the path holds a scalar and null
   where it holds none, and its null test is the path holding no scalar (`Calcite.VariantEqualsOnlyItsOwnBox`). No rule
   reads those cells; rows of its own would let S send the null test and the type tests. It addresses no path
-  (`CosmosRexShapes.IsJsonAccessor`), so a select list holding it reads the document; a row measuring how Calcite's
+  (`CosmosRexShapes.IsJsonAccessor`), so a select list holding it reads the document, and through a connection fails
+  where the path holds a scalar, as Calcite's own does, its value in no `VARIANT` box; a row measuring how Calcite's
   value reads back would let it be sent as a guarded column.
 - **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
   `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,

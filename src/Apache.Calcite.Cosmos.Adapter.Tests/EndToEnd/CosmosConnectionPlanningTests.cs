@@ -853,6 +853,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A select list holding <c>JSON_VALUE … RETURNING VARIANT</c>, through this connection, answers as Calcite's own does
+        /// over the same value: it fails where the path holds a scalar, which Calcite holds in no <c>VARIANT</c> box, and is
+        /// null where it holds an object.
+        /// </summary>
+        /// <remarks>
+        /// It addresses no path (<c>CosmosRexShapes.IsJsonAccessor</c>), so Calcite computes it from the document the
+        /// statement selects. The stub serves each document as the statement's select list selects it.
+        /// </remarks>
+        [Theory]
+        [InlineData("""{ "id": "x1", "category": "bikes" }""", "\"bikes\"")]
+        [InlineData("""{ "id": "x1", "category": 7 }""", "7")]
+        [InlineData("""{ "id": "x1", "category": { "a": 1 } }""", """{ "a": 1 }""")]
+        public void ASelectListReturningVariantAnswersAsCalcitesOwnOverTheSameValue(string document, string value)
+        {
+            static string Run(Func<System.Collections.Generic.List<string>> answer)
+            {
+                try
+                {
+                    return "rows " + string.Join(", ", answer());
+                }
+                catch (Exception e)
+                {
+                    return "fails " + e.GetBaseException().GetType().Name + ": " + e.GetBaseException().Message;
+                }
+            }
+
+            var adapter = Run(() => Answer("SELECT JSON_VALUE(c.\"DOC\", '$.category' RETURNING VARIANT) AS \"v\" FROM items AS c", new Rel.Convert.CosmosToClrCursorConverterTests.SelectingExecutor(document)));
+            var calcite = Run(() => Answer("SELECT JSON_VALUE('{\"category\": " + value + "}', '$.category' RETURNING VARIANT) AS \"v\" FROM (VALUES (1)) AS t(\"k\")", new NoExecutor()));
+
+            adapter.Should().Be(calcite, document);
+        }
+
+        /// <summary>
         /// <see cref="CosmosDeclaredFactPlanningTests.AConditionKeptAboveTheHalfSentIsNotSplitAgain"/> through this
         /// connection: each plans within the same bound, declared and not, under both targets.
         /// </summary>

@@ -237,7 +237,9 @@ is 1. So every filter over it runs in process, a comparison, a null test and a t
 a type test of an item of it, or of an accessor over it, fails, as one of anything but `JSON_VALUE` or
 `JSON_QUERY` of a path does (Chapter 23). Nothing is sent for it; the other conditions of the filter
 still are. In a select list it is computed in process from the document too, and so is anything read
-through it.
+through it; read through a connection, such a column fails where the property holds a scalar, as
+Calcite's own `JSON_VALUE … RETURNING VARIANT` does, the value being in no `VARIANT` box, and is null
+where it holds an array or an object.
 
 ### `CAST` to text: exact
 
