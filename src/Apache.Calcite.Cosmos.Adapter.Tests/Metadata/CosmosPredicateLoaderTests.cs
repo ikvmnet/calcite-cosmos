@@ -857,8 +857,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// Each kind of expression a view projects beside the document: the document, the id, <c>_ts</c> and the promoted
         /// column passed through, the text of a path and of an element, every scalar <c>RETURNING</c>, <c>RETURNING DECIMAL</c>
         /// and <c>RETURNING VARIANT</c> of a path and of an element, a behaviour clause, <c>JSON_QUERY</c>, one returning an
-        /// <c>INTEGER ARRAY</c> and an item of one returning an <c>INTEGER ARRAY</c> and a <c>VARCHAR ARRAY</c>, item chains over
-        /// the promoted column, two casts, a call and a constant.
+        /// <c>INTEGER ARRAY</c> and one returning a map, an item of one returning an <c>INTEGER ARRAY</c>, a <c>VARCHAR
+        /// ARRAY</c> and a map, item chains over the promoted column, two casts, a call and a constant.
         /// </summary>
         public static readonly TheoryData<string, string> ProjectedColumns = new()
         {
@@ -881,6 +881,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             { "json-query-integer-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING INTEGER ARRAY)" },
             { "item-of-json-query-integer-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING INTEGER ARRAY)[1]" },
             { "item-of-json-query-varchar-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY)[1]" },
+            { "json-query-map", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)" },
+            { "item-of-json-query-map", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)['a']" },
+            { "item-of-json-query-boolean-map", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, BOOLEAN>)['a']" },
             { "item-of-promoted", "c.\"$.category\"['a']" },
             { "item-of-promoted-index", "c.\"$.category\"[1]" },
             { "item-of-item", "c.\"$.category\"['a']['b']" },
@@ -896,8 +899,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// the expression's type, and the form a field is written apart in set aside. A <c>RETURNING VARIANT</c> bound to its
         /// path read through its field as the raw value, where the expression is a <c>RETURNING</c> of its own, null over an
         /// array or an object; it binds nothing, as <c>RETURNING DECIMAL</c> binds nothing. An item of a <c>JSON_QUERY</c>
-        /// returning an array binds nothing too: bound to the element's path, it read through its field as the value stored
-        /// there, where Calcite casts that value to the array's element type and raises over another kind.
+        /// returning an array or a map binds nothing too: bound to the member's path, it read through its field as the value
+        /// stored there, where Calcite converts that value to the element type.
         /// </summary>
         [Theory]
         [MemberData(nameof(ProjectedColumns))]
@@ -916,6 +919,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var itself = new CosmosPredicateLoader.Loading(inputFields, inputReadings, CosmosImplementor.DefaultRootAlias).ReadValue(projected);
             ReadingOf(throughField, (throughField as SqlValue.Raw)?.Column).Should().Be(ReadingOf(itself, projected.getType().getSqlTypeName().getName()),
                 $"{name}: {projected} bound to {fields[0]?.ToString() ?? "nothing"} reads through its field as {throughField} and itself as {itself?.ToString() ?? "nothing"}");
+        }
+
+        /// <summary>
+        /// A column a projection binds over a filtered view reads through its field as its expression, written onto the scan
+        /// through the view, reads there: an item of the view's array or map column, the column passed through, and accessors
+        /// over the view's document and its promoted column. The filter between the two keeps them apart, so the walk binds
+        /// the projection over the view's binding. An item of an array or a map column bound to the member's path read
+        /// through its field as the value stored there, where Calcite converts that value to the element type, so it binds
+        /// nothing.
+        /// </summary>
+        [Theory]
+        [InlineData("item-of-varchar-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY)", "t.\"m\"[1]")]
+        [InlineData("item-of-integer-array", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING INTEGER ARRAY)", "t.\"m\"[1]")]
+        [InlineData("item-of-map", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)", "t.\"m\"['a']")]
+        [InlineData("item-of-double-map", "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, DOUBLE>)", "t.\"m\"['a']")]
+        [InlineData("text", "JSON_VALUE(c.\"DOC\", '$.name')", "t.\"m\"")]
+        [InlineData("returning-integer", "JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER)", "t.\"m\"")]
+        [InlineData("text-over-the-document", "c.\"DOC\"", "JSON_VALUE(t.\"m\", '$.name')")]
+        [InlineData("returning-integer-over-the-document", "c.\"DOC\"", "JSON_VALUE(t.\"m\", '$.price' RETURNING INTEGER)")]
+        [InlineData("item-of-promoted", "c.\"$.category\"", "t.\"m\"['a']")]
+        public void AColumnAProjectionOverAFilteredViewBindsReadsThroughItsFieldAsItsExpressionReadsOverTheScan(string name, string column, string expression)
+        {
+            var project = new EndToEnd.Corpus.PlannerHarness().ToLogical(
+                    $"SELECT {expression} AS \"e\", t.\"DOC\" AS \"d\" FROM (SELECT c.\"DOC\", {column} AS \"m\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.k') = 'a'")
+                .Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            var view = project.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Filter>().Subject
+                .getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            CosmosImplementor.TryBindOutput(project, out var fields, out var readings, out _).Should().BeTrue();
+            CosmosImplementor.TryBindOutput(view.getInput(), out var scanFields, out var scanReadings, out _).Should().BeTrue();
+            fields[1].Should().NotBeNull("the document beside it is bound");
+
+            var projected = (RexNode)project.getProjects().get(0);
+            var throughField = new CosmosPredicateLoader.Loading(fields, readings, CosmosImplementor.DefaultRootAlias).ReadValue(new RexInputRef(0, projected.getType()));
+            if (throughField is null)
+                return;
+
+            var onTheScan = org.apache.calcite.plan.RelOptUtil.pushPastProject(projected, view);
+            var itself = new CosmosPredicateLoader.Loading(scanFields, scanReadings, CosmosImplementor.DefaultRootAlias).ReadValue(onTheScan);
+            ReadingOf(throughField, (throughField as SqlValue.Raw)?.Column).Should().Be(ReadingOf(itself, projected.getType().getSqlTypeName().getName()),
+                $"{name}: {projected} bound to {fields[0]?.ToString() ?? "nothing"} reads through its field as {throughField} and {onTheScan} over the scan as {itself?.ToString() ?? "nothing"}");
         }
 
         /// <summary>

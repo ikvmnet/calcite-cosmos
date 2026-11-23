@@ -2653,15 +2653,16 @@ across documents* and *A join of a container to itself* is the record.
   `{"n":1.5,"name":"x","s":"q"}`, which Calcite drops without computing the cast. The fix is the one *A refusing reading
   under a branch Calcite does not take* names: a path read only under a branch, where its reading can refuse, is not
   carried.
-- **An item of a `JSON_QUERY` returning an array is read as the stored element** — *small, soundness; on `main`.*
-  `CosmosRexPaths` resolves `JSON_QUERY(c."DOC", '$.x' RETURNING INTEGER ARRAY)[1]` to `c.x[0]`, whatever the array's
-  element type, where Calcite casts the element stored to that type and raises over another kind (`[5.0]`, `["5"]`,
-  `[true]`, an object at `x`). The translator writes `ITEM` only over a field or another `ITEM`, so over a view's column
-  of such an item, carried onto the scan, a comparison fails to implement where Calcite answers (`t."e" = 5`), and a
-  null test is sent as the element's, `(IS_DEFINED(c.x[0]) AND NOT IS_NULL(c.x[0]))`, which answers where Calcite
-  raises. A projection binds nothing for it (`CosmosImplementor.Projected`), so no weakening is derived through such a
-  column. The proper fix decides once whether the element is a path, refused as `RETURNING VARIANT` is or written under
-  the array's element type, and asks it of every clause.
+- **An item of a `JSON_QUERY` returning an array or a map is read as the stored member** — *small, soundness; on
+  `main`.* `CosmosRexPaths` resolves `JSON_QUERY(c."DOC", '$.x' RETURNING INTEGER ARRAY)[1]` to `c.x[0]`, and an item of
+  a map to `c.x.a`, whatever the element type, where Calcite converts the member stored to that type: an `INTEGER`
+  raises over another kind (`[5.0]`, `["5"]`, `[true]`, an object at `x`), and a `VARCHAR` reads a stored 5 as '5'. The
+  translator writes `ITEM` only over a field or another `ITEM`, so over a view's column of such an item, carried onto
+  the scan, a comparison fails to implement where Calcite answers (`t."e" = 5`), and a null test is sent as the
+  element's, `(IS_DEFINED(c.x[0]) AND NOT IS_NULL(c.x[0]))`, which answers where Calcite raises. A projection binds
+  nothing for an item of an array or a map, a view's column of one included (`CosmosImplementor.Projected`), so no
+  weakening is derived through such a column. The proper fix decides once whether the member is a path, refused as
+  `RETURNING VARIANT` is or written under the element type, and asks it of every clause.
 
 ---
 

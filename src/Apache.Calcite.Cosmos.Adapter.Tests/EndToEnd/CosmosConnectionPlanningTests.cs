@@ -835,12 +835,72 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Runs a statement over a container declared nothing whose every request the executor given answers: the plan
-        /// implemented, and its first column read.
+        /// An item of a map a view reads, in the view or in a second view over the first's map column across a filter, beside
+        /// a condition kept in process, answers through this connection as Calcite does, on either target: a
+        /// <c>MAP&lt;VARCHAR, VARCHAR&gt;</c> reads the stored 5 as '5', so <c>{"x":{"a":5}}</c> is kept, as is each document
+        /// whose name the case fold keeps.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, ICosmosQueryExecutor executor)
+        /// <remarks>
+        /// Bound to the member's path, <c>c.x.a</c>, the view's item column was read through its field as the value stored
+        /// there, and the split over the view registered a half holding <c>IS_DEFINED(c.name) OR c.x.a = "5"</c>, false
+        /// over <c>{"x":{"a":5}}</c>. Written beneath the view the half reads the item of the map, which the filter rule does
+        /// not translate, so it was a filter Calcite evaluates holding the service's form, and the statement failed to
+        /// implement. The stub answers each request over the documents as the service does on the target, its <c>WHERE</c>
+        /// evaluated on each (<c>Infrastructure.DocumentRequests</c>).
+        /// </remarks>
+        [Theory]
+        [InlineData(ItemOfAMapInAView, CosmosServiceTarget.Azure)]
+        [InlineData(ItemOfAMapInAView, CosmosServiceTarget.Emulator)]
+        [InlineData(ItemOfAMapInASecondView, CosmosServiceTarget.Azure)]
+        [InlineData(ItemOfAMapInASecondView, CosmosServiceTarget.Emulator)]
+        public void AnItemOfAMapAViewReadsAnswersAsCalciteBesideAConditionKeptInProcess(string sql, CosmosServiceTarget target)
         {
-            using var source = Open(null, executor, null);
+            string[] documents =
+            [
+                """{ "id": "x1", "k": "a", "x": { "a": 5 } }""",
+                """{ "id": "x2", "k": "a", "x": { "a": "5" } }""",
+                """{ "id": "x3", "k": "a", "x": { "a": "z" } }""",
+                """{ "id": "x4", "k": "a", "x": { "a": "z" }, "name": "steel" }""",
+                """{ "id": "x5", "k": "a", "name": "steel" }""",
+                """{ "id": "x6", "k": "a" }""",
+                """{ "id": "x7", "k": "a", "x": { "a": 5.5 } }""",
+            ];
+
+            Answer(sql, new ServiceExecutor(documents, target), target)
+                .Should().BeEquivalentTo(["x1", "x2", "x4", "x5"], "Calcite reads the stored 5 as '5' and keeps each name the case fold keeps");
+        }
+
+        /// <summary>A view holding an item of a map, filtered on it beside a case fold.</summary>
+        const string ItemOfAMapInAView =
+            "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)['a'] AS \"e\" FROM items AS c) AS t "
+            + "WHERE t.\"e\" = '5' OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+        /// <summary>A second view holding an item of the first's map column across a filter, filtered on it beside a case fold.</summary>
+        const string ItemOfAMapInASecondView =
+            "SELECT u.\"id\" FROM (SELECT t.\"id\", t.\"DOC\", t.\"m\"['a'] AS \"e\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>) AS \"m\" FROM items AS c) AS t "
+            + "WHERE JSON_VALUE(t.\"DOC\", '$.k') = 'a') AS u WHERE u.\"e\" = '5' OR INITCAP(JSON_VALUE(u.\"DOC\", '$.name')) = 'Steel'";
+
+        /// <summary>
+        /// An executor that answers every request over the documents given as the service answers it on a target, its
+        /// <c>WHERE</c> evaluated on each document (<see cref="Infrastructure.DocumentRequests"/>).
+        /// </summary>
+        sealed class ServiceExecutor(string[] documents, CosmosServiceTarget target) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                return new(Infrastructure.ListCursor.Documents(Infrastructure.DocumentRequests.Answer(query, partitionKey, documents, target)));
+            }
+
+        }
+
+        /// <summary>
+        /// Runs a statement over a container declared nothing, on a target where one is given, whose every request the
+        /// executor given answers: the plan implemented, and its first column read.
+        /// </summary>
+        static System.Collections.Generic.List<string> Answer(string sql, ICosmosQueryExecutor executor, CosmosServiceTarget? target = null)
+        {
+            using var source = Open(null, executor, target);
             using var connection = source.OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
