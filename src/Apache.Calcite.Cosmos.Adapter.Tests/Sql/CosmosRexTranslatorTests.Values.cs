@@ -243,6 +243,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             Translate(Call(SqlStdOperatorTable.EQUALS, asserted, Num(2))).Should().Be("(c.price = @p0)");
         }
 
+        /// <remarks>
+        /// <c>RETURNING VARIANT</c> holds what it reads in no box, and it is null where the path holds an array or an object
+        /// (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), so it is not the value at the path. Written as the path, <c>c.x</c>,
+        /// a select list read back an array or an object where Calcite's column is null. So it addresses no path, in any
+        /// clause, as <c>RETURNING DECIMAL</c> addresses none, and is left to the engine; the oracle's loader reads it as the
+        /// reading it is of the path, <c>typed:VARIANT</c>.
+        /// </remarks>
+        [Fact]
+        public void AVariantReturningAddressesNoPathAndIsLeftToTheEngine()
+        {
+            var x = _rex.makeCall(_types.createTypeWithNullability(_types.createSqlType(SqlTypeName.VARIANT), true), SqlStdOperatorTable.JSON_VALUE, Of(Ref(2, SqlTypeName.VARCHAR), Str("$.x")));
+
+            CosmosRexShapes.IsVariantReturningJsonValue(x).Should().BeTrue();
+            CosmosRexShapes.IsJsonAccessor((RexCall)x).Should().BeFalse("its value is not the value at the path");
+            Translator().Paths.TryResolvePath(x, out _).Should().BeFalse();
+            Translator().TryTranslateProjection(x, out _, out _).Should().BeFalse("a select list holding it is the engine's to compute");
+            ((System.Action)(() => Translate(x))).Should().Throw<CosmosTranslationException>().WithMessage("*RETURNING VARIANT*");
+
+            Translator().Paths.TryResolveJsonPath((RexCall)x, out var path).Should().BeTrue("the oracle's loader reads the path it reads");
+            path!.ToString().Should().Be("c.x");
+        }
+
     }
 
 }

@@ -10983,24 +10983,27 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over
   it and Calcite evaluates every filter over it, a comparison, a null test and a type test
   (`CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`, over a path and an element). No corpus statement reads
-  one, so no digest line moves for it. A projection binds no path for it either (`CosmosImplementor.Projected`): a typed
-  `VARIANT` field is read as the raw value a promoted column holds, so bound to its path, a view's `RETURNING VARIANT`
-  column was read as the raw value, its null test sent as the raw value's, and S, asked to weaken `t."v" IS NULL OR
-  INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)`, which drops
-  `{"x":[]}` where Calcite keeps it. Bound to nothing, as `RETURNING DECIMAL` is, no weakening is derived through the
-  column (`CosmosPlannerTests.AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps`). What reads through it,
-  an item of it, an accessor over it or `StringToArray` over it, is no path at all (`CosmosRexPaths.TryResolveBase`),
-  since Calcite reads it through the accessor's value, null wherever a path beneath is defined: resolved to `c.x.a`, an
-  item's null test was sent as the raw value's, `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, and weakened, over the scan
-  and over a view, written in the filter or held in the view's column, to `IS_NULL(c.x.a) OR … OR NOT
-  IS_DEFINED(c.x.a)`, each of which drops `{"x":{"a":1}}` where Calcite keeps it. Resolving nothing, the translator, the
-  loader and a projection's binding read nothing of it, and a filter over it is Calcite's
-  (`CosmosToClrCursorConverterTests.ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter`,
-  `CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`,
-  `CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`), over the document or, where
-  the plan selects the accessor's own column, over that column as it is read back, which `TODO.md` records. Every other
-  column a projection binds is read through its field, where the field reads it at all, as the same kind of reading of
-  the same path and type as its expression
+  one, so no digest line moves for it. It addresses no path either (`CosmosRexShapes.IsJsonAccessor`), as `RETURNING
+  DECIMAL` addresses none, and so neither does an item of it, an accessor over it or `StringToArray` over it: Calcite
+  reads each through the accessor's value, null wherever a path beneath it is defined. Resolved to its path, a view's
+  `RETURNING VARIANT` column was read through its field as the raw value a promoted column holds, and S, asked to weaken
+  `t."v" IS NULL OR INITCAP(…) = 'Steel'` over the view, proved `IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT
+  IS_DEFINED(c.x)`, which drops `{"x":[]}` where Calcite keeps it; an item of it, resolved to `c.x.a`, had its null test
+  sent as the raw value's, `(NOT IS_DEFINED(c.x.a) OR IS_NULL(c.x.a))`, which drops `{"x":{"a":1}}`; and written as
+  `c.x` in a select list, the column was read back as the raw value, an array or an object where Calcite's column is
+  null, so an item computed over it failed over `[1]` and read 1 over `{"a":1}`, whether the select list, a view or the
+  residual projection held the column. Refused, it is Calcite's to compute from the document, in a filter and in a
+  select list alike
+  (`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereAPlanWouldSelectAReturningVariant`,
+  `CosmosToClrCursorConverterTests.ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter`,
+  `CosmosPlannerTests.AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps`,
+  `CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`), and the loader still reads
+  the accessor itself as `typed:VARIANT`
+  (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`). `StringToArray` over it, which
+  only a host chaining the adapter's operators into its own validator can write (a connection's finds no
+  `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. Every other column a projection binds is
+  read through its field, where the field reads it at all, as the same kind of reading of the same path and type as its
+  expression
   (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises

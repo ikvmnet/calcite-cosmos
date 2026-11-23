@@ -1477,6 +1477,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException(
                     "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine; a comparison through it sends the property's presence.");
 
+            // The same for RETURNING VARIANT, whose value is no box the service holds -- see
+            // IsVariantReturningJsonValue.
+            if (IsVariantReturningJsonValue(call))
+                throw new CosmosTranslationException(
+                    "JSON_VALUE with RETURNING VARIANT holds what it reads in no box, and is null where the path holds an array or an object, where the service has the value as it stands, so it is left to the engine.");
+
             // The position a NOT puts its operand in belongs to predicates, and only the connectives
             // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
             // here, once, rather than by each writer remembering to. And an operand of anything else

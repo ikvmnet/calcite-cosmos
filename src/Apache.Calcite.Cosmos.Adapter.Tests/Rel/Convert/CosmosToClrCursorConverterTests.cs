@@ -108,6 +108,95 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// An executor that serves one document as each statement's select list selects it, whatever its <c>WHERE</c>: the item
+        /// whole, or an object of the item, its paths and its guarded paths, as a projection writes them.
+        /// </summary>
+        sealed class SelectingExecutor(string document) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                return new(ListCursor.Documents(new[] { Select(query.Sql) }));
+            }
+
+            /// <summary>
+            /// The row a statement's select list selects of the document, failing where it is no shape this reads.
+            /// </summary>
+            string Select(string sql)
+            {
+                var statement = System.Text.RegularExpressions.Regex.Match(sql, @"^SELECT VALUE (c|\{ (?<members>.*) \}) FROM products c( WHERE .*)?$");
+                if (statement.Success == false)
+                    throw new InvalidOperationException("No row is served for " + sql);
+
+                if (statement.Groups["members"].Success == false)
+                    return document;
+
+                var item = System.Text.Json.Nodes.JsonNode.Parse(document)!;
+                var row = new System.Text.Json.Nodes.JsonObject();
+                foreach (var member in Members(statement.Groups["members"].Value))
+                {
+                    var named = System.Text.RegularExpressions.Regex.Match(member, @"^""(?<key>[^""]+)"": (?<value>.+)$");
+                    var value = named.Groups["value"].Value;
+                    var guarded = System.Text.RegularExpressions.Regex.Match(value, @"^\(IS_(?<test>[A-Z]+)\((?<path>c[\w.]*)\) \? \k<path> : null\)$");
+                    var path = guarded.Success ? guarded.Groups["path"].Value : value;
+                    if (named.Success == false || System.Text.RegularExpressions.Regex.IsMatch(path, @"^c(\.\w+)*$") == false)
+                        throw new InvalidOperationException("No column is served for " + member + " in " + sql);
+
+                    // An undefined value is no member of the row, as the service omits it.
+                    if (At(item, path, out var held) == false)
+                        continue;
+
+                    row[named.Groups["key"].Value] = guarded.Success && Holds(guarded.Groups["test"].Value, held) == false ? null : held?.DeepClone();
+                }
+
+                return row.ToJsonString();
+            }
+
+            static IEnumerable<string> Members(string members)
+            {
+                var (depth, start) = (0, 0);
+                for (var i = 0; i < members.Length; i++)
+                {
+                    if (members[i] == '(')
+                        depth++;
+                    else if (members[i] == ')')
+                        depth--;
+                    else if (depth == 0 && string.CompareOrdinal(members, i, ", ", 0, 2) == 0)
+                    {
+                        yield return members[start..i];
+                        start = i + 2;
+                    }
+                }
+
+                yield return members[start..];
+            }
+
+            static bool At(System.Text.Json.Nodes.JsonNode item, string path, out System.Text.Json.Nodes.JsonNode? held)
+            {
+                held = item;
+                foreach (var name in path.Split('.').Skip(1))
+                    if (held is not System.Text.Json.Nodes.JsonObject members || members.TryGetPropertyValue(name, out held) == false)
+                        return false;
+
+                return true;
+            }
+
+            static bool Holds(string test, System.Text.Json.Nodes.JsonNode? held)
+            {
+                var kind = held switch
+                {
+                    null => "NULL",
+                    System.Text.Json.Nodes.JsonArray => "ARRAY",
+                    System.Text.Json.Nodes.JsonObject => "OBJECT",
+                    _ => held.GetValueKind() switch { JsonValueKind.String => "STRING", JsonValueKind.Number => "NUMBER", _ => "BOOL" },
+                };
+
+                return test == kind || (test == "PRIMITIVE" && kind is "NULL" or "STRING" or "NUMBER" or "BOOL");
+            }
+
+        }
+
+        /// <summary>
         /// The minimum a compiled plan needs to find its way back to the table it reads.
         /// </summary>
         sealed class TestDataContext : DataContext
@@ -292,8 +381,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
-            var best = planner.findBestExp();
+            return Calcs(planner.findBestExp());
+        }
 
+        /// <summary>
+        /// Runs the calc pass a host runs over the plan chosen, without which a projection left in process does not
+        /// implement (<see cref="PlanToClrWithHostRules"/>).
+        /// </summary>
+        static RelNode Calcs(RelNode best)
+        {
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
 
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.CalcRules())
@@ -1688,6 +1784,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
             conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
             sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the path beneath the RETURNING VARIANT is sent: {0}", sent);
+        }
+
+        const string ReturningVariant = "JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)";
+
+        /// <summary>
+        /// Where a plan would select a <c>RETURNING VARIANT</c> itself, the statement answers as Calcite does over an array and
+        /// an object at the path, bare and as a host plans: a filter over an item of it beside a computed column, a view's
+        /// column holding it or an item of it, and a select list holding it or an accessor over it.
+        /// </summary>
+        /// <remarks>
+        /// Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an object, so an item
+        /// of it or an accessor over it is null there too. Written as the bare path, <c>c.x</c>, and read back as the raw
+        /// value, the column held the array or the object, and what Calcite computed over it failed over <c>[1]</c> and
+        /// read 1 over <c>{"a":1}</c>, so the null test dropped the document: wherever the residual projection carried the
+        /// accessor beneath the filter, a view or a select list held it, or the planner split a view's item column into the
+        /// accessor beneath an item computed in process. No clause writes it as a path now
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), as none writes <c>RETURNING DECIMAL</c>, so Calcite computes it from the
+        /// document. The stub serves each document as the statement's select list selects it, whatever its <c>WHERE</c>; the
+        /// statement sends none, every condition reading the <c>RETURNING VARIANT</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|Steel")]
+        [InlineData(true, "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|Steel")]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c) AS t WHERE t.\"v\"['a'] IS NULL", "x1")]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c) AS t WHERE t.\"v\"['a'] IS NULL", "x1")]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + "['a'] AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL", "x1")]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + "['a'] AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL", "x1")]
+        [InlineData(false, "SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|null")]
+        [InlineData(true, "SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|null")]
+        [InlineData(false, "SELECT c.\"id\", JSON_VALUE(" + ReturningVariant + ", '$.a') AS \"e\" FROM products AS c", "x1|null")]
+        [InlineData(true, "SELECT c.\"id\", JSON_VALUE(" + ReturningVariant + ", '$.a') AS \"e\" FROM products AS c", "x1|null")]
+        public async Task ShouldAnswerAsCalciteWhereAPlanWouldSelectAReturningVariant(bool trimmed, string sql, string row)
+        {
+            foreach (var document in new[] { "{ \"id\": \"x1\", \"name\": \"Steel\", \"x\": [1] }", "{ \"id\": \"x1\", \"name\": \"Steel\", \"x\": { \"a\": 1 } }" })
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+                sent.Should().NotContain(" WHERE ", "every condition reads the RETURNING VARIANT, which is Calcite's: {0}", sent);
+
+                (await Execute(best)).Select(Row).Should().Equal([row], "Calcite's RETURNING VARIANT is null over {0}: {1}", document, sent);
+            }
+        }
+
+        /// <summary>
+        /// Writes a row as its columns' values joined by a bar, a null as <c>null</c>.
+        /// </summary>
+        static string Row(object? row)
+        {
+            return string.Join("|", (row as object?[] ?? [row]).Select(v => v is null ? "null" : System.Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture)));
         }
 
         /// <summary>

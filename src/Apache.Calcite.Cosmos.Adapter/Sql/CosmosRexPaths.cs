@@ -69,9 +69,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// </summary>
         /// <remarks>
         /// A field reference, a field of this row's own correlation variable, a chain of constant <c>ITEM</c> accessors over
-        /// one, a plain SQL/JSON accessor, or <c>StringToArray</c> over one, none of the last three over a <c>RETURNING
-        /// VARIANT</c> (<see cref="TryResolveBase"/>). Every clause that needs a path asks this, so a spelling refused here is
-        /// refused everywhere. See DESIGN.md, <i>The document column</i>.
+        /// one, a plain SQL/JSON accessor, or <c>StringToArray</c> over one. Every clause that needs a path asks this, so a
+        /// spelling refused here is refused everywhere. See DESIGN.md, <i>The document column</i>.
         /// </remarks>
         /// <param name="node">The expression to inspect.</param>
         /// <param name="path">On success, the resolved path.</param>
@@ -121,7 +120,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     return path is not null;
 
                 case RexCall call when KindOf(call) == nameof(SqlKind.__Enum.ITEM) && call.getOperands().size() == 2:
-                    if (TryResolveBase(Operand(call, 0), out var basePath) == false || Operand(call, 1) is not RexLiteral accessor)
+                    if (TryResolvePath(Operand(call, 0), out var basePath) == false || Operand(call, 1) is not RexLiteral accessor)
                         break;
 
                     object? value;
@@ -157,28 +156,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 // `StringToArray(JSON_QUERY(<doc>, '$.tags'))` is the array at that path, and the
                 // composition exists because UNNEST will not take a string: `JSON_QUERY` is typed
                 // VARCHAR and is refused, while `StringToArray` is typed ANY and is accepted.
-                case RexCall array when IsArrayFromJson(array) && TryResolveBase((RexNode)array.getOperands().get(0), out path):
+                case RexCall array when IsArrayFromJson(array) && TryResolvePath((RexNode)array.getOperands().get(0), out path):
                     return true;
             }
-
-            path = null;
-            return false;
-        }
-
-        /// <summary>
-        /// Resolves the operand an item, an accessor or <c>StringToArray</c> reads through: none where it is a
-        /// <c>RETURNING VARIANT</c>, which is a path only as itself.
-        /// </summary>
-        /// <remarks>
-        /// Calcite reads a step over a <c>RETURNING VARIANT</c> through its value, which holds no box and is null where the
-        /// path holds an array or an object (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), and so wherever a path beneath it is
-        /// defined: the value the document holds there is not what the step reads. See DESIGN.md, <i><c>RETURNING VARIANT</c>
-        /// is a reading of its own</i>.
-        /// </remarks>
-        bool TryResolveBase(RexNode operand, out CosmosPath? path)
-        {
-            if (IsVariantReturningJsonValue(operand) == false && TryResolvePath(operand, out path))
-                return true;
 
             path = null;
             return false;
@@ -200,7 +180,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (IsScalarRendering(Operand(call, 0)))
                 return false;
 
-            if (TryResolveBase(Operand(call, 0), out var basePath) == false || basePath is null)
+            if (TryResolvePath(Operand(call, 0), out var basePath) == false || basePath is null)
                 return false;
 
             if (Operand(call, 1) is not RexLiteral literal)

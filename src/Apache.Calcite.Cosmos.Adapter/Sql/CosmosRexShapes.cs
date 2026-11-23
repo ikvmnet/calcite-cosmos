@@ -24,10 +24,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Determines whether a call is one of the SQL/JSON accessors this can render as a path.
         /// </summary>
         /// <remarks>
-        /// A plain <c>JSON_VALUE</c> that neither parses nor returns an array, or a plain <c>JSON_QUERY</c>; by name, since a
-        /// call resolved through a schema carries an operator Calcite built around the declaration. The single gate every
-        /// consumer of a path goes through, so refusing a spelling here refuses it everywhere. See DESIGN.md, <i>Casts over
-        /// document values</i> and <i>The document column</i>.
+        /// A plain <c>JSON_VALUE</c> that neither parses nor returns an array or a <c>VARIANT</c>, or a plain
+        /// <c>JSON_QUERY</c>; by name, since a call resolved through a schema carries an operator Calcite built around the
+        /// declaration. The single gate every consumer of a path goes through, so refusing a spelling here refuses it
+        /// everywhere. See DESIGN.md, <i>Casts over document values</i> and <i>The document column</i>.
         /// </remarks>
         internal static bool IsJsonAccessor(RexCall call)
         {
@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 if (IsPlainJsonValue(call) == false)
                     return false;
-                if (IsParsingJsonValue(call))
+                if (IsParsingJsonValue(call) || IsVariantReturningJsonValue(call))
                     return false;
                 return IsArrayReturningJsonValue(call) == false;
             }
@@ -150,8 +150,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// Calcite holds what it reads in no box, so it equals no value cast to <c>VARIANT</c>, and it is null where the path
         /// holds an array or an object (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), where a promoted column holding the same
-        /// value is the value. So a projection binds no path for it (<c>CosmosImplementor.Projected</c>), and no path is
-        /// resolved through it (<c>CosmosRexPaths</c>). See DESIGN.md, <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
+        /// value is the value. So it is refused as a path (<see cref="IsJsonAccessor"/>), as <c>RETURNING DECIMAL</c> is, and
+        /// so is what reads through it; the oracle's loader reads it as the reading it is, <c>typed:VARIANT</c>. See
+        /// DESIGN.md, <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
         /// </remarks>
         internal static bool IsVariantReturningJsonValue(RexNode node)
         {

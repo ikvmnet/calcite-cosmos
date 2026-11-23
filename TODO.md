@@ -2841,7 +2841,9 @@ across documents* and *A join of a container to itself* is the record.
   over it and Calcite evaluates every filter over it: a comparison, a null test and a type test. Calcite holds what it
   reads in no box: it equals no value cast to `VARIANT`, `=` false and `<>` true where the path holds a scalar and null
   where it holds none, and its null test is the path holding no scalar (`Calcite.VariantEqualsOnlyItsOwnBox`). No rule
-  reads those cells; rows of its own would let S send the null test and the type tests.
+  reads those cells; rows of its own would let S send the null test and the type tests. It addresses no path
+  (`CosmosRexShapes.IsJsonAccessor`), so a select list holding it reads the document; a row measuring how Calcite's
+  value reads back would let it be sent as a guarded column.
 - **The typed reading leaves out a column's raise over a structure** — *small, and it touches plans.* A field typed
   `BIGINT`, `INTEGER`, `DOUBLE` or `BOOLEAN` fails the statement over an object or an array (`CosmosJson.GetInteger`,
   `GetDouble`, `GetBoolean`), where `RETURNING` answers null, and `PredicateAtom`'s typed reading answers as
@@ -4115,15 +4117,6 @@ across documents* and *A join of a container to itself* is the record.
   row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
   proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
   step's own.
-- **A projected `RETURNING VARIANT` is sent and read back as the raw value** — *small, soundness.* `CosmosProject`
-  writes `JSON_VALUE(… RETURNING VARIANT)` as the bare path and the reader reads what arrives as a `VARIANT`, so an
-  array or an object there is a value where Calcite's column is null: a condition kept in process over the column reads
-  it so, `SELECT JSON_VALUE(c."DOC", '$.x' RETURNING VARIANT) IS NULL` answers false over `{"x":{}}` where Calcite
-  answers true, and an item of the column computed in process, selected or tested, fails the statement over an array
-  read back (`IndexOutOfRangeException`) where Calcite's item is null. The binding binds nothing for it
-  (`CosmosImplementor.Projected`), so no `WHERE` reads it. The proper fix is the projection's: refuse the column, as
-  `RETURNING DECIMAL` is refused, until a row measures how Calcite's value reads back, or write it as the rendering
-  graph chooses once the projection's writing moves there (Stage 3).
 - **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness.* Where nothing of a
   filter over a view reaches the service, the view's projection is still converted, and the statement selects it beneath
   the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
