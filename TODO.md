@@ -2657,13 +2657,18 @@ across documents* and *A join of a container to itself* is the record.
 - **An item of a `JSON_QUERY` returning an array or a map is read as the stored member** — *small, soundness; on
   `main`.* `CosmosRexPaths` resolves `JSON_QUERY(c."DOC", '$.x' RETURNING INTEGER ARRAY)[1]` to `c.x[0]`, and an item of
   a map to `c.x.a`, whatever the element type, where Calcite converts the member stored to that type: an `INTEGER`
-  raises over another kind (`[5.0]`, `["5"]`, `[true]`, an object at `x`), and a `VARCHAR` reads a stored 5 as '5'. The
-  translator writes `ITEM` only over a field or another `ITEM`, so over a view's column of such an item, carried onto
-  the scan, a comparison fails to implement where Calcite answers (`t."e" = 5`), and a null test is sent as the
-  element's, `(IS_DEFINED(c.x[0]) AND NOT IS_NULL(c.x[0]))`, which answers where Calcite raises. A projection binds
+  raises over another kind (`[5.0]`, `["5"]`, `[true]`, an object at `x`), and a `VARCHAR` reads a stored 5 as '5'. An
+  item of a view's column holding the array or the map resolves the same way, so `t."m"[1] = '5'` over a `VARCHAR ARRAY`
+  column is sent as `c.x[0] = @p0` and drops a stored 5 that Calcite keeps. An accessor over such an item,
+  `JSON_VALUE(t."m"['a'], '$.b')` or the same over the `JSON_QUERY` itself, resolves to `c.x.a.b`, where Calcite parses
+  the member converted to text, so a comparison through it, and a weakening derived through it, are sent as the path's
+  and drop a document whose member holds JSON text, `{"x":{"a":"{\"b\":1}"}}`, or, for its null test, one whose member
+  is an object. The translator writes `ITEM` only over a field or another `ITEM`, so over a view's column of such an item,
+  carried onto the scan, a comparison fails to implement where Calcite answers (`t."e" = 5`), and a null test is sent as
+  the element's, `(IS_DEFINED(c.x[0]) AND NOT IS_NULL(c.x[0]))`, which answers where Calcite raises. A projection binds
   nothing for an item of an array or a map, a view's column of one included (`CosmosImplementor.Projected`), so no
-  weakening is derived through such a column. The proper fix decides once whether the member is a path, refused as
-  `RETURNING VARIANT` is or written under the element type, and asks it of every clause.
+  weakening is derived through a view's column holding the item itself. The proper fix decides once whether the member
+  is a path, refused as `RETURNING VARIANT` is or written under the element type, and asks it of every clause.
 - **A selected `JSON_QUERY … RETURNING VARIANT ARRAY` is read back with its elements boxed** — *small, soundness; on
   `main`.* Calcite's `JSON_QUERY` holds each element of a `VARIANT ARRAY` in no box, and the reader returns a selected
   column of one with each element in a `VARIANT` box (`CosmosJson`'s collection reading). So where a plan selects the
