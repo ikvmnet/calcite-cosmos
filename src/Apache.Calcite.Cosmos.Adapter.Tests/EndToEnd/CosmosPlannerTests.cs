@@ -4476,7 +4476,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// without those two, a condition over a view's column projecting a null was asked of the filter rule as a comparison
         /// with the null, where the filter registered beneath holds <c>FALSE</c>. Configured to copy no filter, it builds one
         /// through its builder, which simplifies the condition again and builds no filter where it is true and the empty
-        /// relation where it is false; asked of that configuration, the condition is that filter's, true or false.
+        /// relation where it is false; asked of that configuration, the condition is that filter's, true or false. The rule
+        /// <c>Transposed</c> asks is the one <c>CosmosRules</c> registers, so the configuration it reads is the one the
+        /// planner runs.
         /// </remarks>
         [Theory]
         [InlineData("t.\"z\" = 'a'", true)]
@@ -4510,7 +4512,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             Adapter.Rel.Convert.CosmosFilterSplitRule.TransposedBy(filter.getCondition(), project, rule).Should().Be(beneath, "the transpose writes {0} beneath", beneath);
             if (copyFilter)
+            {
+                CosmosRules.GetRules(harness.Tables["products"].Convention).Should().Contain(r => ReferenceEquals(r, org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE),
+                    "Transposed reads the configuration of the transpose the adapter registers");
                 Adapter.Rel.Convert.CosmosFilterSplitRule.Transposed(filter.getCondition(), project).Should().Be(beneath, "the rule the adapter registers copies the filter");
+            }
         }
 
         /// <summary>
