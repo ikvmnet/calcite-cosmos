@@ -946,6 +946,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         }
 
         /// <inheritdoc cref="Reaches(CosmosConvention, RelNode?, HashSet{RelNode}, RexNode?)" />
+        /// <param name="convention">The convention whose statements the filter would be part of.</param>
+        /// <param name="node">The subtree the filter sits over.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
         /// <param name="half">The condition of a filter over the subtree: the half a split pushes, holding the service's form,
         /// or the condition of a filter the half lands on, asked whether that filter reaches the service itself; <c>null</c>
         /// asks whether any filter over the subtree can.</param>
