@@ -4,6 +4,7 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd;
 using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Rendering;
@@ -60,14 +61,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// What one round trip found wrong, each a line, the form the filter beneath sends, read back from its printed text,
         /// and the comparisons of the conjunct's own the Rex reads, for a form standing at a position. The filter the Rex is
         /// pushed in reads it through the loader and admits it through S (h15), so what is sent is what Calcite reads of it:
-        /// the form itself where S holds it <c>Equal</c> to that reading where it stands. Where S does not — Calcite's
-        /// <c>&lt;&gt;</c> keeps no null the service's <c>!=</c> keeps, so a bare <c>!=</c> at <c>Pos</c> is read tighter — the
-        /// filter sends S's best exact form of the reading, which the atom must imply, or the weakening would cost a row it
-        /// keeps: the form itself up to absorption, which generate mode proved the reading of and S gave as implied by the
-        /// atom, where the check's claim mode proves no further over a wide junction; else one the check proves implied; else,
-        /// where the check leaves it unproven, as it leaves a junction of two atoms of one path (<c>TODO.md</c>) or one over
-        /// an opaque term's strict paths, one no document <paramref name="witness"/> draws keeps the atom's row and drops
-        /// it there, as source A holds a form.
+        /// the form itself where S holds it <c>Equal</c> to that reading where it stands. Every claim, and every best, is asked
+        /// over the import the filter beneath's oracle asks it over (<see cref="Import"/>), since what S proves exact of a
+        /// comparison of a computed place rests on the place's characters, which that oracle imports and the paths alone do
+        /// not hold. Where S does not hold it <c>Equal</c> — Calcite's <c>&lt;&gt;</c> keeps no null the service's <c>!=</c>
+        /// keeps, so a bare <c>!=</c> at <c>Pos</c> is read tighter — the filter sends S's best exact form of the reading,
+        /// which the atom must imply, or the weakening would cost a row it keeps: the form itself up to absorption, which
+        /// generate mode proved the reading of and S gave as implied by the atom, where the check's claim mode proves no
+        /// further over a wide junction; else one the check proves implied; else, where the check leaves it unproven, as it
+        /// leaves a junction of two atoms of one path (<c>TODO.md</c>) or one over an opaque term's strict paths, one no
+        /// document <paramref name="witness"/> draws keeps the atom's row and drops it there, as source A holds a form.
         /// Either is printed over the reading's places and must read back as itself. Unproven with no reason, over a
         /// <c>CASE</c>, is S declining the filter beneath, which keeps it in process and costs RU alone; a <c>CASE</c> S proves
         /// beneath its arm's licence is sent as its best, as any other (h15).
@@ -130,22 +133,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 && and.Arms.All(a => a.Digest == atom.Digest || a is SqlPredicate.IsDefined or SqlPredicate.TypeTest or SqlPredicate.Not { Operand: SqlPredicate.IsDefined or SqlPredicate.TypeTest });
 
         /// <summary>
-        /// S's best exact form of an IR at <c>Pos</c> under a set, each path imported as <see cref="Claim"/> imports it and an
-        /// arm's atom stated as <see cref="Claim"/> states it, as the arm's licence states it in production (h15): what the
-        /// filter beneath sends of a Rex the loader reads as the IR, or <c>null</c> where S proves none, which keeps it in
-        /// process.
+        /// Imports a question's IR into a bundle as the filter beneath's oracle imports it (<c>RenderingOracle.Ask</c>): every
+        /// place the IR reads, a path read only inside a call among them, and every computed place's characters, which the
+        /// importer imports for each call the roots read. Each, and each path beside, is imported as the weakening's bundle
+        /// imported it, found by its spelling, its characters kept to those given; and, where that bundle imported none, as
+        /// anything over the characters given, or every class. Returns what each path was imported as, which
+        /// <see cref="StateArms"/> reads.
+        /// </summary>
+        static Dictionary<JsonDocumentPath, PathValues> Import(RenderingBundle bundle, SqlPredicate ir, IEnumerable<JsonDocumentPath> beside,
+            IReadOnlyDictionary<string, RenderingMemo.Imported>? imports, ValueSet<string>? chars)
+        {
+            ValueSet<string> Kept(ValueSet<string> held) => chars is null ? held : ValueSet.From(held.Where(chars.Contains));
+            var imported = new Dictionary<JsonDocumentPath, PathValues>();
+            foreach (var path in ir.Places.Concat(beside).Distinct())
+                if (imports?.GetValueOrDefault(SqlValue.Spell(path)) is { } import)
+                    bundle.Import(ProbeRows.Source, path, imported[path] = import.Values, Kept(import.Chars));
+                else
+                    bundle.Import(ProbeRows.Source, path, imported[path] = PathValues.Anything, chars ?? JsonValues.AllBands);
+
+            foreach (var call in ir.Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled, StringComparer.Ordinal))
+                bundle.ImportComputed(call, imports?.GetValueOrDefault(call.Spelled!) is { } import ? Kept(import.Chars) : chars ?? JsonValues.AllBands);
+
+            return imported;
+        }
+
+        /// <summary>
+        /// S's best exact form of an IR at <c>Pos</c> under a set, each place imported as <see cref="Import"/> imports it, a
+        /// computed place's characters among them, and an arm's atom stated as <see cref="Claim"/> states it, as the arm's
+        /// licence states it in production (h15): what the filter beneath sends of a Rex the loader reads as the IR, or
+        /// <c>null</c> where S proves none, which keeps it in process.
         /// </summary>
         internal static ServiceForm? Sent(SqlPredicate ir, RenderingSet set, IReadOnlyDictionary<string, RenderingMemo.Imported>? imports = null, ValueSet<string>? chars = null)
         {
             using var bundle = ProbeRows.ProbeTheory.Open(set);
             var term = bundle.Write(ir);
-            var imported = new Dictionary<JsonDocumentPath, PathValues>();
-            foreach (var path in ir.Paths.Distinct())
-                if (imports?.GetValueOrDefault(SqlValue.Spell(path)) is { } import)
-                    bundle.Import(ProbeRows.Source, path, imported[path] = import.Values, chars is null ? import.Chars : ValueSet.From(import.Chars.Where(chars.Contains)));
-                else
-                    bundle.Import(ProbeRows.Source, path, imported[path] = PathValues.Anything, chars ?? JsonValues.AllBands);
-
+            var imported = Import(bundle, ir, [], imports, chars);
             StateArms(bundle, imported);
             bundle.Generate(term);
             bundle.RunGenerate(RenderingBundle.WidthOf([ir]));
@@ -217,10 +239,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         static readonly PathValues Numbers = PathValues.OfKinds(ValueSet.Of(JsonValues.IntegerType, JsonValues.FractionType));
 
         /// <summary>
-        /// A form claimed for an IR at a position under a set, each path either side reads imported as given, or as
-        /// anything, its characters kept to those given; at <c>Neg</c>, the negation of each at <c>Pos</c>. An atom read
-        /// beneath an arm whose conditions hold <c>IS_NUMBER</c> of its path is stated there as a number, which is what the
-        /// facts graph reads of that condition exactly.
+        /// A form claimed for an IR at a position under a set, each place the IR reads, a computed place's characters among
+        /// them, imported as <see cref="Import"/> imports it, and each path the form reads beside them; at <c>Neg</c>, the
+        /// negation of each at <c>Pos</c>. An atom read beneath an arm whose conditions hold <c>IS_NUMBER</c> of its path is
+        /// stated there as a number, which is what the facts graph reads of that condition exactly.
         /// </summary>
         internal static RenderingVerdict Claim(ServiceForm form, SqlPredicate ir, RenderPosition pos, Verdict verdict, RenderingSet set,
             IReadOnlyDictionary<string, RenderingMemo.Imported>? imports = null, ValueSet<string>? chars = null)
@@ -228,13 +250,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var (claimed, root) = pos == RenderPosition.Pos ? (form, ir) : (ServiceForm.Negated(form), (SqlPredicate)new SqlPredicate.Not(ir));
             using var bundle = ProbeRows.ProbeTheory.Open(set);
             var term = bundle.Write(root);
-            var imported = new Dictionary<JsonDocumentPath, PathValues>();
-            foreach (var path in root.Paths.Concat(form.Paths.Select(CosmosEval.PathOf)).Distinct())
-                if (imports?.GetValueOrDefault(SqlValue.Spell(path)) is { } import)
-                    bundle.Import(ProbeRows.Source, path, imported[path] = import.Values, chars is null ? import.Chars : ValueSet.From(import.Chars.Where(chars.Contains)));
-                else
-                    bundle.Import(ProbeRows.Source, path, imported[path] = PathValues.Anything, chars ?? JsonValues.AllBands);
-
+            var imported = Import(bundle, root, form.Paths.Select(CosmosEval.PathOf), imports, chars);
             StateArms(bundle, imported);
 
             // A CASE is read by generate mode alone (spec h08): Equal where S's best exact form is the one claimed up to
@@ -492,16 +508,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 .DistinctBy(w => (w.Source, w.Conjunct, w.Mine!.Text, w.Set))];
 
         /// <summary>
-        /// Every weakening S gives a residual over the pull request's inputs, built over its conjunct's own accessors and
-        /// held to the round trip under its set, at the import of the bundle it was read from, a string's characters as
-        /// <see cref="Ordered"/> keeps them, and printed as the filter beneath prints it (line 13, h15). One holding a test
-        /// of a path written over a field or a call, read back as that node's test, which S declines beneath, is counted apart:
-        /// production does not push it; and one read back over a reading of an element the readings of an index do not name as
-        /// of a path, which S declines beneath (h15b).
+        /// Five of the gate's statements, planned once a process in a generate run of their own over the differential's
+        /// containers, at either size: partitions 2410, 2411, 2419 and 2420, whose weakenings under <c>Production</c>
+        /// compare the concatenation <c>id || '!'</c>, and 416, whose conjunct reads <c>id</c> only inside an opaque term.
         /// </summary>
-        internal static (int Weakenings, int Exact, int Guarded, int Own, int Cased, List<string> Declined, List<string> Fields, List<string> Elements, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null, bool first = false)
+        static readonly Lazy<IReadOnlyList<RenderingGenerateRun.Weakened>> Gate = new(() =>
         {
-            var (weakenings, exact, guarded, own, cased, declined, fields, elements, problems) = (Weakenings(), 0, 0, 0, 0, new List<string>(), new List<string>(), new List<string>(), new List<string>());
+            (string Name, string Sql)[] statements =
+            [
+                ("2410", "SELECT c.\"id\" FROM products AS c WHERE ((CASE WHEN LOWER(JSON_VALUE(c.\"DOC\", '$.metadata')) = 'none' THEN JSON_VALUE(c.\"DOC\", '$.metadata') IS NULL "
+                    + "ELSE CAST(c.\"$.category\" AS VARCHAR) NOT LIKE '_prin_' END) OR (((JSON_VALUE(c.\"DOC\", '$.price') + 1) / 3) < 340 OR (c.\"id\" || '!') = 'BIKES'))"),
+                ("2411", "SELECT c.\"id\" FROM products AS c WHERE NOT (((CASE WHEN LOWER(JSON_VALUE(c.\"DOC\", '$.metadata')) = 'none' THEN JSON_VALUE(c.\"DOC\", '$.metadata') IS NULL "
+                    + "ELSE CAST(c.\"$.category\" AS VARCHAR) NOT LIKE '_prin_' END) OR (((JSON_VALUE(c.\"DOC\", '$.price') + 1) / 3) < 340 OR (c.\"id\" || '!') = 'BIKES')))"),
+                ("2419", "SELECT c.\"id\" FROM typed AS c WHERE ((c.\"id\" || '!') <> 'TRUE' OR (((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) * 2E0) < 31E0) IS FALSE))"),
+                ("2420", "SELECT c.\"id\" FROM typed AS c WHERE NOT (((c.\"id\" || '!') <> 'TRUE' OR (((CAST(JSON_VALUE(c.\"DOC\", '$.price') AS DOUBLE) * 2E0) < 31E0) IS FALSE)))"),
+                ("416", "SELECT c.\"id\" FROM products AS c WHERE (CASE WHEN ((JSON_VALUE(c.\"DOC\", '$.price') + 1) > 0 OR JSON_VALUE(c.\"DOC\", '$.tags[0]') IS NULL) "
+                    + "THEN (c.\"id\" < 'outdoor' OR COALESCE(JSON_VALUE(c.\"DOC\", '$.tags[0]'), 'none') LIKE '%e%') ELSE (JSON_VALUE(c.\"DOC\", '$.metadata') || '!') NOT LIKE 'B%' END)"),
+            ];
+
+            var generated = new RenderingGenerateRun();
+            var containers = generated.Bind(CosmosDifferentialTests.Containers);
+            RenderingCheckRun.Over(statements.Select(s => RenderingInputs.Differential("partitions", [s.Sql], containers).Single() with { Name = s.Name }), generated: generated);
+            return [.. generated.Weakenings.Where(w => w.Mine is not null && w.Source is not null && RenderingGenerateRun.AssertedSets.Contains(w.Set))
+                .DistinctBy(w => (w.Source, w.Conjunct, w.Mine!.Text, w.Set))];
+        });
+
+        /// <summary>The weakenings of five of the gate's statements under the asserted sets (<see cref="Gate"/>), as <see cref="Weakenings"/> gives the run's.</summary>
+        internal static IReadOnlyList<RenderingGenerateRun.Weakened> GateStatements() => Gate.Value;
+
+        /// <summary>
+        /// Every weakening S gives a residual over the pull request's inputs, or each of those given, built over its
+        /// conjunct's own accessors and held to the round trip under its set, at the import of the bundle it was read from, a
+        /// string's characters as <see cref="Ordered"/> keeps them, and printed as the filter beneath prints it (line 13,
+        /// h15). One holding a test of a path written over a field or a call, read back as that node's test, which S declines
+        /// beneath, is counted apart: production does not push it; and one read back over a reading of an element the readings
+        /// of an index do not name as of a path, which S declines beneath (h15b).
+        /// </summary>
+        internal static (int Weakenings, int Exact, int Guarded, int Own, int Cased, List<string> Declined, List<string> Fields, List<string> Elements, List<string> Problems) Pushed(Func<Builder, Builder>? plant = null,
+            bool first = false, IReadOnlyList<RenderingGenerateRun.Weakened>? source = null)
+        {
+            var (weakenings, exact, guarded, own, cased, declined, fields, elements, problems) = (source ?? Weakenings(), 0, 0, 0, 0, new List<string>(), new List<string>(), new List<string>(), new List<string>());
             foreach (var w in weakenings.TakeWhile(_ => first == false || problems.Count == 0))
             {
                 var statement = w.Source!;
@@ -641,6 +687,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             weakenings.Should().BeGreaterThan(300);
             problems.Should().BeEmpty();
             cased.Should().BeGreaterThan(declined.Count, "the corpus compares numbers through casts of the text and the text with numerals");
+        }
+
+        /// <summary>
+        /// A weakening comparing a computed place round trips as the filter beneath admits it: over five of the gate's
+        /// statements (<see cref="GateStatements"/>), each <c>Production</c> weakening whose form reads a computed place of
+        /// its conjunct, partitions 2410's, 2411's, 2419's and 2420's comparison of <c>id || '!'</c>, is held <c>Equal</c> to
+        /// the reading of its Rex over the import the filter beneath's oracle asks it over, the place's characters among it,
+        /// and is printed and read back as itself; and no weakening of the five is a problem. Asked over the paths alone, with
+        /// no computed place, S proves nothing exact of the four, though the filter beneath proves each exact and sends it.
+        /// </summary>
+        [Fact]
+        public void EveryWeakeningOverAComputedPlaceRoundTripsAsTheFilterBeneathAdmitsIt()
+        {
+            static bool OverAComputedPlace(RenderingGenerateRun.Weakened w) =>
+                w.Source!.Statement.Conjuncts[w.Conjunct].Computed.Select(c => c.Spelled).OfType<string>().ToHashSet(StringComparer.Ordinal) is var places && w.Mine!.Paths.Any(places.Contains);
+
+            var weakenings = GateStatements();
+            var computed = weakenings.Where(w => w.Set == RenderingSet.Production && OverAComputedPlace(w)).ToList();
+            var (all, over) = (Pushed(source: weakenings), Pushed(source: computed));
+            TestContext.Current.TestOutputHelper?.WriteLine($"{all.Weakenings} weakenings of the five: {all.Exact} printed and read back as themselves, {all.Guarded} sent as S's form of what "
+                + $"Calcite reads of them, {all.Declined.Count} declined beneath; {computed.Count} under Production over a computed place, {over.Exact} of them read back as themselves");
+            foreach (var w in computed)
+                TestContext.Current.TestOutputHelper?.WriteLine($"over a computed place: {w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct} {w.Mine}");
+            foreach (var problem in all.Problems)
+                TestContext.Current.TestOutputHelper?.WriteLine(problem);
+
+            all.Problems.Should().BeEmpty();
+            computed.Count.Should().BeGreaterThanOrEqualTo(4, "2410, 2411, 2419 and 2420 each weaken to a comparison of the concatenation under Production");
+            (over.Exact, over.Problems.Count).Should().Be((computed.Count, 0), "each is proven exact over the filter beneath's import and printed as itself");
         }
 
         /// <summary>
