@@ -182,6 +182,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 
+            // The conjuncts admitted alone, asked as the half is; none where nothing is admitted or nothing carries them.
+            List<RexNode>? Alone()
+            {
+                var alone = Compose(rexBuilder, admitted);
+                return admitted.Count == 0 || (CosmosOperators.HoldsServiceForm(alone) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), alone) == false) ? null : admitted;
+            }
+
             // Legality: a weakening is the service's form, which Calcite has no body for, so the half split off holds one only
             // where it reaches the service: through a member already part of a statement, or over a projection through
             // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed), landing only where the filter rule
@@ -191,11 +198,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var half = Compose(rexBuilder, pushable);
             if (CosmosOperators.HoldsServiceForm(half) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half) == false)
             {
-                var alone = Compose(rexBuilder, admitted);
-                if (admitted.Count == 0 || (CosmosOperators.HoldsServiceForm(alone) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), alone) == false))
+                if (Alone() is not { } alone)
                     return;
 
-                pushable = admitted;
+                pushable = alone;
             }
 
             // Split no further where everything it would push is applied beneath already, compared as Calcite compares
@@ -221,10 +227,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // A computed column whose reading can refuse a value then failed the statement over a row the condition drops, where
             // Calcite answers, whatever the condition reads: a CASE branch, COALESCE's later operands among them, is computed only
             // for the rows that reach it (ReadsWhatCanRefuse). Asked only of a projection the transpose carries this filter
-            // beneath, where it is split over the rows the projection reads instead: where the transpose declines, the filter
-            // stays above the projection whatever this split does.
-            if (left.isAlwaysTrue() == false && ReadsWhatCanRefuse(filter.getInput(), filter.getCondition()))
-                return;
+            // beneath: where the transpose declines, the filter stays above the projection whatever this split does. Where such a
+            // column is held, the weakenings the split adds over a projection are taken away and the conjuncts admitted go
+            // alone, asked as the half is: the pair it made before it weakened over a projection, so the column is read for no
+            // more rows than then. Declining the pair cannot make the plan split the filter beneath the projection, since the
+            // cost model may keep the filter above the projection the service selects, which then reads the column under less
+            // of a WHERE.
+            if (left.isAlwaysTrue() == false && pushable.Count > admitted.Count && ReadsWhatCanRefuse(filter.getInput(), filter.getCondition()))
+            {
+                if (Alone() is not { } alone || alone.All(applied.Contains))
+                    return;
+
+                pushable = alone;
+            }
 
             if (left.isAlwaysTrue())
             {
@@ -358,14 +373,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// view beneath it selected that view's column under the condition kept in process and failed in the same way.
         /// </para>
         /// <para>
-        /// <b>Only where the transpose carries the filter beneath</b> (<see cref="Transposed"/>), which it then does, and the
-        /// filter is split over the rows the projection reads. Where the transpose declines, the filter stays above the
-        /// projection whatever the split does, and the service selects the projection under what lies beneath it, which the
-        /// pair only narrows. Measured: sixty <c>LIKE</c>s of a case fold of the view's column beside <c>t."a" = 'k'</c>,
-        /// the pair declined, sent no <c>WHERE</c> and failed over <c>{"a":"z","n":1.5}</c>, which the equality drops. Beneath
-        /// a filter the filter is stacked on, likewise only where the transpose carries that filter beneath as well, which it
-        /// moves first: over a filter on a view too wide for it, the pair declined sent no weakening of the case fold above,
-        /// and the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over <c>["5",5]</c>.
+        /// <b>Only where the transpose carries the filter beneath</b> (<see cref="Transposed"/>). Where it declines, the filter
+        /// stays above the projection whatever the split does, and the service selects the projection under what lies
+        /// beneath it, which the pair, weakenings and all, only narrows
+        /// (<c>CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter</c>).
+        /// Where it carries the filter, the cost model may still keep the filter above the projection the service selects, so
+        /// the split takes away only the weakenings it adds over a projection, and the conjuncts admitted go alone
+        /// (<see cref="onMatch"/>): declined whole, the pair left nothing beneath, and <c>t."dn" &lt; 5 AND INITCAP(t."nt") =
+        /// '2'</c> over a view also projecting the <c>INTEGER</c>, planned as a host plans, sent no <c>WHERE</c> and failed
+        /// over 7.5, which the comparison drops
+        /// (<c>CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct</c>).
+        /// Beneath a filter the filter is stacked on, likewise only where the transpose carries that filter beneath as well,
+        /// which it moves first: over a filter on a view too wide for it, the case fold's weakening taken away there was sent
+        /// nowhere, and the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over
+        /// <c>["5",5]</c>.
         /// </para>
         /// </remarks>
         /// <param name="node">The filter's input.</param>
@@ -661,6 +682,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// residual implies, and the residual is rechecked above as before. S's weakening of a member declined there is
         /// asked in its stead, and so on, each asked once.
         /// </para>
+        /// <para>
+        /// <b>Nor a member what lies beneath already applies</b>, asked of the facts graph member by member
+        /// (<see cref="Metadata.CosmosFilterStatement.IsApplied"/>) over a statement of no conjunct, where the rest is admitted
+        /// whole without it. The weakening of <c>CASE WHEN INITCAP(…) = 'Steel' THEN t."n" &gt; 10 ELSE FALSE END</c>, read
+        /// beneath a view, holds the comparison the half pushed over the view's projection applies, and pushed beside the
+        /// definedness test it sent one comparison twice
+        /// (<c>CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess</c>).
+        /// Not beside the conjuncts the filter admits, whose facts are read as this statement reads them and not as a later
+        /// question reads the half beneath it: <c>label NOT IN ('TRUE', '9')</c>, its tests of the label's definedness and
+        /// type dropped beside <c>label &lt;&gt; 'TRUE'</c>, which implies them here, was split again over that half and sent
+        /// <c>c.label != "TRUE"</c> twice.
+        /// </para>
         /// </remarks>
         static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across,
             IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
@@ -689,7 +722,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 pending = next;
             }
 
-            return kept;
+            // Nor a member what lies beneath already applies, asked of each over a statement of no conjunct, so that what counts
+            // is the filters beneath, the weakenings pushed before it and the declaration, which stay beneath every later
+            // question; and only where the rest is admitted whole beside what the filter holds, since a member may be the guard
+            // another is admitted beside.
+            if (kept.Count < 2)
+                return kept;
+
+            var nothing = Metadata.CosmosFilterStatement.Of(rexBuilder.makeLiteral(true), fields, readings, container, rexBuilder);
+            var rest = kept.Where(k => nothing.IsApplied(k, beneath, across) == false).ToList();
+            if (rest.Count == kept.Count || rest.Count == 0)
+                return kept;
+
+            var alone = Metadata.CosmosFilterStatement.Of(Metadata.CosmosFactRewriter.Planned(
+                Compose(rexBuilder, [.. held, .. rest]), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings), fields, readings, container, rexBuilder);
+
+            return Enumerable.Range(0, alone.Conjuncts.Count).All(k => held.Contains(alone.Conjuncts[k]) || alone.IsAdmitted(k)) ? rest : kept;
         }
 
         /// <summary>

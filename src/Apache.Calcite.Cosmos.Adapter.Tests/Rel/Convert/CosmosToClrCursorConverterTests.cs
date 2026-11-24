@@ -1651,6 +1651,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// Over a view whose projection holds a reading that can refuse, a split that would leave a condition in process
+        /// still pushes the conjuncts it admits, and the plan answers as Calcite does over documents they drop: no row, and
+        /// no failure.
+        /// </summary>
+        /// <remarks>
+        /// Planned as a host plans, with the calc pass, and run over the stub, which answers each request as the service
+        /// does on the target. The comparison of the view's <c>DOUBLE</c> column is admitted, and the case fold of its text
+        /// column weakens to a definedness test the comparison already applies. The split over the view's projection
+        /// registered nothing there, and the cost model kept the condition above the projection the service selects, with
+        /// no <c>WHERE</c>: the view's <c>INTEGER</c> was read for every document and failed over 7.5, which the comparison
+        /// drops before Calcite computes the column.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure)]
+        [InlineData(CosmosServiceTarget.Emulator)]
+        public async Task ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct(CosmosServiceTarget target)
+        {
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor(
+                ["{ \"id\": \"w01\", \"name\": \"Iron\", \"n\": 7.5 }", "{ \"id\": \"w08\", \"name\": \"Iron\", \"n\": 9.5 }"], target)));
+
+            const string sql = "SELECT t.\"id\", t.\"n\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\", "
+                + "JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"dn\", JSON_VALUE(c.\"DOC\", '$.n') AS \"nt\" FROM products AS c) AS t WHERE t.\"dn\" < 5 AND INITCAP(t.\"nt\") = '2'";
+            var best = Calcs(PlanToClrAsAHostDoes(sql));
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("the comparison drops both documents before Calcite computes the view's INTEGER: {0}", sent);
+        }
+
+        /// <summary>
         /// Where the transpose will not carry a filter beneath a view whose projection holds a reading that can refuse, the
         /// split over the view still pushes what renders beneath it.
         /// </summary>

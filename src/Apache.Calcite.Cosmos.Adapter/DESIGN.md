@@ -1499,6 +1499,12 @@ through the statement's own loading where they are the statement's, so that a ty
 projection and an accessor beneath it, is one term
 (`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce`), and one node the loader cannot read
 is one term too (`CosmosPlannerTests.AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn`).
+Each member of what the filter admits of a weakening is asked whether what lies beneath already applies it, beside none
+of the filter's own conjuncts, whose facts a later question over the half reads otherwise, and one that is is not
+pushed beside the rest where the rest is admitted whole without it: the weakening of a `CASE` read beneath a view holds
+the comparison its branch reads, which the half pushed over the view's projection applies, and pushed again it sent one
+comparison twice
+(`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
 
 #### How the oracle is checked: population D
 
@@ -11617,17 +11623,23 @@ traversal, only where its left side is part of a statement as it stands, which n
 projection out of
 (`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`, over a traversal
 of a view computing `INITCAP`).
-Nor does the split register a pair over a projection the service may select holding a computed column
-whose reading can refuse a value, whatever the condition left above reads, nor over a projection or a
-filter above one, since the transpose carries the half beneath every projection of the stack and a
-column passed up as it is may be the one beneath: beneath that condition the column is read for
-every row the half returns, where Calcite computes it only for the rows that reach it, a `CASE`
-branch or a later operand of `COALESCE` only where it is reached, the reason the residual projection
-declines such a projection. Asked by type alone, as the residual projection asks it (`TODO.md`,
-section 7), and only of a projection the transpose would carry the filter beneath instead
+Nor does the split push a weakening over a projection the service may select holding a computed
+column whose reading can refuse a value, whatever the condition left above reads, nor over a
+projection or a filter above one, since the transpose carries the half beneath every projection of
+the stack and a column passed up as it is may be the one beneath: beneath that condition the column
+is read for every row the half returns, where Calcite computes it only for the rows that reach it, a
+`CASE` branch or a later operand of `COALESCE` only where it is reached, the reason the residual
+projection declines such a projection. There the conjuncts admitted go alone, the pair the split
+made before it weakened over a projection, so the column is read for no more rows than then.
+Declining the pair whole cannot make the plan split the filter beneath the projection, since the
+cost model may keep the filter above the projection the service selects, which then read the column
+under no `WHERE` and failed where Calcite answers
+(`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct`).
+Asked by type alone, as the residual projection asks it (`TODO.md`, section 7), and only of a
+projection the transpose would carry the filter beneath
 (`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`):
 where the transpose declines, the filter stays above the projection whatever the split does, and
-declining the pair would leave the service to select the projection under less of a `WHERE`
+the weakenings only narrow what the service selects beneath it
 (`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`);
 beneath a filter it is stacked on, likewise, only where the transpose carries that filter as well
 (`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteOverAViewsArrayBeneathAFilterTheTransposeWillNotCarry`),

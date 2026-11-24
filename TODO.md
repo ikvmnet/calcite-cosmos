@@ -2620,8 +2620,8 @@ across documents* and *A join of a container to itself* is the record.
   process reads whole documents.* A typed reading that can refuse a value (`CosmosJson.CanRefuse`: an
   integral width, a date or time, a UUID, GeoJSON, base64, and a collection whose elements are read to a type,
   its guard being the collection's) is no longer moved beneath a filter that stays in
-  process, nor selected beneath one by the split's pair over a view's projection where the transpose would
-  carry the filter beneath it instead (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), since there it was read for
+  process, nor selected beneath one under a weakening the split pushes over a view's projection where the transpose
+  would carry the filter beneath it instead (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), since there it was read for
   rows the filter drops and failed the statement where Calcite answers.
   The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
   (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
@@ -4177,10 +4177,11 @@ across documents* and *A join of a container to itself* is the record.
   selects it beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n'
   RETURNING INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) =
   'Steel'` sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
-  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule registers
-  no pair over such a projection, nor over a view above it, where the transpose carries the filter beneath it
-  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`); where the transpose declines, the filter stays above the view either way
-  and the pair is registered, so sixty `LIKE`s of a case fold of one text column of the view beside `t."a" = 'k'` on
+  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule pushes no
+  weakening over such a projection, nor over a view above it, where the transpose carries the filter beneath it
+  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), only the conjuncts it admits, under which the column is selected as on
+  `main`; where the transpose declines, the filter stays above the view either way and the weakenings are pushed too,
+  so sixty `LIKE`s of a case fold of one text column of the view beside `t."a" = 'k'` on
   another select the column under `WHERE (c.a = @p0)` and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`,
   which Calcite drops on the `LIKE`s. A `VARCHAR ARRAY` holding a number is refused there even where the filter reads
   it, which Calcite reads without refusing: over a view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`,
