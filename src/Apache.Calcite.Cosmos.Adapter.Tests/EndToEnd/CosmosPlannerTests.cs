@@ -4574,9 +4574,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             {
                 var rex = view.getCluster().getRexBuilder();
                 var input = view.getInput();
+                var correlation = new org.apache.calcite.rel.core.CorrelationId(0);
                 var projects = new java.util.ArrayList(view.getProjects());
-                projects.add(rex.makeFieldAccess(rex.makeCorrel(input.getRowType(), new org.apache.calcite.rel.core.CorrelationId(0)), 1));
-                project = org.apache.calcite.rel.logical.LogicalProject.create(input, java.util.Collections.emptyList(), projects, java.util.Arrays.asList("id", "r", "k"));
+                projects.add(rex.makeFieldAccess(rex.makeCorrel(input.getRowType(), correlation), 1));
+                project = org.apache.calcite.rel.logical.LogicalProject.create(input, java.util.Collections.emptyList(), projects, java.util.Arrays.asList("id", "r", "k"), java.util.Collections.singleton(correlation));
             }
 
             var planner = (VolcanoPlanner)project.getCluster().getPlanner();
