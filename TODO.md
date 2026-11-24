@@ -4180,8 +4180,8 @@ across documents* and *A join of a container to itself* is the record.
   `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule pushes no
   weakening over such a projection, nor over a view above it, where the transpose carries the filter beneath it
   (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), only the conjuncts it admits, the pair `main` registers; where the
-  transpose declines, the filter stays above the view either way and the weakenings are pushed too,
-  so sixty `LIKE`s of a case fold of one text column of the view beside `t."a" = 'k'` on
+  transpose declines, the filter stays above the view either way and the pair is registered whole, so sixty `LIKE`s
+  of a case fold of one text column of the view beside `t."a" = 'k'` on
   another select the column under `WHERE (c.a = @p0)` and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`,
   which Calcite drops on the `LIKE`s. A `VARCHAR ARRAY` holding a number is refused there even where the filter reads
   it, which Calcite reads without refusing: over a view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`,
