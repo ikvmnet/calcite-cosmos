@@ -1505,6 +1505,9 @@ pushed beside the rest where the rest is admitted whole without it: the weakenin
 the comparison its branch reads, which the half pushed over the view's projection applies, and pushed again it sent one
 comparison twice
 (`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
+Over the container it respells a filter stacked on a split's half: in the corpus a `BETWEEN`, a `NOT IN`
+and a negated `IN` over `c.price` send `IS_DEFINED(c.price)` once where they sent it in both filters,
+the same documents kept.
 
 #### How the oracle is checked: population D
 
