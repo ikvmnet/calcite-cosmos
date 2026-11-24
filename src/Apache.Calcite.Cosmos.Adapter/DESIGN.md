@@ -1507,7 +1507,9 @@ comparison twice
 (`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
 Over the container that question respells a filter stacked on a split's half: in the corpus a `BETWEEN`, a `NOT IN` and
 a negated `IN` over `c.price` send `IS_DEFINED(c.price)` once where they sent it in both filters, the same documents
-kept.
+kept. Planned without the trimmer, a member not pushed can leave a view's column whose reading can refuse selected
+beneath a condition kept in process (`TODO.md`, *A filter kept in process over a view projecting a reading that can
+refuse*).
 
 #### How the oracle is checked: population D
 

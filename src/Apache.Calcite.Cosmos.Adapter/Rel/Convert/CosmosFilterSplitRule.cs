@@ -691,7 +691,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// Not beside the conjuncts the filter admits, whose facts are read as this statement reads them and not as a later
         /// question reads the half beneath it: <c>label NOT IN ('TRUE', '9')</c>, its tests of the label's definedness and
         /// type dropped beside <c>label &lt;&gt; 'TRUE'</c>, which implies them here, was split again over that half and sent
-        /// <c>c.label != "TRUE"</c> twice.
+        /// <c>c.label != "TRUE"</c> twice. Planned without the trimmer, a member not pushed can leave a view's column whose
+        /// reading can refuse selected beneath a condition kept in process (<c>TODO.md</c>, <em>A filter kept in process over
+        /// a view projecting a reading that can refuse</em>).
         /// </para>
         /// </remarks>
         static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across,
