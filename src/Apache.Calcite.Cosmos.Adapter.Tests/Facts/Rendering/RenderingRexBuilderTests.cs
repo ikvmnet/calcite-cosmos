@@ -654,7 +654,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Calcite in process over the documents drawn for the form sent (<see cref="DrawnFor"/>), each document Calcite answers
-        /// judged (<see cref="JudgedInProcess"/>) on every target the set serves, each computed place
+        /// judged as line 1c judges one (<see cref="JudgedInProcess"/>) on every target the set serves, each computed place
         /// given read as the service evaluates it: a form over a place no target reads is answered by none, and a document a
         /// target leaves unanswered is neither judged nor kept. Returns a document Calcite keeps that the form drops on a
         /// target, whatever another answers, and how many were judged and kept; or that the conjunct did not compile, reading a
@@ -686,7 +686,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// each computed place given read as the service evaluates it. Where Calcite keeps the row, each target answering
         /// other than <c>TRUE</c> drops it, a witness whatever another target answers. The document is judged only where
         /// every target answers, since one a target leaves unanswered is no evidence that target keeps the row, and kept where
-        /// it is judged and Calcite answers <c>TRUE</c>.
+        /// it is judged and Calcite answers <c>TRUE</c>. The round trip's in-process judge and line 1c
+        /// (<see cref="RenderingSoundnessTests.NoOpaqueWeakeningHasAWitnessInProcess"/>) judge each document so.
         /// </summary>
         internal static (bool Judged, bool Kept, List<(RenderingTarget Target, ServiceOutcomes Service)> Dropped) JudgedInProcess(Truths calcite, ServiceForm form, J.Obj document,
             IEnumerable<RenderingTarget> targets, IReadOnlyDictionary<string, SqlValue.Call> places)
