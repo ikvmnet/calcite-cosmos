@@ -4172,35 +4172,35 @@ across documents* and *A join of a container to itself* is the record.
   row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
   proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
   step's own.
-- **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness; on `main`.* Where
-  nothing of a filter over a view reaches the service, the view's projection is still converted, and the statement
-  selects it beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n'
-  RETURNING INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON EMPTY)) =
-  'Steel'` sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails over
-  `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule pushes no
-  weakening over such a projection, nor over a view above it, where the transpose carries the filter beneath it
-  (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), only the conjuncts it admits, the pair `main` registers; where the
-  transpose declines, the filter stays above the view either way and the pair is registered whole, so sixty `LIKE`s
-  of a case fold of one text column of the view beside `t."a" = 'k'` on
-  another select the column under `WHERE (c.a = @p0)` and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`,
-  which Calcite drops on the `LIKE`s. A `VARCHAR ARRAY` holding a number is refused there even where the filter reads
-  it, which Calcite reads without refusing: over a view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`,
-  `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'` selects the array and fails over `[5]`, where Calcite answers. The residual
-  projection moves no such column beneath its filter, though it carries the paths the filter reads (*A path the residual
-  projection carries under a branch Calcite does not take*); but the view's own shape puts the projection there and the
-  converter's width prefers it to the item whole. Which plan the cost model takes over those pairs is not the split's.
-  Planned without the trimmer, a member of a weakening that a filter beneath or the declaration applies is not pushed
-  (`CosmosFilterSplitRule.Admitted`), and the half left can be the one the transpose writes beneath the view's
-  projection for the pair over it, so the two are one node and the cost model takes the narrower projection: over a view
-  filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'` projecting the name as `nm` and `n` `RETURNING INTEGER`, `CASE WHEN
-  INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE FALSE END` selects `n` under `WHERE (((c.name > @p0) OR IS_BOOL(c.name))
-  AND (c.n > @p1))` and fails over `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops
-  on the case fold, and so does `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes
-  true; pushed again, as before, that test kept the half apart and the document was selected. Through a connection they
-  plan as before. The proper fix is legality where the statement's projection meets a
-  filter Calcite evaluates above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse`
-  of its type today and by the theory once *Whether a reading can refuse is asked by its type alone* is done. No rule of
-  the adapter asks it there today.
+- **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness; on `main`, and
+  planned without the trimmer since a member of a weakening that a filter beneath or the declaration applies is not
+  pushed.* Where nothing of a filter over a view reaches the service, the view's projection is still converted, and the
+  statement selects it beneath the filter Calcite evaluates: `SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC",
+  '$.n' RETURNING INTEGER) AS "n" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name' DEFAULT 'q' ON
+  EMPTY)) = 'Steel'` sends `SELECT VALUE { "DOC": c, "n": (IS_NUMBER(c.n) ? c.n : null) } FROM products c` and fails
+  over `{"n":1.5,"name":true}`, which Calcite drops on the case fold before it computes the column. The split rule
+  pushes no weakening over such a projection, nor over a view above it, where the transpose carries the filter beneath
+  it (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), only the conjuncts it admits, the pair `main` registers; where the
+  transpose declines, the filter stays above the view either way and the pair is registered whole, so sixty `LIKE`s of a
+  case fold of one text column of the view beside `t."a" = 'k'` on another select the column under `WHERE (c.a = @p0)`
+  and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`, which Calcite drops on the `LIKE`s. A `VARCHAR
+  ARRAY` holding a number is refused there even where the filter reads it, which Calcite reads without refusing: over a
+  view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`, `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'` selects
+  the array and fails over `[5]`, where Calcite answers. The residual projection moves no such column beneath its
+  filter, though it carries the paths the filter reads (*A path the residual projection carries under a branch Calcite
+  does not take*); but the view's own shape puts the projection there and the converter's width prefers it to the item
+  whole. Which plan the cost model takes over those pairs is not the split's. Planned without the trimmer, a member of a
+  weakening that a filter beneath or the declaration applies is not pushed (`CosmosFilterSplitRule.Admitted`), and the
+  half left can be the one the transpose writes beneath the view's projection for the pair over it, so the two are one
+  node and the cost model takes the narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'`
+  projecting the name as `nm` and `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE
+  FALSE END` selects `n` under `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))` and fails over
+  `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and so does
+  `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes true; pushed again, as on
+  `main`, that test kept the half apart and the document was selected. Through a connection they plan as on `main`. The
+  proper fix is legality where the statement's projection meets a filter Calcite evaluates above the converter: whether
+  the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by the theory once *Whether a
+  reading can refuse is asked by its type alone* is done. No rule of the adapter asks it there today.
 - **A traversal over a view projecting a reading that can refuse** — *small, soundness; on `main`.* `SELECT v."n" FROM
   (SELECT t."DOC" AS "d", t."n", x AS "tag" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
   FROM products AS c) AS t, UNNEST(StringToArray(JSON_QUERY(t."DOC", '$.tags'))) AS x) AS v WHERE
