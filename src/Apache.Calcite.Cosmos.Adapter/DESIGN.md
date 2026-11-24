@@ -11621,8 +11621,8 @@ and only where that filter reaches the service itself, asked of its own conditio
 (`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereThatFilterDoes`); and over a
 traversal, only where its left side is part of a statement as it stands, which nothing carries a
 projection out of
-(`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`, over a traversal
-of a view computing `INITCAP`).
+(`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`,
+over a traversal of a view computing `INITCAP`).
 Nor does the split push a weakening over a projection the service may select holding a computed
 column whose reading can refuse a value, whatever the condition left above reads, nor over a
 projection or a filter above one, since the transpose carries the half beneath every projection of
