@@ -3102,11 +3102,11 @@ across documents* and *A join of a container to itself* is the record.
   probe under both targets against Calcite, planned without a connection, the trimmer first or not, `SELECT t."id" FROM
   (SELECT c."id", c."DOC", JSON_VALUE(c."DOC", '$.n') AS "nt", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) AS "nd"
   FROM products AS c) AS t WHERE t."nt" = '5' OR t."nd" > 6 OR INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'`
-  answers over an integer at `n`, and a view's `RETURNING BOOLEAN` of `f` ORed with the case fold over the text
-  `"true"`, where Calcite's `RETURNING` raises and `main`, reading the expression over the document, failed with it.
-  Through the connection the README opens they plan and answer as on `main`. The fix: keep the residual as written only
-  where its reading over the columns is its reading through the expressions, and keep a pushed projection's computed
-  columns visible to Calcite above.
+  answers over an integer, text or a boolean at `n`, and a view's `RETURNING BOOLEAN` of `f` ORed with the case fold
+  over the text `"true"`, where Calcite's `RETURNING` raises and `main`, reading the expression over the document,
+  failed with it. Through the connection the README opens they plan and answer as on `main`. The fix: keep the residual
+  as written only where its reading over the columns is its reading through the expressions, and keep a pushed
+  projection's computed columns visible to Calcite above.
 - **A filter above a correlate answers where one of Calcite's plans fails** — *small, an answer where one of Calcite's
   plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.* Calcite in
   process takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, while
