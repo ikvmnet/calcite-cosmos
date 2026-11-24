@@ -4194,13 +4194,14 @@ across documents* and *A join of a container to itself* is the record.
   half left can be the one the transpose writes beneath the view's projection for the pair over it, so the two are one
   node and the cost model takes the narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'`
   projecting the name as `nm` and `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE
-  FALSE END` selects `n` under `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))` and fails over
-  `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and so does
-  `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes true; pushed again, as on
-  `main`, that test kept the half apart and the document was selected. Through a connection they plan as on `main`. The
-  proper fix is legality where the statement's projection meets a filter Calcite evaluates above the converter: whether
-  the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by the theory once *Whether a
-  reading can refuse is asked by its type alone* is done. No rule of the adapter asks it there today.
+  FALSE END` selects `n` under Production, beneath `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))`, and
+  fails over `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and
+  so, under both targets, does `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes
+  true; pushed again, as on `main`, that test kept the half apart and the document was selected. Through a connection
+  they plan as on `main`. The proper fix is legality where the statement's projection meets a filter Calcite evaluates
+  above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by
+  the theory once *Whether a reading can refuse is asked by its type alone* is done. No rule of the adapter asks it
+  there today.
 - **A traversal over a view projecting a reading that can refuse** — *small, soundness; on `main`.* `SELECT v."n" FROM
   (SELECT t."DOC" AS "d", t."n", x AS "tag" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n"
   FROM products AS c) AS t, UNNEST(StringToArray(JSON_QUERY(t."DOC", '$.tags'))) AS x) AS v WHERE
