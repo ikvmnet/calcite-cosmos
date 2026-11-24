@@ -3273,17 +3273,22 @@ across documents* and *A join of a container to itself* is the record.
   through that connection (`DESIGN.md`, *An element a traversal yields is a path of its own*). Left for a change of its
   own.
 - **The correlate's transposition moves a `RETURNING REAL` comparison beneath a traversal as one that cannot raise** —
-  *small, a failure where Calcite answers; on `main`.* Planned with the adapter's rules, Calcite's field trimmer first,
-  `SELECT t."id" FROM (SELECT c."id", c."DOC", INITCAP(JSON_VALUE(c."DOC", '$.region')) AS "ic" FROM products AS c) AS t,
-  UNNEST(JSON_QUERY(t."DOC", '$.tags' RETURNING VARCHAR ARRAY)) AS u(e) WHERE JSON_VALUE(t."DOC", '$.n' RETURNING REAL)
-  > 1 AND INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'` fails with an `InvalidCastException` (integer to float)
-  over four documents holding an integer at `n` and no element at `tags`, where Calcite answers no row for them.
-  `CosmosFilterCorrelateRule` asks the facts graph whether the comparison can raise, is told no, and moves it beneath
-  the traversal, into the calculation over the left side, which evaluates it on every document; Calcite evaluates it
-  only on the rows the traversal yields, and its `RETURNING REAL` in process raises over a stored integer. Measured
-  offline in a probe against Calcite over the same documents. The fix gives the facts graph what Calcite's `RETURNING
-  REAL` raises over, measured as a row, so that it answers that the comparison can raise and the transposition keeps it
-  above.
+  *small, a failure where Calcite answers; older over a plain view or the container, and over a view computing a column
+  since the split weakens over a projection.* Planned with the adapter's rules, Calcite's field trimmer first or not,
+  `SELECT t."id" FROM (SELECT c."id", c."DOC" FROM products AS c) AS t, UNNEST(JSON_QUERY(t."DOC", '$.tags' RETURNING
+  VARCHAR ARRAY)) AS u(e) WHERE JSON_VALUE(t."DOC", '$.n' RETURNING REAL) > 1 AND INITCAP(JSON_VALUE(t."DOC", '$.name'))
+  = 'Steel'` fails with an `InvalidCastException` (integer or double to float) over four documents holding a number at
+  `n` and no element at `tags`, where Calcite answers no row for them, and so does the same over the container. Over a
+  view that also computes `INITCAP(JSON_VALUE(c."DOC", '$.region')) AS "ic"`, where `main` selected `n` as a column the
+  reader converts and failed only with the trimmer, the split's pair over the view's projection leaves the comparison to
+  Calcite's calculation beneath the traversal and fails with the trimmer or without, and so where the condition
+  compares the view's column, `t."ic" = 'North'`, in place of the case fold. Through the connection the README opens
+  these do not fail where Calcite's own plan answers. `CosmosFilterCorrelateRule` asks the facts graph whether the
+  comparison can raise, is told no, and moves it beneath the traversal, into the calculation over the left side, which
+  evaluates it on every document; Calcite evaluates it only on the rows the traversal yields, and its `RETURNING REAL`
+  in process raises over a stored number. Measured offline in a probe against Calcite over the same documents. The fix
+  gives the facts graph what Calcite's `RETURNING REAL` raises over, measured as a row, so that it answers that the
+  comparison can raise and the transposition keeps it above.
 - **Through a connection, a term the reduce derives from a condition of both sides is moved beneath a correlate** —
   *small, a failure where Calcite answers, and an empty answer where it fails; older, `main` the same but for one
   statement.* Through a connection that runs Calcite's default rules, as the README's does,
