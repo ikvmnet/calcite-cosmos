@@ -4553,7 +4553,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// The split repeats those two declines (<c>CosmosFilterSplitRule.Converts</c>), since the rule's match and conversion
         /// are asked only by a planner's call; this holds the repeat to the rule. Each projection is planned alone to the
-        /// convention with the project rule the only rule registered, which converts it or leaves it unplanned.
+        /// convention: the project rule is added, and the scan's convention registers the rest of its rules when the planner
+        /// meets the scan, none of which converts a projection into the convention, so the plan is in the convention exactly
+        /// where the project rule converts it.
         /// </remarks>
         [Theory]
         [InlineData(CosmosServiceTarget.Azure, false)]
