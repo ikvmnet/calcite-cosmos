@@ -11630,10 +11630,9 @@ the stack and a column passed up as it is may be the one beneath: beneath that c
 is read for every row the half returns, where Calcite computes it only for the rows that reach it, a
 `CASE` branch or a later operand of `COALESCE` only where it is reached, the reason the residual
 projection declines such a projection. There the conjuncts admitted go alone, the pair the split
-made before it weakened over a projection, so the column is read for no more rows than then.
-Declining the pair whole cannot make the plan split the filter beneath the projection, since the
-cost model may keep the filter above the projection the service selects, which then read the column
-under no `WHERE` and failed where Calcite answers
+made before it weakened over a projection. Declining the pair whole cannot make the plan split the
+filter beneath the projection, since the cost model may keep the filter above the projection the
+service selects, which then read the column under no `WHERE` and failed where Calcite answers
 (`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct`).
 Asked by type alone, as the residual projection asks it (`TODO.md`, section 7), and only of a
 projection the transpose would carry the filter beneath

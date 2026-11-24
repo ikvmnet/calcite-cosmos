@@ -229,10 +229,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // for the rows that reach it (ReadsWhatCanRefuse). Asked only of a projection the transpose carries this filter
             // beneath: where the transpose declines, the filter stays above the projection whatever this split does. Where such a
             // column is held, the weakenings the split adds over a projection are taken away and the conjuncts admitted go
-            // alone, asked as the half is: the pair it made before it weakened over a projection, so the column is read for no
-            // more rows than then. Declining the pair cannot make the plan split the filter beneath the projection, since the
-            // cost model may keep the filter above the projection the service selects, which then reads the column under less
-            // of a WHERE.
+            // alone, asked as the half is: the pair it made before it weakened over a projection. Declining the pair cannot make
+            // the plan split the filter beneath the projection, since the cost model may keep the filter above the projection
+            // the service selects, which then reads the column under less of a WHERE.
             if (left.isAlwaysTrue() == false && pushable.Count > admitted.Count && ReadsWhatCanRefuse(filter.getInput(), filter.getCondition()))
             {
                 if (Alone() is not { } alone || alone.All(applied.Contains))
