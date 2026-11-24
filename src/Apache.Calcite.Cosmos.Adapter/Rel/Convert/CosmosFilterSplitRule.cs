@@ -1030,14 +1030,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// The rule the adapter registers (<see cref="CosmosRules"/>). Its operand is asked of a filter of the condition over the
-        /// projection, and of the projection, as the planner asks it, and its bloat is read from its configuration; the window,
-        /// and the two simplifications its match makes of what it reads before it copies the filter, repeat its match in the
-        /// Calcite build the adapter resolves
+        /// projection, and of the projection, as the planner asks it, and its bloat and whether it copies the filter are read
+        /// from its configuration; the window, and what its match writes of the condition, repeat its match in the Calcite
+        /// build the adapter resolves
         /// (<c>CosmosPlannerTests.AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt</c>).
         /// </remarks>
-        internal static RexNode? Transposed(RexNode condition, Project project)
+        internal static RexNode? Transposed(RexNode condition, Project project) =>
+            TransposedBy(condition, project, org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE);
+
+        /// <summary>
+        /// Returns a condition read through a projection's expressions as a <c>FilterProjectTransposeRule</c> writes it
+        /// beneath, asked that rule's own conditions, or <c>null</c> where it declines.
+        /// </summary>
+        /// <param name="condition">The condition of a filter over the projection.</param>
+        /// <param name="project">The projection.</param>
+        /// <param name="rule">The rule, the one the adapter registers or another configuration of it, for the test.</param>
+        internal static RexNode? TransposedBy(RexNode condition, Project project, org.apache.calcite.rel.rules.FilterProjectTransposeRule rule)
         {
-            var rule = org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE;
             var operand = rule.getOperand();
             if (project.containsOver()
                 || operand.matches(org.apache.calcite.rel.logical.LogicalFilter.create(project, condition)) == false
@@ -1048,15 +1057,27 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat()) is not RexNode pushed)
                 return null;
 
-            // Each conjunct that compares a null literal written as false, and a cast of nullability alone taken away, as the
-            // match writes the condition before it copies the filter beneath.
+            // Each conjunct that compares a null literal written as false, as the match writes the condition.
             var rexBuilder = project.getCluster().getRexBuilder();
             var conjuncts = RelOptUtil.conjunctions(pushed);
             var written = new java.util.ArrayList();
             for (var i = 0; i < conjuncts.size(); i++)
                 written.add(RexSimplify.simplifyComparisonWithNull((RexNode)conjuncts.get(i), rexBuilder));
 
-            return RexUtil.removeNullabilityCast(rexBuilder.getTypeFactory(), RexUtil.composeConjunction(rexBuilder, written));
+            var composed = RexUtil.composeConjunction(rexBuilder, written);
+
+            // Copying the filter, the match takes away a cast of nullability alone. Otherwise it builds the filter through the
+            // rule's builder, which simplifies the condition again: the condition of the filter it builds, true where it
+            // builds none, false where it builds the empty relation instead.
+            if (transpose.isCopyFilter())
+                return RexUtil.removeNullabilityCast(rexBuilder.getTypeFactory(), composed);
+
+            var input = project.getInput();
+            var built = rule.relBuilderFactory.create(project.getCluster(), null).push(input).filter(new RexNode[] { composed }).build();
+            if (built == input)
+                return rexBuilder.makeLiteral(true);
+
+            return built is Filter filter ? filter.getCondition() : rexBuilder.makeLiteral(false);
         }
 
         static RexNode Compose(RexBuilder rexBuilder, List<RexNode> conjuncts)

@@ -4467,29 +4467,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A condition read through a projection is the one Calcite's transpose writes beneath it, each conjunct comparing a
-        /// null written as its match writes it.
+        /// null written as its match writes it: copying the filter, as the rule the adapter registers does, or building it
+        /// through the rule's builder, as a configuration that copies no filter does.
         /// </summary>
         /// <remarks>
         /// The transpose reads the condition through the projection's expressions, then writes each conjunct that compares a
         /// null literal as false, and takes away a cast of nullability alone, before it copies the filter beneath. Read
         /// without those two, a condition over a view's column projecting a null was asked of the filter rule as a comparison
-        /// with the null, where the filter registered beneath holds <c>FALSE</c>.
+        /// with the null, where the filter registered beneath holds <c>FALSE</c>. Configured to copy no filter, it builds one
+        /// through its builder, which simplifies the condition again and builds no filter where it is true and the empty
+        /// relation where it is false; asked of that configuration, the condition is that filter's, true or false.
         /// </remarks>
         [Theory]
-        [InlineData("t.\"z\" = 'a'")]
-        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'")]
-        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'")]
-        public void AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt(string condition)
+        [InlineData("t.\"z\" = 'a'", true)]
+        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", true)]
+        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", true)]
+        [InlineData("t.\"z\" IS NULL", true)]
+        [InlineData("t.\"z\" = 'a'", false)]
+        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", false)]
+        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", false)]
+        [InlineData("t.\"z\" IS NULL", false)]
+        public void AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt(string condition, bool copyFilter)
         {
             var harness = new Corpus.PlannerHarness();
             var filter = Filters(harness.ToLogical($"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", CAST(NULL AS VARCHAR) AS \"z\" FROM products AS c) AS t WHERE {condition}")).Single();
             var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            var rule = copyFilter
+                ? org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE
+                : (org.apache.calcite.rel.rules.FilterProjectTransposeRule)org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config.DEFAULT.withCopyFilter(false).toRule();
 
-            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE).build());
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(rule).build());
             hep.setRoot(org.apache.calcite.rel.logical.LogicalFilter.create(project, filter.getCondition()));
-            var beneath = Filters(hep.findBestExp()).Should().ContainSingle("the transpose carries the filter beneath the projection").Subject;
+            var transposed = hep.findBestExp().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the transpose carries the filter beneath the projection").Subject;
+            var rex = filter.getCluster().getRexBuilder();
+            var beneath = transposed.getInput() switch
+            {
+                org.apache.calcite.rel.core.Filter written => written.getCondition(),
+                org.apache.calcite.rel.core.Values values when values.getTuples().isEmpty() => rex.makeLiteral(false),
+                org.apache.calcite.rel.core.TableScan => rex.makeLiteral(true),
+                var other => throw new InvalidOperationException("the transpose wrote " + RelOptUtil.toString(other)),
+            };
 
-            Adapter.Rel.Convert.CosmosFilterSplitRule.Transposed(filter.getCondition(), project).Should().Be(beneath.getCondition(), "the transpose writes {0} beneath", beneath.getCondition());
+            Adapter.Rel.Convert.CosmosFilterSplitRule.TransposedBy(filter.getCondition(), project, rule).Should().Be(beneath, "the transpose writes {0} beneath", beneath);
+            if (copyFilter)
+                Adapter.Rel.Convert.CosmosFilterSplitRule.Transposed(filter.getCondition(), project).Should().Be(beneath, "the rule the adapter registers copies the filter");
         }
 
         /// <summary>
