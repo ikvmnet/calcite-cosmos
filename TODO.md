@@ -3089,15 +3089,24 @@ across documents* and *A join of a container to itself* is the record.
   predicates, or the residual kept beside it; it moves plans of every such stack, and is its own change. Chapter 14.2
   and Chapter 23 record it.
 - **A split over a computed projection keeps what Calcite reads otherwise** — *medium, a failure where Calcite answers,
-  and an answer where it fails; older than "fail like Calcite", the same on `main`, and left for a change of its own.*
+  and an answer where it fails; older than "fail like Calcite", on `main`, and over more views planned without a
+  connection since the split weakens over a projection; left for a change of its own.*
   Measured on both emulators under both targets over documents of kind `A` holding a `body` of `"abc"`, declared and
   not unless said. Over a projection whose `z` is the constant `'A'` and `bi` the cast of `body` to `INTEGER`,
   `x.k = 'A' AND (x.z = 'A' OR x.bi = 1)` (p1) sends `kind = 'A'` and keeps the `OR` above the pushed projection, over
   its columns, and fails on `"abc"`, where Calcite in process reads `x.z = 'A'` as true and answers; so do v11, v12,
   v13, v16, v21, v22 and v24 beside the same constant, and, declared only, v8, v17 and `x.z = x.k AND (x.k = 'A' OR
   x.bi = 1)` (p13). Over a `CASE` column `y`, `x.k = 'A' AND (x.y IS NOT NULL OR x.bi = 1)` (v10) answers the rows the
-  request returns where Calcite fails. The fix: keep the residual as written only where its reading over the columns is
-  its reading through the expressions, and keep a pushed projection's computed columns visible to Calcite above.
+  request returns where Calcite fails. Since the split weakens over a projection, its pair over a view leaves the
+  condition kept in process over the view's columns, a typed one read as the reader converts it. Measured offline in a
+  probe under both targets against Calcite, planned without a connection, the trimmer first or not, `SELECT t."id" FROM
+  (SELECT c."id", c."DOC", JSON_VALUE(c."DOC", '$.n') AS "nt", JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) AS "nd"
+  FROM products AS c) AS t WHERE t."nt" = '5' OR t."nd" > 6 OR INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'`
+  answers over an integer at `n`, and a view's `RETURNING BOOLEAN` of `f` ORed with the case fold over the text
+  `"true"`, where Calcite's `RETURNING` raises and `main`, reading the expression over the document, failed with it.
+  Through the connection the README opens they plan and answer as on `main`. The fix: keep the residual as written only
+  where its reading over the columns is its reading through the expressions, and keep a pushed projection's computed
+  columns visible to Calcite above.
 - **A filter above a correlate answers where one of Calcite's plans fails** — *small, an answer where one of Calcite's
   plans fails, or a failure where the other answers; never a wrong row; left for a change of its own.* Calcite in
   process takes its `FILTER_CORRELATE` transposition of a `WHERE` over an `UNNEST` or a lateral, or none, while
