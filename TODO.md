@@ -3533,6 +3533,18 @@ across documents* and *A join of a container to itself* is the record.
   read through `JSON_QUERY` and each property through `JSON_VALUE` (twf2p2p1). Measured offline under Azure's plan, one
   planning takes 323, the split's 139 and the correlate rule's 184, where `main`'s split and Calcite's `FILTER_CORRELATE`
   take 803, 699 and 104; declared, 27 against 36.
+- **A stack of four filtered sub-queries beneath a case fold does not implement through the connection** — *small, a
+  failure to implement where Calcite answers; older, `main` the same.* Through the connection the README opens, `SELECT
+  q."id" FROM (SELECT v4."id", v4."DOC" FROM (SELECT v3."id", v3."DOC" FROM (SELECT v2."id", v2."DOC" FROM (SELECT
+  v1."id", v1."DOC" FROM (SELECT c."id", c."DOC" FROM items AS c) AS v1 WHERE JSON_VALUE(v1."DOC", '$.k1') = 'a') AS v2
+  WHERE JSON_VALUE(v2."DOC", '$.k2') = 'a') AS v3 WHERE JSON_VALUE(v3."DOC", '$.k3') = 'a') AS v4 WHERE
+  JSON_VALUE(v4."DOC", '$.k4') = 'a') AS q WHERE INITCAP(JSON_VALUE(q."DOC", '$.name')) = 'Steel'` fails over every
+  document, on either target, with "cannot translate call IS_DEFINED": in the plan chosen a filter merge the split did
+  not make has put the case fold's weakening back beside the fourth equality and the fold, in a calculation Calcite
+  evaluates over the statement holding the first three. Three levels plan, as do the same conjuncts in one `WHERE` and
+  the four levels without the fold; five, each computing a column as well, fail the same way. Measured offline in a
+  probe against Calcite over the same documents. The fix is the merged filter's half reaching the service, or the split
+  not offering a half the merge folds back above a projection.
 - **Nested traversals each holding a conjunct of the document beside an `OR` of the element and the document plan
   more slowly through the connection than on `main`** — *small, a cost; new in "fail like Calcite", and left for a
   change of its own.* Through the connection the README opens, eight traversals each of the sub-query beneath, each
