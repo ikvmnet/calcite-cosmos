@@ -375,7 +375,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // What was asked is remembered by member and the conditions carried, compared as Calcite compares expressions: a
             // member met again by another route may be carried beneath where the first route's conditions grew past the
             // transpose's bloat, as one met through a filter's reduction to a SEARCH, in the filter's set, is. A member already
-            // on the route is not asked again, which ends a cycle.
+            // on the route, or met again under conditions already asked, is not asked again, which ends a cycle and errs
+            // toward registering the pair.
             var asked = new Dictionary<RelNode, List<IReadOnlyList<RexNode>>>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
             var route = Rel.CosmosPlanMembers.NewSeen();
 
