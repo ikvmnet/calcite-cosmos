@@ -11931,7 +11931,7 @@ span that never records them is an enumeration the caller abandoned, which is it
 `PopulateIndexMetrics`, behind the `indexMetrics` operand and off by default: the service computes
 the answer per query, so it is a thing to switch on while working out why a query is expensive
 rather than to leave on. It lands on the span as `cosmos.index_metrics`, a tag rather than a
-measurement, because it is a paragraph of prose naming indexes — something to read, not aggregate.
+measurement, because it is a report naming indexes — something to read, not aggregate.
 
 It is also the instrument for settling the composite index question below.
 
