@@ -11774,7 +11774,7 @@ narrow on purpose, and each limit was measured:
 - **It declines a projection with a reading that can refuse a value.** The two commute in what they
   answer, not in what they raise. Beneath the filter, the projection is read for every row the service
   sends, and Calcite computes it only for the rows the filter keeps. So a value the reader refuses
-  (2^63 or 42.5 as a `BIGINT`, text that is no date) failed the statement over a row the filter would
+  (2^63 or 42.5 as a `BIGINT`, text that is no UUID) failed the statement over a row the filter would
   drop, where Calcite answers, which the error refinement order never allows. The ORDER BY yardstick
   found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does,
   `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`

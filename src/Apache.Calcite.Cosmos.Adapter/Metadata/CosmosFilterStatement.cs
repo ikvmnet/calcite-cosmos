@@ -749,7 +749,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// statement's loading, so a weakening spelled as a conjunct beneath is that conjunct's term. So it rests on nothing
         /// the engine might not finish: a predicate a scope assumes is always true there, read off what the scope assumes
         /// before any run (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row is asked. What a run
-        /// adds is what the conjuncts beneath imply beyond spelling the weakening themselves.
+        /// adds is what the conjuncts beneath imply beyond spelling the weakening themselves. Each is assumed however the
+        /// facts graph reads it, exactly or coarsely: a wrong answer here only declines a push, never a row, so the rule that
+        /// a conjunct is deleted only beside siblings it reads exactly does not reach it.
         /// </para>
         /// <para>
         /// <b>Beneath a projection, through the rows it reads.</b> Every row a projection returns is a row its input

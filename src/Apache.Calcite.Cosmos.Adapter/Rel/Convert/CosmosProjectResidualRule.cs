@@ -49,7 +49,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// beneath the filter, the projection is read for every row the service sends, and Calcite computes
     /// it only for the rows the filter keeps. A reading that can refuse a value —
     /// <see cref="CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>: 2^63 or 42.5 as a
-    /// <c>BIGINT</c>, text that is no date — then failed the statement over a row the filter would have
+    /// <c>BIGINT</c>, text that is no UUID — then failed the statement over a row the filter would have
     /// dropped, where Calcite answers, which the error refinement order never allows. The ORDER BY
     /// yardstick found it on a service that prints a stored 2^63 as <c>9.223372036854776E+18</c>, under
     /// <c>LOWER</c> over a string nothing proves ASCII. So a projection holding such a reading stays
