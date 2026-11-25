@@ -748,8 +748,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// A function that makes U+0000 from a path fails the whole statement with a 500 on the emulator: <c>CONCAT</c> of a
         /// path and U+0000, as a literal or a parameter, and <c>REPLACE</c> whose replacement holds one, wherever the search
-        /// is found. A constant <c>CONCAT</c> of U+0000 loses it silently. Azure answers the replacement written as it is,
-        /// and there the test skips. Measured on both images on 2026-10-31.
+        /// is found. Returned, <c>CONCAT</c> of <c>"a"</c> and U+0000, both constants, fails it too on EN20261123, where
+        /// EN20260907 and EN20261019 answer <c>"a"</c>, what precedes the U+0000: either is asserted, and no third answer.
+        /// Azure answers the replacement written as it is, and there the test skips. Measured on both images on 2026-10-31, and on EN20261123 on 2026-11-25.
         /// </summary>
         [Fact]
         public async Task AFunctionThatMakesU0000FromAPathFails()
@@ -764,7 +765,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             (await Status(strings, "SELECT VALUE [c.id, CONCAT(c.s, \"\\u0000\")] FROM c WHERE c.id = \"ascii\"")).Should().Be(HttpStatusCode.InternalServerError, "a literal fails as a parameter does");
             (await Status(strings, "SELECT VALUE [c.id, REPLACE(c.s, \"B\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0"))).Should().Be(HttpStatusCode.InternalServerError, "a replacement made where the search is found");
             (await Values(strings, "SELECT VALUE [c.id, REPLACE(c.s, \"z\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0")))["ascii"].GetString().Should().Be("aBc", "and none where it is not");
-            (await Values(strings, "SELECT VALUE [c.id, CONCAT(\"a\", @nul)] FROM c WHERE c.id = \"ascii\"", ("@nul", "\0")))["ascii"].GetString().Should().Be("a", "a constant loses it");
+
+            foreach (var constant in new[] { "CONCAT(\"a\", @nul)", "CONCAT(\"a\", \"\\u0000\")" })
+            {
+                var sql = $"SELECT VALUE [c.id, {constant}] FROM c WHERE c.id = \"ascii\"";
+                var status = await Status(strings, sql, ("@nul", "\0"));
+                if (status == HttpStatusCode.OK)
+                    (await Values(strings, sql, ("@nul", "\0")))["ascii"].GetString().Should().Be("a", $"{constant} loses it where it answers");
+                else
+                    status.Should().Be(HttpStatusCode.InternalServerError, $"{constant} fails where it does not answer");
+            }
         }
 
         /// <summary>
