@@ -2695,9 +2695,9 @@ across documents* and *A join of a container to itself* is the record.
   rows the filter drops and failed the statement where Calcite answers.
   The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
   (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
-  did before #210. A path the schema declares an integer within the width's bounds, a `date-time` string,
-  or an array of the element's type, cannot be refused, and could move. That is a fact about documents, so
-  the question belongs to the theory rather than to a second list in C#.
+  did before #210. A path the schema declares an integer within the width's bounds, or an array of the
+  element's type, cannot be refused, and could move. That is a fact about documents, so the question
+  belongs to the theory rather than to a second list in C#.
 - **A refusing reading under a branch Calcite does not take** — *small, a failure where Calcite answers;
   found beside the fix above, and not yet fixed.* `CosmosProjectSplitRule` pushes the sub-expressions of a
   projection it cannot push whole, and each is read for every row the service sends. Calcite computes a

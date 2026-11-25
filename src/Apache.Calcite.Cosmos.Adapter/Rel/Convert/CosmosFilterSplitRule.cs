@@ -345,7 +345,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// A filter and a projection commute in what they answer, not in what they raise: the service's projection is read
         /// for every row the statement returns, and Calcite computes a column only for the rows that reach it. A reading that
         /// can refuse a value (<see cref="Client.CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>: 1.5 as an
-        /// <c>INTEGER</c>, text that is no date) then fails the statement over a row the condition above drops, where Calcite
+        /// <c>INTEGER</c>, text that is no UUID) then fails the statement over a row the condition above drops, where Calcite
         /// answers. Measured: <c>SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n" FROM
         /// products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'</c>, split over the view's projection,
         /// selected the column under <c>WHERE IS_DEFINED(c.name)</c> and failed over <c>{"n":1.5,"name":true}</c>, which
