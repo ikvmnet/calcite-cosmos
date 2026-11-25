@@ -1522,7 +1522,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             "((IS_BOOL(c.name) OR (c.name > @p0)) AND ((c.name > @p1) OR NOT IS_STRING(c.name)) AND IS_DEFINED(c.region))")]
         [InlineData("SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') = '30' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
             "SELECT VALUE { \"DOC\": c }",
-            "(((c.price = @p0) OR (IS_NUMBER(c.price) AND (c.price = @p1))) AND IS_DEFINED(c.region))")]
+            "(((c.price = @p0) OR (IS_NUMBER(c.price) AND (c.price = @p1))) AND IS_DEFINED(c.price) AND IS_DEFINED(c.region))")]
         public void ShouldSelectTheTrimmersProjectionUnderTheSameWhereWhereAConditionStaysInProcess(string sql, string select, string where)
         {
             var best = PlanToClrAsAHostDoes(sql);
