@@ -966,17 +966,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// </summary>
         /// <remarks>
         /// The row count and size come from a semicolon-separated header, which is a format worth
-        /// measuring rather than assuming. Inconclusive where the account does not report it, so that
-        /// what is being claimed stays visible. That documents occupy space is asked where they come to
-        /// the kilobytes it is reported in (<see cref="ASizeIsReadInKilobytes"/>).
+        /// measuring rather than assuming. Inconclusive where the account does not report a count, so
+        /// that what is being claimed stays visible; asked of it by the SDK alone, so that a reader that
+        /// does not ask, or does not find the count, fails. That documents occupy space is asked where
+        /// they come to the kilobytes it is reported in (<see cref="ASizeIsReadInKilobytes"/>).
         /// </remarks>
         [Fact]
         public async Task StatisticsAreReadFromTheContainer()
         {
-            var metadata = await CosmosContainerMetadataReader.ReadAsync(Container());
+            var usage = await ContainerUsage.ReadAsync(Container(), TestContext.Current.CancellationToken);
+            if (ContainerUsage.DocumentsCount(usage) is null)
+                Assert.Skip($"This account reports no document count for the container: {usage ?? "no resource usage"}.");
 
-            if (metadata.Statistics is null)
-                Assert.Skip("This account reports no resource usage for the container.");
+            var metadata = await CosmosContainerMetadataReader.ReadAsync(Container());
+            metadata.Statistics.Should().NotBeNull($"the account reports the container's usage: {usage}");
 
             var statistics = metadata.Statistics!.Value;
 
@@ -1005,7 +1008,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Asserted to a factor of two, since what a document occupies is the service's to say.
         /// Inconclusive where the service reports no documents, as Azure does just after a write,
         /// its count being computed in the background, and as the emulator's releases before EN20261123
-        /// do whatever a container holds.
+        /// do whatever a container holds; asked of it by the SDK alone, so that a reader that does not
+        /// ask, or does not find the count, fails.
         /// </remarks>
         [Fact]
         public async Task ASizeIsReadInKilobytes()
@@ -1026,16 +1030,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                     response.EnsureSuccessStatusCode();
                 }
 
-                if (await CosmosContainerMetadataReader.ReadStatisticsAsync(sized, cancellation) is not { } statistics)
-                {
-                    Assert.Skip("This account reports no resource usage for the container.");
-                    return;
-                }
+                var usage = await ContainerUsage.ReadAsync(sized, cancellation);
+                if (ContainerUsage.DocumentsCount(usage) is not > 0)
+                    Assert.Skip($"This service reports no documents in a container {Count} were just written to: {usage ?? "no resource usage"}.");
 
-                if (statistics.DocumentCount == 0)
-                    Assert.Skip($"This service reports no documents in a container {Count} were just written to.");
+                var statistics = await CosmosContainerMetadataReader.ReadStatisticsAsync(sized, cancellation);
+                statistics.Should().NotBeNull($"the service reports the container's usage: {usage}");
+                statistics!.Value.DocumentCount.Should().BeGreaterThan(0, $"the service counts the container's documents: {usage}");
 
-                statistics.AverageDocumentSizeInBytes.Should().BeInRange(Characters / 2, Characters * 2,
+                statistics.Value.AverageDocumentSizeInBytes.Should().BeInRange(Characters / 2, Characters * 2,
                     $"each document holds {Characters} characters, and the size is reported in kilobytes: {statistics}");
             }
             finally

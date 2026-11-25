@@ -359,15 +359,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// produced either way; it lost on cost, because the connection reads its row count from the service
         /// and the count it read was zero — every plan tying at zero rows, and the tie going to the one
         /// registered first. Asked of a container that holds nothing: of one that holds documents, the emulator
-        /// counts none before its release EN20261123, and Azure none for a while after a write.
+        /// counts none before its release EN20261123, and Azure none for a while after a write. Inconclusive where
+        /// the service reports no count of it, asked by the SDK alone.
         /// </remarks>
         [Fact]
         public async Task APartlyRenderablePredicatePushesWhatRendersWhereNoDocumentsAreCounted()
         {
             RequireService();
 
-            var statistics = await CosmosContainerMetadataReader.ReadStatisticsAsync(_client!.GetContainer(DatabaseName, "vacant"), TestContext.Current.CancellationToken);
-            (statistics?.DocumentCount).Should().Be(0, "nothing is written to the container");
+            var vacant = _client!.GetContainer(DatabaseName, "vacant");
+            var usage = await ContainerUsage.ReadAsync(vacant, TestContext.Current.CancellationToken);
+            if (ContainerUsage.DocumentsCount(usage) is not { } counted)
+            {
+                Assert.Skip($"This account reports no document count for the container: {usage ?? "no resource usage"}.");
+                return;
+            }
+
+            counted.Should().Be(0, $"nothing is written to the container: {usage}");
+
+            var statistics = await CosmosContainerMetadataReader.ReadStatisticsAsync(vacant, TestContext.Current.CancellationToken);
+            (statistics?.DocumentCount).Should().Be(0, $"the connection reads the count the service reports: {usage}");
 
             await PushesWhatRenders("vacant");
         }
