@@ -1711,7 +1711,17 @@ holds 500. In the host Chapter 21 describes each that fails here is sent with it
 plan; `CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger`
 pins shapes of each kind through the connection the README opens.
 
-The fix is the same for both, the bound reading the value in its own type — but the bound's literal is
+A weakening over a view meets what the view's own filter compares, since the split weakens over a projection: `SELECT
+t."id" FROM (SELECT c."id", c."DOC", JSON_VALUE(c."DOC", '$.kind' RETURNING DOUBLE) AS "e" FROM products AS c WHERE
+JSON_VALUE(c."DOC", '$.kind' RETURNING DOUBLE) = 2) AS t WHERE CASE WHEN INITCAP(JSON_VALUE(t."DOC", '$.name')) =
+'Steel' THEN t."e" <= 5 ELSE JSON_VALUE(t."DOC", '$.k') = 'a' END` is weakened over the view to
+`OR(AND(IS_DEFINED(…), <=(JSON_VALUE($0, '$.kind'), 5)), =(…, 'a'))`, whose bound is a `DECIMAL` where Calcite writes
+the view's `2` as a `DOUBLE`, and fails to plan through the connection with `Double` against `BigDecimal` under both
+targets, undeclared and declared, where `main`, weakening the filter the transpose merged beside `kind = 2`, sent
+`((c.kind = @p0) AND ((c.k = @p1) OR IS_DEFINED(c.name)))` and answered. Over the view filtered on `> 1`,
+`(INITCAP(…) = 'Steel' AND t."e" <= 5) OR JSON_VALUE(t."DOC", '$.k') = 'a'` fails the same way on `main` too.
+
+The fix is the same for all three, the bound reading the value in its own type — but the bound's literal is
 the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
 rather than a re-typing done blind.
 
@@ -3074,6 +3084,16 @@ across documents* and *A join of a container to itself* is the record.
   `WriteLike`. It moves projection plans, so it is a pull request of its own, with a planning test and a differential
   case over a declared enum holding `"a\nb"`, and a string beside `"axb"`, for the `CASE`, the bare column and
   `NOT LIKE`.
+- **A range over a `COALESCE` of a path nothing declares drops numbers on Azure** — *small, a wrong answer; on `main`.*
+  `SELECT c."id" FROM products AS c WHERE COALESCE(JSON_VALUE(c."DOC", '$.s'), 'q') <= 'a'`, reduced to
+  `CASE(IS NOT NULL(JSON_VALUE(…)), <=(CAST(JSON_VALUE(…)):VARCHAR NOT NULL, 'a'), FALSE)`, is sent under Azure's plan
+  as exact, `((IS_DEFINED(c.s) AND NOT IS_NULL(c.s) AND IS_PRIMITIVE(c.s)) ? (c.s <= @p0) : @p1)`, whose arm compares
+  the raw value, which the service leaves undefined over a number, so a document holding `5` at `s` is dropped where
+  Calcite compares its text `'5'` and keeps it; so are the same beside an `OR`, under a case fold and over a view.
+  `JSON_VALUE(c."DOC", '$.s') <= 'a'` alone is sent `(c.s <= @p0) OR IS_NUMBER(c.s)` and answers right, as does the
+  Emulator's plan, which sends the path's presence and rechecks. The arm's cast differs from the accessor in
+  nullability alone, so the fix reads it as the accessor's text, as the comparison without the `COALESCE` is read.
+  Measured offline against Calcite in process over the same documents, through the connection the README opens.
 - ~~**A filter that raises is reduced as one that keeps nothing**~~ — *done, 2026-11-10.* The reduce asks every row
   false and none raising (`DESIGN.md`, *The reduce asks every row false*).
 - **A residual beside a contradicted split loses its raise** — *left for a change of its own after "fail like
