@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -723,22 +724,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// whose location is not a shape.
         /// </summary>
         /// <remarks>
-        /// Against an account only. The emulator does not implement <c>ST_DISTANCE</c> — measured, a
-        /// statement carrying one answers a malformed response — so there it would measure the emulator.
+        /// Inconclusive where the service measures no distance, asked of it in a statement that is no plan's. The
+        /// emulator's releases before EN20261123 measure none: EN20261019 answers a 400, and EN20260907 a malformed
+        /// response.
         /// </remarks>
         [Fact]
         public async Task ADistanceFromAMergedViewsColumnAnswersWhatTheJoinsAnswer()
         {
             RequireService();
 
-            if (IsEmulator)
-                Assert.Skip("The emulator does not implement ST_DISTANCE; set COSMOS_TEST_ENDPOINT and COSMOS_TEST_KEY to run this against an account.");
+            if (await DistanceRefused() is { } refused)
+                Assert.Skip("This service answers no ST_DISTANCE. " + refused);
 
             var merged = await RowsAsync("DECLARED", SpotsNear, Near());
             var joined = await RowsAsync("UNDECLARED", SpotsNear, Near());
 
             merged.Should().Equal(new[] { G4 }, "only spot four lies within 50 km");
             merged.Should().Equal(joined);
+        }
+
+        /// <summary>
+        /// What the service answers in place of the distance of a stored point from itself, or <c>null</c> where it
+        /// measures it.
+        /// </summary>
+        static async Task<string?> DistanceRefused()
+        {
+            const string sql = """SELECT VALUE ST_DISTANCE(c.data.data.location, {"type":"Point","coordinates":[-111.5,38.3]}) FROM c WHERE c.id = "Link$4" """;
+
+            try
+            {
+                using var rows = _client!.GetContainer(DatabaseName, "links").GetItemQueryIterator<double>(sql);
+                while (rows.HasMoreResults)
+                    await rows.ReadNextAsync(TestContext.Current.CancellationToken);
+
+                return null;
+            }
+            catch (CosmosException e) when (e.StatusCode == HttpStatusCode.BadRequest)
+            {
+                return e.Message;
+            }
+            catch (InvalidOperationException e)
+            {
+                // The SDK's, of a response that holds no rows.
+                return e.Message;
+            }
         }
 
         /// <summary>
