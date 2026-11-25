@@ -99,6 +99,22 @@ three with the reasoning — chapters 2, 9 and 21.
    currently scores *cheaper* than the statement it replaces and would be chosen for the wrong
    reason.
 
+### A suite run on a long-lived emulator meets what the emulator kept — *small*
+
+Each emulator-backed class deletes its database or container before seeding and catches the failure,
+and the newer emulator image answers those deletes with a 500 and keeps what it was asked to delete
+(Appendix E.2). A class that then creates a document of a fixed id answers 409 and fails, or skips its
+tests, on any emulator a previous run seeded. Deleting each document by hand clears most of it, but a
+document whose id holds an escape (the differential's planted containers and the read-many escape
+test's) cannot be deleted either, its delete failing in the emulator's own store, so on 8089 in
+November 2026 these failed alike before and after a lookup join change, at seeding:
+`CosmosDifferentialTests.EveryPlantedStatementAnswersAsCalcite`, `EveryPlantedPredicatePartitionsTheRows`,
+`APlantedWriteStopsAtAnIdItCannotAddress`, `EveryOrderIsOneCalciteAllows`,
+`ASeekPastTwoKeysIsOneCalciteAllows` and `APlantedWindowBaseIsCaught`, and
+`CosmosReadManyMeasurementTests.AnIdHoldingAnEscapeIsNotReadByItsId`. Upserting the seed where a
+test does not rest on a create's 409, or seeding under names fresh to each run, would make a run
+independent of the ones before it; until then, a fresh emulator is the clean run.
+
 ---
 
 ## 1. Statistics and the cost model
