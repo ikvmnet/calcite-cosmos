@@ -164,12 +164,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// column the row model reserves, and one place should say so.
         /// </para>
         /// <para>
-        /// <b>That answer is the column's name, so an alias can fool it either way</b>, and neither
-        /// direction reaches a decision. A computed column aliased <c>DOC</c> is weighed as a document
-        /// and over-prices a pushed projection; the document column aliased to anything else is
-        /// weighed as a value and under-prices one. Both only matter where one plan ships the document
-        /// and the other does not — and a statement that names the document at all ships it on every
-        /// plan, so the two alternatives are mis-priced identically and rank the same.
+        /// <b>That answer is the column's name, so an alias can fool it either way.</b> A computed
+        /// column aliased <c>DOC</c> is weighed as a document and over-prices a pushed projection; the
+        /// document column under another name is weighed as a value and under-prices one. That reaches
+        /// a decision where one plan carries the document under another name and the other does not:
+        /// a projection <see cref="CosmosProjectSplitRule"/> pushes names it <c>$f1</c>, and over a view
+        /// carrying the document beside a column Calcite computes, the plan reading the document whole
+        /// is taken where another reads the texts a condition kept in process needs (<c>TODO.md</c>,
+        /// <i>A row's width is weighed at the wire</i>).
         /// </para>
         /// </remarks>
         /// <param name="input">The subtree being converted.</param>

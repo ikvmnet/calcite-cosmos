@@ -1761,16 +1761,16 @@ measured figure would come from the same place the handler above would.
 **And which column is the document is asked by its name.** `Width` weighs the column named `DOC`
 (`CosmosImplementor.BindReadings`), so the document under another name counts as one value, and
 `CosmosProjectSplitRule` names the columns it pushes `$f0`, `$f1`. Where a view carries the document
-beside a column Calcite computes, a plan that reads the document whole then costs what the plan reading
-two texts in its place does, and since the split weakens a filter over a projection its pair over the
-view offers that plan and it is taken: through the connection the README opens, `SELECT t."id", t."ci"
+beside a column Calcite computes, a plan that reads the document whole counts it as one value, so it ties with
+the plan reading the one path a condition kept in process reads in its place and is narrower than one reading
+two or more, whatever that condition is, and since the split weakens a filter over a projection its pair over
+the view offers that plan and it is taken: through the connection the README opens, `SELECT t."id", t."ci"
 FROM (SELECT c."id", c."DOC", CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) AS "ci" FROM items AS c) AS t
 WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'` sends `SELECT VALUE { "$f0": c.id, "$f1": c,
 "$f2": (IS_PRIMITIVE(c.n) ? c.n : null) } FROM items c WHERE IS_DEFINED(c.name)`, on either target,
 where `main` sends the id and the texts of `n` and `name` under the same `WHERE`. The documents read and
-the answers are the same; what crosses the wire is not. So the remark on `Width`, that an alias reaches
-no decision, no longer holds. The fix weighs the column the projection binds to the document, whatever
-its name.
+the answers are the same; what crosses the wire is not. The fix weighs the column the projection binds to
+the document, whatever its name.
 
 ### A merged hierarchy still takes seconds to plan — *medium, and half of it is the host's*
 
