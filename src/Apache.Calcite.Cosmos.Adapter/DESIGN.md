@@ -2106,7 +2106,7 @@ documentation.
 > | | emulator | Azure |
 > | --- | --- | --- |
 > | `ORDER BY t0` over `JOIN t0 IN c.tags` | accepted | **400** |
-> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
+> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **refused** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
 > | `SUBSTRING`, `LEFT`, `RIGHT`, `INDEX_OF` past U+FFFF | code points | **UTF-16 units**, a split pair sent as U+FFFD |
 > | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped before EN20261123 | **left** |
@@ -2117,11 +2117,10 @@ documentation.
 > run. `ORDER BY t0.x` is rejected too, so it is the alias and not the arity.
 >
 > The second understates itself. The emulator does not merely reject the statements: it accepts a
-> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent,
-> and it does not know the names either — `SC2005, 'FullTextScore' is not a recognized built-in
-> function name`. The declaration used to decline the statement before it was sent; since #85 it is
-> a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
-> emulator's own answer, worth telling apart from the service's when a test reports one.
+> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent.
+> The declaration used to decline the statement before it was sent; since #85 it is a cost rather
+> than a gate, so the statement is sent and the refusal that comes back is the emulator's own answer,
+> worth telling apart from the service's when a test reports one.
 
 **Every measured fact a pushdown relies on is a row in `Sql/CosmosAxioms.cs`.** Each row has an id,
 the statement, the targets it was measured on (emulator, Azure, or Calcite's own runtime), the date,

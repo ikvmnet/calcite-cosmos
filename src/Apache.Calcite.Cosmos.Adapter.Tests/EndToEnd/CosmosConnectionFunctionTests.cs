@@ -574,12 +574,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// The emulator does not support full text search, and the shape of that matters here: it
         /// accepts a container declaring a <c>FullTextPolicy</c> and a full text index and then
-        /// reports both back as absent, and it does not know the function names either
-        /// (<c>SC2005, 'FullTextScore' is not a recognized built-in function name</c>). Measured.
-        /// The declaration used to decline the statement before it was sent; since #85 it is a cost
-        /// rather than a gate, so the statement is sent whatever the container reports, and an
-        /// emulator's refusal arrives as the emulator's own <c>SC2005</c>, which is not the service's
-        /// answer and is reported as inconclusive rather than as a failure.
+        /// reports both back as absent. Measured. The declaration used to decline the statement before
+        /// it was sent; since #85 it is a cost rather than a gate, so the statement is sent whatever the
+        /// container reports, and an emulator's refusal, which is not the service's answer, is reported
+        /// as inconclusive rather than as a failure.
         /// </para>
         /// <para>
         /// What is not excused either way is the failure this issue is about: a name the planner

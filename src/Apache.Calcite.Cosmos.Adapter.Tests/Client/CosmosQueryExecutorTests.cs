@@ -639,8 +639,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Reports inconclusive rather than failing. The emulator rejects all four forms with a bodyless
-        /// 400 even with a full text policy and a full text index on the searched path — and it is
+        /// Reports inconclusive rather than failing. The emulator rejects every form even with a full
+        /// text policy and a full text index on the searched path — and it is
         /// already known to discard container configuration it does not implement, composite indexes
         /// being the documented case a few tests below. So the rejection is evidence about the emulator
         /// and not about the syntax, which is the reference's verbatim.
