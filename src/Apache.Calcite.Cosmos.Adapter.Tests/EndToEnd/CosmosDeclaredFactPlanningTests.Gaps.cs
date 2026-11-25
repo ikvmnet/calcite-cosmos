@@ -225,11 +225,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A range through an integer parse that the declared bounds satisfy is still sent, where the same range through the
-        /// cast to <c>DOUBLE</c> is dropped. The parse's cells read the service's spelling and raise on no integer the bounds
-        /// admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the coarse reading, and
-        /// that puts the parse's raise beside every number (<c>TODO.md</c>, <em>A conjunct through an integer parse its
-        /// declared bounds satisfy is still sent</em>). Its fix flips this test.
+        /// A range through an integer parse that the declared bounds satisfy is still sent, and so is the same range
+        /// through the cast to <c>DOUBLE</c>, which the facts graph reads coarsely, so that its verdict deletes nothing
+        /// (<c>CosmosStatementScope.RedundantConjuncts</c>). The parse's cells read the service's spelling and raise on no
+        /// integer the bounds admit (<c>NumberCast.ParsesWhole</c>), but dropping a conjunct is a verdict, which reads the
+        /// coarse reading, and that puts the parse's raise beside every number (<c>TODO.md</c>, <em>A conjunct through an
+        /// integer parse its declared bounds satisfy is still sent</em>). Its fix flips this test for the cast to
+        /// <c>INTEGER</c>, and for <c>RETURNING INTEGER</c> only once the facts graph reads it exactly.
         /// </summary>
         [Fact]
         public void ARangeAnIntegerParseItsBoundsSatisfyIsStillSent()
@@ -241,7 +243,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 foreach (var parsed in new[] { $"{N} >= 0", """JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) >= 0""" })
                     Query(FindCosmos(PlanToCosmos(Where(parsed), container, out _)), container).Sql.Should().EndWith("WHERE (c.n >= @p0)", $"{parsed} is sent over {declared}");
 
-                Query(FindCosmos(PlanToCosmos(Where($"{D} >= 0"), container, out _)), container).Sql.Should().NotContain("WHERE", $"the cast to DOUBLE is dropped over {declared}");
+                Query(FindCosmos(PlanToCosmos(Where($"{D} >= 0"), container, out _)), container).Sql.Should().EndWith("WHERE (c.n >= @p0)", $"the cast to DOUBLE, read coarsely, is sent over {declared}");
             }
         }
 

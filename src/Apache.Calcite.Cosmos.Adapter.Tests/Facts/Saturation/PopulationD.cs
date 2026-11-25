@@ -201,11 +201,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                 ("the last stratum", OracleLicence.Select, admitted),
             };
 
+            // A deletion and a lowering lean only on the siblings the facts graph reads exactly, so each is checked on the
+            // documents those keep: a fact or a verdict a coarse sibling licensed shows as false there. Read once a trial,
+            // since each reading opens a context of its own.
+            var exact = conjuncts.Select(FactsReadings.ReadExactly).ToArray();
             for (var i = 0; i < conjuncts.Count; i++)
             {
                 var before = stratum[i] > 0 ? admitted.Where(j => stratum[j] < stratum[i]).ToArray() : admitted;
                 licences.Add(($"rendering conjunct {i}", OracleLicence.RenderConjunct(i), before));
-                var others = Enumerable.Range(0, conjuncts.Count).Where(j => j != i).ToArray();
+                var others = Enumerable.Range(0, conjuncts.Count).Where(j => j != i && exact[j]).ToArray();
                 licences.Add(($"deleting conjunct {i}", OracleLicence.DeleteConjunct(i), stratum[i] > 0 ? others.Where(j => stratum[j] > 0).ToArray() : others));
                 licences.Add(($"rewriting inside conjunct {i}", OracleLicence.Siblings(i), others));
             }
@@ -349,6 +353,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation
                     foreach (var r in removed)
                         if (truths[r][d] is not (Truths.True or Truths.Raises))
                             report.Fail("redundant", $"conjunct {r} was deleted as redundant beside {string.Join(", ", kept)}, and is {truths[r][d]} of {Documents.Json(documents[d])}, which they keep");
+
+            // And only a conjunct the facts graph reads exactly is deleted: a coarse one's own verdict is no more measured than
+            // what it establishes, and the check above, which reads a raw value's cast to text through no column, may not
+            // show where it is wrong.
+            foreach (var r in removed.Where(r => !exact[r]))
+                report.Fail("redundant", $"conjunct {r} was deleted as redundant, and the facts graph reads it coarsely");
 
             // Implication: what a predicate is given others.
             for (var n = 0; n < 2; n++)

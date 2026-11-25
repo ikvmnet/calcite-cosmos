@@ -230,14 +230,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// <summary>
         /// A stratum is read beside a later round only where the facts graph reads every conjunct it assumes as Calcite does.
         /// Where kind is 5 the label is a string, and a second round writes text <c>label = '7'</c> bare; but the facts graph
-        /// reads a typed <c>INTEGER</c> = 5 as kind holding the integer 5 alone, where a column reads 5.0000000000000001 as 5
-        /// too, beside a label the declaration leaves free. Read beneath that stratum the bare form would be exact and
-        /// wrong. S states no round beneath it (<c>StratumFor</c> falls back to the root), where the label is not proven,
+        /// reads a typed <c>INTEGER</c> = 5 coarsely, so what that stratum establishes rests on the reading's <c>Kept</c>
+        /// alone. S states no round beneath it (<c>StratumFor</c> falls back to the root), where the label is not proven,
         /// so S sends the kind alone and, since the switch, the label's weakening beside it, where the translator sent the
         /// bare label from that stratum: its text alternatives and its presence, each a conjunct of the filter it is pushed
-        /// in, the presence deleted from the text sent, the alternatives implying it. The alternatives' guarded arm is admitted beneath <c>IS_NUMBER(label)</c>, which the facts graph reads
-        /// exactly, so the service is sent the number 7 there, and a number label is kept; the arm's licence assumes only
-        /// what the facts graph reads exactly (h15), so the coarse kind, which would rule the number out, is not assumed.
+        /// in, and the presence sent too, since the alternatives that imply it read the text's cast to <c>DOUBLE</c>, which
+        /// the facts graph reads coarsely, and a deletion leans only on what it reads exactly. The alternatives' guarded
+        /// arm is admitted beneath <c>IS_NUMBER(label)</c>, which the facts graph reads exactly, so the service is sent the
+        /// number 7 there, and a number label is kept; the arm's licence assumes only what the facts graph reads exactly
+        /// (h15), so the coarse kind, which would rule the number out, is not assumed.
         /// </summary>
         [Fact]
         public void AStratumAConjunctReadCoarselyRestsOnIsNotRead()
@@ -251,8 +252,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 TestContext.Current.TestOutputHelper?.WriteLine($"{c.Text}: later {c.LaterRound}, {c.Entry!.Asserted.Kind}; {c.Import!.Digest}");
 
             Saturation.FactsReadings.ReadExactly(Cmp(Typed(KindPath, "INTEGER"), "=", SqlValue.Of(5m))).Should().BeFalse();
-            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "((c.label = @p1) OR (IS_NUMBER(c.label) AND (c.label = @p2)))"],
-                "the kind is sent, and the label's weakening beside it, which keeps a number label, its presence deleted from the text as the alternatives imply it");
+            checks.Select(c => c.Text).Should().BeEquivalentTo(["(c.kind = @p0)", "((c.label = @p1) OR (IS_NUMBER(c.label) AND (c.label = @p2)))", "IS_DEFINED(c.label)"],
+                "the kind is sent, and the label's weakening beside it, which keeps a number label, its presence among it, which the alternatives imply through a reading the facts graph calls coarse");
             checks.Should().OnlyContain(c => c.LaterRound == false && c.Import!.Digest.Contains(" beneath ") == false, "nothing is read beneath the coarse stratum");
         }
 

@@ -1596,16 +1596,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <summary>
         /// A text equality against text an integer renders as sends the alternatives, the string or a number equal to it
         /// (the text-equality alternatives, h09), and is rechecked above: the number keeps a fraction whose double is 30,
-        /// which Azure was not measured returning as <c>30</c>. The path's presence S writes beside them is deleted from the
-        /// text sent, the alternatives implying it, each arm holding the path (a <c>CASE</c> taking no truth value its
-        /// <c>ELSE</c> does has its condition true).
+        /// which Azure was not measured returning as <c>30</c>. The path's presence S writes beside them is sent too: the
+        /// alternatives imply it, but one arm reads the text's cast to <c>DOUBLE</c>, which the facts graph reads coarsely,
+        /// and a deletion leans only on what it reads exactly.
         /// </summary>
         [Fact]
         public void ATextEqualityAgainstTextAnIntegerRendersAsSendsTheAlternatives()
         {
             var query = Query(FindCosmos(PlanToAsync("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'")));
 
-            query.Sql.Should().EndWith("WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", query.Sql);
+            query.Sql.Should().EndWith("WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", query.Sql);
             query.Parameters.Select(p => p.Value).Should().Equal("30", 30m);
         }
 
@@ -1701,19 +1701,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// Since the switch S writes the family: where the text is what a boolean renders as, the string or the boolean
         /// is exact and sent whole, the host's fold of the equality with <c>TRUE</c> never reached; where an integer
-        /// renders as it, the string or a number equal to it, the text-equality alternatives (h09), rechecked above, the
-        /// path's presence S writes beside them deleted from the text as they imply it; where a double does, the presence alone; and over a raw column cast to text, whose
-        /// number and boolean Calcite casts to null (<c>Calcite.CastOfARawValueToText</c>), the string alone, exact, where
-        /// the translator sent the presence. A number binds as the decimal it is, which an attribute cannot hold, so it is
-        /// compared as a double.
+        /// renders as it, the string or a number equal to it, the text-equality alternatives (h09), rechecked above, and
+        /// the path's presence S writes beside them, which they imply through the text's cast to <c>DOUBLE</c>, read
+        /// coarsely; where a double does, the presence alone; and over a raw column cast to text, whose number and boolean
+        /// Calcite casts to null (<c>Calcite.CastOfARawValueToText</c>), the string alone, exact, where the translator sent
+        /// the presence. A number binds as the decimal it is, which an attribute cannot hold, so it is compared as a double.
         /// </para>
         /// </remarks>
         [Theory]
-        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", new object[] { "30", 30d })]
+        [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(JSON_VALUE(c.\"DOC\", '$.label') AS VARCHAR) = '1.0E30'", "WHERE IS_DEFINED(c.label)", new object[0])]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'true'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "true", true })]
         [InlineData("SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.label') = 'false'", "WHERE ((c.label = @p0) OR (c.label = @p1))", new object[] { "false", false })]
-        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE ((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1)))", new object[] { "30", 30d })]
+        [InlineData("SELECT p.\"id\" FROM (SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.label') AS \"Label\" FROM products AS c) AS p WHERE p.\"Label\" = '30'", "WHERE (((c.label = @p0) OR (IS_NUMBER(c.label) AND (c.label = @p1))) AND IS_DEFINED(c.label))", new object[] { "30", 30d })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = '30'", "WHERE (c.category = @p0)", new object[] { "30" })]
         [InlineData("SELECT * FROM products AS c WHERE CAST(c.\"$.category\" AS VARCHAR) = 'true'", "WHERE (c.category = @p0)", new object[] { "true" })]
         public void TheAlternativesPlanUnderAHostThatReducesExpressions(string sql, string where, object[] parameters)
@@ -3248,15 +3248,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// And an equality against text a number renders as sends what the accessor's spelling sends: the alternatives, the
-        /// path's presence beside them deleted as they imply it (h09, since the switch, h15).
+        /// And an equality against text a number renders as sends what the accessor's spelling sends: the alternatives, and
+        /// the path's presence beside them, which they imply through a reading the facts graph calls coarse (h09, since the
+        /// switch, h15).
         /// </summary>
         [Fact]
         public void AnAmbiguousEqualityOverAViewsTextColumnSendsTheAlternatives()
         {
             var best = PlanToAsync($"SELECT p.\"Name\" FROM {View} WHERE p.\"Name\" = '30'");
 
-            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND ((c.name = @p1) OR (IS_NUMBER(c.name) AND (c.name = @p2))))");
+            Render(FindCosmos(best)).Should().EndWith("WHERE ((c.category = @p0) AND (((c.name = @p1) OR (IS_NUMBER(c.name) AND (c.name = @p2))) AND IS_DEFINED(c.name)))");
             Plan(best).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + Plan(best));
         }
 

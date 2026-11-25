@@ -67,11 +67,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>What is true is the oracle's; what is written is this.</b> Every fact a rewrite reads is
     /// asked of <see cref="CosmosFilterStatement"/> under the licence the rewrite has: the filter is
     /// <c>FALSE</c> where no document the declaration admits makes the WHERE true, and none makes it
-    /// raise; a conjunct is deleted where its siblings imply it, one at a time; a comparison is lowered
-    /// on what its siblings establish, never what it does; inside the arm of a <c>CASE</c>, on that and
-    /// the conditions the arm is read under; and an arm is written <c>FALSE</c> where those contradict
-    /// and the WHERE raises nowhere. What is left here is the shapes, the stored spellings and the
-    /// licence a form gives an operator.
+    /// raise; a conjunct the facts graph reads exactly is deleted where the siblings it reads exactly
+    /// imply it, one at a time; a comparison is lowered on what those siblings establish, never what it
+    /// does; inside the arm of a <c>CASE</c>, on that and the conditions the arm is read under; and an
+    /// arm is written <c>FALSE</c> where those contradict and the WHERE raises nowhere. What is left
+    /// here is the shapes, the stored spellings and the licence a form gives an operator.
     /// </para>
     /// <para>
     /// <b>Two forms: one planned, one sent.</b> What a node holds is read by Calcite: its filters merge it, its
@@ -137,8 +137,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Returns the rendering form of a predicate, the text sent: the planning form (<see cref="Planned"/>), each
-        /// conjunct the rest imply deleted, each arm never read written <c>FALSE</c>, and the whole <c>FALSE</c> where the
-        /// WHERE keeps nothing and fails on nothing; or the predicate unchanged.
+        /// conjunct the facts graph reads exactly deleted where the siblings it reads exactly imply it, each arm never
+        /// read written <c>FALSE</c>, and the whole <c>FALSE</c> where the WHERE keeps nothing and fails on nothing; or
+        /// the predicate unchanged.
         /// </summary>
         /// <param name="condition">The predicate, expressed over <paramref name="fields"/>.</param>
         /// <param name="fields">The ordinal-to-path binding of the filtered input.</param>
@@ -197,9 +198,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         {
             var conjuncts = statement?.Conjuncts ?? CosmosFilterStatement.ConjunctsOf(condition);
 
-            // A conjunct the rest of the filter implies decides nothing, so the text sent is the one
-            // without it -- asked of its siblings and never of itself, and one at a time, so that two
-            // conjuncts implying each other do not both go.
+            // A conjunct the facts graph reads exactly, implied by the siblings it reads exactly, decides
+            // nothing, so the text sent is the one without it -- asked of its siblings and never of itself,
+            // and one at a time, so that two conjuncts implying each other do not both go.
             var redundant = rendered ? statement?.Redundant ?? Array.Empty<int>() : Array.Empty<int>();
             var paths = new CosmosRexPaths(fields, spelled: false);
 
@@ -293,8 +294,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             public string RootAlias { get; }
 
             /// <summary>
-            /// Gets what the rewrite may lean on: every sibling of its conjunct, and the conditions of
-            /// the arms it is inside.
+            /// Gets what the rewrite may lean on: the siblings of its conjunct the facts graph reads exactly,
+            /// and the conditions of the arms it is inside up to the first it reads coarsely.
             /// </summary>
             public JsonFactSet Known => _known ??= _statement is null ? JsonFactSet.Empty
                 : _conditions.Count == 0 ? _statement.Siblings(_conjunct)
@@ -302,10 +303,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>
             /// Gets whether the arm the rewrite is inside is never read, and may be written <c>FALSE</c>:
-            /// its conditions contradict what every sibling establishes, a deleted one among them, and
-            /// nothing in the WHERE as written raises, so neither the evaluation the <c>FALSE</c> removes
-            /// nor a deletion beside it removes a failure. The rendering form's alone: the <c>FALSE</c> is written only
-            /// into the text sent.
+            /// its conditions, up to the first the facts graph reads coarsely, contradict what the siblings it reads
+            /// exactly establish, a deleted one among them, and nothing in the WHERE as written raises, so neither
+            /// the evaluation the <c>FALSE</c> removes nor a deletion beside it removes a failure. The rendering
+            /// form's alone: the <c>FALSE</c> is written only into the text sent.
             /// </summary>
             public bool NeverRead => _rendered && _statement is not null && _conditions.Count > 0 && _statement.NeverWithin(_conjunct, _conditions);
 

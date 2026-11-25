@@ -896,7 +896,7 @@ the relevant ones. A case may split again, to a depth of two.
 **A deletion reads its siblings, and never itself.** The rewrite deletes a conjunct only where every other
 conjunct and the declaration make it always true (L3, *Which facts may justify what*). A fact the conjunct
 itself proved may be what made it look redundant, and the predicate left behind would prove less than it did;
-and of two conjuncts that each imply the other only one goes, asked one at a time. Eggnog's
+and of two conjuncts that each imply the other at most one goes, asked one at a time. Eggnog's
 `RulesetOptions.Licence` says the same thing inside the engine, for a rewrite done there; here it is the choice
 of which context to ask.
 
@@ -1160,7 +1160,8 @@ verdicts are read after the splits, and what holds inside a case is never lifted
 The soundness review's statement of the criterion, which the planner once approximated per site and now asks of
 one table:
 
-- facts from siblings or from the declaration may justify any rewrite;
+- facts from siblings the facts graph reads exactly, or from the declaration, may justify any rewrite; what a sibling
+  read coarsely establishes rests on its reading's `Kept` alone (below the licence table);
 - a conjunct's own facts may justify only a strengthening, and the oracle never offers them;
 - a deletion or a weakening needs facts from outside the conjunct;
 - a consumer that is not a filter needs facts that hold of every row it touches.
@@ -1178,16 +1179,42 @@ conjunct the second round's facts would admit, and which admits a third, was lef
 | the question | the facts it may use |
 | --- | --- |
 | whether a conjunct renders | the stratum before the one that admitted it; for one never admitted, the last stratum, which holds its siblings and never itself (L2) |
-| whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it |
-| a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave) |
-| inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep, and the conditions the arm is read under |
+| whether a conjunct can be deleted | the other conjuncts still kept (L3); for one the strata admit, only the admitted ones, so that what the service applies is no weaker without it; of them, only those the facts graph reads exactly (`readsexactly`); asked only of a conjunct it reads exactly |
+| a comparison inside a conjunct lowered | every other conjunct the deletions keep (L3, of the statement they leave); of them, only those the facts graph reads exactly |
+| inside the arm of a `CASE` in a conjunct | every other conjunct the deletions keep that the facts graph reads exactly, and the conditions the arm is read under up to the first it reads coarsely |
 | whether the filter keeps nothing and fails on nothing | the WHERE as one conjunction, assumed by a rule only where it raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`Reduce`) |
-| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | every other conjunct of the statement as written, one the deletions drop among them, and the conditions the arm is read under, each assumed by the same rule only where the WHERE as written raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`NeverRead`) |
+| whether an arm of a `CASE` is never read, so that it may be written `FALSE` | every other conjunct of the statement as written that the facts graph reads exactly, one the deletions drop among them, and the conditions the arm is read under up to the first it reads coarsely, each assumed by the same rule only where the WHERE as written raises on no document the declaration admits, or for a projected `CASE` condition where no predicate of the projected expression does (`NeverRead`) |
 | routing a statement that applies its predicate, and how many documents it matches | every conjunct, admitted or not: a partition skipped holds no row the predicate keeps |
 | what a point read may rely on | the conjuncts that pin its keys, and no other: a point read applies no predicate, so every other conjunct has to be always true there |
 | whether a weakening adds anything to what is applied | every admitted conjunct, what the filters beneath apply, and the weakenings already pushed beside them |
 | a projection, a sort, a grouping, a key a lookup restricts | the last stratum: every admitted conjunct, applied before the clause reads a row or beside the key's restriction (L1) |
 | a residual, a side with no filter, a key another node asks of a clause | the declaration (L0) |
+
+**What a sibling read coarsely establishes rests on its `Kept` alone.** The facts graph learns what assuming a sibling
+makes true of the documents from what its atoms' readings keep (`PredicateAtom.Kept`), and for a reading
+`Calcite.TheFactsGraphReadsTheseReadingsExactly` does not name, such as a typed number, `RETURNING DECIMAL`, a cast to
+`DOUBLE`, the cast of a raw value to text or the raw value beside a number, no measured row says that is Calcite's: a
+test's list of readings audits it
+(`PredicateAtomCellTests.WhatEveryReadingKeepsHoldsEveryValueCalciteGivesThatTruthOn`). So the deletion, the lowering,
+S's later rounds (`StratumFor`) and the arm assume only the siblings the facts graph reads exactly
+(`StatementTerms.ReadsExactly`), one criterion, opt-in by that row, and a reading added later whose `Kept` is too narrow
+reaches none of them unless the row names it. Nor is a conjunct read coarsely deleted, its own verdict being no more
+measured (`CosmosStatementScope.RedundantConjuncts`): over a partition key declared as the enum `"true"` or `true`, its
+column cast to text = 'true' reads a stored `true` as its rendering, so deleted beside the kind's type test it would
+keep the document, where Calcite's cast is null. What that costs is a conjunct sent that a coarse sibling implied (*A
+deletion keeps what the service applies*, below) or that is itself coarse, such as a range through the cast to `DOUBLE`
+that the declared bounds satisfy, or `NOT (CAST(c."$.category" AS VARCHAR) = '1')` beside `c."$.category" = 'SPRINT'`, a
+21st of the gate's 3,492 lines beside the 20 that *A deletion keeps what the service applies* counts, and a comparison
+left as written where only a coarse sibling gave its stored form. Routing, the row count, a stack's clauses and the
+self-join (`Kept`), a single filter's projection, sort, grouping and lookup key (the last stratum), a point read's pins
+and the reduce assume the conjuncts their rows above name, however the facts graph reads them, and rest on that audit by
+decision: each is provable on what each reading keeps, and gating them on exactness would decline pushes that are
+provable, losing routes the manual documents (Chapters 7.3 and 8.5) and sorts the service runs, 10 of the pull-request
+digests' 1,181 lines and 17 of the gate's 3,492, measured on Production. The translator's later rounds, which write a
+parameter or an opaque comparison from the chain node, rest on it too, a bridge that 3B ends for the parameter
+comparisons it moves into S's rounds, and the translator's removal (h42) for the rest. What the audit leaves open — a
+reading added later whose `Kept` is too narrow, and the raw value read through `CHAR`, which no list names — is
+`TODO.md`'s.
 
 **An order the service computes is read through `CosmosServiceOrder` under the consumer's own row, and nowhere
 else.** The table gains no row for it: a sort and an extreme ask under the last stratum (L1), an ordering comparison
@@ -1203,9 +1230,15 @@ siblings imply it; it changes what reaches the service where the sibling does no
 'zzz'` over a path declared nothing renders the first exactly and the second only as a weakening, which does not
 imply the first, and deleted for the second the exact test stopped reaching the service: the null, the array and the
 object it excludes crossed the wire for the recheck to drop. So a conjunct the strata admit is asked only of the
-admitted siblings, and one left above of every sibling, as before. The strata are those of the condition as written,
+admitted siblings, and one left above of every sibling still kept. The strata are those of the condition as written,
 before a lowering: a sibling admitted only once lowered counts as left above, and the conjunct is kept, which costs a
-redundant test and never a row.
+redundant test and never a row. Nor is a sibling the facts graph reads coarsely counted: what it establishes rests on
+its reading's `Kept` alone, so a conjunct only it implies is kept, at the same cost. The split's weakening of an
+equality with text an integer renders as is the measured case: it pushes
+`(c.x = "30") OR (IS_NUMBER(c.x) AND c.x = 30)` and `IS_DEFINED(c.x)` as two conjuncts, the first reading the text's
+cast to `DOUBLE`, so the presence is sent beside the alternatives that imply it. Such an implied conjunct is sent in 11
+of the pull-request digests' 1,181 lines and 20 of the gate's 3,492, most of them that presence, each keeping the same
+documents.
 
 **A lowering is asked of the statement the deletions leave**, for the same reason two duplicates are not both
 deleted: each rewrite is sound on the statement it is asked of, and the rewrite does two in turn. A conjunct deleted
@@ -1291,8 +1324,8 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
 | the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
 | `CosmosFactRewriter`, the text sent made `FALSE`, and a projection's `CASE` conditions, in the text sent alone, through `RewriteConditions`; `CosmosImplementor.Build`, whether the statement is sent | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`); several filters' WHERE as one statement (`CosmosRowFacts.KeepsNothing`) |
-| the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3) |
-| the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep |
+| the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3), each the facts graph reads exactly; only a conjunct it reads exactly |
+| the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep, each the facts graph reads exactly |
 | the rewriter, inside the arm of a `CASE` | `Within` | those siblings and the arm's conditions (`Arm`) |
 | the rewriter, an arm never read, written `FALSE` in the text sent | `NeverWithin` | what `Arm` assumes of the statement as written, a deleted conjunct among it, each only where the WHERE as written raises on no admitted document, or for a projected condition no predicate of the projected expression does (`NeverRead`) |
 | the translator, of a rendering or a typed field | `IsDeclared`, of the facts it was handed | the caller's licence, which every caller names; `JsonFactSet.Empty` where it only resolves paths |
@@ -10185,8 +10218,12 @@ reading through a box by `Unboxed`. It is F's `Exactness` ruleset now, saturated
 `inexact` of a predicate holding an atom whose reading the rows do not say F reads exactly beside its operand's class
 (`PredicateAtom.ReadExactly` over `readsexactly`, one set value the readings vocabulary defines at both roots), and of
 each junction, negation and `CASE` holding one. `StatementTerms.ReadsExactly` asks it of a node once and keeps the
-answer with the terms. A presence test, two readings compared, an opaque term and a call no reading reads give F no
-atom to learn from, so each is read as exactly as the stratum above it. F has 66 rules beside the nine, S 191.
+answer with the terms. A deletion and a lowering ask the same relation beneath the declaration and assume only the
+siblings it reads exactly, as an arm does (`CosmosStatementScope.Beside` and `ExactSiblings`), and a deletion deletes
+only a conjunct it reads exactly (`RedundantConjuncts`); routing, a point read, the reduce, the clauses after a filter
+and the translator's later rounds rest on what each reading keeps (*Which facts may justify what*). A presence test, two
+readings compared, an opaque term and a call no reading reads give F no atom to learn from, so each is read as exactly
+as the stratum above it. F has 66 rules beside the nine, S 191.
 
 **An arm is stated beneath its licence.** S writes a `CASE`'s arms beneath their conditions (`SqlPredicate.Beneath`,
 *A `CASE` in S*), and the licence that says what an arm may assume (`CosmosStatementScope.StratumFor`,

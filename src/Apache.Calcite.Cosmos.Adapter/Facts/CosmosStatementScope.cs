@@ -16,18 +16,24 @@ namespace Apache.Calcite.Cosmos.Facts
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The licence table</b>, argued once. Facts from siblings or from the declaration may justify any rewrite; a
-    /// conjunct's own facts may justify only a strengthening, and the oracle never offers them; a deletion or a
-    /// weakening needs facts from outside the conjunct; and a consumer that is not a filter needs facts that hold of
+    /// <b>The licence table</b>, argued once. Facts from siblings the facts graph reads exactly, or from the declaration,
+    /// may justify any rewrite; what a sibling read coarsely establishes rests on its reading's <c>Kept</c> alone, which a
+    /// test's list of readings audits and no measured row names, so no deletion, lowering, arm or later round of S rests
+    /// on one, nor is a conjunct read coarsely deleted on its own verdict, while the rows the filter keeps, the last
+    /// stratum, a point read's pins, the reduce and a later round of the translator, which may still assume one, rest on
+    /// that audit. A conjunct's own facts may justify only a strengthening, and the oracle never offers them; a deletion
+    /// or a weakening needs facts from outside the conjunct; and a consumer that is not a filter needs facts that hold of
     /// every row it touches.
     /// </para>
     /// <list type="table">
     /// <item><term><see cref="OracleQuestion.RenderConjunct"/></term><description>the stratum before the one that admitted
     /// the conjunct; the last stratum for one never admitted, whose facts are its siblings' and never its own</description></item>
-    /// <item><term><see cref="OracleQuestion.DeleteConjunct"/></term><description>the conjuncts kept beside it; where it is
-    /// admitted, only the admitted ones, so that what the service applies is no weaker without it</description></item>
-    /// <item><term><see cref="OracleQuestion.Siblings"/></term><description>every conjunct but this one, admitted or not:
-    /// the rows the rest of the filter keeps, which a rewrite inside it may lean on</description></item>
+    /// <item><term><see cref="OracleQuestion.DeleteConjunct"/></term><description>the conjuncts kept beside it, each the
+    /// facts graph reads exactly; where it is admitted, only the admitted ones, so that what the service applies is no
+    /// weaker without it; asked only of a conjunct it reads exactly</description></item>
+    /// <item><term><see cref="OracleQuestion.Siblings"/></term><description>every conjunct but this one, admitted or not,
+    /// each the facts graph reads exactly: what holds of the rows the rest of the filter keeps, which a rewrite inside it
+    /// may lean on</description></item>
     /// <item><term><see cref="OracleQuestion.Kept"/></term><description>every conjunct, admitted or not: the rows the whole
     /// filter keeps, which only a strengthening may read, and routing, which skips only partitions holding none of them</description></item>
     /// <item><term><see cref="OracleQuestion.Reduce"/></term><description>the WHERE as one conjunction, assumed by a rule
@@ -390,10 +396,8 @@ namespace Apache.Calcite.Cosmos.Facts
                     admitted.Where(i => Admitted.Chain.Count > StratumOf(i) && Admitted.Chain[StratumOf(i)].Complete).ToArray(),
                 OracleQuestion.DeleteConjunct =>
                     Beside(licence).ToArray(),
-                OracleQuestion.Siblings =>
-                    all.Where(i => i != Check(licence.Conjunct)).ToArray(),
-                OracleQuestion.Arm or OracleQuestion.NeverRead =>
-                    all.Where(i => i != Check(licence.Conjunct) && _terms.ReadsExactly(Statement.Conjuncts[i])).ToArray(),
+                OracleQuestion.Siblings or OracleQuestion.Arm or OracleQuestion.NeverRead =>
+                    ExactSiblings(licence.Conjunct).ToArray(),
                 OracleQuestion.Kept or OracleQuestion.Reduce =>
                     all.ToArray(),
                 // FALSE gated on the WHERE: no conjunct's facts.
@@ -463,11 +467,18 @@ namespace Apache.Calcite.Cosmos.Facts
         /// on what it looks for, and costs what it bounds: a conjunct true of every document on its own, such as
         /// <c>IS_DEFINED(x) OR NOT IS_DEFINED(x)</c> over a path nothing speaks of, is not deleted.
         /// </para>
+        /// <para>
+        /// <b>Asked only of a conjunct the facts graph reads exactly</b>, as its siblings are (<see cref="Beside"/>): a
+        /// coarse conjunct's own verdict is no more measured than what it establishes. Over a partition key declared as the
+        /// enum <c>"true"</c> or <c>true</c>, its column cast to text = 'true' reads a stored <c>true</c> as its rendering,
+        /// so beside the kind's type test it is decided always true; deleted, it would keep the document, where Calcite's
+        /// cast of a <c>VARIANT</c> boolean is null.
+        /// </para>
         /// </remarks>
         public IReadOnlyList<int> RedundantConjuncts()
         {
             var conjuncts = Statement.Conjuncts;
-            var candidates = Decidable().ToArray();
+            var candidates = Decidable().Where(i => _terms.ReadsExactly(conjuncts[i])).ToArray();
             if (candidates.Length == 0)
                 return Array.Empty<int>();
 
@@ -507,15 +518,36 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// The conjuncts a deletion is asked beside: those it names, never the conjunct itself, and where it is admitted,
-        /// only the admitted.
+        /// The conjuncts beside one that a rewrite of it may lean on: every other conjunct the facts graph reads as Calcite
+        /// does (<see cref="StatementTerms.ReadsExactly(SqlPredicate)"/>), as a later round's stratum is
+        /// (<see cref="StratumFor(StatementTerms.Node, Func{int, bool}, Func{SqlPredicate, bool})"/>), so that no
+        /// lowering or arm rests on a reading the rows call coarse, as no deletion does (<see cref="Beside"/>).
+        /// </summary>
+        /// <remarks>
+        /// What a coarse sibling establishes is what its reading's <c>Kept</c> keeps, which holds every value Calcite gives
+        /// it TRUE on by a test's list of readings, and by no measured row. Planted narrower, as a typed number's was before
+        /// it kept its rounding window, a lowering leaning on it would write a UUID comparison beside a typed kind = 2
+        /// in the lower-case form kind 2 declares, dropping a stored 2.0000000000000001 whose ref is spelled in upper
+        /// case, which Calcite keeps, reading the kind as 2. Assuming less is stricter, and sound; what it costs is a
+        /// comparison left as written, rechecked where it is not sent.
+        /// </remarks>
+        IEnumerable<int> ExactSiblings(int conjunct)
+        {
+            var self = Check(conjunct);
+            return Enumerable.Range(0, Statement.Conjuncts.Count).Where(i => i != self && _terms.ReadsExactly(Statement.Conjuncts[i]));
+        }
+
+        /// <summary>
+        /// The conjuncts a deletion is asked beside: those it names that the facts graph reads exactly, as
+        /// <see cref="ExactSiblings"/> are, never the conjunct itself, and where it is admitted, only the admitted.
         /// </summary>
         IEnumerable<int> Beside(OracleLicence licence)
         {
             var conjunct = Check(licence.Conjunct);
-            var beside = (licence.Beside ?? Enumerable.Range(0, Statement.Conjuncts.Count).ToArray()).Where(j => j != conjunct);
+            var beside = (licence.Beside ?? Enumerable.Range(0, Statement.Conjuncts.Count).ToArray())
+                .Where(j => j != conjunct && _terms.ReadsExactly(Statement.Conjuncts[Check(j)]));
 
-            return StratumOf(conjunct) > 0 ? beside.Where(j => StratumOf(Check(j)) > 0) : beside;
+            return StratumOf(conjunct) > 0 ? beside.Where(j => StratumOf(j) > 0) : beside;
         }
 
         /// <summary>
@@ -540,10 +572,7 @@ namespace Apache.Calcite.Cosmos.Facts
                     return _terms.Child(_terms.Root, Beside(licence).Select(j => conjuncts[j]));
 
                 case OracleQuestion.Siblings:
-                {
-                    var conjunct = Check(licence.Conjunct);
-                    return _terms.Child(_terms.Root, conjuncts.Where((_, i) => i != conjunct));
-                }
+                    return _terms.Child(_terms.Root, ExactSiblings(licence.Conjunct).Select(i => conjuncts[i]));
 
                 case OracleQuestion.Arm:
                     return _terms.Child(_terms.Root, ArmAssumes(licence));
@@ -581,21 +610,18 @@ namespace Apache.Calcite.Cosmos.Facts
         }
 
         /// <summary>
-        /// What the arm of a <c>CASE</c> in a conjunct may lean on: every sibling, and the arm's leading conditions, each
-        /// the facts graph reads as Calcite does (h15).
+        /// What the arm of a <c>CASE</c> in a conjunct may lean on: the siblings a rewrite of it may
+        /// (<see cref="ExactSiblings"/>), and the arm's leading conditions the facts graph reads as Calcite does (h15).
         /// </summary>
         /// <remarks>
         /// A sibling read coarsely may say of the documents what is not so, and a condition is assumed only while each
         /// before it is read exactly, as a rendered arm's are (<c>StratumFor</c>). A CASE answered by its ELSE beneath a
         /// typed kind = 5 dropped a number label Calcite keeps (G12). Assuming less is stricter, and sound.
         /// </remarks>
-        IEnumerable<SqlPredicate> ArmAssumes(OracleLicence licence)
-        {
-            var conjunct = Check(licence.Conjunct);
-            return Statement.Conjuncts.Where((c, i) => i != conjunct && _terms.ReadsExactly(c))
+        IEnumerable<SqlPredicate> ArmAssumes(OracleLicence licence) =>
+            ExactSiblings(licence.Conjunct).Select(i => Statement.Conjuncts[i])
                 .Concat((licence.Given ?? Array.Empty<SqlPredicate>()).TakeWhile(_terms.ReadsExactly))
                 .ToArray();
-        }
 
         /// <summary>The WHERE as one conjunction: the conjuncts flattened, in digest order, one being itself.</summary>
         SqlPredicate Where => _where ??= SqlPredicate.AllOf(Statement.Conjuncts);

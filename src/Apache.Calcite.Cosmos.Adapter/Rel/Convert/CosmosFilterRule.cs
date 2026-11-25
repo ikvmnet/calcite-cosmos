@@ -37,8 +37,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </para>
         /// <para>
         /// <b>The planning form</b> (<see cref="CosmosFactRewriter.Planned"/>): nothing the declaration alone decides
-        /// reaches the node, where Calcite reads it. A conjunct the rest imply is deleted, an arm never read and a WHERE
-        /// that keeps nothing are made <c>FALSE</c>, only in the text sent (<see cref="CosmosFilter.Implement"/>).
+        /// reaches the node, where Calcite reads it. A conjunct the facts graph reads exactly is deleted where the
+        /// siblings it reads exactly imply it, and an arm never read and a WHERE that keeps nothing are made <c>FALSE</c>,
+        /// only in the text sent (<see cref="CosmosFilter.Implement"/>).
         /// </para>
         /// </remarks>
         static RexNode Pushed(CosmosConvention convention, Filter filter, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings) =>

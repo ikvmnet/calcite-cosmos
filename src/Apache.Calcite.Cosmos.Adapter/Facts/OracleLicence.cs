@@ -21,19 +21,31 @@ namespace Apache.Calcite.Cosmos.Facts
 
         /// <summary>
         /// Whether a conjunct can be deleted beside others still kept: from them, never from itself; and where it reaches
-        /// the service, only from those that reach it too.
+        /// the service, only from those that reach it too; of them, only what the facts graph reads exactly.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A deletion is sound on what any sibling implies, and keeps what the service applies only on what the service
         /// applies: <c>label IS NOT NULL AND label &lt;&gt; 'zzz'</c> over a path declared nothing has the second go down
         /// as a weakening, which does not imply the first, and deleted for the second the exact null test stopped
-        /// reaching the service. A conjunct left above deletes as it always did.
+        /// reaching the service. A conjunct left above is asked beside the siblings still kept, whether they reach the
+        /// service or not.
+        /// </para>
+        /// <para>
+        /// Nor is a sibling the facts graph reads coarsely among them, as it is not among an arm's (<see cref="Arm"/>): what
+        /// it establishes rests on its reading's <c>Kept</c> alone and may say of the documents what is not so, so a
+        /// conjunct only it implies is sent. Nor is a conjunct it reads coarsely deleted, whose own verdict is no more
+        /// measured (<c>CosmosStatementScope.RedundantConjuncts</c>).
+        /// </para>
         /// </remarks>
         /// <param name="conjunct">The conjunct.</param>
         /// <param name="beside">The conjuncts still kept, the deleted conjunct among them or not; <c>null</c> for every one.</param>
         public static OracleLicence DeleteConjunct(int conjunct, IReadOnlyList<int>? beside = null) => new(OracleQuestion.DeleteConjunct, conjunct, null, null, beside);
 
-        /// <summary>What a rewrite inside a conjunct may lean on: every sibling, never itself.</summary>
+        /// <summary>
+        /// What a rewrite inside a conjunct may lean on: every sibling, never itself; of them, only what the facts graph
+        /// reads exactly, as a deletion's.
+        /// </summary>
         public static OracleLicence Siblings(int conjunct) => new(OracleQuestion.Siblings, conjunct, null);
 
         /// <summary>What holds of every row the filter keeps: every conjunct, for a strengthening and for routing.</summary>
