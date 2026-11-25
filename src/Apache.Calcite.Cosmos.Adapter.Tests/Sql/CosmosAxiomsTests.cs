@@ -134,7 +134,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 || a.Parts is not null || a.Moves is not null || a.Truncations is not null || a.PairReadings is not null || a.Boxes is not null || a.SeesThrough is not null
                 || a.NullThrough is not null || a.CalciteReadings is not null || a.Casts is not null || a.ReaderOrders is not null || a.Comparands is not null
                 || a.Rewrites is not null || a.Unsent is not null || a.WholeReadings is not null || a.Folds is not null || a.AsOfAPath is not null
-                || a.ParametersAs is not null || a.Yields is not null))
+                || a.ParametersAs is not null || a.Yields is not null || a.Evaluators is not null))
                 (PinningTest(axiom)?.GetCustomAttributes<CosmosPinsAttribute>().Select(a => a.Id) ?? []).Should().Contain(axiom.Id, axiom.PinnedBy);
         }
 
@@ -204,7 +204,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
         /// the comparisons that see into one, the function that answers a structure alone, the boolean parse with the
         /// classes its witnesses held, the casts each citing its row, the text reader's order, the classes each type test is
         /// true of in process, and the readings an index reads as of a path, its raw value among them; and G1's, the two characters the emulator's spelling rewrites and the unpaired
-        /// surrogate no parameter is sent holding on either target.
+        /// surrogate no parameter is sent holding on either target; and G7's evaluator each row names for a reading, with the type
+        /// it evaluates a value of and the kinds Calcite's type system says that type holds.
         /// </summary>
         [Fact]
         public void TheFoundationsRowsReadBackAsWritten()
@@ -273,6 +274,55 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             kinds.Where(k => k.Test == Test.IsString).Select(k => k.Kind).Should().Equal(Class.String);
             kinds.Where(k => k.Test == Test.IsDefined).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String, Class.Object, Class.Array]);
             kinds.Where(k => k.Test == Test.IsPrimitive).Select(k => k.Kind).Should().BeEquivalentTo([Class.Null, Class.True, Class.False, Class.Number, Class.String]);
+
+            // The evaluator each row names for a reading (G7), on the rows each evaluator's evaluation rests on: the text's, the
+            // raw value's and its cast's, each typed reading's, the parses of the rendering and what a body that raises reads.
+            var evaluators = CosmosAxiomRows.ReadCalciteEvaluators(all);
+            var typed = new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "BOOLEAN" };
+            var castOfRaw = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
+            evaluators.Should().HaveCount(33);
+            evaluators.Select(e => e.Reader).Distinct().Should().HaveCount(17);
+            evaluators.Select(e => (e.Reader, e.Evaluator.Evaluator, e.Row)).Should().BeEquivalentTo(new[]
+            {
+                (PredicateAtom.TextReader, CalciteEvaluator.Text, "Calcite.JsonValueRendersScalarsAsText"), (PredicateAtom.TextReader, CalciteEvaluator.Text, "Calcite.TextOrderIsByCodeUnit"),
+                (castOfRaw, CalciteEvaluator.RawText, "Calcite.CastOfARawValueToText"), (castOfRaw, CalciteEvaluator.RawText, "Calcite.TextOrderIsByCodeUnit"),
+                (PredicateAtom.RawReader, CalciteEvaluator.Raw, "Calcite.RawStringEqualityIsOrdinal"), (PredicateAtom.RawReader, CalciteEvaluator.Raw, "Calcite.RawNullIsSqlNull"),
+                (PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "Calcite.JsonValueRendersScalarsAsText"),
+                (PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "Calcite.ReturningDecimalParsesTheRendering"),
+                (PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "Calcite.ColumnReadsWholeNumbersAsItsType"),
+                (parse, CalciteEvaluator.BooleanCast, "Calcite.CastToBooleanParses"), (PredicateAtom.RaisesReader, CalciteEvaluator.Raising, "Calcite.TypeTestsAreTheirBodies"),
+            }
+                .Concat(typed.SelectMany(type => new[] { "Calcite.ReturningAsserts", "Calcite.ColumnReadsWholeNumbersAsItsType" }
+                    .Select(row => (PredicateAtom.TypedReader(type), CalciteEvaluator.Typed, row))))
+                .Concat(new[] { "INTEGER", "BIGINT", "DOUBLE" }.SelectMany(target => new[] { "Calcite.JsonValueRendersScalarsAsText", "Calcite.CastOfTheAccessorParsesTheRendering" }
+                    .Select(row => (PredicateAtom.CastReader(target, PredicateAtom.TextReader), CalciteEvaluator.NumberCast, row)))));
+
+            // A typed reading's evaluator evaluates a value of the type the reader names, and a parse's a value of its target; any
+            // other evaluator takes no type.
+            var takesType = evaluators.Where(e => e.Evaluator.Evaluator is CalciteEvaluator.Typed or CalciteEvaluator.NumberCast).ToList();
+            takesType.Should().OnlyContain(e => e.Evaluator.Type == (e.Reader.StartsWith(PredicateAtom.TypedReaders + ":", StringComparison.Ordinal)
+                ? e.Reader.Substring(PredicateAtom.TypedReaders.Length + 1) : PredicateAtom.Outermost(e.Reader).Substring("cast:".Length)));
+            evaluators.Except(takesType).Should().OnlyContain(e => e.Evaluator.Type.Length == 0 && e.Evaluator.Kinds.Count == 0);
+
+            // A parse's modes place these targets alone (TODO.md, "The typed and parse evaluators read their type as C#").
+            takesType.Where(e => e.Evaluator.Evaluator == CalciteEvaluator.NumberCast).Select(e => e.Evaluator.Type).Should().BeSubsetOf(["DECIMAL", "INTEGER", "BIGINT", "DOUBLE"],
+                "the number cast places no other target until the modes are rows");
+
+            // A reading a row reads as another is read as it only where a row names the other's evaluator.
+            CosmosAxiomRows.ReadCalciteReadAs(all).Should().OnlyContain(r => evaluators.Any(e => e.Reader == r.As),
+                "an alias to a reading no row names an evaluator for would be read by nothing rather than refused");
+
+            // Each typed reading holds the kinds of value Calcite's type system says its type holds, read off the type's family:
+            // an integer type a whole number, any other numeric type any number, BOOLEAN a boolean. A type no family holds would
+            // read every scalar as a raise, so none is named.
+            var typedKinds = evaluators.Where(e => e.Evaluator.Evaluator == CalciteEvaluator.Typed).ToList();
+            typedKinds.Should().OnlyContain(e => e.Evaluator.Kinds.Count > 0);
+            typedKinds.Select(e => (e.Evaluator.Type, Kinds: string.Join(",", e.Evaluator.Kinds))).Distinct().Should().BeEquivalentTo(new[]
+            {
+                ("TINYINT", JsonValues.IntegerType), ("SMALLINT", JsonValues.IntegerType), ("INTEGER", JsonValues.IntegerType), ("BIGINT", JsonValues.IntegerType),
+                ("FLOAT", string.Join(",", JsonValues.Numbers)), ("REAL", string.Join(",", JsonValues.Numbers)), ("DOUBLE", string.Join(",", JsonValues.Numbers)),
+                ("BOOLEAN", JsonValues.BooleanType),
+            });
         }
 
         /// <summary>

@@ -191,6 +191,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>The tests of a reading a <c>Calcite</c> row says are its operand's (<c>CosmosAxiomRows.ReadCalciteThrough</c>, G7).</summary>
         public IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> CalciteThrough { get; init; } = [];
 
+        /// <summary>
+        /// The evaluator each <c>Calcite</c> row names for a reading, citing the row (<c>CosmosAxiomRows.ReadCalciteEvaluators</c>,
+        /// G7). None in a definition that names none, where every reading is read by its rows alone.
+        /// </summary>
+        public IReadOnlyList<(string Reader, ReadingEvaluator Evaluator, string Row)> CalciteEvaluators { get; init; } = [];
+
         /// <summary>What <c>LIKE</c> reads each unit of its pattern as, each citing its row (<c>CosmosAxiomRows.ReadLikeUnits</c>, G7).</summary>
         public IReadOnlyList<(LikeUnit Unit, string Row)> LikeUnits { get; init; } = [];
 
@@ -204,7 +210,7 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         public IReadOnlyList<(CosmosServiceTest Test, string Read)> ReadCompares { get; init; } = KleeneTables.Compares;
 
         /// <summary>The <c>Calcite</c> rows of readings, as the readings vocabulary reads them (<see cref="ReadingVocabulary"/>, G7).</summary>
-        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, LikeUnits, TestKinds, TestReads, ExactReadings,
+        public CalciteRows Calcite() => new(CalciteReadings, CalciteBands, CalciteCites, CalciteReadAs, CalciteThrough, CalciteEvaluators, LikeUnits, TestKinds, TestReads, ExactReadings,
             Boxes, SeesThrough, NullThrough, Comparands, StrictOperators, Casts, AsOfAPath, YieldKinds, YieldReads, Columns, ClassTypes, ParametersAs);
 
         /// <summary>

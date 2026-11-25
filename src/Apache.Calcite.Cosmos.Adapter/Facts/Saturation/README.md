@@ -491,13 +491,16 @@ argument (`JsonFactSet.CharactersOf`), in a context made for the question beneat
   what it draws. A parameter, a reading no rule here reads (`JSON_QUERY`, and a `RETURNING` of a type that is not a
   character type), and a call of a function no row names are given nothing: they may hold anything.
 
-**What Calcite makes of each reading** (23 rules, ruleset `readings`), which the facts graph holds whether or not the
+**What Calcite makes of each reading** (26 rules, ruleset `readings`), which the facts graph holds whether or not the
 oracle asks: `JsonRules` defines `ReadingVocabulary`'s rules, which the rendering graph defines too, and the root runs
 them once, over the rows of what Calcite was measured to do, before it freezes. They gather every reading's rows into
-one value (`ReaderRows`) — what it reads each class as and the rows it rests on, what its tests and comparisons answer
-over a class by the truth tables or on the cell, what `LIKE` reads each unit of a pattern as, and the rows each type
-test rests on — the raw columns' answers into another (`RawUnion`), a column no row measured answering as the union
-of those that were, and the kinds a type test is TRUE of into `testkinds`, which the analysis's type-test rule reads.
+one value (`ReaderRows`) — what it reads each class as and the rows it rests on, which reading reads each class (the
+reading itself, over every class, where a row names the evaluator that reads it, a raw column's reading as its reading
+through every column is, and another a row reads it as, over each class both read alike, where a row names that one's
+evaluator), what its tests and comparisons answer over a class by the truth tables or on the cell, what `LIKE` reads
+each unit of a pattern as, and the rows each type test rests on — the raw columns' answers into another (`RawUnion`), a
+column no row measured answering as the union of those that were, and the kinds a type test is TRUE of into `testkinds`,
+which the analysis's type-test rule reads.
 What an atom establishes and its raises read `ReaderRows` and `RawUnion`, and its verdicts `ReaderRows`.
 
 **Schedules.** `Saturation` runs JSON, JSON Schema, analysis and establishment to saturation with the two splits,
