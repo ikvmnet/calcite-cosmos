@@ -967,7 +967,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// <remarks>
         /// The row count and size come from a semicolon-separated header, which is a format worth
         /// measuring rather than assuming. Inconclusive where the account does not report it, so that
-        /// what is being claimed stays visible.
+        /// what is being claimed stays visible. That documents occupy space is asked where they come to
+        /// the kilobytes it is reported in (<see cref="ASizeIsReadInKilobytes"/>).
         /// </remarks>
         [Fact]
         public async Task StatisticsAreReadFromTheContainer()
@@ -990,11 +991,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             // the service does not make.
             statistics.DocumentCount.Should().BeGreaterThanOrEqualTo(0);
 
-            // Whenever it has caught up, the two agree: documents that exist occupy space.
-            if (statistics.DocumentCount > 0)
+            // And a count need not come with a size: the emulator's EN20261123 reports it in whole kilobytes,
+            // rounded down, and four documents this small come to none.
+            statistics.DocumentSizeInBytes.Should().BeGreaterThanOrEqualTo(0);
+        }
+
+        /// <summary>
+        /// What a container's documents occupy is read in the kilobytes it is reported in, and the
+        /// planner's average is of those bytes.
+        /// </summary>
+        /// <remarks>
+        /// Over a container of its own, whose documents come to kilobytes as the fixture's do not.
+        /// Asserted to a factor of two, since what a document occupies is the service's to say.
+        /// Inconclusive where the service reports no documents, as Azure does just after a write,
+        /// its count being computed in the background, and as the emulator's releases before EN20261123
+        /// do whatever a container holds.
+        /// </remarks>
+        [Fact]
+        public async Task ASizeIsReadInKilobytes()
+        {
+            const int Count = 4;
+            const int Characters = 4096;
+
+            var cancellation = TestContext.Current.CancellationToken;
+            var sized = (await Container().Database.CreateContainerIfNotExistsAsync(new ContainerProperties("sized", "/category"), cancellationToken: cancellation)).Container;
+
+            try
             {
-                statistics.DocumentSizeInBytes.Should().BeGreaterThan(0);
-                statistics.AverageDocumentSizeInBytes.Should().BeGreaterThan(0);
+                for (var i = 0; i < Count; i++)
+                {
+                    var json = $$"""{"id":"{{i}}","category":"a","text":"{{new string('x', Characters)}}"}""";
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                    using var response = await sized.UpsertItemStreamAsync(stream, new PartitionKey("a"), cancellationToken: cancellation);
+                    response.EnsureSuccessStatusCode();
+                }
+
+                if (await CosmosContainerMetadataReader.ReadStatisticsAsync(sized, cancellation) is not { } statistics)
+                {
+                    Assert.Skip("This account reports no resource usage for the container.");
+                    return;
+                }
+
+                if (statistics.DocumentCount == 0)
+                    Assert.Skip($"This service reports no documents in a container {Count} were just written to.");
+
+                statistics.AverageDocumentSizeInBytes.Should().BeInRange(Characters / 2, Characters * 2,
+                    $"each document holds {Characters} characters, and the size is reported in kilobytes: {statistics}");
+            }
+            finally
+            {
+                try { await sized.DeleteContainerAsync(); } catch (CosmosException) { }
             }
         }
 
@@ -1227,9 +1273,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// caller who never reads it.
         /// </para>
         /// <para>
-        /// Inconclusive where the account returns nothing for it. This emulator does not implement
-        /// composite indexes, so having nothing to say about index utilisation would be of a piece with
-        /// that, and asserting through it would be asserting the emulator rather than the service.
+        /// Inconclusive where the account returns nothing for it, as the emulator's releases before
+        /// EN20261123 do. EN20261123 returns a report for every statement, naming no index in any.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1271,7 +1316,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// the service will actually be given rather than a small illustration of one.
         /// </para>
         /// <para>
-        /// Inconclusive on the emulator, which reports no index metrics at all.
+        /// Inconclusive on the emulator, whose releases before EN20261123 return no index metrics and
+        /// whose reports since name no index, whatever the statement filters. That is asked of the
+        /// service rather than taken from which endpoint answered: a report naming no index is
+        /// inconclusive only where a plain equality's names none either, so on a service that names
+        /// them it fails.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1287,22 +1336,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var sql = $"SELECT VALUE c FROM products c WHERE c.category IN ({string.Join(", ", names)})";
             var query = new CosmosQuery(sql, parameters.Parameters);
 
-            string? metrics = null;
-
-            using (var listener = new ActivityListener
-            {
-                ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
-                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-                ActivityStopped = activity => metrics = activity.GetTagItem("cosmos.index_metrics") as string,
-            })
-            {
-                ActivitySource.AddActivityListener(listener);
-
-                var executor = new CosmosQueryExecutor(Container(), indexMetrics: true);
-                await ListCursor.CollectAsync(await executor.OpenAsync(query));
-            }
-
-            if (metrics is null)
+            if (await IndexMetrics(query) is not string metrics)
             {
                 Assert.Skip("This account returns no index metrics.");
                 return;
@@ -1317,8 +1351,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             // report would count that as a pass.
             using var report = JsonDocument.Parse(metrics);
 
-            var utilized = report.RootElement
-                .GetProperty("UtilizedIndexes")
+            // Naming none is what this would find of a restriction no index serves, unless the service names
+            // none whatever it is asked, which the plainest equality over an indexed path says.
+            if (NamesAnIndex(report) == false)
+            {
+                var equality = new CosmosParameterList("@k");
+                var control = await IndexMetrics(new CosmosQuery($"SELECT VALUE c FROM products c WHERE c.name = {equality.Add("Sprint")}", equality.Parameters));
+                control.Should().NotBeNull("a service that returns index metrics returns them for every statement that asks");
+
+                using var plain = JsonDocument.Parse(control!);
+                if (NamesAnIndex(plain) == false)
+                    Assert.Skip("This service names no index in its index metrics, of an equality over an indexed path no more than of this: " + metrics);
+            }
+
+            var utilized = Section(report, "Utilized")
                 .GetProperty("SingleIndexes")
                 .EnumerateArray()
                 .Select(x => x.GetProperty("IndexSpec").GetString())
@@ -1327,6 +1373,44 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             utilized.Should().Contain(x => x!.Contains("/category"),
                 "an IN over a hundred keys should use the index on the path it restricts: " + metrics);
         }
+
+        /// <summary>
+        /// Runs a statement and answers the index metrics its span carries, or <c>null</c> where it carries none.
+        /// </summary>
+        static async Task<string?> IndexMetrics(CosmosQuery query)
+        {
+            string? metrics = null;
+
+            using var listener = new ActivityListener
+            {
+                ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
+                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+                ActivityStopped = activity =>
+                {
+                    if (activity.GetTagItem("db.query.text") as string == query.Sql)
+                        metrics = activity.GetTagItem("cosmos.index_metrics") as string;
+                },
+            };
+
+            ActivitySource.AddActivityListener(listener);
+
+            var executor = new CosmosQueryExecutor(Container(), indexMetrics: true);
+            await ListCursor.CollectAsync(await executor.OpenAsync(query));
+
+            return metrics;
+        }
+
+        /// <summary>
+        /// A section of an index metrics report, named as Azure was measured to name it, <c>UtilizedIndexes</c> or
+        /// <c>PotentialIndexes</c>, or as the emulator's EN20261123 does, <c>Utilized</c> or <c>Potential</c>. A report
+        /// that has it under neither fails.
+        /// </summary>
+        static JsonElement Section(JsonDocument report, string name) =>
+            report.RootElement.TryGetProperty(name + "Indexes", out var section) ? section : report.RootElement.GetProperty(name);
+
+        /// <summary>Whether a report names an index of any kind, utilized or potential.</summary>
+        static bool NamesAnIndex(JsonDocument report) =>
+            new[] { "Utilized", "Potential" }.Any(name => Section(report, name).EnumerateObject().Any(indexes => indexes.Value.GetArrayLength() > 0));
 
         // ── Request options ───────────────────────────────────────────────────────
 
