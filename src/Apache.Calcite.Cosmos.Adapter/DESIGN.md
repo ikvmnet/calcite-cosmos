@@ -8990,7 +8990,8 @@ key worse than the row, never one that answers better.
 S's licence reads every `Calcite` row. h12 moved the union over them into S and deleted the host table.
 
 **Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
-line with the release that answered (EN20261019, CI's, and EN20260907's three lines where it parts); a row measured on
+line with the release that answered (EN20261019, CI's until 2026-11-24, EN20260907's three lines where it parts, and
+EN20261123's 24, each of letters its `UPPER` or `LOWER` leaves as Azure does and the two before it map); a row measured on
 the emulator since 2026-11-02 has lines there, and no function outcome claims Azure until a run record holds it. CI
 reads the release off the container's log (`COSMOS_EMULATOR_RELEASE`) and the witness probe logs it in place of the
 endpoint; a release a record names must answer each line recorded for it as recorded, and one whose own record holds a
