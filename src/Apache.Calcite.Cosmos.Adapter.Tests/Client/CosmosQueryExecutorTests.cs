@@ -1273,8 +1273,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// caller who never reads it.
         /// </para>
         /// <para>
-        /// Inconclusive where the account returns nothing for it, as the emulator's releases before
-        /// EN20261123 do. EN20261123 returns a report for every statement, naming no index in any.
+        /// Inconclusive where the service returns nothing to the statement asked by the SDK alone, as the
+        /// emulator's releases before EN20261123 do, so that an adapter that does not ask or does not carry
+        /// the report fails rather than skips. EN20261123 returns a report for every statement, naming no
+        /// index in any.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1288,15 +1290,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             (await Trace(() => Run(indexMetrics: false)))!.GetTagItem("cosmos.index_metrics").Should().BeNull();
 
-            var asked = await Trace(() => Run(indexMetrics: true));
-
-            if (asked!.GetTagItem("cosmos.index_metrics") is not string metrics)
+            if (await ServiceIndexMetrics(Query(Builder())) is not string sent)
             {
-                Assert.Skip("This account returns no index metrics.");
+                Assert.Skip("This account returns no index metrics to a statement that asks for them.");
                 return;
             }
 
-            metrics.Should().NotBeEmpty();
+            var asked = await Trace(() => Run(indexMetrics: true));
+
+            asked!.GetTagItem("cosmos.index_metrics").Should().BeOfType<string>()
+                .Which.Should().NotBeEmpty("the service returns the statement asked alone a report: " + sent);
         }
 
         // ── What the lookup join's restriction costs ──────────────────────────────
@@ -1320,7 +1323,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// whose reports since name no index, whatever the statement filters. That is asked of the
         /// service rather than taken from which endpoint answered: a report naming no index is
         /// inconclusive only where a plain equality's names none either, so on a service that names
-        /// them it fails.
+        /// them it fails. Both are asked by the SDK alone, so that what is skipped on is what the service
+        /// answered; that the adapter asks for the report and carries it is
+        /// <see cref="IndexMetricsArriveOnlyWhereTheyWereAskedFor"/>'s.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1336,7 +1341,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             var sql = $"SELECT VALUE c FROM products c WHERE c.category IN ({string.Join(", ", names)})";
             var query = new CosmosQuery(sql, parameters.Parameters);
 
-            if (await IndexMetrics(query) is not string metrics)
+            if (await ServiceIndexMetrics(query) is not string metrics)
             {
                 Assert.Skip("This account returns no index metrics.");
                 return;
@@ -1356,7 +1361,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
             if (NamesAnIndex(report) == false)
             {
                 var equality = new CosmosParameterList("@k");
-                var control = await IndexMetrics(new CosmosQuery($"SELECT VALUE c FROM products c WHERE c.name = {equality.Add("Sprint")}", equality.Parameters));
+                var control = await ServiceIndexMetrics(new CosmosQuery($"SELECT VALUE c FROM products c WHERE c.name = {equality.Add("Sprint")}", equality.Parameters));
                 control.Should().NotBeNull("a service that returns index metrics returns them for every statement that asks");
 
                 using var plain = JsonDocument.Parse(control!);
@@ -1375,29 +1380,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         }
 
         /// <summary>
-        /// Runs a statement and answers the index metrics its span carries, or <c>null</c> where it carries none.
+        /// The index metrics the service answers a statement the SDK alone asks it with, or <c>null</c> where it answers
+        /// none: what the service said, apart from what the adapter makes of it.
         /// </summary>
-        static async Task<string?> IndexMetrics(CosmosQuery query)
+        static async Task<string?> ServiceIndexMetrics(CosmosQuery query)
         {
-            string? metrics = null;
+            using var iterator = Container().GetItemQueryStreamIterator(CosmosQueryExecutor.CreateDefinition(query),
+                requestOptions: new QueryRequestOptions { PopulateIndexMetrics = true });
+            using var response = await iterator.ReadNextAsync(TestContext.Current.CancellationToken);
+            response.EnsureSuccessStatusCode();
 
-            using var listener = new ActivityListener
-            {
-                ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
-                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-                ActivityStopped = activity =>
-                {
-                    if (activity.GetTagItem("db.query.text") as string == query.Sql)
-                        metrics = activity.GetTagItem("cosmos.index_metrics") as string;
-                },
-            };
-
-            ActivitySource.AddActivityListener(listener);
-
-            var executor = new CosmosQueryExecutor(Container(), indexMetrics: true);
-            await ListCursor.CollectAsync(await executor.OpenAsync(query));
-
-            return metrics;
+            return response.IndexMetrics is { Length: > 0 } metrics ? metrics : null;
         }
 
         /// <summary>
