@@ -24,7 +24,7 @@ them with the connection's `Fun` setting (Chapter 6), e.g. `Fun = "all"`.
 | `COALESCE`, `NULLIF`, `NVL`, `NVL2`, `IFNULL`, `IF` | via `CASE` | Calcite expands them first |
 | `CAST(x AS VARCHAR)` | dropped in a comparison over a document value; read as text in a projection | unsized `VARCHAR` only, in both: a length truncates |
 | `CAST(x AS <number>)` | in a filter, the comparison over a stored number plus a recheck (`INTEGER`, `BIGINT`, `DOUBLE`; against a literal past 2^53 the property's presence), exact over a path declared an integer, and nothing for `SMALLINT`, `TINYINT`, `REAL`, `FLOAT` or `DECIMAL(p, s)`; in process in a projection | Chapter 8 |
-| `CAST(x AS UUID)`, parse to `TIMESTAMP`/`DATE` | the path, where the container declares the stored form | Chapters 14, 15 |
+| `CAST(x AS UUID)`; `CAST(x AS DATE)` or `AS TIMESTAMP` over a calendar date | the path, where the container declares the stored form | a parse to `TIMESTAMP`/`DATE` (`PARSE_DATETIME`, `CAST … FORMAT`) and a cast to `TIME` stay in process; Chapters 14, 15 |
 | `arr[n]` | `arr[n-1]` | SQL is one-based |
 | `x MEMBER OF arr` | `ARRAY_CONTAINS(arr, x)` | |
 | `IS TRUE`, `IS FALSE`, `IS NOT TRUE`, `IS NOT FALSE` | `c.x = true`, … | over a boolean cast where the schema declares a boolean; in process otherwise. Selected, `IS TRUE` is sent as `IS_DEFINED(x) AND x = true`, false where `x` is missing |

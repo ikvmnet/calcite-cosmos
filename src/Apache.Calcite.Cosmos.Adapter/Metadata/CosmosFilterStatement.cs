@@ -36,11 +36,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// admits</description></item>
     /// <item><term>a conjunct deleted as redundant (<see cref="Redundant"/>)</term><description>the siblings still kept,
     /// never the conjunct itself, one deletion at a time; and for one that reaches the service, only siblings that reach it
-    /// too</description></item>
+    /// too; of them, only those the facts graph reads exactly; and only a conjunct it reads exactly</description></item>
     /// <item><term>a comparison lowered onto its stored form (<see cref="Siblings"/>)</term><description>every sibling the
-    /// deletions keep, never the conjunct itself</description></item>
+    /// deletions keep that the facts graph reads exactly, never the conjunct itself</description></item>
     /// <item><term>the arm of a <c>CASE</c> inside a conjunct (<see cref="Within"/>)</term><description>every sibling the
-    /// deletions keep, and the conditions the arm is read under</description></item>
+    /// deletions keep that the facts graph reads exactly, and the leading conditions the arm is read under that it reads
+    /// exactly</description></item>
     /// <item><term>an arm of a <c>CASE</c> never read, written <c>FALSE</c> (<see cref="NeverWithin"/>)</term><description>what
     /// the arm's question assumes of the statement as written, a sibling the deletions drop among them, each assumed only
     /// where the WHERE as written raises on no document the declaration admits, or for a projected <c>CASE</c> condition no
@@ -585,7 +586,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             return everything.Scope.Judge(everything._loading.Read(predicate ?? throw new ArgumentNullException(nameof(predicate))), OracleLicence.Declaration).AlwaysTrue;
         }
 
-        // ── Deletion, every sibling, and lowering, every sibling kept (L3) ───────────────────────────────────────────
+        // ── Deletion, every exact sibling, and lowering, every exact sibling kept (L3) ───────────────────────────────
 
         /// <summary>
         /// Gets the conjuncts that may be deleted, removed one at a time so that two duplicates do not delete each other.
@@ -603,6 +604,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// drop. The strata are the condition's as written: a sibling admitted only once the rewrite lowers it counts as one
         /// left above, and the conjunct is kept, which is never wrong.
         /// </para>
+        /// <para>
+        /// <b>Only on siblings the facts graph reads exactly, and only of a conjunct it reads exactly.</b> What a sibling
+        /// establishes through a reading <c>Calcite.TheFactsGraphReadsTheseReadingsExactly</c> does not name rests on its
+        /// reading's <c>Kept</c> alone, so a conjunct only such a sibling implies is sent: the presence S writes beside the
+        /// text alternatives, one arm of which reads the text's cast to <c>DOUBLE</c>. A conjunct read so is sent too,
+        /// whose own verdict is no more measured.
+        /// </para>
         /// </remarks>
         public IReadOnlyList<int> Redundant
         {
@@ -614,14 +622,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Returns what every conjunct but one establishes, beside the declaration, of those the rewrite keeps: the facts
-        /// a comparison inside that conjunct is lowered onto its stored form by.
+        /// Returns what every other conjunct the rewrite keeps and the facts graph reads exactly establishes, beside
+        /// the declaration: the facts a comparison inside this conjunct is lowered onto its stored form by.
         /// </summary>
         /// <remarks>
         /// <para>
         /// A lowering is an equivalence where its fact holds, and the facts hold wherever the siblings do — which is every
         /// row the filter keeps, since the conjunct is decided only where they hold. The conjunct's own facts are not
-        /// among them: a comparison never certifies its own stored form.
+        /// among them: a comparison never certifies its own stored form. Nor are a coarse sibling's, which rest on its
+        /// reading's <c>Kept</c> alone: a UUID comparison whose stored form only the partition key's cast to text would
+        /// establish is not lowered, and is rechecked where it is not sent.
         /// </para>
         /// <para>
         /// <b>The siblings the rewrite keeps, not every sibling.</b> A deletion and a lowering are each sound on the
@@ -633,7 +643,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>A conjunct the deletions drop is lowered in the planning form alone</b>
         /// (<see cref="CosmosFactRewriter.Planned"/>), which deletes nothing: every sibling as written stands beside it there,
-        /// so it leans on every one.
+        /// so it leans on every one the facts graph reads exactly.
         /// </para>
         /// </remarks>
         public JsonFactSet Siblings(int conjunct)
@@ -682,11 +692,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         // ── Inside a CASE: the kept siblings and the arm's conditions ────────────────────────────────────────────────
 
         /// <summary>
-        /// Returns what holds where an arm of a <c>CASE</c> inside a conjunct is read: every sibling the rewrite keeps, and
-        /// the conditions the arm is read under.
+        /// Returns what holds where an arm of a <c>CASE</c> inside a conjunct is read: every sibling the rewrite keeps that
+        /// the facts graph reads exactly, and the leading conditions the arm is read under that it reads exactly.
         /// </summary>
-        /// <remarks>A conjunct the deletions drop is read in the planning form alone, beside every sibling as written, as
-        /// <see cref="Siblings"/> reads it.</remarks>
+        /// <remarks>A conjunct the deletions drop is read in the planning form alone, beside every sibling as written the facts
+        /// graph reads exactly, as <see cref="Siblings"/> reads it.</remarks>
         /// <param name="conjunct">The conjunct the <c>CASE</c> is part of.</param>
         /// <param name="conditions">The conditions of the arms it is nested in, outermost first.</param>
         public JsonFactSet Within(int conjunct, IReadOnlyList<RexNode> conditions)

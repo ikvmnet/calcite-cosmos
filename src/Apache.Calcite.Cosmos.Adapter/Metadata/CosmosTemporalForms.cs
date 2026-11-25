@@ -91,9 +91,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// refuses the separator-less ones, so the basic forms are recognised and not projected.
         /// </param>
         /// <param name="Parses">
-        /// The format strings a parse of this shape may be written with, and nothing else — see
-        /// <see cref="ParsesExactly"/> for what membership claims and
-        /// <c>CalciteTemporalParseMeasurementTests</c> for the measurement that pins every row.
+        /// The format strings that read this shape's canonical strings as the instants they spell, which
+        /// <c>CalciteTemporalLeniencyMeasurementTests</c> measures for every row. Membership licenses
+        /// nothing: the same formats roll a field past its range onto another instant, so
+        /// <see cref="ParsesExactly"/> answers <c>false</c> for every one.
         /// </param>
         sealed record TemporalForm(CosmosRepresentation Representation, CosmosPatternStrings Language, string? Format, Func<DateTime, DateTime> Floor, Func<DateTime, DateTime> Next, CosmosTemporalParts Carries, bool ReadsBack, IReadOnlyCollection<string> Parses)
         {
@@ -389,50 +390,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Determines whether reading this form's stored text with the given format, into a value
-        /// holding the given halves of an instant, answers exactly the instant the text denotes.
+        /// holding the given halves of an instant, answers exactly the instant the text denotes: for
+        /// no form, format or type.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>What membership claims, and why a table rather than a reading of the format.</b> A
-        /// format string is not a description the adapter can interpret — it is an input to the
-        /// engine's own parser, and what that parser does with it is measured rather than derived.
-        /// The claim a row makes is the whole of what a rewrite needs: over every string this shape
-        /// admits, the parse answers the instant the string denotes, one for one. Injective, because
-        /// the shape has one spelling per value and the parse loses none of it; monotone, because the
-        /// map is the true one. So the chain <c>PARSE(&lt;format&gt;, &lt;path&gt;)</c> preserves
-        /// whatever the shape itself preserves, and the two bits on
-        /// <see cref="CosmosRepresentation"/> answer for it unchanged.
+        /// <b>What the claim was, and why it is withdrawn.</b> A rewrite needs, over every string a
+        /// shape admits, the parse to answer the instant the string denotes, one for one, so that the
+        /// chain <c>PARSE(&lt;format&gt;, &lt;path&gt;)</c> preserves whatever the shape preserves. A
+        /// form's language is a run of digits per field, so it admits <c>2016-12-31T24:00:00Z</c> and
+        /// <c>2016-12-31T23:60:00Z</c> beside <c>2017-01-01T00:00:00Z</c>, and measured,
+        /// <c>PARSE_DATETIME</c> and <c>CAST … AS TIMESTAMP FORMAT</c> read each of those strings as
+        /// <c>2017-01-01T00:00:00Z</c>'s instant, raising over neither, and every listed format reads a
+        /// string of its own form whose field is past its range as the value its fields make (before
+        /// 1582-10-15 a field is carried over by the Julian calendar and the date read as a proleptic
+        /// Gregorian day, raising where there is none; <c>Calcite.ParsesReadTheirFieldsLeniently</c>).
+        /// Those three are one instant to Calcite, so an equality on the stored strings keeps one of
+        /// them where Calcite keeps all three, and an order of the stored strings is not the order of
+        /// the instants. No format reads a form one for one, so this answers <c>false</c>, and every
+        /// caller leaves the parse to Calcite by that answer alone.
         /// </para>
         /// <para>
-        /// <b>A format outside the table says nothing, which is not the same as being wrong.</b>
-        /// Measured, the engine accepts <c>yyyy-MM-dd'T'HH:mm:ss'Z'</c> over an instant and answers
-        /// the wrong instant — it reads the <c>mm</c> as a second month — so a query written that way
-        /// is already returning the wrong rows, in process, before any of this. Declining to push it
-        /// leaves that answer exactly as it was; pushing it would replace one wrong answer with a
-        /// different one.
-        /// </para>
-        /// <para>
-        /// <b>And the type the function answers is half the question.</b> <c>PARSE_DATE</c> over a
-        /// path storing a full instant reads the format faithfully and then throws the clock away, so
-        /// many stored strings share one value and the equality a rewrite would lower is not the
-        /// equality the query asked. That is refused here rather than in the caller, the format alone
-        /// not being able to say it.
+        /// <b>The formats stay, for the measurement.</b> <see cref="ParseFormats"/> lists, per form, the
+        /// formats that read its canonical strings as the instants they spell
+        /// (<c>Calcite.ParseSpellingsReadTheirShapes</c>), and
+        /// <c>CalciteTemporalLeniencyMeasurementTests</c> runs every one of them against the engine,
+        /// over the canonical strings and over the strings that roll.
         /// </para>
         /// </remarks>
         /// <param name="representation">The path's declared form.</param>
         /// <param name="format">The format the query wrote, or <c>null</c>.</param>
         /// <param name="held">The halves of an instant the value the parse answers can hold.</param>
-        /// <returns><c>true</c> where the parse is the identity on this shape's values.</returns>
-        public static bool ParsesExactly(CosmosRepresentation representation, string? format, CosmosTemporalParts held)
-        {
-            if (format is null || Temporal.TryGetValue(representation.Name, out var form) == false)
-                return false;
-
-            if ((form.Carries & ~held) != CosmosTemporalParts.None)
-                return false;
-
-            return form.Parses.Contains(format, StringComparer.Ordinal);
-        }
+        /// <returns><c>false</c>: measured, no parse is the identity on a shape's strings.</returns>
+        public static bool ParsesExactly(CosmosRepresentation representation, string? format, CosmosTemporalParts held) =>
+            false;
 
         /// <summary>
         /// The conversions Calcite's own runtime performs on a stored string of each shape, and the
@@ -440,12 +431,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>Three rows, and the shortness is the finding.</b> Of the sixty-odd shapes this
-        /// recognises, Calcite's <c>CAST(&lt;string&gt; AS TIMESTAMP)</c> reads a calendar date and
-        /// two times of day, and nothing else. Every ISO-8601 instant — every <c>T</c>-separated
-        /// shape, at every precision, with or without a zone — <em>raises</em>
-        /// <c>Invalid DATE value</c>. The one instant spelling the cast does read is the
-        /// space-separated one, which no form here is defined as yet (<c>TODO.md</c>).
+        /// <b>One row, and the shortness is the finding.</b> Of the sixty-odd shapes this recognises,
+        /// Calcite's plain casts to <c>DATE</c> and <c>TIMESTAMP</c> read a calendar date, and nothing
+        /// else here is claimed. Every ISO-8601 instant — every <c>T</c>-separated shape, at every
+        /// precision, with or without a zone — <em>raises</em> <c>Invalid DATE value</c>. The one
+        /// instant spelling the cast does read is the space-separated one, which no form here is
+        /// defined as yet (<c>TODO.md</c>).
+        /// </para>
+        /// <para>
+        /// <b>Asked by what the cast's type holds, a place in a zone among it.</b> A cast to
+        /// <c>TIMESTAMP WITH LOCAL TIME ZONE</c> or <c>TIMESTAMP WITH TIME ZONE</c> holds an instant's
+        /// halves as a <c>TIMESTAMP</c> does, and raises over every string of <c>iso8601-date</c>, the
+        /// two times of day and the ISO-8601 instants, <c>TIMESTAMP WITH TIME ZONE</c> reading a run
+        /// of digits, the basic date's among them (<c>Calcite.TemporalCastReadsFewShapes</c>), so its
+        /// type is read with <see cref="CosmosTemporalParts.Zone"/> beside the halves, which no row
+        /// lists. It was read as the halves alone, and a sort through a cast of a declared date to one
+        /// was sent on the stored text, answering where the query raises.
+        /// </para>
+        /// <para>
+        /// <b>The two times of day are read, and not as the form's strings denote, so they are not
+        /// claimed.</b> <c>CAST(&lt;string&gt; AS TIME)</c> reads the canonical strings of
+        /// <c>iso8601-time-f0</c> and <c>iso8601-time-minutes</c> as the times they spell, and adds the
+        /// fields of the rest as they stand, raising over none: <c>12:60:00</c> is <c>13:00:00</c>, and
+        /// <c>24:00:00</c> and <c>99:99:99</c> are later than every time of day
+        /// (<c>Calcite.TimeCastRollsAClocksFields</c>). The forms' languages hold those strings, so no
+        /// comparison or order of the stored strings stands for the cast's, as none stands for a
+        /// parse's (<see cref="ParsesExactly"/>).
+        /// </para>
+        /// <para>
+        /// <b>The calendar date's row stays, and its day zero is recorded rather than fixed.</b> The
+        /// cast reads day <c>00</c> as the month before's last day, <c>2024-03-00</c> as 29 February,
+        /// and raises over every other field out of range
+        /// (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>). Where Calcite raises, a pushed plan's
+        /// answer is set aside, as it is for every reading; the day zero is no raise, and it changes
+        /// what <c>=</c>, <c>&lt;&gt;</c>, <c>&lt;=</c> and <c>&gt;</c> keep at a month's last day.
+        /// <c>TODO.md</c> records it until those comparisons can be written as a range.
         /// </para>
         /// <para>
         /// <b>Two shapes are worse than a refusal and are absent for that reason.</b>
@@ -459,23 +479,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// over a shape the engine cannot read there is no such answer — the engine raises and the
         /// pushed plan returns rows. That is not an optimisation, it is a different query, and the
         /// rows it returns are ones the caller could not otherwise have got. So every rewrite that
-        /// drops a conversion asks this first. <c>CalciteTemporalReadingMeasurementTests</c> is the
-        /// measurement.
+        /// drops a conversion asks this first. <c>CalciteTemporalReadingMeasurementTests</c> and
+        /// <c>CalciteTemporalLeniencyMeasurementTests</c> are the measurements.
         /// </para>
         /// <para>
-        /// <b><c>JSON_VALUE(…, RETURNING TIMESTAMP)</c> is not in here at all, and cannot be.</b>
-        /// Measured: it raises for <em>every</em> string, including the one the cast accepts, and
-        /// answers correctly for a JSON <em>number</em> of epoch milliseconds. The clause asserts the
+        /// <b>An accessor's <c>RETURNING</c> clause is not this table's.</b> Measured,
+        /// <c>JSON_VALUE(…, RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>
+        /// raise over <em>every</em> string, the ones the cast reads included, and read a JSON
+        /// <em>number</em> (<c>Calcite.ReturningReadsNoStoredString</c>): the clause asserts the
         /// extracted type rather than converting to it — the same reading this codebase already
-        /// arrived at for <c>RETURNING INTEGER</c>. So over a path storing text there is no shape it
-        /// reads, and no row here could say otherwise.
+        /// arrived at for <c>RETURNING INTEGER</c>. So the accessor asks <see cref="ReturningReads"/>,
+        /// and this table is the plain cast's alone. It used to ask this one, and an accessor typed
+        /// <c>DATE</c> or <c>TIMESTAMP</c> over a declared calendar date, or <c>TIME</c> over a declared
+        /// time of day, was sent as the bare path and answered every row where the query raises.
         /// </para>
         /// </remarks>
         static readonly Dictionary<string, CosmosTemporalParts[]> EngineTargets = new(StringComparer.Ordinal)
         {
             ["iso8601-date"] = new[] { CosmosTemporalParts.Date, CosmosTemporalParts.Instant },
-            ["iso8601-time-f0"] = new[] { CosmosTemporalParts.Time },
-            ["iso8601-time-minutes"] = new[] { CosmosTemporalParts.Time },
         };
 
         /// <summary>
@@ -489,19 +510,40 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Measured, both.
         /// </remarks>
         /// <param name="representation">The path's declared form.</param>
-        /// <param name="target">The halves of an instant the conversion's value holds.</param>
+        /// <param name="target">The halves of an instant the conversion's value holds, and its place in a zone where it holds one.</param>
         /// <returns><c>true</c> where the engine reads the shape into that type.</returns>
         public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
             EngineTargets.TryGetValue(representation.Name, out var targets) && Array.IndexOf(targets, target) >= 0;
 
         /// <summary>
-        /// Returns every format a parse of this form may be written with.
+        /// Determines whether an accessor's <c>RETURNING</c> clause, into a value holding the given
+        /// halves of an instant, reads this form's stored text as the value it denotes: for no form
+        /// and no type.
         /// </summary>
         /// <remarks>
-        /// <see cref="ParsesExactly"/> is what a rewrite asks, and this is what a <em>measurement</em>
-        /// asks: a claim nothing enumerates is a claim nothing can be run against the engine, and the
-        /// rows here are claims about the engine. <c>CalciteTemporalParseMeasurementTests</c> parses a
-        /// sample of every shape with every spelling this returns.
+        /// <c>JSON_VALUE(…, RETURNING DATE)</c>, <c>RETURNING TIME</c> and <c>RETURNING TIMESTAMP</c>
+        /// assert the extracted type rather than converting to it, and raise over a string of every
+        /// registered temporal form, reading only a JSON number of days, of milliseconds into the
+        /// day or of milliseconds since the epoch, and <c>RETURNING</c> each type placed in a zone
+        /// raises over every one of those strings too (<c>Calcite.ReturningReadsNoStoredString</c>). Every
+        /// form here is a language of strings, so the accessor reads none of them, and an accessor so
+        /// typed is computed in process, where it raises as the query does. The plain cast, which does
+        /// read a calendar date, is <see cref="EngineReads"/>'s.
+        /// </remarks>
+        /// <param name="representation">The path's declared form.</param>
+        /// <param name="target">The halves of an instant the accessor's type holds.</param>
+        /// <returns><c>false</c>: measured, the clause reads no stored string.</returns>
+        public static bool ReturningReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
+            false;
+
+        /// <summary>
+        /// Returns every format that reads this form's canonical strings as the instants they spell.
+        /// </summary>
+        /// <remarks>
+        /// What a <em>measurement</em> asks, where <see cref="ParsesExactly"/> is what a rewrite asks
+        /// and answers <c>false</c> for every format this returns. <c>CalciteTemporalLeniencyMeasurementTests</c>
+        /// parses the canonical strings of every shape, and strings whose fields roll, with every
+        /// spelling this returns.
         /// </remarks>
         /// <param name="representation">The path's declared form.</param>
         /// <returns>The formats, empty where the form has none and for a form that is not temporal.</returns>

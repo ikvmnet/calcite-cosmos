@@ -16,10 +16,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <b>This is the structural half of a form-preserving chain, and only the structural half.</b>
     /// What it answers is that an expression is <c>PARSE_x(&lt;format&gt;, &lt;text&gt;)</c>, or a cast
     /// carrying a format, over a literal format — which says nothing yet about whether the parse means anything for the path
-    /// underneath. Whether that particular format reads that particular stored shape faithfully is
+    /// underneath. Whether a format reads a stored shape faithfully is decided apart, by
     /// <see cref="CosmosTemporalForms.ParsesExactly"/>, a pure lookup the callers make for
-    /// themselves; keeping the two apart is what lets a rule and an implementation ask the same
-    /// question without a walk between them, exactly as <c>CosmosProject.OrderingCandidateOf</c> and
+    /// themselves, which answers <c>false</c> for every form now that every format is measured to carry a
+    /// field past its range over; keeping the two apart is what lets a rule and an implementation ask the
+    /// same question without a walk between them, exactly as <c>CosmosProject.OrderingCandidateOf</c> and
     /// <c>CosmosServiceOrder</c> already do.
     /// </para>
     /// <para>
@@ -33,13 +34,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// </para>
     /// <para>
     /// <b>And <c>CAST(&lt;text&gt; AS TIMESTAMP FORMAT '&lt;format&gt;')</c>, the standard spelling of
-    /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and
-    /// reads the format with the same model the <c>PARSE_</c> family does — measured, every spelling
-    /// <see cref="CosmosTemporalForms"/> lists reads its shape to the same instant either way, which is
-    /// what lets one table answer for both. What it has that the library functions do not is a place
-    /// in the core operator table, so it validates inside a model view, which Calcite analyzes under
-    /// its default configuration whatever the connection enabled: a federation presenting containers
-    /// through views has this spelling and no other.
+    /// the same parse.</b> Calcite plans it as a <c>CAST</c> with the format as a second operand, and reads
+    /// the format with the same model the <c>PARSE_</c> family does — measured, every spelling
+    /// <see cref="CosmosTemporalForms"/> lists reads its shape's canonical strings to the same instant
+    /// either way, the cast to <c>TIMESTAMP</c> from 1582-10-16 on (before which what it reads depends on the
+    /// host's time zone), save a time of day the host's zone skips, which <c>PARSE_DATETIME</c> moves and
+    /// the cast reads as spelled; so one list of formats is measured for both. What it has that the library
+    /// functions do not is a place in the core operator table, so it validates inside a model view, which
+    /// Calcite analyzes under its default configuration whatever the connection enabled: a federation
+    /// presenting containers through views has this spelling and no other.
     /// </para>
     /// <para>
     /// <b><c>PARSE_TIMESTAMP</c> is recognised and goes no further, which is worth stating because it
@@ -149,8 +152,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         }
 
         /// <summary>
-        /// Maps the type a parse answers onto the halves of an instant it holds.
+        /// Maps the type a parse or a cast answers onto the halves of an instant it holds, and the place in a zone where
+        /// it holds one.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A zoned type is not its zone-less sibling to the plain cast, which raises over every stored string a zone-less
+        /// type reads (<see cref="CosmosTemporalParts.Zone"/>), so it is read as what it holds and not as the halves alone.
+        /// </para>
+        /// <para>
+        /// Every temporal type is read, <c>TIME WITH TIME ZONE</c> among them. A type read as none of these is no temporal
+        /// one to the accessor's reading, which sends an accessor so typed as it sends any other: one typed <c>TIME WITH
+        /// TIME ZONE</c>, whose <c>RETURNING</c> clause raises over every stored string, had its null test sent as the
+        /// path's presence.
+        /// </para>
+        /// </remarks>
         /// <param name="type">The type, or <c>null</c>.</param>
         /// <returns>The parts, or <see cref="CosmosTemporalParts.None"/> for a type that is none of these.</returns>
         public static CosmosTemporalParts PartsOf(SqlTypeName? type)
@@ -158,11 +174,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.DATE)
                 return CosmosTemporalParts.Date;
 
-            if (type == SqlTypeName.TIME || type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE)
+            if (type == SqlTypeName.TIME)
                 return CosmosTemporalParts.Time;
 
-            if (type == SqlTypeName.TIMESTAMP || type == SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIMESTAMP_TZ)
+            if (type == SqlTypeName.TIME_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIME_TZ)
+                return CosmosTemporalParts.Time | CosmosTemporalParts.Zone;
+
+            if (type == SqlTypeName.TIMESTAMP)
                 return CosmosTemporalParts.Instant;
+
+            if (type == SqlTypeName.TIMESTAMP_WITH_LOCAL_TIME_ZONE || type == SqlTypeName.TIMESTAMP_TZ)
+                return CosmosTemporalParts.Instant | CosmosTemporalParts.Zone;
 
             return CosmosTemporalParts.None;
         }

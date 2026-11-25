@@ -230,9 +230,10 @@ a query there carries `_self` and the written order is the first question.
 ### A typed accessor through a point read — *small*
 
 A pinned `id` and partition key whose projection includes `JSON_VALUE(… RETURNING INTEGER)`, or any
-typed accessor with a type's test — not a date or a time, which stays bare, nor `DECIMAL`, which
-addresses no path — runs as the routed query rather than as the read. The column is written
-through its type's guard, `IS_NUMBER(p) ? p : null`, so that an object at the path reads null as
+typed accessor with a type's test — not a date or a time, which is computed in process, its
+`RETURNING` raising over every stored string, nor `DECIMAL`, which addresses no path — runs as the
+routed query rather than as the read.
+The column is written through its type's guard, `IS_NUMBER(p) ? p : null`, so that an object at the path reads null as
 Calcite reads it; read out of the document, the same object failed the read as the integer the plan
 declared (the typed container's `label`, by `id` and by a batch; `DESIGN.md` under *Not every
 statement is a query*). Its rendering is no longer the path, so `DocumentRowBuilder` withdraws the
@@ -1009,7 +1010,9 @@ Where it can be guaranteed is ISO-8601 UTC, and the condition is sharper than it
 order matches chronological order only if **every value shares one exact shape**. Mixed fractional
 precision breaks it — `…T00:00:00.500Z` sorts before `…T00:00:00Z`, because `.` is 0x2E and `Z` is
 0x5A — and so does `Z` against `+00:00`. So the promise is not "ISO-8601 UTC" but "one fixed
-ISO-8601 UTC shape, for this path".
+ISO-8601 UTC shape, for this path". Measured since, one shape is not enough through a parse either: a
+fixed shape's pattern admits `…T24:00:00Z` and `…T23:60:00Z`, which the parse reads as the next
+midnight, where their text sorts before it (*A lenient parse read as a reading*, below).
 
 **That promise is much narrower than a type**, and worth separating from section 7 for exactly that
 reason. Not *this column is a `TIMESTAMP`*, only *these strings share a shape*. An operand could
@@ -1108,9 +1111,9 @@ hand. Two tests pin both directions.
   important part.** It took `CAST(<path> AS TIMESTAMP)` and `JSON_VALUE(…, RETURNING TIMESTAMP)`,
   neither of which Calcite can *evaluate* over an ISO-8601 instant — so the lowered comparison
   answered rows for a query that raises, which is a different query rather than a faster one. It now
-  reads a cast only where `CosmosTemporalForms.EngineReads` says the engine performs it (a calendar
-  date, and a whole-second or whole-minute time of day), and a parse only where the format reads the
-  shape. The `RETURNING` spelling is gone entirely.
+  reads a cast only where `CosmosTemporalForms.EngineReads` says the engine performs it, a calendar
+  date, and a parse never: `CosmosTemporalForms.ParsesExactly` answers `false` for every form since the
+  parse was measured to read leniently (below). The `RETURNING` spelling is gone entirely.
 - `CosmosFactRewriter.TryLowerUuid` — the same six over `CAST(<path> AS UUID)`, on the same two
   gates, **as of #142**. It took no operator and built an `EQUALS` before, which was right while the
   engine compared UUIDs as signed halves and an unconfined canonical form preserved equality alone;
@@ -1120,15 +1123,17 @@ hand. Two tests pin both directions.
   reversal is pinned in two places, the rewriter's own test and the planning one, because it is the
   case that selects the complement rather than merely failing to push; and a range pins no partition,
   `CosmosPartitionKeyExtractor` reading an equality and nothing looser.
-- **The `PARSE_` chain, at both sites.** `CosmosTemporalParse` reads
-  `PARSE_DATE(<format>, <path>)`, `PARSE_DATETIME`, `PARSE_TIME` and `PARSE_TIMESTAMP`;
-  `CosmosTemporalForms` carries, per shape, the formats that read it exactly; and the two sites ask
+- **The `PARSE_` chain, at both sites — built, and declining every parse since the leniency below.**
+  `CosmosTemporalParse` reads `PARSE_DATE(<format>, <path>)`, `PARSE_DATETIME`, `PARSE_TIME` and
+  `PARSE_TIMESTAMP`; `CosmosTemporalForms` carries, per shape, the formats that read its canonical
+  strings; and the two sites ask
   the same question — `TryLowerInstant` for a comparison, `CosmosProject.OrderingCandidateOf` with
   `IsOrderable` for a sort key. The sort needed a third thing that the entry below did not expect: the
   projection has to *render*, or there is no `CosmosProject` under the sort to record the binding on,
   and Calcite does not transpose a sort through a projection whose key is a function call the way it
-  does through a cast. `CosmosRexTranslator.TryStoredInstantProjection` sends the guarded path down
-  and leaves the conversion to the reader, which is the same move `TryStoredUuidProjection` makes.
+  does through a cast. `CosmosRexTranslator.TryStoredInstantProjection` sent the guarded path down
+  and left the conversion to the reader, which is the same move `TryStoredUuidProjection` makes, and
+  declines every parse now.
 - **And the format had to be measured, which turned up a wrong answer in `DESIGN.md` rather than a
   missing feature.** The entry below said a format that does not match "parses to null for every
   row". It does not. `yyyy-MM-dd'T'HH:mm:ss'Z'` — the spelling `DESIGN.md` recommended — reads
@@ -1136,8 +1141,8 @@ hand. Two tests pin both directions.
   its elements without regard to case and takes the `mm` for a second month. A query written that way
   is already returning wrong rows in process; the adapter declines to push it, which leaves that
   answer where it is rather than replacing it with a different one.
-  `CalciteTemporalParseMeasurementTests` runs every spelling the table claims against a sample of the
-  shape it claims, so a row that stops being exact fails a test.
+  `CalciteTemporalParseMeasurementTests` runs every spelling the table lists against a sample of the
+  shape it lists, and `CalciteTemporalLeniencyMeasurementTests` runs them over the strings that roll.
 - **`CAST(<text> AS TIMESTAMP(p) FORMAT '<format>')` is the same chain (#170).** `CosmosTemporalParse`
   reads it with the operands the other way round, so both sites take it with no change of their own;
   the measurement runs every claimed spelling through the cast as well. It is the spelling a model
@@ -1148,8 +1153,60 @@ hand. Two tests pin both directions.
   Where exactly has not been traced. A finer precision does not open the wider shapes, measured:
   the default type system caps `TIMESTAMP` at 3, so `TIMESTAMP(6)` and up come back as `(3)`, and
   `FF4` through `FF9` read the digits as milliseconds exactly as `FF3` does (`.6789` is 6.789 s).
+- **And the chain is withdrawn: measured over every string a form admits, no format reads its form one
+  for one.** A temporal form is a run of digits per field, and every listed format reads a string of its
+  own form whose field is past its range as the value its fields make once carried over (before 1582-10-15
+  by the Julian calendar, the date that makes read as a proleptic Gregorian day, raising where there is
+  none): `2016-12-31T24:00:00Z` and `…T23:60:00Z` are `2017-01-01T00:00:00Z`'s instant through
+  `PARSE_DATETIME` and `CAST … AS TIMESTAMP FORMAT`, which raise over neither
+  (`Calcite.ParsesReadTheirFieldsLeniently`, `CalciteTemporalLeniencyMeasurementTests`). An equality sent
+  on the stored strings kept one of three such spellings where Calcite kept all three. `ParsesExactly`
+  answers `false` for every form, so both sites and the projection decline a parse by that answer alone,
+  and the formats stay for the measurement. `DESIGN.md` has the whole of what was measured, under *A fact
+  says which relations it preserves*. The two times of day left `EngineTargets` on the same measurement,
+  the `TIME` cast adding a clock's fields as they stand (`Calcite.TimeCastRollsAClocksFields`). And an
+  accessor's `RETURNING` clause, which had been asking that table, was measured on its own:
+  `RETURNING DATE`, `TIME` and `TIMESTAMP` raise over a string of every registered form
+  (`Calcite.ReturningReadsNoStoredString`), so an accessor so typed over a declared calendar date or time
+  of day, sent as the bare path, answered every row where the query raises. It asks
+  `CosmosTemporalForms.ReturningReads` now, which no form answers, and is computed in process, and the
+  order family reads such a column by the same answer.
 
 **Not built, and each for a stated reason:**
+
+- **A lenient parse read as a reading** — *large, future.* No comparison, sort or projection through a
+  parse reaches the service, so every instant comparison is Calcite's over what the rest of the query
+  sends, and the "changed since" refresh of #182 reads the whole container. What could recover them is
+  the rendering graph reading the parse as a reading, with a measured profile of what each format reads
+  of each form's strings, and proving a weaker comparison of the stored strings for the reader to
+  recheck: a field carried over moves an instant by a bounded amount, at most a month back for a `00` and
+  some years on for `99`, so a range of the stored strings wide enough to hold every spelling of the
+  instants a comparison keeps exists. What the profile has to hold, measured: before 1582-10-15 a field
+  is carried over by the Julian calendar and the date that makes read as a proleptic Gregorian day,
+  raising where there is none, so 29 February of 0100 raises where that of 1900 rolls to 1 March, and a
+  year before year one is counted by its year of the era, `0000-01-01` read as `0001-01-01` and
+  `0000-00-00` as `0002-11-30`; what `CAST … AS TIMESTAMP FORMAT` reads before 1582-10-16,
+  `PARSE_DATETIME` of a time the host's default time zone skips, at a daylight-saving change or any other
+  change of its offset, and `PARSE_DATE` and `CAST … AS DATE FORMAT` of a date whose midnight it skips
+  depend on that zone; and `PARSE_TIME` wraps at a day where the plain `TIME` cast does not.
+  `Calcite.ParsesReadTheirFieldsLeniently` names no evaluator, so nothing reads a parse today.
+- **The date cast's day zero** — *small, soundness; for filters with 3C's stored lowering, for projected
+  conditions with 3D, and for the sort with the order family.* `CAST(<text> AS DATE)` and `AS TIMESTAMP` over
+  `iso8601-date` read day `00` as the month before's last day, `2024-03-00` as 29 February and
+  `0001-01-00` as 0000-12-31, which no canonical string spells, and raise over every other field out of
+  range (`Calcite.DateCastReadsDayZeroAsTheMonthBefore`). The form's pattern admits day `00`, so `=`,
+  `<>`, `<=` and `>` against a month's last day written on the stored strings lose or add a document:
+  over `2024-02-29`, `2024-03-00` and `2024-03-01`, `= DATE '2024-02-29'` keeps the first two in Calcite
+  and the first alone sent, sent `<>` and `>` keep the second where Calcite does not, and `<` and `>=`
+  agree. A sort on the cast before another key orders the two spellings of 29 February apart where
+  Calcite ties them: `CosmosServiceOrder.ReadConversion` reads the date form through the cast as exact,
+  where at day `00` it spells a value two ways and so may stand only last. The rewrite writes the
+  comparison against a literal and the translator against a parameter (`CosmosFactRewriter.TryStoredInstant`,
+  the stored slot), and a projected condition goes through the same rewrite. The proper fix writes each
+  of the four as a range over two days' spellings, `= v` as `x >= v AND x < w` with `w` the next day's,
+  which the probes measured to keep exactly Calcite's rows, and reads the sort's key as one that refines.
+  It is not fixed in place because that takes a list of operators in C#, the decision the rendering
+  graph is to make, and the sort's half is the order family's own change.
 
 - **`ORDER BY CAST(<path> AS TIMESTAMP)` still does not push** — measured, `SELECT VALUE c FROM items
   c` under a `ClrCursorSort`. This is the cast-drop the paragraph above calls *the* change, and it
@@ -1164,8 +1221,8 @@ hand. Two tests pin both directions.
   cast is the spelling that cannot work in process — **and neither can `RETURNING`, which this entry
   used to point at as the one that does.** Measured since: `JSON_VALUE(…, RETURNING TIMESTAMP)` raises
   for every string, the clause asserting the extracted type rather than converting to it and wanting
-  a JSON number of epoch milliseconds. Both are refused now, and the parse is the spelling that
-  works — see *A parse carries a format* in `DESIGN.md`.
+  a JSON number of epoch milliseconds. Both are refused now, and so is the parse this entry once
+  pointed to, which reads leniently (above).
 - **A space-separated instant is not recognised** — *small, and the obstacle is gone.*
   `2024-01-15 12:30:00Z` is as fixed as its `T` spelling and would sort as well — Python's
   `isoformat(sep=' ')` and a good many SQL exports write it. Matching the forms by spelling once
@@ -1175,8 +1232,10 @@ hand. Two tests pin both directions.
   reads a space as the character ECMA-262 matches, and `TheSpellingsInTheWildAreRecognised` and
   `ASpaceTheRegistryDroppedIsAnotherLanguage` hold spaced patterns unrecognised. What is left is
   defining the space-separated forms; `ASpaceSeparatedInstantIsNotYetRecognised` is the row that flips.
-- **`PARSE_TIMESTAMP` is recognised and pushes at neither site, and the reason is its type rather
-  than its parse** — *small, and two separate pieces of work.* It is the name a caller reaches for
+  And measuring first what the plain cast reads of the form's strings whose fields are out of range,
+  which the calendar date's cast turned out to read leniently at day `00` (*The date cast's day zero*).
+- **`PARSE_TIMESTAMP` is recognised and pushes at neither site, for its type and for its parse** —
+  *small, and two separate pieces of work.* It is the name a caller reaches for
   first and it reads a format exactly as `PARSE_DATETIME` does, measured. What it answers is
   `TIMESTAMP WITH LOCAL TIME ZONE`. For a comparison that means the other operand is a zone-less
   literal and the question is what the session's zone is, which no declared stored form answers —
@@ -1184,7 +1243,8 @@ hand. Two tests pin both directions.
   means `CosmosJson` has no reading for the type, so the projection cannot be sent down and there is
   nothing for the sort to stand on; adding the reading is a line, and it would change every
   `TIMESTAMP WITH LOCAL TIME ZONE` projection rather than only this one, so it is its own decision.
-  `ParseTimestampIsRefusedForItsTypeRatherThanItsParse` is the row that would flip.
+  `ParseTimestampIsRefusedForItsTypeRatherThanItsParse` is the row that would flip. Its parse is now
+  a reason too: no parse pushes while the family reads leniently (*A lenient parse read as a reading*).
 - **`TO_DATE` and `TO_TIMESTAMP` are not recognised, and the obstacle is a name rather than a
   format.** Each is *two* operators under one SQL name — Calcite registers `TO_DATE` beside
   `TO_DATE_PG`, implemented by `SqlFunctions.DateFormatFunction` and `DateFormatFunctionPg` — and
@@ -1192,13 +1252,13 @@ hand. Two tests pin both directions.
   name does not say. The first was measured and agrees with the `PARSE_` family on every spelling in
   the table; the second was not. Reference identity against `SqlLibraryOperators.TO_DATE` would tell
   them apart, and the operand order is the other way round (`TO_DATE(<text>, <format>)`), so it is a
-  small entry rather than an empty one.
+  small entry rather than an empty one. Recognised, either would decline as every parse does now.
 - **A microsecond or tick fraction has no parse spelling, and there is none to find.** Every fraction
   element the model has — `%E1S` through `%E5S`, `FF1` through `FF7`, `MS` — lowers to a Java
   *millisecond* field, which reads whatever digits are in front of it as milliseconds: `.678901` is
   11 minutes and 18 seconds rather than 679 milliseconds. Calcite's timestamps are milliseconds, so
   this is a property of the target type rather than a gap in the table. The shape Azure recommends is
-  therefore the one a parse cannot reach — it reaches a `CAST` and a `RETURNING` clause as before.
+  therefore one no format reads.
 - **Neither has the separator-less basic shape**, for a second reason: the model's one-letter fields
   are greedy, so `%H%M%S` reads `030405` as hour 0 and minute 945, and .NET's `DateTime.TryParse`
   refuses `20240102T030405Z` outright, so the projection could not be read back either.
@@ -1757,9 +1817,10 @@ terms:
   chronological, which is a wrong answer over any path whose shape is not fixed.
   `CosmosSort.OrderIsLexical` now gates it. This entry's original case — a sort key that is a *chain*
   rather than a path, where the rewrite is to drop the order-preserving chain and leave the raw path
-  — is now built for the `PARSE_` family and not for the rest: `PARSE_DATE(<format>, <path>)` and its
+  — was built for the `PARSE_` family and not for the rest: `PARSE_DATE(<format>, <path>)` and its
   siblings bind the ordinal through `CosmosProject.OrderingCandidateOf`, gated on the format reading
-  the declared shape as well as on the two bits. The plain `CAST` and the `REPLACE`/`SUBSTRING`/`CAST`
+  the declared shape as well as on the two bits, and since the parse was measured to read leniently
+  that gate refuses every format (section 4). The plain `CAST` and the `REPLACE`/`SUBSTRING`/`CAST`
   a view writes are still outstanding, and for the reason section 4 gives rather than for want of the
   mechanism — what the cast's column would *read back as* is its own question. See *Ordering by a
   rendered column* below, which is the same mechanism at a different site.
@@ -1823,8 +1884,7 @@ ClrCursorSort(sort0=[$0], dir0=[ASC])
 #100 made the `UUID` cast renderable as a guarded accessor; nothing has done that for a temporal one,
 and section 6 records why it is not the same job — `CAST(<string> AS TIMESTAMP)` accepts only
 `yyyy-MM-dd HH:mm:ss` and raises on every ISO-8601 form a document stores, so what such a column reads
-back as is its own question. A temporal sort is not unavailable meanwhile: the `RETURNING TIMESTAMP`
-spelling binds to the path directly and pushes, gated on the same bit.
+back as is its own question.
 
 ### The value claims are read as conclusions now, and only the first of three
 
@@ -1949,9 +2009,11 @@ under *Which facts may justify what*.
 **A declared instant took the parameter too (#182).** A comparison of a stored instant against `?` is
 written in the path's own spelling when the statement runs, the slot carrying the form and the way a
 value between two spellings rounds — `DESIGN.md` under *A prepared statement's value belongs to the
-execution*. A declared UUID took it next (#207), the slot carrying the UUID form and the value spelled
-into it when it arrives. The numeric forms still lower against a literal only: the same move would
-take them, with an integer written into its width, and nothing has asked.
+execution*. The instant #182 reported reads through a parse, which reads leniently and is computed in
+process again; what keeps the move is a calendar date through a plain cast, with its day zero (*The
+date cast's day zero*, section 4). A declared UUID took it next (#207), the slot carrying the UUID form
+and the value spelled into it when it arrives. The numeric forms still lower against a literal only:
+the same move would take them, with an integer written into its width, and nothing has asked.
 
 ### A null parameter is not SQL's null at the service — *done; its cost on Azure is owed*
 
@@ -2538,6 +2600,14 @@ across documents* and *A join of a container to itself* is the record.
   because the two halves disagreeing is how #149 happened.
 - **Binary** — *small.* `BINARY`/`VARBINARY` read base64 from a JSON string. Unverified against the
   service, because nothing in the test data is binary.
+- **A null test through `RETURNING VARBINARY` is sent as the path's presence** — *small, soundness.*
+  `JSON_VALUE(… RETURNING VARBINARY) IS NOT NULL` is written `(IS_DEFINED(c.t) AND NOT IS_NULL(c.t) AND
+  IS_PRIMITIVE(c.t))`, the text accessor's null set, and `IS NULL` as its complement, declared or not and
+  on both targets. Measured in process, the clause raises over a string, a number and a boolean alike
+  (*Unable to cast … to type `ByteString`*), so the request answers rows where the query raises. An
+  accessor typed `TIME WITH TIME ZONE` did the same until its type was read as a temporal one. The fix
+  belongs to the accessor's reading: a `RETURNING` type with no reading tests, whose clause raises over
+  every stored string, should not have its null test written as the text accessor's.
 - **Temporal representation** — see *Temporal* above. The reading side handles ISO strings and epoch
   numbers; there is no *declared* basis for deciding which a column holds and there will not be one,
   so the basis is asked of the service per row.
@@ -2942,7 +3012,10 @@ across documents* and *A join of a container to itself* is the record.
   round may rest on is a row*). The strata still rest only on the exactly-read rows, so the push is not back. The gate
   stays: G12's and G16b's planted runs, every condition read exactly, now keep the document too, so for this case the
   gate is redundant beside `Kept`, but retiring it gives the label's push back, a plan change to predict and digest on
-  its own, beside an audit that `Kept` over-approximates every reading a stratum may rest on.
+  its own, beside an audit that `Kept` over-approximates every reading a stratum may rest on (*What a filter keeps rests
+  on `Kept`*, below). The deletion and the lowering read the same relation (`CosmosStatementScope.Beside` and
+  `ExactSiblings`), so the argument that retires the gate retires theirs too, which gives back the implied conjuncts
+  they send beside a coarse sibling: 11 of the pull-request digests' 1,181 lines and 20 of the gate's 3,492.
 - **A check that holds a conjunct it cannot judge is unproven** — *medium.* Nothing the service reads beside a checked
   conjunct is left out of its check, so a conjunct skipped as outside the IR makes every conjunct beside it unproven:
   94 per pull request after c13, most beside `IS_STRING`, a pattern or arithmetic the loader reads as opaque. The
@@ -2968,7 +3041,7 @@ across documents* and *A join of a container to itself* is the record.
   `CAST(c."$.category" AS VARCHAR) = '30'`, which S sends exact as `c.category = @p0`, now routes to `"30"`
   (`CosmosPlannerTests.ACastAgainstTextANumberRendersAsIsTakenOverAVariant`). What is left is the facts graph's reading
   of the cells: the coarse `On` and `Over` verdicts, so `NOT (CAST(raw(flag) AS VARCHAR) = 'x')` is still decided
-  `Always` and deleted, and over a `VARIANT`'s number the cast's `IN` of two texts `AlwaysFalse` where Calcite answers
+  `Always`, and over a `VARIANT`'s number the cast's `IN` of two texts `AlwaysFalse` where Calcite answers
   `UNKNOWN` (population D's long run drew it once in 5,000, seed 20263941, and draws the cast through no named column
   since, as it draws the cast elsewhere: `Statements.Besides`, to name the column again with the fix); the unnamed
   `IrEval`; and the translator's column. The column reads it so too (review 3): a projected or grouped
@@ -3786,28 +3859,26 @@ across documents* and *A join of a container to itself* is the record.
     Measured: over a key the declaration lists as `[5.5, 7.25]`, `CAST(… AS DOUBLE) = 5` and `= 6` pin `5.5` and send
     `WHERE (c.ref = @p0)`, which finds nothing, where `RETURNING DOUBLE = 5` sends nothing; over one listed `[5, 7]`,
     `= 5.5` pins `5`; over one listed `[5, 6]`, `= 5.5` is sent with `WHERE (c.category = @p0)` and pins neither.
-  - *Over a key the declaration fixes to one value.* Measured: over a required `const` of `5`, and a required
-    one-member `enum` of `5`, `CAST(… AS DOUBLE) = 5` and `RETURNING DECIMAL = 5` are sent with no `WHERE` and pin
-    nothing, while `RETURNING INTEGER`, `BIGINT` and `DOUBLE = 5`, `CAST(… AS INTEGER) = 5` and `= '5'` keep their
-    `WHERE` and pin `5`; over an optional `const` of `5`, `RETURNING DECIMAL` and the cast keep and pin. Over a required
-    `const` of `5.5`, or a one-member `enum` of it, the cast's `= 5.5` is sent with no `WHERE` and no pin, and
-    `RETURNING DOUBLE = 5.5` is kept and pins. Over a required `const` of `"bikes"`, `= 'bikes'` is sent with no
-    `WHERE` and no pin; over an optional one it is kept and pins. Over a required `const` of `true`,
-    `c."$.ref" = CAST(TRUE AS VARIANT)` is dropped. Over a required `const` of `0.1`, `= '0.1'` stays in Calcite over a
-    request with no `WHERE` and no pin, and so does `c."$.category" = CAST(5 AS VARIANT)` over a required `const` of
-    `5`, which over an optional one sends `IS_DEFINED(c.category)` pinned to `5`. Beside the rest of a `WHERE` the pin
-    stays: over a required `const` of `5`, `CAST(… AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'` and
-    `RETURNING DECIMAL = 5 AND k = 'x'` send `WHERE (c.k = @p0)` pinned to `5`, and `k = 'x'` alone is pinned to `5`;
-    over a required `const` of `"bikes"`, `= 'bikes' AND k = 'x'` is pinned to `bikes`, of `5.5` to `5.5`, and over a
-    required one-member `enum` of `5` to `5`. A presence test drops a comparison of a key that is not required: over
-    an optional `const` of `5`, `JSON_VALUE(c."DOC", '$.category') IS NOT NULL AND CAST(… AS DOUBLE) = 5` sends only the
-    key's presence in the host Chapter 21 describes, and `IS NOT NULL AND RETURNING DECIMAL = 5` drops the equality in
-    both hosts; over an optional `const` of `"bikes"`, `IS NOT NULL AND = 'bikes'` drops it in the host Chapter 21
-    describes; each is still pinned. Read in the code: `CosmosPartitionKeyExtractor.TryExtractPrefix` reads the key's
-    one value from the declaration under whatever condition is sent (`Pinned(OracleLicence.Kept)`), and
-    `CosmosFilter.Implement` returns before routing where every conjunct is deleted, and a comparison kept in Calcite
-    builds no `CosmosFilter`, so the pin is lost only where the request has no `WHERE`. A deletion is a verdict on the
-    coarse reading (*A conjunct through an integer parse its declared bounds satisfy is still sent*). The fix is
+  - *Over a key the declaration fixes to one value.* Measured: over a required `const` of `5`, and a required one-member
+    `enum` of `5`, `RETURNING INTEGER`, `BIGINT`, `DOUBLE` and `DECIMAL = 5`, `CAST(… AS INTEGER) = 5`, `CAST(… AS
+    DOUBLE) = 5` and `= '5'` keep their `WHERE` and pin `5`, the cast to `DOUBLE` and `RETURNING DECIMAL` because the
+    facts graph reads them coarsely and deletes neither; over an optional `const` of `5`, `RETURNING DECIMAL` and the
+    cast keep and pin. Over a required `const` of `5.5`, or a one-member `enum` of it, the cast's `= 5.5` and `RETURNING
+    DOUBLE = 5.5` are kept and pin. Over a required `const` of `"bikes"`, `= 'bikes'` is sent with no `WHERE` and no
+    pin; over an optional one it is kept and pins. Over a required `const` of `true`, `c."$.ref" = CAST(TRUE AS
+    VARIANT)` is dropped. Over a required `const` of `0.1`, `= '0.1'` stays in Calcite over a request with no `WHERE`
+    and no pin, and so does `c."$.category" = CAST(5 AS VARIANT)` over a required `const` of `5`, which over an optional
+    one sends `IS_DEFINED(c.category)` pinned to `5`. Beside the rest of a `WHERE` the pin stays: over a required
+    `const` of `5`, `CAST(… AS DOUBLE) = 5 AND JSON_VALUE(c."DOC", '$.k') = 'x'` sends both pinned to `5`, and `k = 'x'`
+    alone is pinned to `5`; over a required `const` of `"bikes"`, `= 'bikes' AND k = 'x'` is pinned to `bikes`, of `5.5`
+    to `5.5`, and over a required one-member `enum` of `5` to `5`. A presence test drops a comparison of a key that is
+    not required: over an optional `const` of `"bikes"`, `JSON_VALUE(c."DOC", '$.category') IS NOT NULL AND = 'bikes'`
+    drops it in the host Chapter 21 describes, and it is still pinned. Read in the code:
+    `CosmosPartitionKeyExtractor.TryExtractPrefix` reads the key's one value from the declaration under whatever
+    condition is sent (`Pinned(OracleLicence.Kept)`), and `CosmosFilter.Implement` returns before routing where every
+    conjunct is deleted, and a comparison kept in Calcite builds no `CosmosFilter`, so the pin is lost only where the
+    request has no `WHERE`. A deletion is the facts graph's own verdict (`PredicateAtom.Over`), asked only of a conjunct
+    it reads exactly (*A conjunct through an integer parse its declared bounds satisfy is still sent*). The fix is
     routing a statement with no `WHERE` by what the declaration says of the key, which the facts graph already holds.
 - **A cast to `DOUBLE` is read more loosely than a double rounds** — *small, precision; older than "fail like Calcite",
   the same on `main`, and left for a change of its own.* `NumberCast.KeptOrder` meets the numbers a comparison
@@ -3867,8 +3938,7 @@ across documents* and *A join of a container to itself* is the record.
   tolerance stands beside "fail like Calcite" is left for a change of its own.
 - **A conjunct through an integer parse its declared bounds satisfy is still sent** — *small, precision.* Over a
   required integer from 0 to 100, or listed `[1, 2, 3]`, `CAST(JSON_VALUE(…) AS INTEGER) >= 0` and
-  `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)` where the same
-  range through `CAST(… AS DOUBLE)` is dropped
+  `RETURNING INTEGER >= 0` raise nowhere since 2026-11-12, yet both are sent as `WHERE (c.n >= @p0)`
   (`CosmosDeclaredFactPlanningTests.ARangeAnIntegerParseItsBoundsSatisfyIsStillSent`). A deletion is a verdict
   (`AlwaysTrue`), and the verdicts read the coarse reading (`PredicateAtom.Over`, from `On(state)`), which reads no
   spelling the service returns: `NumberCast` puts the parse's raise beside every number (`_parse`), and the typed
@@ -3878,7 +3948,8 @@ across documents* and *A join of a container to itself* is the record.
   (`PredicateAtomTests.AnIntegerCastOverTheAccessorMayRaiseOnAnyNumber`: `Over` of a stored 30 is TRUE beside a raise,
   `RaisesOver` false). The proper fix is the coarse integer readings reading the served spelling as the cells do
   (`Renderings.ServedAsDigits`); it moves plans, so it is a change of its own, and the planning test above flips with
-  it.
+  it for the cast to `INTEGER`, and for `RETURNING INTEGER` once the facts graph reads it exactly, since only a conjunct
+  it reads exactly is deleted.
 - **A weakening true of every document is pushed where the regroup reads no complement** — *nit, RU.* Partitions 464's
   `CASE` weakens to `IS_NULL(c.category) OR IS_DEFINED(c.category) OR NOT IS_DEFINED(c.category)`, true of every document,
   and S pushes it: the regroup rules read a junction's unit, its own connective and a part twice, not a part beside its
@@ -4172,15 +4243,37 @@ across documents* and *A join of a container to itself* is the record.
   failing so, by an ordering's cast or a type test with no body. Since then the split rule pushes of a weakening only
   what the filter beneath admits through S and drops the rest (`CosmosFilterSplitRule.Admitted`), so no member is left
   in process to raise, and an ordering that filter admits is the service's.
-- **The rewrite's licences read siblings F reads coarsely** — *small, soundness; with the rewrite's templates (Stage 3).*
-  A later round's stratum and an arm assume only what F reads exactly (§5.2; since h15 F's `Exactness` ruleset,
-  `StatementTerms.ReadsExactly`), but the licences the fact rewriter and the conjunct deletion ask,
-  `OracleQuestion.DeleteConjunct`, `Siblings` and `Kept`, assume every sibling conjunct as F reads it, a typed number,
-  `DECIMAL`, a double or a cast of a raw value among them, which may read a document otherwise than Calcite (*A stratum
-  resting on a coarse reading*, above): a conjunct deleted or lowered on what such a sibling establishes could drop a
-  row Calcite keeps. Not seen in the corpus, the gate's partitions or the yardstick, and not moved by the switch. The
-  proper fix asks `readsexactly` of each sibling those licences assume, as `StratumFor` does; its digest moves are a
-  step's own.
+- **What a filter keeps rests on `Kept`, audited over a list of readings written by hand** — *small, soundness.* A
+  conjunct is deleted from the text sent, or a comparison inside it lowered, only on the siblings the facts graph reads
+  exactly, as a later round's stratum and an arm are (`CosmosStatementScope.Beside` and `ExactSiblings`, F's `inexact`).
+  Everything else that reads what a filter keeps assumes the conjuncts its licence names, however the facts graph reads
+  them, a typed number, `DECIMAL`, a double or a cast of a raw value to text among them: routing, the row count, a
+  stack's clauses and the self-join (`Kept`); a single filter's projection, sort, grouping and lookup key (the last
+  stratum); a point read's pins; and the reduce. That stands: what a coarse sibling establishes is what its reading's
+  `Kept` keeps, which holds every value Calcite gives that truth on
+  (`PredicateAtomCellTests.WhatEveryReadingKeepsHoldsEveryValueCalciteGivesThatTruthOn`), so each is provable today, and
+  gating them on `readsexactly` would decline pushes that are provable: routes on the key's cast to text and on a
+  numeric key through `RETURNING` (Chapters 7.3, 8.5) and sorts at the service beneath a filter through a typed number,
+  10 of the pull-request digests' 1,181 lines and 17 of the gate's 3,492 (`DESIGN.md`, *Which facts may justify what*).
+  The translator's later rounds, which write a parameter or an opaque comparison from the chain node, rest on `Kept`
+  too, a bridge: 3B moves parameter comparisons into S's rounds, which read `StratumFor`, and the rest goes with the
+  translator (h42). The exposure left is a reading added later whose `Kept` is too narrow, which reaches every one of
+  these: planted, the narrow `Kept` a typed number had before 2026-11-11 routed a statement through a declared
+  conditional past documents Calcite keeps, grouped apart at the service what Calcite groups together, and let the
+  translator send a parameter comparison bare. The audit's list of readers (`PredicateAtomCellTests.KeptReaders`) is
+  written by hand, and a raw value read through `CHAR` is on it nowhere (below). The proper fix is an audit that takes
+  its readers from what the loader builds, so that no reading reaches anything resting on `Kept` unaudited, beside the
+  `CHAR` entry's own fix.
+- **A raw value read through `CHAR` is read exactly by its reading's name** — *small, soundness.*
+  `Calcite.TheFactsGraphReadsTheseReadingsExactly` names the raw value beside anything but a number, and
+  `PredicateAtom.ReadExactly` keys a reading by its reader without its raw column (`Columnless`). A field typed `CHAR`,
+  which the loader reads as the raw value through that column (`PredicateAtom.UnionColumns`, read as the measured
+  columns' union until a row measures its padding), is then read exactly though no row measured it, and neither the
+  cells' readers nor the audit of what every reading keeps names the column (`PredicateAtomCellTests`, whose raw readers
+  are `RawColumns`'). Whether the facts graph reads it as Calcite does is unknown, and a deletion, a lowering, a later
+  round's stratum or an arm may rest on it; whether a plan reaches one is unchecked. The proper fix keys the row's raw
+  value by the columns it measured, so that a `CHAR` is coarse until a row measures it, and names the column in both
+  lists: a change of the row's and of `PredicateAtom.ReadExactly`, not of the licences.
 - **A filter kept in process over a view projecting a reading that can refuse** — *small, soundness; on `main`, and
   planned without the trimmer since a member of a weakening that a filter beneath or the declaration applies is not
   pushed.* Where nothing of a filter over a view reaches the service, the view's projection is still converted, and the

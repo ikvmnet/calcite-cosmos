@@ -137,8 +137,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         RexNode AsInstant() => _rex.makeCast(_types.createSqlType(SqlTypeName.TIMESTAMP), Ref(0, SqlTypeName.VARCHAR));
 
         /// <summary>
-        /// <c>PARSE_DATETIME(&lt;format&gt;, &lt;ref&gt;)</c>, which is the temporal spelling that
-        /// survives: it names how the text is read, and the engine can read it.
+        /// <c>PARSE_DATETIME(&lt;format&gt;, &lt;ref&gt;)</c>, which names how the text is read, and reads
+        /// a field past its range as another instant (<c>Calcite.ParsesReadTheirFieldsLeniently</c>).
         /// </summary>
         RexNode AsParsedInstant(string format) =>
             _rex.makeCall(org.apache.calcite.sql.fun.SqlLibraryOperators.PARSE_DATETIME, _rex.makeLiteral(format), Ref(0, SqlTypeName.VARCHAR));
@@ -147,15 +147,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         const string MillisFormat = @"%Y-%m-%d'T'%H:%M:%S.%E3S'Z'";
 
         /// <summary>
-        /// An ordering over a path confined to one fixed shape lowers to a string comparison, with
-        /// the literal written in that shape.
+        /// An ordering through a parse over a path confined to one fixed shape lowers nothing, though
+        /// the format reads the shape's canonical strings.
         /// </summary>
+        /// <remarks>
+        /// The lexical order of a fixed shape is the chronological order of its canonical strings, and
+        /// the parse reads the rest as other instants: <c>2024-11-61T00:00:00.000Z</c> sorts before
+        /// <c>2024-12-01T00:00:00.000Z</c> and is 31 December to it. So comparing the stored strings
+        /// answers another question, and no literal is written in the shape.
+        /// </remarks>
         [Fact]
-        public void AnOrderingOverAFixedShapeLowersToAStringComparison()
+        public void AnOrderingThroughAParseOverAFixedShapeLowersNothing()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00")), Millis)
-                .Should().Be(""">($0, '2024-01-15T12:30:00.000Z')""",
-                    "the lexical order of a fixed shape is the chronological one, and the literal joins that shape");
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00"));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString(),
+                "the parse rolls the shape's other strings, so the stored strings do not order as its instants");
         }
 
         /// <summary>
@@ -171,8 +178,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// that raises, which is a different query rather than a faster one.
         /// </para>
         /// <para>
-        /// The same comparison written as a parse does lower — the row above — because a format the
-        /// shape is read by is one the engine reads too.
+        /// The same comparison written as a parse lowers nothing either — the row above — because the
+        /// parse rolls a field past its range where the cast raises.
         /// </para>
         /// </remarks>
         [Fact]
@@ -198,31 +205,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <summary>
-        /// A literal carrying less precision than the path stores is written out in full, which loses
-        /// nothing and is the ordinary case.
+        /// A literal carrying less precision than the path stores is not written out in the stored
+        /// shape through a parse, though it would lose nothing.
         /// </summary>
         [Fact]
-        public void ACoarserLiteralIsWrittenOutInTheStoredShape()
+        public void ACoarserLiteralThroughAParseIsNotWrittenOut()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00")), Millis)
-                .Should().Be("""<=($0, '2024-01-15T12:30:00.000Z')""");
+            var condition = _rex.makeCall(SqlStdOperatorTable.LESS_THAN_OR_EQUAL, AsParsedInstant(MillisFormat), Instant("2024-01-15 12:30:00"));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString(), "the parse rolls the shape's other strings");
         }
 
         /// <summary>
-        /// Reading the path off the right-hand operand means reading the comparison backwards, so the
-        /// operator is reversed with it.
+        /// Reading the path off the right-hand operand of a parse lowers nothing either.
         /// </summary>
         /// <remarks>
-        /// The case that would be silently wrong rather than merely unpushed: keeping the operator as
-        /// written turns <c>&lt;literal&gt; &gt; &lt;path&gt;</c> into <c>&lt;path&gt; &gt;
-        /// &lt;literal&gt;</c>, which selects the complement of what the query asked for.
+        /// The reversed orientation asks the same licence through the same parse, and is refused with
+        /// it rather than reversed into a comparison of the stored strings.
         /// </remarks>
         [Fact]
-        public void TheOperatorIsReversedWhenTheLiteralIsOnTheLeft()
+        public void ALiteralOnTheLeftOfAParseLowersNothing()
         {
-            Rewrite(_rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsParsedInstant(MillisFormat)), Millis)
-                .Should().Be("""<($0, '2024-01-15T12:30:00.000Z')""",
-                    "`literal > path` is `path < literal`");
+            var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, Instant("2024-01-15 12:30:00"), AsParsedInstant(MillisFormat));
+
+            Rewrite(condition, Millis).Should().Be(condition.ToString(), "`literal > parse` is no comparison of the stored strings");
+        }
+
+        const string CalendarDate = """
+        { "properties": { "ref": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" } } }
+        """;
+
+        /// <summary>A <c>DATE</c> literal.</summary>
+        RexNode Day(string text) => _rex.makeDateLiteral(new org.apache.calcite.util.DateString(text));
+
+        /// <summary><c>CAST(&lt;ref&gt; AS DATE)</c>, a calendar date read with a plain cast.</summary>
+        RexNode AsDate() => _rex.makeCast(_types.createSqlType(SqlTypeName.DATE), Ref(0, SqlTypeName.VARCHAR));
+
+        /// <summary>
+        /// Reading the path off the right-hand operand of a calendar date's plain cast reads the comparison backwards, so
+        /// the operator is reversed with it.
+        /// </summary>
+        /// <remarks>
+        /// The case that would be silently wrong rather than merely unpushed: keeping the operator as written turns
+        /// <c>&lt;literal&gt; &lt; &lt;path&gt;</c> into <c>&lt;path&gt; &lt; &lt;literal&gt;</c>, which selects the
+        /// complement of what the query asked for. The 15th is no month's last day, where the cast's day zero parts the
+        /// stored strings from the dates (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>).
+        /// </remarks>
+        [Fact]
+        public void TheOperatorIsReversedWhenTheLiteralIsOnTheLeftOfADateCast()
+        {
+            Rewrite(_rex.makeCall(SqlStdOperatorTable.LESS_THAN, Day("2024-01-15"), AsDate()), CalendarDate)
+                .Should().Be(""">($0, '2024-01-15')""", "`literal < cast` is `path > literal`");
         }
 
         /// <summary>
@@ -232,7 +265,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// <remarks>
         /// Against a seconds path, <c>&gt; '…12:30:00.5'</c> truncated to <c>&gt; '…12:30:00Z'</c>
         /// would admit the stored value <c>12:30:00Z</c>, which is earlier than the literal. So the
-        /// comparison stays where it was and is applied in process.
+        /// comparison stays where it was and is applied in process. Every parse is declined now, a format that reads the
+        /// shape included (<c>Calcite.ParsesReadTheirFieldsLeniently</c>), and this keeps its reason for any later reading of
+        /// a parse; the refusal of a literal that does not land on the form is held over the plain date cast by
+        /// <see cref="ATimestampLiteralOffADaysMidnightLowersNothingThroughADateCast"/>.
         /// </remarks>
         [Fact]
         public void ALiteralFinerThanTheStoredShapeLowersNothing()
@@ -240,6 +276,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
             var condition = _rex.makeCall(SqlStdOperatorTable.GREATER_THAN, AsParsedInstant(@"%Y-%m-%d'T'%H:%M:%S'Z'"), Instant("2024-01-15 12:30:00.500"));
 
             Rewrite(condition, Seconds).Should().Be(condition.ToString(), "truncating the literal would select different rows");
+        }
+
+        /// <summary>
+        /// A <c>TIMESTAMP</c> literal off a day's midnight lowers nothing through a calendar date's plain cast, whatever the
+        /// comparison, where one at a day's midnight is written as the stored date.
+        /// </summary>
+        /// <remarks>
+        /// Noon of the 15th lies between the 15th's spelling and the 16th's. Rounded down onto the 15th, <c>&gt;=</c> and
+        /// <c>=</c> would keep a stored 15th, which the cast reads as its midnight and Calcite drops, and <c>&lt;</c> and
+        /// <c>&lt;&gt;</c> would drop it where Calcite keeps it. So the literal is not written in the form, and the
+        /// comparison stays where it was. The 15th is no month's last day, where the cast's day zero parts the stored strings
+        /// from the dates (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>).
+        /// </remarks>
+        [Theory]
+        [InlineData(">")]
+        [InlineData(">=")]
+        [InlineData("<")]
+        [InlineData("<=")]
+        [InlineData("=")]
+        [InlineData("<>")]
+        public void ATimestampLiteralOffADaysMidnightLowersNothingThroughADateCast(string op)
+        {
+            var comparison = op switch
+            {
+                ">" => SqlStdOperatorTable.GREATER_THAN,
+                ">=" => SqlStdOperatorTable.GREATER_THAN_OR_EQUAL,
+                "<" => SqlStdOperatorTable.LESS_THAN,
+                "<=" => SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+                "=" => SqlStdOperatorTable.EQUALS,
+                _ => SqlStdOperatorTable.NOT_EQUALS,
+            };
+
+            var noon = _rex.makeCall(comparison, AsInstant(), Instant("2024-01-15 12:30:00"));
+            Rewrite(noon, CalendarDate).Should().Be(noon.ToString(), "noon of the 15th is no stored date, and rounding it onto one keeps other rows");
+
+            Rewrite(_rex.makeCall(comparison, AsInstant(), Instant("2024-01-15 00:00:00")), CalendarDate)
+                .Should().Be($"{op}($0, '2024-01-15')", "midnight of the 15th lands on the stored date and is written as it");
         }
 
         /// <summary>
@@ -420,9 +493,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         /// true wherever they are.
         /// </summary>
         /// <remarks>
-        /// The old tautology test was an equality the declaration alone guaranteed, and missed this; the oracle's is any
-        /// conjunct every sibling and the declaration make always true, asked one at a time so that two conjuncts implying
-        /// each other do not both go. <c>CosmosDifferentialTests</c> holds the deletion to Calcite's answer.
+        /// The old tautology test was an equality the declaration alone guaranteed, and missed this; the oracle's is
+        /// any conjunct the facts graph reads exactly that the declaration and every sibling it reads exactly make
+        /// always true, asked one at a time so that two conjuncts implying each other do not both go.
+        /// <c>CosmosDifferentialTests</c> holds the deletion to Calcite's answer.
         /// </remarks>
         [Fact]
         public void AConjunctItsSiblingsImplyIsDeleted()

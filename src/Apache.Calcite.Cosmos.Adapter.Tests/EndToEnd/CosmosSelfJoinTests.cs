@@ -801,14 +801,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A change time compared with a parameter is compared at the service, the parameter written in
-        /// the stored spelling when the statement runs. #182.
+        /// A change time compared with a parameter is computed in process, and answers the rows Calcite
+        /// does. #182.
         /// </summary>
         /// <remarks>
         /// The parameter is a <see cref="DateTime"/> through the ADO.NET driver, which is how a host sends
-        /// one, and the view reads the stored instant with the format the declared shape is read by.
-        /// The boundaries are the point: a value exactly on a stored instant, and one a fraction short of
-        /// one.
+        /// one. The view reads the stored instant with a cast carrying a format, which is a parse, and a
+        /// parse reads a field past its range as another instant (<c>Calcite.ParsesReadTheirFieldsLeniently</c>),
+        /// so the comparison is not written on the stored strings. The boundaries are the point: a value
+        /// exactly on a stored instant, and one a fraction short of one.
+        /// <c>CosmosPlanningTests.AChangeTimeComparedWithAParameterIsComparedInProcess</c> holds the plan
+        /// offline.
         /// </remarks>
         [Theory]
         [InlineData(">", "2026-08-02T12:00:00.000", new[] { G3, G4 })]
@@ -817,7 +820,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("=", "2026-08-02T12:00:00.123", new[] { G3 })]
         [InlineData("<>", "2026-08-02T12:00:00.123", new[] { G1, G2, G4 })]
         [InlineData(">", "2026-08-02T12:00:00.122", new[] { G3, G4 })]
-        public async Task AChangeTimeComparedWithAParameterIsComparedAtTheService(string op, string value, string[] expected)
+        public async Task AChangeTimeComparedWithAParameterIsComparedInProcess(string op, string value, string[] expected)
         {
             RequireService();
 
@@ -825,7 +828,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             var instant = DateTime.SpecifyKind(DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc);
 
             var plan = await ExplainAsync("DECLARED", sql, instant);
-            FiltersInProcess(plan).Should().BeFalse("the comparison is the service's:\n" + plan);
+            FiltersInProcess(plan).Should().BeTrue("the comparison through the parse is Calcite's:\n" + plan);
 
             (await RowsAsync("DECLARED", sql, instant)).Should().Equal(expected.OrderBy(g => g, StringComparer.Ordinal));
         }

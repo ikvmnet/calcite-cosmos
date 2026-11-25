@@ -39,7 +39,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <param name="Pattern">The declared pattern, so the row is tied to a recognised form.</param>
         /// <param name="Sample">A conforming stored value.</param>
         /// <param name="Reads">What the engine answers per target, or <c>null</c> where it raises.</param>
-        sealed record Shape(string Pattern, string Sample, (CosmosTemporalParts Target, string? Reads)[] Reads);
+        /// <param name="Rolls">
+        /// Whether the engine, reading the sample, adds the fields of the form's other strings as they
+        /// stand rather than reading them as they denote, so the table claims nothing of it.
+        /// </param>
+        sealed record Shape(string Pattern, string Sample, (CosmosTemporalParts Target, string? Reads)[] Reads, bool Rolls = false);
 
         static readonly Shape[] Shapes =
         {
@@ -67,7 +71,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 (CosmosTemporalParts.Date, null),
                 (CosmosTemporalParts.Time, null),
             }),
-            // The three the engine does read, which is the whole of what may be pushed through a cast.
+            // The three the engine does read. The calendar date is the whole of what may be pushed
+            // through a cast; the two times of day read their samples and roll a field past its range
+            // (Calcite.TimeCastRollsAClocksFields), so nothing is pushed through them.
             new("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "2024-01-15", new[]
             {
                 (CosmosTemporalParts.Instant, (string?)"2024-01-15 00:00:00.0"),
@@ -79,13 +85,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 (CosmosTemporalParts.Instant, (string?)null),
                 (CosmosTemporalParts.Date, null),
                 (CosmosTemporalParts.Time, "12:30:00"),
-            }),
+            }, Rolls: true),
             new("^[0-9]{2}:[0-9]{2}$", "12:30", new[]
             {
                 (CosmosTemporalParts.Instant, (string?)null),
                 (CosmosTemporalParts.Date, null),
                 (CosmosTemporalParts.Time, "12:30:00"),
-            }),
+            }, Rolls: true),
         };
 
         static string TypeOf(CosmosTemporalParts target) => target switch
@@ -129,7 +135,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
-        /// The table says exactly what the engine does, in both directions.
+        /// The table claims a form only where the engine reads its sample, and every form the engine
+        /// reads but the two times of day, whose other strings roll.
         /// </summary>
         [Fact]
         public void TheTableSaysWhatTheEngineDoes()
@@ -145,7 +152,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     measured.Should().Be(reads,
                         $"'{shape.Sample}' AS {TypeOf(target)} is what it is, whatever the table says");
 
-                    CosmosStoredForms.EngineReads(representation, target).Should().Be(reads is not null,
+                    CosmosStoredForms.EngineReads(representation, target).Should().Be(reads is not null && shape.Rolls == false,
                         $"the table has to agree with the engine for {representation.Name} AS {TypeOf(target)}");
                 }
             }

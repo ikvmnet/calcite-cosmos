@@ -751,12 +751,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (type == SqlTypeName.REAL)
                 return As(Classes.Number, printed == false || (admitted & Classes.Number) == Classes.None ? CosmosOrderAgreement.Exact : CosmosOrderAgreement.Refines, "a number read as a float");
 
-            // Cosmos has no temporal type: the path holds a string and the service orders the spelling, which is the
-            // instant's order only in a stored form that keeps it, and one the engine can read at all (every ISO-8601
-            // instant raises in a cast, measured: Calcite.TemporalCastReadsFewShapes) — a cast of the text, as a
-            // conversion is.
+            // Cosmos has no temporal type: the path holds a string, and a column of one typed as an instant is an accessor's
+            // RETURNING clause, which asserts the type over the stored value rather than converting it and raises over a
+            // string of every form (Calcite.ReturningReadsNoStoredString). So it is read by the reading the accessor asks
+            // before it is sent, not by the plain cast's.
             if (IsTemporal(type))
-                return ReadConversion(facts, path, null, CosmosTemporalParse.PartsOf(type));
+                return ReadStored(facts, path, representation => CosmosStoredForms.ReturningReads(representation, CosmosTemporalParse.PartsOf(type)),
+                    "an accessor whose RETURNING clause reads no stored string");
 
             // A raw document value — the promoted column, or the accessor the split rule names as the value it reads — is
             // compared as it stands, and a comparison across types is undefined at the service: what is left is the order
@@ -775,9 +776,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// <para>
-        /// <b>A parse names how the text is read and is licensed by the format; a cast leaves it to the engine</b> and is
-        /// licensed only where the engine reads the form at all — measured, every ISO-8601 instant raises in a temporal
-        /// cast, so ordering by the stored strings would order rows for a query whose key raises. A conversion that names
+        /// <b>A parse names how the text is read and would be licensed by the format; a cast leaves it to the engine</b>
+        /// and is licensed only where the engine reads the form at all — measured, every ISO-8601 instant raises in a
+        /// temporal cast, so ordering by the stored strings would order rows for a query whose key raises. No format
+        /// licenses a parse: measured, every parse carries a field past its range over, so the stored strings do not
+        /// order as what it reads (<see cref="CosmosStoredForms.ParsesExactly"/>). A conversion that names
         /// neither is a UUID cast, which the engine performs (<c>Calcite.UuidOrderIsCanonicalOrdinal</c>).
         /// </para>
         /// <para>
@@ -789,10 +792,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// <para>
         /// <b>Exact needs equality as well as order.</b> <see cref="CosmosRepresentation"/> sets the two apart, and a form
         /// that keeps the order with two spellings of a value parts what Calcite ties: it refines, and stands last only.
-        /// No registered form is one; <c>CosmosServiceOrderModelTests</c> plants it.
+        /// No registered form is one by its bits; <c>CosmosServiceOrderModelTests</c> plants it. A calendar date read
+        /// through the cast is one at day <c>00</c>, which the cast reads as the month before's last day
+        /// (<c>Calcite.DateCastReadsDayZeroAsTheMonthBefore</c>), and is answered exact all the same: <c>TODO.md</c>
+        /// records it, under the date cast's day zero.
         /// </para>
         /// </remarks>
-        static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath? path, string? format, CosmosTemporalParts held)
+        static Reading ReadConversion(JsonFactSet facts, JsonDocumentPath? path, string? format, CosmosTemporalParts held) =>
+            ReadStored(facts, path, representation => CosmosStoredForms.Reads(representation, format, held),
+                format is not null ? "a parse whose format does not read the stored form" : "a cast the engine cannot read the stored form by");
+
+        /// <summary>
+        /// Reads what a reading of a path's text makes of it: by the stored spelling, where the path's form keeps the order
+        /// and the reading reads that form, which <paramref name="reads"/> answers of the form.
+        /// </summary>
+        /// <param name="facts">The facts its consumer was decided under.</param>
+        /// <param name="path">The path read.</param>
+        /// <param name="reads">Whether the reading reads a form's stored strings as the values they spell.</param>
+        /// <param name="unread">Why it is refused where the reading does not.</param>
+        static Reading ReadStored(JsonFactSet facts, JsonDocumentPath? path, Func<CosmosRepresentation, bool> reads, string unread)
         {
             var admitted = Admitted(facts, path, out var constant);
             var values = admitted & (Classes.String | Classes.Number | Classes.Boolean);
@@ -804,8 +822,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             if (path is not JsonDocumentPath known || facts.RepresentationOf(known) is not CosmosRepresentation representation || representation.PreservesOrder == false)
                 return refused;
 
-            if (CosmosStoredForms.Reads(representation, format, held) == false)
-                return refused with { Why = format is not null ? "a parse whose format does not read the stored form" : "a cast the engine cannot read the stored form by" };
+            if (reads(representation) == false)
+                return refused with { Why = unread };
 
             return representation.PreservesEquality
                 ? refused with { Agreement = CosmosOrderAgreement.Exact, Why = "a conversion of a stored form" }

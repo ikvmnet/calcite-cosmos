@@ -79,7 +79,7 @@ synchronous reads.
 - Partition routing and point reads recovered from the predicate
 - Lookup joins that fetch only the documents another source's keys match
 - `INSERT`, `UPDATE` and `DELETE`
-- JSON Schema and `UNIQUE` declarations that let UUIDs, timestamps and numbers stored as text push down
+- JSON Schema and `UNIQUE` declarations that let UUIDs, dates and numbers stored as text push down
 - Full text search, vector search and geodesic geography
 - Request-unit metrics and traces through `System.Diagnostics`
 

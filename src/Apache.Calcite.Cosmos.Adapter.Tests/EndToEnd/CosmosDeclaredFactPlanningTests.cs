@@ -3,6 +3,7 @@
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Rel.Convert;
+using Apache.Calcite.Cosmos.Facts;
 
 using FluentAssertions;
 using Xunit;
@@ -19,6 +20,8 @@ using org.apache.calcite.sql.fun;
 using org.apache.calcite.sql.parser;
 using org.apache.calcite.sql.validate;
 using org.apache.calcite.sql2rel;
+
+using static Apache.Calcite.Cosmos.Adapter.Tests.Facts.OracleFixture;
 
 namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 {
@@ -268,6 +271,156 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             query.PartitionKeyValues.Should().BeNull("an inequality names no value to route to");
 
             PlanText(best).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(best));
+        }
+
+        /// <summary>
+        /// A conjunct only a sibling the facts graph reads coarsely implies is still sent: a typed number, or the partition
+        /// key's column cast to text, makes no null test beside it redundant, though each keeps only documents the test
+        /// keeps — the comparison holding a number only, or the one kind the declaration requires a label of. The documents
+        /// are the same, the text sent one conjunct longer, and the route the key's cast to text pins is kept.
+        /// </summary>
+        /// <param name="shape">
+        /// <c>D1</c>, a typed <c>INTEGER</c> beside its own path's null test; <c>D2</c>, a typed <c>INTEGER</c> kind = 5
+        /// declared an integer, kind 5 requiring a string label; <c>D3</c>, the key's cast to text = 'A', kind A requiring
+        /// one.
+        /// </param>
+        [Theory]
+        [InlineData("D1")]
+        [InlineData("D2")]
+        [InlineData("D3")]
+        public void AConjunctOnlyACoarseSiblingImpliesIsStillSent(string shape)
+        {
+            var (kind, label) = (P("kind"), P("label"));
+            (string Key, JsonFactRule[] Facts, string Sql, string Where) c = shape switch
+            {
+                "D1" => ("/pk", [],
+                    """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) > 3 AND JSON_VALUE(c."DOC", '$.n') IS NOT NULL""",
+                    "WHERE ((c.n > @p0) AND (IS_DEFINED(c.n) AND NOT IS_NULL(c.n) AND IS_PRIMITIVE(c.n)))"),
+                "D2" => ("/pk", [Outright(kind, Present), Outright(kind, Type(JsonType.Integer)), When(kind, 5m, label, Present), When(kind, 5m, label, Type(JsonType.String))],
+                    """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.kind' RETURNING INTEGER) = 5 AND JSON_VALUE(c."DOC", '$.label') IS NOT NULL""",
+                    "WHERE ((c.kind = @p0) AND (IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)))"),
+                _ => ("/kind", [When(kind, "A", label, Present), When(kind, "A", label, Type(JsonType.String))],
+                    """SELECT c."id" FROM items AS c WHERE CAST(c."$.kind" AS VARCHAR) = 'A' AND JSON_VALUE(c."DOC", '$.label') IS NOT NULL""",
+                    "WHERE ((c.kind = @p0) AND (IS_DEFINED(c.label) AND NOT IS_NULL(c.label) AND IS_PRIMITIVE(c.label)))"),
+            };
+
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { c.Key })).WithFacts(c.Facts);
+            var query = Query(FindCosmos(PlanToCosmos(c.Sql, container, out _)), container);
+
+            query.Sql.Should().EndWith(c.Where, "the null test is sent beside the coarse sibling that implies it");
+            if (shape == "D3")
+                query.PartitionKeyValues.Should().Equal(new object[] { "A" }, "the key's cast to text still routes");
+        }
+
+        /// <summary>
+        /// Nor is a conjunct the facts graph reads coarsely itself deleted, though the siblings it reads exactly or the
+        /// declaration imply it: its own verdict is no more measured than what it establishes. Over a kind declared
+        /// <c>"true"</c> or <c>true</c>, the partition key's column cast to text = 'true' is read as a stored value's
+        /// rendering, so beside the kind's type test it is decided always true; but Calcite's cast of a stored
+        /// <c>true</c> through the key's <c>VARIANT</c> is null, and with the cast deleted the plan kept
+        /// <c>{"kind": true}</c>, which Calcite drops. It is sent, and routes; and so is a range through the text's cast to
+        /// <c>DOUBLE</c> that the declared bounds satisfy.
+        /// </summary>
+        /// <param name="shape">
+        /// <c>F9r</c>, the cast beside the text's type test; <c>F9w</c>, the same written the other way round;
+        /// <c>F9t</c>, the cast beside the text's null test; <c>B1</c>, a range through the text's cast to <c>DOUBLE</c>
+        /// that a required integer's declared bounds satisfy.
+        /// </param>
+        [Theory]
+        [InlineData("F9r")]
+        [InlineData("F9w")]
+        [InlineData("F9t")]
+        [InlineData("B1")]
+        public void AConjunctReadCoarselyIsNotItselfDeleted(string shape)
+        {
+            var (kind, n) = (P("kind"), P("n"));
+            JsonFactRule[] kinds = [Outright(kind, Enum("true", true))];
+            (string Key, JsonFactRule[] Facts, string Sql, string Where) c = shape switch
+            {
+                "F9r" => ("/kind", kinds,
+                    """SELECT c."id" FROM items AS c WHERE CAST(c."$.kind" AS VARCHAR) = 'true' AND IS_PRIMITIVE(JSON_VALUE(c."DOC", '$.kind'))""",
+                    "WHERE ((c.kind = @p0) AND IS_PRIMITIVE(c.kind))"),
+                "F9w" => ("/kind", kinds,
+                    """SELECT c."id" FROM items AS c WHERE IS_PRIMITIVE(JSON_VALUE(c."DOC", '$.kind')) AND CAST(c."$.kind" AS VARCHAR) = 'true'""",
+                    "WHERE (IS_PRIMITIVE(c.kind) AND (c.kind = @p0))"),
+                "F9t" => ("/kind", kinds,
+                    """SELECT c."id" FROM items AS c WHERE CAST(c."$.kind" AS VARCHAR) = 'true' AND JSON_VALUE(c."DOC", '$.kind') IS NOT NULL""",
+                    "WHERE ((c.kind = @p0) AND (IS_DEFINED(c.kind) AND NOT IS_NULL(c.kind) AND IS_PRIMITIVE(c.kind)))"),
+                _ => ("/pk", [Outright(n, Present), Outright(n, Type(JsonType.Integer)), Outright(n, new JsonClaim.LowerBound(0m)), Outright(n, new JsonClaim.UpperBound(100m))],
+                    """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) >= 0 AND JSON_VALUE(c."DOC", '$.kind') = 'A'""",
+                    "WHERE ((c.n >= @p0) AND (c.kind = @p1))"),
+            };
+
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { c.Key })).WithFacts(c.Facts);
+            var query = Query(FindCosmos(PlanToCosmos(c.Sql, container, out _)), container);
+
+            query.Sql.Should().EndWith(c.Where, "the coarse conjunct is sent beside what implies it");
+            if (c.Key == "/kind")
+                query.PartitionKeyValues.Should().Equal(new object[] { "true" }, "and the cast routes");
+        }
+
+        /// <summary>
+        /// A comparison is not lowered onto a stored form only a coarse sibling establishes: where the partition key's column
+        /// cast to text is <c>'B'</c> the ref is declared a canonical UUID, but the facts graph reads that cast coarsely, so
+        /// the UUID comparison stays as written and is rechecked in process. Through the text, which it reads exactly, the
+        /// comparison is lowered and sent.
+        /// </summary>
+        [Fact]
+        public void AComparisonIsNotLoweredOnACoarseSibling()
+        {
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { "/kind" }))
+                .WithFacts(CosmosSchemaRecognition.ReadFrom(System.Text.Json.Nodes.JsonNode.Parse(Schema)));
+
+            var coarse = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE CAST(c."$.kind" AS VARCHAR) = 'B' AND {Ref} = UUID '{Canonical}'""", container, out _);
+            var sent = Query(FindCosmos(coarse), container).Sql;
+            sent.Should().EndWith("WHERE (c.kind = @p0)", "the kind alone is sent");
+            sent.Should().NotContain("c.ref = @", "the comparison is not lowered beside the coarse kind");
+            PlanText(coarse).Should().Contain("ClrCursorFilter", "the comparison is Calcite's to make: " + PlanText(coarse));
+
+            var exact = PlanToCosmos($"""SELECT c."id" FROM items AS c WHERE {Kind} = 'B' AND {Ref} = UUID '{Canonical}'""", container, out _);
+            Query(FindCosmos(exact), container).Sql.Should().Contain("c.ref = @", "beside the text's equality it is lowered");
+            PlanText(exact).Should().NotContain("ClrCursorFilter", "and nothing is left for the runtime: " + PlanText(exact));
+        }
+
+        /// <summary>
+        /// The guard a weakened comparison is pushed as is still not sent beside a sibling the facts graph reads
+        /// coarsely that implies it: a <c>LIKE</c> a number's text may match is weakened to its path's presence alone,
+        /// which a typed number or the partition key's column cast to text applies already, however it is read, so only
+        /// the comparison is sent and the <c>LIKE</c> is rechecked in process. What a coarse sibling no longer makes
+        /// redundant is a conjunct of the filter (<see cref="AConjunctOnlyACoarseSiblingImpliesIsStillSent"/>), not a
+        /// weakening.
+        /// </summary>
+        /// <param name="shape">
+        /// <c>A1</c>, a typed <c>INTEGER</c> beside a <c>LIKE</c> on its path; <c>A3</c>, a typed <c>DOUBLE</c>;
+        /// <c>A4</c>, the key's cast to text = '12' beside a <c>LIKE</c> on the key.
+        /// </param>
+        [Theory]
+        [InlineData("A1")]
+        [InlineData("A3")]
+        [InlineData("A4")]
+        public void AWeakeningsGuardACoarseSiblingImpliesIsNotSent(string shape)
+        {
+            (string Key, string Sql, string Where) c = shape switch
+            {
+                "A1" => ("/pk",
+                    """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) > 3 AND JSON_VALUE(c."DOC", '$.n') LIKE '4%'""",
+                    "WHERE (c.n > @p0)"),
+                "A3" => ("/pk",
+                    """SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.n' RETURNING DOUBLE) > 3 AND JSON_VALUE(c."DOC", '$.n') LIKE '4%'""",
+                    "WHERE (c.n > @p0)"),
+                _ => ("/kind",
+                    """SELECT c."id" FROM items AS c WHERE CAST(c."$.kind" AS VARCHAR) = '12' AND JSON_VALUE(c."DOC", '$.kind') LIKE '1%'""",
+                    "WHERE (c.kind = @p0)"),
+            };
+
+            var container = TestReasoning.Bind(new CosmosContainerMetadata("items", new[] { c.Key })).WithFacts([]);
+            var best = PlanToCosmos(c.Sql, container, out _);
+            var query = Query(FindCosmos(best), container);
+
+            query.Sql.Should().EndWith(c.Where, "the comparison beside it applies the presence the LIKE is weakened to");
+            PlanText(best).Should().Contain("ClrCursorFilter", "the LIKE is Calcite's to make: " + PlanText(best));
+            if (shape == "A4")
+                query.PartitionKeyValues.Should().Equal(new object[] { "12" }, "the key's cast to text still routes");
         }
 
         [Fact]
@@ -920,8 +1073,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// epoch milliseconds. So the pushed sort ordered rows for a query that raises.
         /// </para>
         /// <para>
-        /// What carries the sort now is the parse — <c>CosmosTemporalParsePlanningTests</c>,
-        /// <c>AParsedInstantCarriesTheSort</c> — which names a format the engine reads.
+        /// Nor does a parse carry it, reading the shape's other strings as other instants —
+        /// <c>CosmosTemporalParsePlanningTests</c>, <c>AParsedInstantLeavesTheSortInProcess</c>. An
+        /// instant sort is computed in process however it is written.
         /// </para>
         /// </remarks>
         [Fact]
@@ -956,9 +1110,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// strings answered rows where the query raises.
         /// </para>
         /// <para>
-        /// The parse is what reaches the statement now — see
-        /// <c>CosmosTemporalParsePlanningTests.ARangeOverAParsedInstantReachesTheStatement</c>, whose
-        /// assertions are the ones this row used to make.
+        /// Nor does a parse reach the statement, reading the shape's other strings as other instants —
+        /// see <c>CosmosTemporalParsePlanningTests.ARangeOverAParsedInstantStaysInProcess</c>. An instant
+        /// comparison is computed in process however it is written.
         /// </para>
         /// </remarks>
         /// <remarks>
@@ -1173,11 +1327,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// a temporal one, and section 6 records why it is not the same job — <c>CAST(&lt;string&gt; AS
         /// TIMESTAMP)</c> accepts only <c>yyyy-MM-dd HH:mm:ss</c> and raises on every ISO-8601 form a
         /// document stores, so what such a column reads back as is its own question.
-        /// </para>
-        /// <para>
-        /// A temporal sort is not unavailable meanwhile: the <c>RETURNING TIMESTAMP</c> spelling binds
-        /// to the path directly and pushes, gated on the same bit — see
-        /// <c>AFixedIsoShapeCarriesATemporalSort</c>.
         /// </para>
         /// </remarks>
         /// <summary>

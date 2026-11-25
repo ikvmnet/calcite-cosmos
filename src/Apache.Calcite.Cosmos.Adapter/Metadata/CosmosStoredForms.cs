@@ -136,6 +136,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         public static bool EngineReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
             CosmosTemporalForms.EngineReads(representation, target);
 
+        /// <inheritdoc cref="CosmosTemporalForms.ReturningReads" />
+        public static bool ReturningReads(CosmosRepresentation representation, CosmosTemporalParts target) =>
+            CosmosTemporalForms.ReturningReads(representation, target);
+
         /// <summary>
         /// Determines whether a conversion of a form's stored text reads it as the value it spells: a parse by its
         /// format, a cast to an instant where the engine reads the form into that type, and a conversion naming

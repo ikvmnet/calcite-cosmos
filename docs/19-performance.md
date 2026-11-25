@@ -25,8 +25,8 @@ In rough order of how much they matter:
    Avoid `SELECT *` and selecting `DOC` in hot paths.
 6. **Let joins fetch by key.** A join against a container is cheap when it can be a lookup join
    (Chapter 12), and costs a full read of the container when it cannot.
-7. **Declare what you know.** A JSON Schema turns UUID, numeric-text and instant comparisons that would
-   read the container into indexed, routed ones (Chapters 14 and 15).
+7. **Declare what you know.** A JSON Schema turns UUID, numeric-text and calendar-date comparisons that
+   would read the container into indexed, routed ones (Chapters 14 and 15).
 8. **Index what you filter on.** A filter over a path the indexing policy excludes is a scan of that
    path. The adapter reads the indexing policy and prices such filters higher, but it cannot make them
    cheap.

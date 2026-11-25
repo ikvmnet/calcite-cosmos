@@ -3,6 +3,7 @@ using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter;
 using Apache.Calcite.Cosmos.Adapter.Metadata;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
 using Apache.Calcite.Cosmos.Facts;
 using Apache.Calcite.Cosmos.Facts.Saturation;
 
@@ -470,8 +471,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         // ── Tautology over IN, <>, a range and IS NOT NULL ────────────────────────────────────────────────────────
 
         /// <summary>
-        /// The shapes the old <c>IsAlwaysTrue</c> lacked: each deleted where the declaration guarantees it, and each kept
-        /// where a document the declaration admits would fail it.
+        /// The shapes the old <c>IsAlwaysTrue</c> lacked: each decided always true where the declaration guarantees it, and
+        /// deleted where the facts graph reads it exactly; and each kept where a document the declaration admits would
+        /// fail it.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -487,7 +489,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
         /// </para>
         /// <para>
         /// The same ranges through a cast to <c>DOUBLE</c>, whose parse raises on no number, are the tautologies; and
-        /// <c>RETURNING DOUBLE</c> is not, raising over a stored integer.
+        /// <c>RETURNING DOUBLE</c> is not, raising over a stored integer. The facts graph reads the cast coarsely, so its
+        /// verdict deletes nothing (<see cref="CosmosStatementScope.RedundantConjuncts"/>), and the range is sent.
         /// </para>
         /// </remarks>
         [Theory]
@@ -515,7 +518,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts
             var conjuncts = loaded.Statement.Conjuncts.Count;
 
             if (always)
-                loaded.Statement.Redundant.Should().HaveCount(conjuncts, $"the declaration guarantees {condition}: {loaded.Statement.Statement}");
+            {
+                Enumerable.Range(0, conjuncts).Select(i => loaded.Statement.ScopeForCheck.Decide(i, OracleLicence.DeleteConjunct(i)))
+                    .Should().AllBeEquivalentTo(Truth.Always, $"the declaration guarantees {condition}: {loaded.Statement.Statement}");
+                loaded.Statement.Redundant.Should().BeEquivalentTo(Enumerable.Range(0, conjuncts).Where(i => FactsReadings.ReadExactly(loaded.Statement.Statement.Conjuncts[i])),
+                    "and every one the facts graph reads exactly is deleted");
+            }
             else
                 loaded.Statement.Redundant.Should().HaveCountLessThan(conjuncts, $"a document the declaration admits fails {condition}: {loaded.Statement.Statement}");
         }
