@@ -49,7 +49,8 @@ helps you use it well, it is given briefly and the design document is named.
 13. [Writing data](13-writing.md) — `INSERT`, `UPDATE` and `DELETE`
 14. [Describing documents with JSON Schema](14-json-schema.md) — declared facts, what they unlock,
     and the promise they make
-15. [Dates and times](15-dates-and-times.md) — instants stored as text, and the spellings that push
+15. [Dates and times](15-dates-and-times.md) — instants stored as text, what pushes and what is
+    computed
 16. [Declaring uniqueness](16-constraints.md) — `UNIQUE` constraints and what they let the planner
     merge
 17. [Full text and vector search](17-full-text-and-vector-search.md) — `FULLTEXTCONTAINS`,

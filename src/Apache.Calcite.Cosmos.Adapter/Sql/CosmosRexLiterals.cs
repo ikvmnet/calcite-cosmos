@@ -97,9 +97,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <remarks>
         /// Read by <see cref="GetLiteralValue"/> and by the translator's parameter
         /// (<c>CosmosRexTranslator.WriteDynamicParam</c>), so a parameter is written as a literal of its type would be.
-        /// A <c>UUID</c>, a date or an instant compared with a path declared to spell one is written in that spelling,
-        /// through a slot of its own (<c>CosmosRexTranslator.TryWriteStoredUuidParameter</c>,
-        /// <c>TryWriteStoredInstantParameter</c>).
+        /// A <c>UUID</c> compared with a path declared to spell one, and a date or an instant compared with a path declared
+        /// to spell a calendar date and read with a plain cast, are written in that spelling, through a slot of their own
+        /// (<c>CosmosRexTranslator.TryWriteStoredUuidParameter</c>, <c>TryWriteStoredInstantParameter</c>).
         /// </remarks>
         /// <param name="type">The type of the literal or the parameter.</param>
         /// <returns><c>true</c> where neither is sent.</returns>

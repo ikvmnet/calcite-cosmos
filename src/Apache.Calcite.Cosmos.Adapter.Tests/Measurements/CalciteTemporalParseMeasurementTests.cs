@@ -24,8 +24,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// pattern by reasoning — the pattern <em>is</em> the language, and what its strings look like
     /// follows. A format string is not like that: it is an input to a parser the adapter does not own,
     /// and what that parser makes of it can only be asked. So every row the table carries is run here
-    /// against a sample of the shape it claims, and a row that stops being exact fails a test rather
-    /// than returning wrong rows.
+    /// against samples of the shape it lists, and a row that stops reading them fails a test. Reading
+    /// the samples is not reading the shape: every listed format rolls a field past its range onto
+    /// another instant (<c>CalciteTemporalLeniencyMeasurementTests</c>), so no row licenses a rewrite.
     /// </para>
     /// <para>
     /// <b>And the first thing asking turned up was that the obvious spelling is silently wrong.</b>
@@ -181,16 +182,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);
 
         /// <summary>
-        /// Every spelling the table claims reads its shape exactly.
+        /// Every spelling the table lists reads the samples of its shape as the instants they denote.
         /// </summary>
         /// <remarks>
-        /// The soundness direction, and the one a wrong answer would come through. A spelling listed
-        /// for a form is a promise that parsing any string the form admits answers the instant that
-        /// string denotes — which is what makes the chain preserve whatever the form preserves, and
-        /// what lets a comparison be lowered onto the stored strings.
+        /// A spelling listed for a form reads the form's canonical strings, and this holds it to these
+        /// samples. It is no promise about the form's other strings, which every listed spelling rolls
+        /// onto other instants (<c>Calcite.ParsesReadTheirFieldsLeniently</c>), so no comparison is
+        /// lowered onto the stored strings by it.
         /// </remarks>
         [Fact]
-        public void EverySpellingTheTableClaimsReadsItsShapeExactly()
+        public void EverySpellingTheTableListsReadsItsShapesSamples()
         {
             var claimed = 0;
 
@@ -214,8 +215,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         }
 
         /// <summary>
-        /// Every spelling the table claims reads its shape exactly through a cast as well, which is
-        /// what lets one table answer for both.
+        /// Every spelling the table lists reads the samples of its shape through a cast as well, which
+        /// is what lets one table answer for both.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -228,14 +229,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// <b>The fraction is the row worth watching.</b> ikvmnet/calcite-cosmos#170 reported the cast
         /// answering <c>.000</c> for every millisecond spelling. Measured here, over a column, it reads
-        /// them exactly — into a bare <c>TIMESTAMP</c> as well, whose declared precision is zero. The
-        /// cast is measured into <c>TIMESTAMP(3)</c> because that is the one
-        /// <see cref="CosmosTemporalParse"/> accepts for a millisecond format; a regression to
-        /// truncating would fail this rather than push a non-injective parse.
+        /// the samples' milliseconds as they are written — into a bare <c>TIMESTAMP</c> as well, whose
+        /// declared precision is zero. The cast is measured into <c>TIMESTAMP(3)</c> because that is
+        /// the one <see cref="CosmosTemporalParse"/> accepts for a millisecond format.
         /// </para>
         /// </remarks>
         [Fact]
-        public void EverySpellingTheTableClaimsReadsItsShapeExactlyThroughACast()
+        public void EverySpellingTheTableListsReadsItsShapesSamplesThroughACast()
         {
             var claimed = 0;
 
@@ -289,14 +289,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <para>
         /// <c>yyyy-MM-dd'T'HH:mm:ss'Z'</c> is the format a caller writes, and it does not raise. It
         /// answers April where January was stored, because the model reads its <c>mm</c> as a second
-        /// month and leaves the minute unset. The same spelling over a <em>date</em> is correct, there
-        /// being no minute in a date to be mistaken for a month — and that is why
-        /// <c>iso8601-date</c> lists it and nothing else does.
+        /// month and leaves the minute unset. The same spelling over a <em>date</em> reads its
+        /// canonical strings, there being no minute in a date to be mistaken for a month — and that is
+        /// why <c>iso8601-date</c> lists it and nothing else does.
         /// </para>
         /// <para>
         /// The consequence for the adapter is a refusal rather than a fix: a query written this way is
         /// already returning the wrong rows in process, and declining to push it leaves that answer
-        /// exactly where it is.
+        /// exactly where it is. The date's spelling is refused too, as every listed one is, since it
+        /// rolls a field past its range.
         /// </para>
         /// </remarks>
         [Fact]
@@ -308,24 +309,29 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 "the mm is read as a second month and the minute is never set");
 
             var seconds = Form("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
+            CosmosStoredForms.ParseFormats(seconds).Should().NotContain(Java, "so the table does not list it for the instant");
             CosmosStoredForms.ParsesExactly(seconds, Java, CosmosTemporalParts.Instant).Should().BeFalse(
-                "so the chain is not an equivalence and nothing is lowered onto it");
+                "and the chain is not an equivalence, so nothing is lowered onto it");
 
             var date = Form("^[0-9]{4}-[0-9]{2}-[0-9]{2}$");
             Parse("yyyy-MM-dd", "2024-01-02").Should().Be(Instant("2024-01-02T00:00:00.000"));
-            CosmosStoredForms.ParsesExactly(date, "yyyy-MM-dd", CosmosTemporalParts.Date).Should().BeTrue(
-                "while over a date the same spelling is exact, a date having no minute");
+            CosmosStoredForms.ParseFormats(date).Should().Contain("yyyy-MM-dd",
+                "while over a date the same spelling reads the canonical strings, a date having no minute");
+            CosmosStoredForms.ParsesExactly(date, "yyyy-MM-dd", CosmosTemporalParts.Date).Should().BeFalse(
+                "though it rolls the date's other strings as every listed spelling does, so it licenses nothing");
         }
 
         /// <summary>
         /// A parse into a type that holds less than the shape carries is refused, however faithfully
-        /// the format reads it.
+        /// the format reads the shape's canonical strings.
         /// </summary>
         /// <remarks>
-        /// <c>PARSE_DATE</c> over a path storing a full instant reads the format exactly and then
-        /// throws the clock away, so every instant on a day shares one value. Lowering an equality
-        /// onto the stored strings would then ask a finer question than the query did. Measured: the
-        /// engine's own <c>parseDate</c> answers the day and loses the rest.
+        /// <c>PARSE_DATE</c> over a path storing a full instant reads the format and then throws the
+        /// clock away, so every instant on a day shares one value. Lowering an equality onto the
+        /// stored strings would then ask a finer question than the query did. Measured: the engine's
+        /// own <c>parseDate</c> answers the day and loses the rest. Every parse is refused now, the
+        /// format rolling the shape's other strings into a type that holds them as well; the truncation
+        /// is measured still, since a parse read as a reading of its own would have to answer for both.
         /// </remarks>
         [Fact]
         public void AParseIntoATypeHoldingLessIsRefused()
@@ -333,11 +339,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             var seconds = Form("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
             const string Format = @"%Y-%m-%d'T'%H:%M:%S'Z'";
 
-            CosmosStoredForms.ParsesExactly(seconds, Format, CosmosTemporalParts.Instant).Should().BeTrue(
-                "the format reads the shape");
+            CosmosStoredForms.ParseFormats(seconds).Should().Contain(Format, "the format reads the shape's canonical strings");
+
+            CosmosStoredForms.ParsesExactly(seconds, Format, CosmosTemporalParts.Instant).Should().BeFalse(
+                "and rolls its others, so nothing is claimed into the type that holds it");
 
             CosmosStoredForms.ParsesExactly(seconds, Format, CosmosTemporalParts.Date).Should().BeFalse(
-                "and a DATE cannot hold what it read");
+                "nor into a DATE, which cannot hold what it read");
 
             Jdbc($"PARSE_DATE('{Format.Replace("'", "''")}', '2024-01-02T03:04:05Z')")
                 .Should().Be("2024-01-02", "which the engine confirms by answering the day alone");
@@ -345,14 +353,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
         /// <summary>
         /// Where the table says a shape reads back, the reader answers what the engine's parse
-        /// answers; where it says otherwise, it does not.
+        /// answers of its samples; where it says otherwise, it does not.
         /// </summary>
         /// <remarks>
         /// <para>
-        /// This is what licenses <em>projecting</em> a parse. The column goes down as the stored text
-        /// and comes back through <see cref="CosmosJson"/>, so the value the query sees is that
-        /// conversion rather than the engine's parse — and the two are different functions that have
-        /// to agree. Both ways they can disagree are exercised here rather than reasoned about: a
+        /// This is the other half of what <em>projecting</em> a parse would need, beside a format that
+        /// reads every string of the shape, which no listed one does. The column would go down as the
+        /// stored text and come back through <see cref="CosmosJson"/>, so the value the query sees is
+        /// that conversion rather than the engine's parse — and the two are different functions that
+        /// have to agree. Both ways they can disagree are exercised here rather than reasoned about: a
         /// shape .NET's parser refuses outright, and a column holding a half the shape does not carry,
         /// where the reader fills the date from <em>today</em> and the engine from the epoch.
         /// </para>
@@ -387,7 +396,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     (CosmosTemporalParts.Instant, org.apache.calcite.sql.type.SqlTypeName.TIMESTAMP),
                 })
                 {
-                    if (CosmosStoredForms.ParsesExactly(representation, format, held) == false)
+                    // A type that cannot hold what the parse read of the samples, a DATE holding no
+                    // clock or a TIME no date, asks the reader and the parse about different values.
+                    // A sample the format fails to read is not skipped: the assertion below catches it.
+                    if (shape.Samples.Any(sample => Parse(format, sample.Stored) is DateTime parsed && Holds(parsed, type) == false))
                         continue;
 
                     var reads = CosmosStoredForms.ReadsBackAs(representation, held);
@@ -420,6 +432,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             agreed.Should().BeGreaterThan(0);
             refused.Should().BeGreaterThan(0, "the basic date and the time of day read as a TIMESTAMP are the two that disagree");
+        }
+
+        /// <summary>
+        /// Whether a type holds an instant whole: a <c>DATE</c> one at midnight, a <c>TIME</c> one on the
+        /// epoch's day, a <c>TIMESTAMP</c> any.
+        /// </summary>
+        static bool Holds(DateTime value, org.apache.calcite.sql.type.SqlTypeName type)
+        {
+            if (type == org.apache.calcite.sql.type.SqlTypeName.DATE)
+                return value.TimeOfDay == TimeSpan.Zero;
+
+            if (type == org.apache.calcite.sql.type.SqlTypeName.TIME)
+                return value.Date == DateTime.UnixEpoch.Date;
+
+            return true;
         }
 
         /// <summary>

@@ -95,8 +95,10 @@ push.
 
 **A comparison with a UUID, a timestamp or a number stored as text reads the whole container.**
 The container does not declare the stored form, or the query reads it with a spelling that cannot push.
-Declare a `pattern` (Chapter 14); for instants, read with `PARSE_DATETIME` or `CAST … FORMAT`, not
-`CAST` or `RETURNING TIMESTAMP` (Chapter 15). A pattern that one reading of ECMA-262 rejects is no form:
+Declare a `pattern` (Chapter 14). A comparison of an instant stored as ISO-8601 text is computed in
+process however it is read, `PARSE_DATETIME` and `CAST … FORMAT` included; compare the text itself
+where the strings are written in one shape, and read a calendar date with a plain `CAST … AS DATE`,
+which pushes (Chapter 15). A pattern that one reading of ECMA-262 rejects is no form:
 a UUID pattern with bare braces, `^{…}$`, or with `\-` for a hyphen outside a class, is a literal without
 the `u` flag and an error with it, and earlier versions read both as forms. Write `\{…\}`, and `-` or
 `[\-]` (Chapter 14.3). A pattern with a space in it is no form either, unless the stored strings hold that

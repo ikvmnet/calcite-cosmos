@@ -167,7 +167,9 @@ namespace Apache.Calcite.Cosmos.Adapter
             // a key that is a cast to the cast's operand wherever it calls the cast monotonic, a cast
             // of text to an instant among them, and the sort beneath then orders the text. So it is
             // Calcite's rule with a test the plan's keys must pass first: a field, or a cast that
-            // preserves the order of every value. See CosmosSortProjectTransposeRule.
+            // preserves the order of every value. See CosmosSortProjectTransposeRule. A host's planner
+            // has Calcite's own besides, unguarded, among its default rules, and CosmosConvention.register
+            // takes it out.
             yield return CosmosSortProjectTransposeRule.Instance;
 
             // Its other half, and registered for the same missing-rewrite reason. The transpose

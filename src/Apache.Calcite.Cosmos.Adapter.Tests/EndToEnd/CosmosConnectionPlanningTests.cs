@@ -137,6 +137,79 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             return rows;
         }
 
+        /// <summary>
+        /// An executor that answers every request with the documents in the order given, which is the order the service
+        /// returns them in for a request sorted on the stored text where a test lists them so, each projected as the
+        /// request's <c>SELECT VALUE { … }</c> names it: the document, a path, or a path guarded to its scalars. A request
+        /// with a <c>WHERE</c>, or projecting anything else, is refused.
+        /// </summary>
+        sealed class StoredOrderExecutor(string[] documents) : ICosmosQueryExecutor
+        {
+
+            static readonly System.Text.RegularExpressions.Regex Shape = new(@"^SELECT VALUE \{ (?<items>.*) \} FROM items c( ORDER BY [^@]*)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+            static readonly System.Text.RegularExpressions.Regex Item = new(@"""(?<name>[^""]+)"": (?:\(IS_PRIMITIVE\((?<guarded>c(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\) \? \k<guarded> : null\)|(?<path>c(?:\.[A-Za-z_][A-Za-z0-9_]*)*))(, |$)", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                var shape = Shape.Match(query.Sql);
+                if (shape.Success == false)
+                    throw new InvalidOperationException("Not a request this executor answers: " + query.Sql);
+
+                var items = Item.Matches(shape.Groups["items"].Value);
+                if (string.Concat(items.Select(m => m.Value)) != shape.Groups["items"].Value)
+                    throw new InvalidOperationException("Not a projection this executor answers: " + query.Sql);
+
+                var rows = documents.Select(d =>
+                {
+                    var document = JsonNode.Parse(d)!;
+                    var row = new JsonObject();
+                    foreach (var item in items.Cast<System.Text.RegularExpressions.Match>())
+                    {
+                        var guarded = item.Groups["guarded"].Success;
+                        var value = At(document, guarded ? item.Groups["guarded"].Value : item.Groups["path"].Value);
+                        if (value.Found)
+                            row[item.Groups["name"].Value] = guarded && value.Node is JsonObject or JsonArray ? null : value.Node?.DeepClone();
+                    }
+
+                    return row.ToJsonString();
+                });
+
+                return new(Infrastructure.ListCursor.Documents(rows.ToList()));
+            }
+
+            static (bool Found, JsonNode? Node) At(JsonNode document, string path)
+            {
+                JsonNode? at = document;
+                foreach (var step in path.Split('.').Skip(1))
+                {
+                    if (at is not JsonObject o || o.TryGetPropertyValue(step, out at) == false)
+                        return (false, null);
+                }
+
+                return (true, at);
+            }
+
+        }
+
+        /// <summary>
+        /// Runs a statement over a container whose every request is answered with the same documents in the order given,
+        /// declared <paramref name="schema"/> or nothing, on a target: the plan implemented, and its first column read.
+        /// </summary>
+        static System.Collections.Generic.List<string> AnswerInStoredOrder(string sql, string? schema, CosmosServiceTarget target, string[] documents)
+        {
+            using var source = Open(schema, new StoredOrderExecutor(documents), target);
+            using var connection = source.OpenConnection();
+            using var command = connection.CreateCommand();
+            command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");
+            using var reader = command.ExecuteReader();
+            var rows = new System.Collections.Generic.List<string>();
+            while (reader.Read())
+                rows.Add(Convert.ToString(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture)!);
+
+            return rows;
+        }
+
         static System.Data.Common.DbDataSource Open(string? schema, ICosmosQueryExecutor executor, CosmosServiceTarget? target)
         {
             var metadata = TestReasoning.Bind(new CosmosContainerMetadata("items", ["/category"]));
@@ -848,6 +921,174 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 plan.Should().StartWith(Converter, $"{label}: pushed whole: " + plan).And.NotContain("sends=[nothing]", $"{label}: " + plan);
                 plan.Should().Contain("UPPER(", $"{label}: " + plan);
             }
+        }
+
+        /// <summary>
+        /// Required strings: an instant to the second <c>at</c>, a calendar date <c>d</c>, and a time of day to the second
+        /// <c>t</c> and to the minute <c>m</c>.
+        /// </summary>
+        const string Temporal = """{ "type": "object", "required": ["at", "d", "t", "m"], "properties": { "at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" }, "d": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }, "t": { "type": "string", "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}$" }, "m": { "type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$" } } }""";
+
+        /// <summary>
+        /// A sort keyed by a cast the adapter's own transpose cannot prove orders as its operand stays above the cast in
+        /// the host's planner too, declared or not, on both targets: no request is sorted on the stored text.
+        /// </summary>
+        /// <remarks>
+        /// Calcite's own <c>SortProjectTransposeRule</c>, among the host's default rules, maps a key that is a cast to the
+        /// cast's operand wherever it calls the cast monotonic, and it calls a cast of text to a time of day monotonic.
+        /// The projection is split, the accessor sent and the cast left in process, so the sort beneath it was sent as an
+        /// <c>ORDER BY</c> on the stored text, which orders <c>12:30:99</c> before <c>12:31:00</c> where Calcite's cast
+        /// reads the first as 12:31:39 (<c>Calcite.TimeCastRollsAClocksFields</c>). The convention takes that rule out of
+        /// the planner and leaves its own guarded one, <c>CosmosSortProjectTransposeRule</c>. The last five cast the
+        /// declared date or clock to a type placed in a zone, which the plain cast reads no string of either form into
+        /// (<c>Calcite.TemporalCastReadsFewShapes</c>): the guarded rule moved the first four onto the stored date, the
+        /// plain cast's table having read a zoned timestamp as a <c>TIMESTAMP</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME) AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME(0)) AS "v" FROM items AS c ORDER BY 2 NULLS FIRST FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.m') AS TIME) AS "v" FROM items AS c ORDER BY 2 DESC FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.t') AS TIME)""")]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(0) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(0) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''') DESC""")]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.d') AS DATE FORMAT 'YYYY-MM-DD') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME(0) FORMAT 'HH24:MI:SS') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) DESC OFFSET 1 ROWS FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT COUNT(*) FROM (SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY) AS x""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS TIMESTAMP WITH TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
+        [InlineData("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.t') AS TIME WITH LOCAL TIME ZONE) FETCH NEXT 2 ROWS ONLY""")]
+        public void ASortThroughACastTheTransposeCannotProveIsNotSentOnTheStoredText(string sql)
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                foreach (var declared in new[] { true, false })
+                    Sends(sql, declared, Temporal, target, new Infrastructure.PlannersSeen())
+                        .Should().NotContain("ORDER BY", $"{target}, declared {declared}: the cast's order is not the text's");
+        }
+
+        /// <summary>
+        /// The control: a sort keyed by a calendar date's plain cast over the declared date is still sent, the adapter's
+        /// transpose proving from the declaration that the stored text orders as the dates.
+        /// </summary>
+        [Fact]
+        public void ASortThroughACalendarDatesCastIsStillSentOverTheDeclaredDate()
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                Sends("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.d') AS DATE) AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""", true, Temporal, target, new Infrastructure.PlannersSeen())
+                    .Should().Contain("ORDER BY c.d ASC", $"{target}: the declaration proves the date's text orders as the dates");
+        }
+
+        /// <summary>
+        /// A sort keyed by a cast of a declared calendar date to a timestamp placed in a zone raises, as Calcite's cast
+        /// does over every string of the form, rather than answering in the order of the stored text.
+        /// </summary>
+        /// <remarks>
+        /// <c>CAST('2024-02-29' AS TIMESTAMP WITH LOCAL TIME ZONE)</c> and the cast to <c>TIMESTAMP WITH TIME ZONE</c> raise
+        /// (<c>Calcite.TemporalCastReadsFewShapes</c>). The plain cast's table, asked by the parts a type holds, read both as
+        /// a <c>TIMESTAMP</c>, so the adapter's transpose moved the sort beneath the cast onto the stored date and a count
+        /// over the page answered 2 where the query raises.
+        /// </remarks>
+        [Fact]
+        public void ASortThroughACastOfADateToAZonedTimestampRaisesAsCalciteDoes()
+        {
+            string[] documents =
+            [
+                """{ "id": "a", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-02-29", "t": "12:30:00", "m": "12:30" }""",
+                """{ "id": "b", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-03-01", "t": "12:30:00", "m": "12:30" }""",
+            ];
+
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                foreach (var type in new[] { "TIMESTAMP WITH LOCAL TIME ZONE", "TIMESTAMP WITH TIME ZONE" })
+                {
+                    var answer = () => AnswerInStoredOrder($"""SELECT COUNT(*) FROM (SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS {type}) FETCH NEXT 2 ROWS ONLY) AS x""", Temporal, target, documents);
+                    answer.Should().Throw<Exception>($"{target}: the cast to {type} raises over a calendar date")
+                        .Where(e => e.ToString().Contains("this executor answers") == false, "the raise is the cast's, not a request the executor refuses");
+                }
+        }
+
+        /// <summary>
+        /// A null test through an accessor typed <c>TIME WITH TIME ZONE</c> over a time of day, declared or not, on both
+        /// targets, is computed in process and raises as Calcite's <c>RETURNING</c> clause does over every stored string,
+        /// rather than sent as the path's presence.
+        /// </summary>
+        /// <remarks>
+        /// <c>RETURNING TIME WITH TIME ZONE</c> asserts its type as every temporal <c>RETURNING</c> does, and raises over a
+        /// string of every registered form (<c>Calcite.ReturningReadsNoStoredString</c>). The type was read as holding no
+        /// part of an instant, so the accessor was let through as no temporal one, and its null test was written as the text
+        /// accessor's null set, <c>(IS_DEFINED(c.t) AND NOT IS_NULL(c.t) AND IS_PRIMITIVE(c.t))</c>, answering every row
+        /// where the query raises.
+        /// </remarks>
+        [Theory]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NOT NULL""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NULL""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) = JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE)""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME WITH TIME ZONE) IS NULL OR c."id" = '0'""")]
+        [InlineData("""SELECT c."id" FROM items AS c WHERE JSON_VALUE(c."DOC", '$.t' RETURNING TIME(3) WITH TIME ZONE) IS NOT NULL""")]
+        public void ANullTestThroughAnAccessorTypedTimeWithTimeZoneRaisesAsCalciteDoes(string sql)
+        {
+            string[] documents =
+            [
+                """{ "id": "0", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "13:00:00", "m": "12:30" }""",
+                """{ "id": "1", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "24:00:00", "m": "12:30" }""",
+            ];
+
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                foreach (var declared in new[] { true, false })
+                {
+                    Sends(sql, declared, Temporal, target, new Infrastructure.PlannersSeen())
+                        .Should().NotContain("WHERE", $"{target}, declared {declared}: the clause raises over the stored string, so nothing stands for the test");
+
+                    var answer = () => AnswerInStoredOrder(sql, declared ? Temporal : null, target, documents);
+                    answer.Should().Throw<Exception>($"{target}, declared {declared}: RETURNING TIME WITH TIME ZONE raises over a stored time of day")
+                        .Where(e => e.ToString().Contains("this executor answers") == false, "the raise is the clause's, not a request the executor refuses");
+                }
+        }
+
+        /// <summary>
+        /// A sort keyed by a cast orders the rows by the value the cast reads: a time of day whose second is past its range
+        /// after the time it rolls past, and an unpadded date by its day rather than by its text.
+        /// </summary>
+        /// <remarks>
+        /// The documents are listed in the order the stored text sorts, which is what a request sorted on it would be
+        /// answered in; each statement's rows are in the order Calcite's cast gives. The clock is declared, where the
+        /// sort was sent on the text; the date is not, where the transposed sort ordered the text in process.
+        /// </remarks>
+        [Fact]
+        public void ASortThroughACastOrdersByTheValueTheCastReads()
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                AnswerInStoredOrder("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.t') AS TIME) AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""", Temporal, target,
+                    [
+                        """{ "id": "a", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "12:30:99", "m": "12:30" }""",
+                        """{ "id": "b", "category": "x", "at": "2024-01-15T12:30:00Z", "d": "2024-01-15", "t": "12:31:00", "m": "12:30" }""",
+                    ]).Should().Equal(["b", "a"], $"{target}: 12:30:99 is 12:31:39 to Calcite, after 12:31:00");
+
+                AnswerInStoredOrder("""SELECT c."id" FROM items AS c ORDER BY CAST(JSON_VALUE(c."DOC", '$.d') AS DATE)""", null, target,
+                    [
+                        """{ "id": "a", "category": "x", "d": "2024-10-1" }""",
+                        """{ "id": "b", "category": "x", "d": "2024-9-1" }""",
+                    ]).Should().Equal(["b", "a"], $"{target}: 2024-9-1 is before 2024-10-1, whatever their text");
+            }
+        }
+
+        /// <summary>
+        /// A sort keyed by a cast with a format orders the rows by the instant the parse reads, over the declared instant:
+        /// a day past its month's range after the day it rolls past.
+        /// </summary>
+        /// <remarks>
+        /// As above, the documents are listed in the order the stored text sorts. The parse reads <c>2016-11-61</c> as
+        /// 31 December (<c>Calcite.ParsesReadTheirFieldsLeniently</c>), so no sort through it is sent.
+        /// </remarks>
+        [Fact]
+        public void ASortThroughAParseOrdersByTheInstantTheParseReads()
+        {
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+                AnswerInStoredOrder("""SELECT c."id", CAST(JSON_VALUE(c."DOC", '$.at') AS TIMESTAMP(0) FORMAT 'YYYY-MM-DD''T''HH24:MI:SS''Z''') AS "v" FROM items AS c ORDER BY 2 FETCH NEXT 10 ROWS ONLY""", Temporal, target,
+                    [
+                        """{ "id": "a", "category": "x", "at": "2016-11-61T00:00:00Z", "d": "2016-11-30", "t": "00:00:00", "m": "00:00" }""",
+                        """{ "id": "b", "category": "x", "at": "2016-12-01T00:00:00Z", "d": "2016-12-01", "t": "00:00:00", "m": "00:00" }""",
+                    ]).Should().Equal(["b", "a"], $"{target}: 2016-11-61 is 31 December to Calcite, after 1 December");
         }
 
     }

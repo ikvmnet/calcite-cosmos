@@ -86,7 +86,7 @@ Three things to get right from the start, each explained in the manual:
 - **Joins** that fetch only the documents another source's keys can match, and joins of a container
   to itself answered with one read — [Joins](docs/12-joins.md).
 - **Writes** — `INSERT`, `UPDATE` and `DELETE` as item operations — [Writing data](docs/13-writing.md).
-- **Declared facts**: a JSON Schema and `UNIQUE` constraints that let UUIDs, timestamps and numbers
+- **Declared facts**: a JSON Schema and `UNIQUE` constraints that let UUIDs, dates and numbers
   stored as text be compared, sorted and routed at the service —
   [JSON Schema](docs/14-json-schema.md), [Dates and times](docs/15-dates-and-times.md),
   [Uniqueness](docs/16-constraints.md).

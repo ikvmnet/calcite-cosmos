@@ -18,7 +18,7 @@ When the service returns a value, it is read according to the SQL type the plan 
 
 | JSON value | read as an untyped value (`ANY`, inside `MAP`/`ARRAY`) | read as a declared type |
 | --- | --- | --- |
-| string | string | `CHAR`, `VARCHAR`; `UUID` where the container declares the spelling; `DATE`, `TIME`, `TIMESTAMP` through a declared parse |
+| string | string | `CHAR`, `VARCHAR`; `UUID` where the container declares the spelling |
 | whole number | 64-bit integer | `TINYINT`, `SMALLINT`, `INTEGER`, `BIGINT`; `DECIMAL` from the exact digits |
 | fractional number | double | `REAL`, `FLOAT`, `DOUBLE`, `DECIMAL` |
 | `true` / `false` | boolean | `BOOLEAN` |

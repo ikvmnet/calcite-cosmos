@@ -95,11 +95,29 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <returns><c>true</c> where the operator reads this convention's container.</returns>
         internal bool Owns(CosmosContainerMetadata? container) => ReferenceEquals(container, _container);
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Registers the adapter's rules with the planner, and takes Calcite's own sort transpose out of it.
+        /// </summary>
+        /// <remarks>
+        /// A host's planner comes with Calcite's default rules, and among them is the transpose of a sort beneath the
+        /// projection it orders, unguarded: it maps a key that is a cast to the cast's operand wherever it calls the cast
+        /// monotonic, a cast of text to a date, a time or an instant among them. The adapter sends the accessor and leaves
+        /// the cast in process, so the sort it moved beneath the cast was sent on the stored text, or sorted it in process,
+        /// and ordered <c>12:30:99</c> before <c>12:31:00</c> where Calcite's cast reads the first as the later time. The
+        /// adapter registers the same transpose with the test the plan's keys must pass first
+        /// (<see cref="Rel.Convert.CosmosSortProjectTransposeRule"/>), so the unguarded one goes: what it moved that the
+        /// guarded one does not is a sort whose order nothing proves. The planner is the statement's, so every sort of a
+        /// statement that reads this container is the guarded rule's, another source's among them, and beneath a
+        /// projection no container binds it moves a sort past a cast only where
+        /// <see cref="Metadata.CosmosServiceOrder.CastPreservesOrder"/> holds.
+        /// </remarks>
+        /// <param name="planner">The planner.</param>
         public override void register(RelOptPlanner planner)
         {
             foreach (var rule in CosmosRules.GetRules(this))
                 planner.addRule(rule);
+
+            planner.removeRule(org.apache.calcite.rel.rules.CoreRules.SORT_PROJECT_TRANSPOSE);
         }
 
     }
