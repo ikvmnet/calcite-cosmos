@@ -237,9 +237,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // The Cosmos functions are declared for the validator and rendered into Cosmos SQL; none has
             // a CLR implementation, so a plan leaving one above the converter is cheaper on paper and
             // cannot be generated at all. The sibling rule never meets this, because everything it lifts
-            // is by definition something Cosmos could not render.
+            // is by definition something Cosmos could not render. A type test has a body where a query names it through the
+            // schema's functions, and none as the adapter's own operator, which a weakening the split pushed and a host's
+            // filter merge brought beside the pinned equalities is written with: lifted, it failed the statement over every
+            // document (CosmosConnectionPlanningTests.AConditionHoldingTheServicesFormIsNeverLeftToCalcite).
             foreach (var conjunct in residual)
-                if (Sql.CosmosOperators.ReferencesServiceOnlyFunction(conjunct))
+                if (Sql.CosmosOperators.ReferencesServiceOnlyFunction(conjunct) || Sql.CosmosOperators.HoldsServiceForm(conjunct))
                     return null;
 
             var rexBuilder = filter.getCluster().getRexBuilder();

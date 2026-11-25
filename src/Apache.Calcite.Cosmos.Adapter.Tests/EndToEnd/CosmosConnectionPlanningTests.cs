@@ -975,6 +975,82 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             + "WHERE JSON_VALUE(t.\"DOC\", '$.k') = 'a') AS u WHERE u.\"e\" = '5' OR INITCAP(JSON_VALUE(u.\"DOC\", '$.name')) = 'Steel'";
 
         /// <summary>
+        /// A condition holding the service's form is never left to Calcite, which has no body for it, through this connection,
+        /// on either target: a by-id lookup through a view beside a conjunct the split only weakens implements, nothing Calcite
+        /// evaluates holding a type test; and a stack of three filtered views beneath a case fold answers as Calcite's own
+        /// does over the same documents.
+        /// </summary>
+        /// <remarks>
+        /// The host's filter merge folds the split's residual and the half it sent into one condition, which its converter
+        /// rules make a filter Calcite evaluates over the statement beneath, and where what is pushed already brings the
+        /// estimate to one row that plan and the residual over the half cost the same rows, which is all Volcano compares; and
+        /// the point read's split lifted the merged weakening above the view. Either way the plan chosen held
+        /// <c>IS_DEFINED</c> in a calculation Calcite evaluates and failed to implement over every document, where the
+        /// residual alone answers. The cost model charges such a filter now (<c>CosmosRelMetadataQuery</c>), and the point
+        /// read's split lifts none. Calcite's own answer is the same statement over the documents written as a
+        /// <c>VALUES</c> list, which no rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData(ByIdThroughAView + "CAST(JSON_VALUE(t.\"DOC\", '$.s') AS INTEGER) = 5", null, CosmosServiceTarget.Azure)]
+        [InlineData(ByIdThroughAView + "CAST(JSON_VALUE(t.\"DOC\", '$.s') AS INTEGER) = 5", null, CosmosServiceTarget.Emulator)]
+        [InlineData(ByIdThroughAView + "JSON_VALUE(t.\"DOC\", '$.n' RETURNING DOUBLE) * 2 > 5", null, CosmosServiceTarget.Azure)]
+        [InlineData(ByIdThroughAView + "UPPER(JSON_VALUE(t.\"DOC\", '$.name')) = 'STEEL'", null, CosmosServiceTarget.Azure)]
+        [InlineData(ByIdThroughAView + "UPPER(JSON_VALUE(t.\"DOC\", '$.name')) = 'STEEL'", null, CosmosServiceTarget.Emulator)]
+        [InlineData(ByIdThroughAView + "(INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' OR JSON_VALUE(t.\"DOC\", '$.k') = 'a')", null, CosmosServiceTarget.Azure)]
+        [InlineData(ByIdThroughAView + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ORDER BY t.\"id\"", null, CosmosServiceTarget.Emulator)]
+        [InlineData(ThreeFilteredViews, "CAST(JSON_VALUE(t.\"DOC\", '$.s') AS INTEGER) = 5", CosmosServiceTarget.Azure)]
+        [InlineData(ThreeFilteredViews, "CAST(JSON_VALUE(t.\"DOC\", '$.s') AS INTEGER) = 5", CosmosServiceTarget.Emulator)]
+        [InlineData(ThreeFilteredViews, "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND JSON_VALUE(t.\"DOC\", '$.s') = '5'", CosmosServiceTarget.Azure)]
+        [InlineData(ThreeFilteredViews, "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND JSON_VALUE(t.\"DOC\", '$.s') = '5'", CosmosServiceTarget.Emulator)]
+        public void AConditionHoldingTheServicesFormIsNeverLeftToCalcite(string sql, string? middle, CosmosServiceTarget target)
+        {
+            if (middle is not null)
+                sql = string.Format(System.Globalization.CultureInfo.InvariantCulture, sql, middle);
+
+            var plan = Explain(sql, declared: false, target: target);
+            plan.Split('\n').Where(line => line.TrimStart().StartsWith("ClrCursor", StringComparison.Ordinal))
+                .Should().NotContain(line => line.Contains("IS_DEFINED(", StringComparison.Ordinal), "Calcite has no body for the service's form: {0}", plan);
+
+            if (middle is null)
+            {
+                Sends(sql, false, Schema, target, null).Should().NotBe("nothing", "the statement implements: {0}", plan);
+                return;
+            }
+
+            string[] documents =
+            [
+                """{ "id": "d1", "k": "a", "s": "5", "name": "steel", "region": "steel" }""",
+                """{ "id": "d2", "k": "a", "s": 5, "name": "Steel", "region": "Steel" }""",
+                """{ "id": "d3", "k": "a", "s": "7", "name": "steel", "region": "steel" }""",
+                """{ "id": "d4", "k": "b", "s": "5", "name": "steel", "region": "steel" }""",
+                """{ "id": "d5", "k": "a", "name": "steel", "region": "steel" }""",
+                """{ "id": "d6", "k": "a", "s": "5", "name": "zinc", "region": "STEEL" }""",
+                """{ "id": "d7", "k": "a", "s": "5", "name": "steel", "region": "north" }""",
+            ];
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().NotBeEmpty("the documents are chosen so that the stack keeps some");
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does: {0}", plan);
+        }
+
+        /// <summary>A by-id lookup through a view projecting the partition key's column, beside the conjunct that follows.</summary>
+        const string ByIdThroughAView =
+            "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", c.\"$.category\" AS \"cat\" FROM items AS c) AS t WHERE t.\"id\" = 'r014' AND t.\"cat\" = 'bikes' AND ";
+
+        /// <summary>Three filtered views, the middle one's condition given, beneath a case fold.</summary>
+        const string ThreeFilteredViews =
+            "SELECT u.\"id\" FROM (SELECT * FROM (SELECT c.\"id\", c.\"DOC\" FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE {0}) AS u "
+            + "WHERE INITCAP(JSON_VALUE(u.\"DOC\", '$.region')) = 'Steel'";
+
+        /// <summary>A document as a row of a <c>VALUES</c> list: its id and its text.</summary>
+        static string ValuesRow(string document)
+        {
+            using var parsed = JsonDocument.Parse(document);
+            return $"('{parsed.RootElement.GetProperty("id").GetString()}', '{document}')";
+        }
+
+        /// <summary>
         /// An executor that answers every request over the documents given as the service answers it on a target, its
         /// <c>WHERE</c> evaluated on each document (<see cref="Infrastructure.DocumentRequests"/>).
         /// </summary>

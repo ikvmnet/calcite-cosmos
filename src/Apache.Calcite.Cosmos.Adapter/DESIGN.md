@@ -1468,7 +1468,15 @@ false alone and not beside the cast, split its own outer until the stack overflo
 holds the service's form, which Calcite has no body for (`CosmosOperators.HoldsServiceForm`, legality): through a
 connection that merges filters, `FILTER_MERGE` carried a split's weaker forms up beside the conjuncts they weaken, and a
 split of the merged filter left them in a filter Calcite evaluates, which failed with "cannot translate call IS_NUMBER"
-where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). What it does not reach is `TODO.md`'s:
+where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). Nor is one a host's rules make taken
+where another plan answers: a host's filter merge folds a split's residual and the half sent into one condition, which
+its converter rules make a filter Calcite evaluates over the statement beneath, and the point read's split lifted that
+condition's weakening above a view. Volcano compares rows alone, and where what is pushed brings the estimate to one row
+the merged filter and the residual over the half sent cost the same, so the order they were registered in chose; the
+cost model charges a filter Calcite evaluates holding the service's form more rows than any estimate reaches
+(`CosmosRelMetadataQuery.getNonCumulativeCost`), legality it keeps, and the point read's split lifts none
+(`CosmosConnectionPlanningTests.AConditionHoldingTheServicesFormIsNeverLeftToCalcite`). What it does not reach is
+`TODO.md`'s:
 a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a projection
 whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*); and,
 through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
