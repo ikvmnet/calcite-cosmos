@@ -1086,6 +1086,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// An item of a view's typed array beside a condition kept in process answers through this connection as Calcite's
+        /// own does over the same documents, on either target, a <c>VARCHAR ARRAY</c>'s and a <c>DOUBLE ARRAY</c>'s.
+        /// </summary>
+        /// <remarks>
+        /// An item of a typed array is the member converted to the element type, which no path addresses
+        /// (<c>CosmosRexShapes.IsConvertingItem</c>). Resolved to the member's path, the item was written into a filter
+        /// beneath the view, where the translator writes no item of a <c>JSON_QUERY</c>, and the statement failed to
+        /// implement over every document. Calcite's own answer is the same statement over the documents written as a
+        /// <c>VALUES</c> list, which no rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData("JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY)", "t.\"m\"[1] = '5'", CosmosServiceTarget.Azure)]
+        [InlineData("JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY)", "t.\"m\"[1] = '5'", CosmosServiceTarget.Emulator)]
+        [InlineData("JSON_QUERY(c.\"DOC\", '$.d' RETURNING DOUBLE ARRAY)", "t.\"m\"[1] = 1.5", CosmosServiceTarget.Azure)]
+        [InlineData("JSON_QUERY(c.\"DOC\", '$.d' RETURNING DOUBLE ARRAY)", "t.\"m\"[1] = 1.5", CosmosServiceTarget.Emulator)]
+        public void AnItemOfAViewsTypedArrayAnswersAsCalciteBesideAConditionKeptInProcess(string column, string condition, CosmosServiceTarget target)
+        {
+            string[] documents =
+            [
+                """{ "id": "a1", "x": ["abc", "5"], "d": [1.5], "name": "steel" }""",
+                """{ "id": "a2", "x": ["5", "abc"], "d": [2.5], "name": "steel" }""",
+                """{ "id": "a3", "x": ["5"], "d": [1.5], "name": "zinc" }""",
+                """{ "id": "a4", "name": "steel" }""",
+                """{ "id": "a5", "x": [], "d": [], "name": "Steel" }""",
+                """{ "id": "a6", "x": ["5", "6"], "d": [1.5, 2.5], "name": "STEEL" }""",
+            ];
+
+            var sql = $"SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", {column} AS \"m\" FROM items AS c) AS t WHERE {condition} AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().HaveCount(2, "the item and the fold keep two of the documents");
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does");
+        }
+
+        /// <summary>
         /// An executor that answers every request over the documents given as the service answers it on a target, its
         /// <c>WHERE</c> evaluated on each document (<see cref="Infrastructure.DocumentRequests"/>).
         /// </summary>

@@ -624,8 +624,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// refuses it. The element a traversal yields, which only the correlate rule's question binds, passes through as the
         /// field it is and no further: an accessor over it reads its text parsed, which is no path. It reads a
         /// <c>JSON_QUERY</c> returning an array as its JSON text, where implementation reads the array typed
-        /// (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>), and binds nothing for an item of an array or a map, which
-        /// implementation binds to the member's path: the walk may know less than implementation and never more
+        /// (<c>CosmosFilterSplitRule.ReadsWhatCanRefuse</c>): the walk may know less than implementation and never more
         /// (<c>CosmosRelTests.TheWalkBindsNoMoreThanImplementation</c>).
         /// </remarks>
         /// <param name="expression">The projected expression, over the input's row.</param>
@@ -633,22 +632,7 @@ namespace Apache.Calcite.Cosmos.Adapter
         /// <param name="inputReadings">How each of the input's fields is read.</param>
         internal static (CosmosPath? Path, CosmosReading Reading) Projected(RexNode expression, CosmosRexPaths resolver, IReadOnlyList<CosmosReading> inputReadings)
         {
-            // An item of an array or a map, whether a JSON_QUERY returning one or a view's column holding one, is the member
-            // stored converted to the element type, as Calcite converts it, where a field of the member's path reads what the
-            // document holds there. No reading of a field says what the column holds, so it binds nothing, as RETURNING
-            // DECIMAL binds nothing.
-            static bool ItemOfACollection(RexNode node)
-            {
-                for (; node is RexCall item && CosmosRexShapes.KindOf(item) == nameof(org.apache.calcite.sql.SqlKind.__Enum.ITEM); node = (RexNode)item.getOperands().get(0))
-                    if (((RexNode)item.getOperands().get(0)).getType() is org.apache.calcite.rel.type.RelDataType container
-                        && (org.apache.calcite.sql.type.SqlTypeUtil.isCollection(container) || org.apache.calcite.sql.type.SqlTypeUtil.isMap(container)))
-                        return true;
-
-                return false;
-            }
-
-            var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef)
-                && ItemOfACollection(expression) == false ? resolved : null;
+            var path = resolver.TryResolvePath(expression, out var resolved) && resolved is not null && (resolved.HasYielded == false || expression is RexInputRef) ? resolved : null;
             return (path,
                 path is not null && CosmosRexShapes.IsTextJsonValue(expression) ? CosmosReading.Text
                 : path is not null && CosmosRexShapes.IsPlainJsonQuery(expression) ? CosmosReading.JsonText

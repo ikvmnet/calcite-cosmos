@@ -163,6 +163,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
+        /// Determines whether a call is an item of an array or a map typed by its elements, which Calcite reads as the member
+        /// stored converted to the element type, and so addresses no path.
+        /// </summary>
+        /// <remarks>
+        /// A <c>JSON_QUERY</c> returning a typed array or map, or a view's column holding one, is read by Calcite to its
+        /// element type, and an item of it is the member so converted: an <c>INTEGER</c> raises over another kind, and a
+        /// <c>VARCHAR</c> reads a stored 5 as '5', where the path the item would address holds the member as stored. So it is
+        /// refused as a path (<see cref="CosmosRexPaths.TryResolvePath"/>) and as an item the translator writes, as
+        /// <c>RETURNING VARIANT</c> is refused, and so is what reads through it. An item of a promoted column or of a
+        /// document value, typed <c>VARIANT</c> or <c>ANY</c>, is the member as stored, and is a path.
+        /// </remarks>
+        internal static bool IsConvertingItem(RexCall call)
+        {
+            return KindOf(call) == nameof(SqlKind.__Enum.ITEM)
+                && call.getOperands().size() == 2
+                && ((RexNode)call.getOperands().get(0)).getType() is org.apache.calcite.rel.type.RelDataType container
+                && (SqlTypeUtil.isCollection(container) || SqlTypeUtil.isMap(container));
+        }
+
+        /// <summary>
         /// Determines whether a call is <c>StringToArray</c> over a SQL/JSON accessor, which addresses an array in the
         /// document rather than parsing one out of a string.
         /// </summary>

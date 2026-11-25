@@ -4311,6 +4311,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             if (target is not RexInputRef && (target is not RexCall inner || KindOf(inner) != nameof(SqlKind.__Enum.ITEM)))
                 throw new CosmosTranslationException("ITEM may only be applied to a field reference or another ITEM.");
 
+            // A field holding a typed array or map is read to its element type, and an item of it is the member so converted,
+            // which no path addresses (CosmosRexShapes.IsConvertingItem).
+            if (IsConvertingItem(call))
+                throw new CosmosTranslationException("An item of a typed array or map is the member converted to the element type, which no path addresses.");
+
             Write(builder, target);
 
             var value = GetLiteralValue(accessor);

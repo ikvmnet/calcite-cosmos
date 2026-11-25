@@ -11194,10 +11194,15 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   the accessor itself as `typed:VARIANT` (`CosmosPredicateLoaderTests.AReturningVariantIsATypedReadingAndNoRawValue`),
   its path still resolved for that (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`).
   `StringToArray` over it, which only a host chaining the adapter's operators into its own validator can write (a
-  connection's finds no `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. A projection binds
-  nothing for an item of an array or a map either, a `JSON_QUERY` returning one or a view's column holding one
-  (`CosmosImplementor.Projected`): Calcite converts the member stored to the element type, a stored 5 to '5' for
-  `VARCHAR`, where a field of its path reads what the document holds there. Every other column a projection binds is
+  connection's finds no `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. Nor does an item
+  of an array or a map typed by its elements address a path, a `JSON_QUERY` returning one or a view's column holding
+  one, in any clause (`CosmosRexShapes.IsConvertingItem`): Calcite converts the member stored to the element type, a
+  stored 5 to '5' for `VARCHAR`, where the path reads what the document holds there, so a projection binds nothing for
+  it and nothing is sent of it. Resolved to the member's path, an item of a view's `VARCHAR ARRAY` column beside a case
+  fold was written into a filter beneath the view the translator writes no item of a `JSON_QUERY` in, and failed to
+  implement over every document
+  (`CosmosConnectionPlanningTests.AnItemOfAViewsTypedArrayAnswersAsCalciteBesideAConditionKeptInProcess`). Every other
+  column a projection binds is
   read through its field, where the field reads it at all, as the same kind of reading of the same path and type as its
   expression (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`, and
   over a filtered view `CosmosPredicateLoaderTests.AColumnAProjectionOverAFilteredViewBindsReadsThroughItsFieldAsItsExpressionReadsOverTheScan`).

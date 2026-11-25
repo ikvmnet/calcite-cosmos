@@ -119,8 +119,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     path = _fields[access.getField().getIndex()];
                     return path is not null;
 
+                // An item of a typed array or map is the member converted to the element type, and addresses no path
+                // (CosmosRexShapes.IsConvertingItem).
                 case RexCall call when KindOf(call) == nameof(SqlKind.__Enum.ITEM) && call.getOperands().size() == 2:
-                    if (TryResolvePath(Operand(call, 0), out var basePath) == false || Operand(call, 1) is not RexLiteral accessor)
+                    if (IsConvertingItem(call) || TryResolvePath(Operand(call, 0), out var basePath) == false || Operand(call, 1) is not RexLiteral accessor)
                         break;
 
                     object? value;
