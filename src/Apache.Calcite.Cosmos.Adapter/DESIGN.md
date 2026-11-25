@@ -3113,14 +3113,15 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
-**Only a value typed `ANY` or `VARIANT`** (`CosmosRexShapes.IsDocumentValueType`). The cast over `JSON_VALUE` drops
-in a comparison, where the literal excludes every case that could differ; a projection has no literal, and measured,
-`JSON_VALUE` answers null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered
-column over it would carry text for a document the in-process plan carries nothing for, so it stays in process — the
-filters around it push regardless. The `VARIANT` key column is admitted and is wrong: Calcite casts a number or a
-boolean there to null, where the pushed column carries its rendering, `30` or `true`, older than "fail like Calcite"
-and the same on `main` (`TODO.md`, *The facts graph reads a text cast of a raw value as its rendering*, whose column
-writer is the fix; Chapter 23 records it). Admitting the cast over an `ANY` value alone is the bridge.
+**Only a value typed `ANY`.** The cast over `JSON_VALUE` drops in a comparison, where the literal excludes every case
+that could differ; a projection has no literal, and measured, `JSON_VALUE` answers null for an object or an array where
+the reader renders one as `{x=1}` or `[x, y]`. A rendered column over it would carry text for a document the
+in-process plan carries nothing for, so it stays in process — the filters around it push regardless. So does the cast
+of the `VARIANT` key column: Calcite casts a number or a boolean there to null and raises over a structure, where the
+reader renders each, and the pushed column read `30` or `true` where Calcite reads null, which a condition kept in
+process over a view's column of it then read
+(`CosmosToClrCursorConverterTests.ShouldComputeAPromotedColumnsCastToTextInProcess`). The column is the raw value it
+holds, cast in process. Admitting the cast over an `ANY` value alone is the bridge until S writes the column (h37).
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw

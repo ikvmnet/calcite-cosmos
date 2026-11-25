@@ -1051,6 +1051,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A view's column holding the partition key's column cast to text, alone or inside a function, answers beside a
+        /// condition kept in process as Calcite does through this connection, on either target: Calcite casts a number, a
+        /// boolean and a null held in the promoted column to null.
+        /// </summary>
+        /// <remarks>
+        /// The translator wrote the cast as the raw value read as its text, so the column read <c>5</c> or <c>true</c> where
+        /// Calcite reads null, and once the split weakened over a projection its pair over the view left the condition to
+        /// that column and dropped each such document. The cast is computed in process now, over the raw value the column
+        /// holds (<c>CosmosRexTranslator.TryRenderedTextOperand</c>). The stub answers each request over the documents as
+        /// the service does on the target.
+        /// </remarks>
+        [Theory]
+        [InlineData("CAST(c.\"$.category\" AS VARCHAR)", "t.\"e\" IS NULL", CosmosServiceTarget.Azure)]
+        [InlineData("CAST(c.\"$.category\" AS VARCHAR)", "t.\"e\" IS NULL", CosmosServiceTarget.Emulator)]
+        [InlineData("COALESCE(CAST(c.\"$.category\" AS VARCHAR), 'none')", "t.\"e\" = 'none'", CosmosServiceTarget.Azure)]
+        [InlineData("CHAR_LENGTH(CAST(c.\"$.category\" AS VARCHAR))", "t.\"e\" IS NULL", CosmosServiceTarget.Emulator)]
+        public void APromotedColumnsCastToTextAnswersAsCalciteBesideAConditionKeptInProcess(string column, string condition, CosmosServiceTarget target)
+        {
+            string[] documents =
+            [
+                """{ "id": "x1", "category": "bikes", "name": "steel" }""",
+                """{ "id": "x2", "category": 5, "name": "steel" }""",
+                """{ "id": "x3", "category": true, "name": "steel" }""",
+                """{ "id": "x4", "name": "steel" }""",
+                """{ "id": "x5", "category": 1.5, "name": "Steel" }""",
+                """{ "id": "x6", "category": null, "name": "STEEL" }""",
+                """{ "id": "x7", "category": 5, "name": "zinc" }""",
+            ];
+
+            var sql = $"SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", {column} AS \"e\" FROM items AS c) AS t WHERE {condition} AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(["x2", "x3", "x4", "x5", "x6"], "Calcite casts a key that is no string to null");
+        }
+
+        /// <summary>
         /// An executor that answers every request over the documents given as the service answers it on a target, its
         /// <c>WHERE</c> evaluated on each document (<see cref="Infrastructure.DocumentRequests"/>).
         /// </summary>

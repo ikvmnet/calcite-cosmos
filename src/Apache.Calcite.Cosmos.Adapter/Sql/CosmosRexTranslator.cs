@@ -2080,13 +2080,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// never does.
         /// </para>
         /// <para>
-        /// <b>Only a document value — typed <c>ANY</c> or <c>VARIANT</c>; see
-        /// <see cref="IsDocumentValueType"/>.</b> The same cast over <c>JSON_VALUE</c> drops in a
+        /// <b>Only a raw value typed <c>ANY</c>.</b> The same cast over <c>JSON_VALUE</c> drops in a
         /// comparison — see <see cref="IsRenderedDocumentValue"/> — and does not here, because a
         /// projection has no literal to exclude the cases on. Measured, <c>JSON_VALUE</c> answers null
         /// for an object or an array where the reader renders one as <c>{x=1}</c> or <c>[x, y]</c>, so
         /// a rendered column over it would carry text for a document Calcite carries nothing for. It
-        /// stays in process, and the filters around it push regardless.
+        /// stays in process, and the filters around it push regardless. Over a promoted column, typed
+        /// <c>VARIANT</c>, Calcite casts a number or a boolean to null and raises over a structure
+        /// (<c>Calcite.CastOfARawValueToText</c>), where the reader renders each: the column read <c>30</c>
+        /// or <c>true</c> where Calcite reads null, and a condition kept in process over a view's column of
+        /// it dropped and kept documents Calcite does not
+        /// (<c>CosmosToClrCursorConverterTests.ShouldComputeAPromotedColumnsCastToTextInProcess</c>). It
+        /// stays in process too, the column read as the raw value it holds.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression to inspect.</param>
@@ -2110,7 +2115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (IsDocumentValueType(operand.getType()?.getSqlTypeName()) == false)
+            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
                 return null;
 
             return operand;

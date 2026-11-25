@@ -1954,6 +1954,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// A view's column holding the partition key's column cast to text, alone or inside a function, answers beside a
+        /// condition kept in process as Calcite does, bare and as a host plans: Calcite casts a number, a boolean and a null
+        /// held in the promoted column to null, so every document whose name the case fold keeps and whose key is no string
+        /// is kept.
+        /// </summary>
+        /// <remarks>
+        /// The translator wrote the cast as the raw value read as its text, which Calcite's cast over an <c>ANY</c> value is,
+        /// and the key's column is a <c>VARIANT</c>: the column read <c>5</c> or <c>true</c> where Calcite reads null. Once the
+        /// split weakened over a projection, its pair over the view left the condition to that column, selected under the
+        /// fold's weakening, and the null test dropped each such document. The cast is computed in process now, over the raw
+        /// value the column holds (<c>CosmosRexTranslator.TryRenderedTextOperand</c>). The stub serves each document as the
+        /// statement's select list selects it, whatever its <c>WHERE</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", COALESCE(CAST(c.\"$.category\" AS VARCHAR), 'none') AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = 'none' AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", COALESCE(CAST(c.\"$.category\" AS VARCHAR), 'none') AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = 'none' AND " + StoredNameFold)]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CHAR_LENGTH(CAST(c.\"$.category\" AS VARCHAR)) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CHAR_LENGTH(CAST(c.\"$.category\" AS VARCHAR)) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        public async Task ShouldComputeAPromotedColumnsCastToTextInProcess(bool trimmed, string sql)
+        {
+            var kept = new List<string>();
+            foreach (var document in KeyDocuments)
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                kept.AddRange((await Execute(best)).Select(Row));
+            }
+
+            kept.Should().Equal(["x2", "x3", "x4", "x5", "x6"], "Calcite casts a key that is no string to null: {0}", string.Join(" ;; ", KeyDocuments));
+        }
+
+        /// <summary>The case fold of a view's name a condition keeps in process, beside a condition over the key's column.</summary>
+        const string StoredNameFold = "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+        /// <summary>Documents whose name the case fold keeps but the last, each holding another kind at the partition key.</summary>
+        static readonly string[] KeyDocuments =
+        [
+            "{ \"id\": \"x1\", \"category\": \"bikes\", \"name\": \"steel\" }",
+            "{ \"id\": \"x2\", \"category\": 5, \"name\": \"steel\" }",
+            "{ \"id\": \"x3\", \"category\": true, \"name\": \"steel\" }",
+            "{ \"id\": \"x4\", \"name\": \"steel\" }",
+            "{ \"id\": \"x5\", \"category\": 1.5, \"name\": \"Steel\" }",
+            "{ \"id\": \"x6\", \"category\": null, \"name\": \"STEEL\" }",
+            "{ \"id\": \"x7\", \"category\": 5, \"name\": \"zinc\" }",
+        ];
+
+        /// <summary>
         /// Writes a row as its columns' values joined by a bar, a null as <c>null</c>.
         /// </summary>
         static string Row(object? row)
