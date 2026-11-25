@@ -33,11 +33,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// <para>
     /// <b>Azure's facts, and the emulator's answers detected.</b> The emulator is a reimplementation, and on these
     /// functions it differs from Azure: its <c>SUBSTRING</c>, <c>LEFT</c>, <c>RIGHT</c> and <c>INDEX_OF</c> count code
-    /// points where Azure's count UTF-16 units, its case mapping maps three characters Azure's leaves, and its trim removes
-    /// five fewer. Each test asserts what both answer alike, then detects the emulator's answer and skips, rather than
-    /// asking which endpoint answered, so that an emulator that starts behaving as Azure does makes it assert. Measured on
-    /// the probe account on 2026-10-19 (<c>reports/verify-strings.md</c>; the trim set over the whole basic plane, plane 1
-    /// and U+E0000 to U+E01EF).
+    /// points where Azure's count UTF-16 units, and before EN20261123 its case mapping maps characters Azure's leaves,
+    /// U+017F, U+0130 and U+212A among them, and its trim removes five fewer. Each test asserts what both answer alike,
+    /// then detects the emulator's answer and skips, rather than asking which endpoint answered, so that an emulator that
+    /// starts behaving as Azure does makes it assert. Measured on the probe account on 2026-10-19
+    /// (<c>reports/verify-strings.md</c>; the trim set over the whole basic plane, plane 1 and U+E0000 to U+E01EF).
     /// </para>
     /// <para>
     /// <b>The emulator's own facts, apart.</b> The emulator stores U+0000 and U+FDD0 escaped (<c>EmulatorStoredText</c>),
@@ -409,7 +409,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// The service maps case by a simple mapping, and its case-insensitive match folds the same way: over ASCII it
         /// agrees with Java's full mapping, its <c>CONTAINS</c>, <c>STARTSWITH</c> and <c>ENDSWITH</c> alike, and outside it ß
         /// and U+FB00 stay as they are where Calcite writes <c>SS</c> and <c>FF</c>. Azure also leaves U+017F, U+0130 and
-        /// U+212A, which the emulator maps; there the test skips, having asserted what both share.
+        /// U+212A, which the emulator maps before EN20261123; there the test skips, having asserted what both share.
         /// </summary>
         /// <remarks>
         /// The prefix's and the suffix's lines were added on 2026-11-07, beside S's <c>foldsas</c> rows
@@ -436,9 +436,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
 
             var longs = mapped["longs"][0].GetString();
             if (longs == "ASB")
-                Assert.Skip($"This service maps U+017F to S, U+0130 to {Spell(mapped["idot"][1].GetString()!)} and U+212A to {Spell(mapped["kelvin"][1].GetString()!)}, as the emulator does; Azure leaves all three.");
+                Assert.Skip($"This service maps U+017F to S, U+0130 to {Spell(mapped["idot"][1].GetString()!)} and U+212A to {Spell(mapped["kelvin"][1].GetString()!)}, as the emulator does before EN20261123; Azure leaves all three.");
 
-            longs.Should().Be("AſB", "Azure leaves U+017F, which Java and the emulator map to S");
+            longs.Should().Be("AſB", "Azure leaves U+017F, which Java maps to S");
             mapped["idot"][1].GetString().Should().Be("aİb", "Azure leaves U+0130, which Java maps to i and U+0307");
             mapped["kelvin"][1].GetString().Should().Be("aKb", "Azure leaves U+212A, which Java maps to k");
             matched["kelvin"][3].GetBoolean().Should().BeFalse("nor does its case-insensitive match fold it");
@@ -449,8 +449,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// <summary>
         /// <c>TRIM</c>, <c>LTRIM</c> and <c>RTRIM</c> remove white space, not spaces alone: on Azure exactly U+0020 and the
         /// characters the theory's trimmed class names (<c>JsonValues.IsTrimmed</c>), the three functions alike, at either
-        /// end. The emulator removes a subset of them, not U+0085, U+00A0, U+180E, U+2007 or U+202F; there the test skips,
-        /// having asserted that it removes nothing Azure keeps.
+        /// end. Before EN20261123 the emulator removes a subset of them, not U+0085, U+00A0, U+180E, U+2007 or U+202F; there
+        /// the test skips, having asserted that it removes nothing Azure keeps.
         /// </summary>
         [Fact]
         public async Task TrimRemovesWhiteSpace()
@@ -476,7 +476,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
             removed.Should().Contain(new[] { 0x09, 0x20, 0x3000 }, "a tab, a space and U+3000 are removed by both");
 
             if (removed.Count < AzureTrims.Length)
-                Assert.Skip($"This service removes {removed.Count} of the characters Azure removes, not {string.Join(", ", AzureTrims.Except(removed).Select(c => $"U+{c:X4}"))}, as the emulator does.");
+                Assert.Skip($"This service removes {removed.Count} of the characters Azure removes, not {string.Join(", ", AzureTrims.Except(removed).Select(c => $"U+{c:X4}"))}, as the emulator does before EN20261123.");
 
             removed.Should().Equal(AzureTrims);
             TrimCandidates.Where(c => c != 0x20 && JsonValues.IsTrimmed(c)).Should().Equal(AzureTrims.Where(c => c != 0x20),

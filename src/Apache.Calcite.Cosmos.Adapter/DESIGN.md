@@ -2109,8 +2109,8 @@ documentation.
 > | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
 > | `SUBSTRING`, `LEFT`, `RIGHT`, `INDEX_OF` past U+FFFF | code points | **UTF-16 units**, a split pair sent as U+FFFD |
-> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped | **left** |
-> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept | **removed** |
+> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped before EN20261123 | **left** |
+> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept before EN20261123 | **removed** |
 >
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
@@ -4151,15 +4151,16 @@ three things; a review measured a fourth, and three functions that part over som
   string measured without one agreed — U+E000, U+FFFD and a combining sequence among them.
 - **A case mapping, outside ASCII.** Calcite maps by Java's full mapping: ß to `SS`, U+FB00 to `FF`, U+0130 to `i` and
   U+0307. Both services map by simple ones that leave ß and U+FB00; Azure's leaves U+017F, U+0130 and U+212A too, which
-  the emulator maps. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and `ENDSWITH` fold the
-  service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb` under `UPPER(s) LIKE
-  '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared path: a recheck sees
-  only the rows that arrive.
+  the emulator maps before EN20261123. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and
+  `ENDSWITH` fold the service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb`
+  under `UPPER(s) LIKE '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared
+  path: a recheck sees only the rows that arrive.
 - **A trim, over white space.** Calcite's `TRIM` removes U+0020 alone. The service's removes white space: measured on
   Azure over every unit of the basic plane, every code point of plane 1 and U+E0000 to U+E01EF, each first and last,
   projected and in a `WHERE`, it removes U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028,
   U+2029, U+202F, U+205F and U+3000 beside the space, the three functions alike — an older Unicode's white space,
-  U+180E in it and U+200B and U+FEFF not. The emulator removes a subset: not U+0085, U+00A0, U+180E, U+2007 or U+202F.
+  U+180E in it and U+200B and U+FEFF not. Before EN20261123 the emulator removes a subset: not U+0085, U+00A0, U+180E,
+  U+2007 or U+202F.
 - **A search, over U+0000.** Azure's `REPLACE` and `CONTAINS`, both modes, read a string only up to its first U+0000:
   `REPLACE(s, 'b', '!')` leaves `a`U+0000`b` as it is, and `CONTAINS` finds no `b` in it. So does a `LIKE` whose pattern
   is one run of text between two `%`, which the service answers as a `CONTAINS`: `%b%`, `%%b%` and `%b%%` lose the

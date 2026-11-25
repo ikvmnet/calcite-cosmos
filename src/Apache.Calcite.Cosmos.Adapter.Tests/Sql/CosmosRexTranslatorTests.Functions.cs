@@ -344,7 +344,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
             /// the cased letters measured each band alike (<c>Service.CaseMappingOverCasedLetters</c>): ß is <c>SS</c> to
             /// Calcite and stays at the service, so a character below U+D800 outside ASCII computes the mapping in process.
             /// On Azure (run 2) both map a surrogate as Java does, and LOWER the high band, where UPPER leaves the ligatures
-            /// Java writes as two; the emulator maps the scripts cased after Java 8's tables, so it parts over a surrogate.
+            /// Java writes as two; the emulator maps the scripts cased after Java 8's tables before EN20261123, so its rows part
+            /// over a surrogate.
             /// </remarks>
             [Fact]
             public void ACaseMappingPushesWhereTheCasedLettersAnswerAsCalcites()
