@@ -747,6 +747,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Sql
                 .Select(a => a.Id).Where(id => recorded.Contains(id) == false).Should().BeEmpty("an emulator row measured since 2026-11-02 has its release's record");
         }
 
+        /// <summary>
+        /// A release a record names is held to every line of a row the records hold: its own line where it has one, else
+        /// the line of the release the records are named for, and no line that neither holds
+        /// (<see cref="CosmosWitnessProbe.Parts"/>). So EN20261123, with lines of its own in two rows, is held to the rest of
+        /// EN20261019's lines as EN20260907 is beside its three, and a release no record names is held to none.
+        /// </summary>
+        [Fact]
+        public void AReleaseARecordNamesIsHeldToEveryLineOfTheRowsTheRecordsHold()
+        {
+            var lines = EmulatorRecords().ToList();
+            var complete = lines.Select(l => Path.GetFileNameWithoutExtension(l.Record).Split('-')[^1]).Distinct().Should().ContainSingle().Which;
+            var named = lines.Select(l => l.Release).Distinct().ToList();
+            named.Should().Contain(new[] { complete, "EN20260907", "EN20261123" });
+
+            const string Row = "Service.StringFunctionAnswersByBand";
+            var changed = lines.Single(l => l.Release == complete && l.Row == Row && l.Expression == "LENGTH(c.v)" && l.Witness == "\"b\"");
+            var unrecorded = (changed.Expression, Witness: "\"unrecorded\"", Answer: "10");
+
+            foreach (var release in named)
+            {
+                foreach (var row in lines.GroupBy(l => l.Row))
+                {
+                    var own = row.Where(l => l.Release == release).ToList();
+                    var asked = own.Concat(row.Where(l => l.Release == complete && own.Any(o => (o.Expression, o.Witness) == (l.Expression, l.Witness)) == false))
+                        .Select(l => (l.Expression, l.Witness, l.Answer)).ToList();
+                    CosmosWitnessProbe.Parts(release, row.Key, asked).Should().BeEmpty($"{release} answers {row.Key} as the records hold it");
+                }
+
+                CosmosWitnessProbe.Parts(release, Row, [(changed.Expression, changed.Witness, "7")]).Should().ContainSingle($"{release} is held to {complete}'s {changed.Expression} over {changed.Witness}");
+                CosmosWitnessProbe.Parts(release, Row, [unrecorded]).Should().ContainSingle($"{release} asks no line of {Row} that no record holds");
+            }
+
+            CosmosWitnessProbe.Parts("EN29991231", Row, [(changed.Expression, changed.Witness, "7"), unrecorded]).Should().BeEmpty("a release no record names is held to none");
+        }
+
         /// <summary>The lines of every emulator record: the release, the row, the expression, the witness and the answer.</summary>
         static IEnumerable<(string Record, string Release, string Row, string Expression, string Witness, string Answer)> EmulatorRecords()
         {
