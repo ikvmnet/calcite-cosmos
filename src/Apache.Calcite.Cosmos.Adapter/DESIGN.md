@@ -2162,7 +2162,10 @@ join emits, at the batch size it emits, and the measurement is what says the fea
 improvement rather than a scan with a large predicate bolted on.
 
 Also measured: the index metrics header carries **JSON**, not the prose the documentation shows. The
-prose is what the portal renders.
+prose is what the portal renders. The emulator's EN20261123 answers every statement that asks by the
+header the SDK sends (`x-ms-cosmos-populateindexmetrics-V2`) with
+`{"Utilized":{"SingleIndexes":[],"CompositeIndexes":[]},"Potential":{…}}`, naming no index for any; its
+releases before answer that header with nothing.
 
 **A multi-key `ORDER BY` really does need a composite index spanning its keys.** Measured on a real
 account against a container built with the default indexing policy and so with no composite index at
@@ -2176,9 +2179,9 @@ response and none on a subsequent read, and then accepts the multi-key form rega
 
 **The document count lags, and by more than a moment.** A container read reports `documentsCount` in
 its `x-ms-resource-usage` header — on Azure only when the read asks for it, with
-`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require, so until #209 no
-Azure account ever answered — and immediately after writing four documents it reports **zero** —
-the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
+`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require before EN20261123, so
+until #209 no Azure account ever answered — and immediately after writing four documents it reports
+**zero** — the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
 is what a planner row count is allowed to be: approximate and stale. It is not what the rule against
 inferring from documents forbids, which is about the *shape* of the data — a wrong shape yields an
 incorrect plan, a wrong row count yields a slow one.
@@ -2186,9 +2189,12 @@ incorrect plan, a wrong row count yields a slow one.
 The partition count is answered immediately, being a fact about the container rather than its
 contents.
 
-**And the emulator never reports one.** `documentsCount` is zero for every container it holds — zero for
-`links` holding 200 documents that had been there for days. So every plan the emulator measures is planned
-at zero rows, unless something stops it.
+**And the emulator reports none before EN20261123.** On those releases `documentsCount` is zero for every
+container — zero for `links` holding 200 documents that had been there for days. So every plan measured on
+them is planned at zero rows, unless something stops it. EN20261123 reports the count exactly and at once,
+and `documentsSize` in whole kilobytes, rounded down. So a plan there is
+made at the few rows a test container holds, and a test of a plan's shape has to hold enough of them
+(`CosmosConnectionEmptySideTests` holds Calcite's hundred).
 
 **Zero is the one count that is worse than none, so it is reported as unknown.** Volcano compares row counts
 and nothing else. At zero rows every plan costs the same, and the tie goes to whichever registered first. Measured
@@ -5528,8 +5534,8 @@ plan as one `CosmosFilter` over one scan: `type = 'Link'`, `data.type = 'map'`, 
 emulator that read is unfiltered: the merged projection holds `CASE` columns that do not push, and the
 filter beneath them stayed in process with them. That is not this rule's. The `Link` view alone showed it
 before #177, as the unfiltered read the plan began with, and the cause is the row count — the emulator
-reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
-that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
+of the time reported zero documents for every container, and at zero rows every plan ties and the tie went
+to the one that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
 
 **And the `CASE` columns now push too (#192).** Each is `CASE WHEN M THEN q END`, and `M` carries the

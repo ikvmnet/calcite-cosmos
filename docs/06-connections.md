@@ -245,8 +245,9 @@ likely to be right.
 
 A count of **zero** is treated as unknown rather than as an empty container, because at zero rows every
 plan costs the same and the planner's tie-break favours plans that push nothing down. The Cosmos
-emulator always reports zero, so plans on the emulator are made without a row count. Chapter 19 says
-more about statistics and cost.
+emulator's releases before EN20261123 always report zero, so plans on them are made without a row
+count; from it, plans are made at the count the container holds. Chapter 19 says more about statistics
+and cost.
 
 ---
 

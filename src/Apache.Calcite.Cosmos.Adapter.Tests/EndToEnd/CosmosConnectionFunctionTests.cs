@@ -338,8 +338,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// whole, while the same query under the planner the other tests use split correctly. The split was
         /// produced either way; it lost on cost, because the connection reads its row count from the service
         /// and the count it read was zero — every plan tying at zero rows, and the tie going to the one
-        /// registered first. The emulator reports zero for every container whatever it holds, which is why
-        /// this asserts wherever the suite runs; the service reports zero for a while after a write.
+        /// registered first. The emulator's releases before EN20261123 report zero for every container
+        /// whatever it holds, and the service reports zero for a while after a write; EN20261123 reports the
+        /// documents at once, and the predicate splits there too.
         /// </para>
         /// <para>
         /// <c>SIMILAR TO</c> because the service has no counterpart, so it has to stay in process and is the

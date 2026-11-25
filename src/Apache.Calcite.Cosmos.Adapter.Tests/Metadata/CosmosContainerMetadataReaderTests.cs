@@ -264,9 +264,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Metadata
         }
 
         /// <remarks>
-        /// Azure answers <c>x-ms-resource-usage</c> only to a read that asks for quota info, and the
-        /// emulator answers it regardless. The substitute does what Azure does, so a read that does not
-        /// ask gets no statistics (#209).
+        /// Azure answers <c>x-ms-resource-usage</c> only to a read that asks for quota info, as the emulator
+        /// does from EN20261123, whose releases before answer it regardless. The substitute does what Azure
+        /// does, so a read that does not ask gets no statistics (#209).
         /// </remarks>
         [Fact]
         public async System.Threading.Tasks.Task StatisticsAreAskedForWithQuotaInfo()
