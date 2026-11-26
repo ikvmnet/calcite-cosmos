@@ -8996,8 +8996,9 @@ the emulator since 2026-11-02 has lines there, and no function outcome claims Az
 reads the release off the container's log (`COSMOS_EMULATOR_RELEASE`) and the witness probe logs it in place of the
 endpoint; a release a record names must answer each line as its own line holds it, or, where it has none, as
 EN20261019's does, and log no line of a recorded row that neither holds, so the record is what the pinning tests ask, and
-a new release that parts is named where it does. A release no record names is held to none. `CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary,
-element and two-path forms to the service (line 4b), as the reader's forms are held beside them.
+a new release that parts is named where it does. A release no record names is held to none.
+`CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary, element and
+two-path forms to the service (line 4b), as the reader's forms are held beside them.
 
 ### The IR's new shapes: F reads them, S not yet
 

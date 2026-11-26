@@ -47,8 +47,8 @@ statements Azure rejects and to reject features Azure implements:
 | request charges | not representative | real |
 
 So: develop against the emulator, but verify sorting, full text search, and anything cost-related
-against a real account. A plan chosen on the emulator is chosen without row counts, or from EN20261123 at
-the count the container holds (Chapter 6).
+against a real account. A plan chosen on the emulator is chosen without a row count, or, from EN20261123,
+at the count the container holds where that count is above zero (Chapter 6).
 
 ## E.3 The sample program
 
