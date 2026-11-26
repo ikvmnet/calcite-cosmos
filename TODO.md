@@ -2762,6 +2762,15 @@ across documents* and *A join of a container to itself* is the record.
   answers otherwise than Calcite too, and `SELECT t."a"[1]` reads `a` in a box where Calcite's holds none. The proper
   fix is the read-back's: read a `VARIANT` collection's elements unboxed, as Calcite's `JSON_QUERY` holds them, or
   refuse the column, as `RETURNING VARIANT` is refused, until a row measures how Calcite's value reads back.
+- **An item of the partition key's column is read back in a `VARIANT` box** — *small, soundness; on `main`.*
+  `c."$.category"['a']` addresses the path `c.category.a`, and the reader returns a selected column of it in a `VARIANT`
+  box where Calcite's `ITEM` over the key's column holds the member in none. So `SELECT c."id", c."$.category"['a'] AS
+  "e" FROM products AS c WHERE c."$.category"['a'] = CAST('bikes' AS VARIANT) OR
+  INITCAP(JSON_VALUE(c."DOC", '$.name')) = 'Steel'`, which selects the item beneath the condition kept in process, keeps
+  `{"name":5,"category":{"a":"bikes"}}`, which Calcite drops, bare, as a host plans and through the connection, on both
+  targets; selected alone, the item reads `"bikes"` in a box where Calcite's reads `'bikes'`. The proper fix is the
+  read-back's, as above: read a `VARIANT` member selected through its path unboxed, as Calcite's `ITEM` holds it, or
+  refuse that column until a row measures how Calcite's value reads back.
 
 ---
 
