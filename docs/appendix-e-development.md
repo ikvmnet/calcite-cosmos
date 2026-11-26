@@ -2,11 +2,17 @@
 
 ## E.1 Running the emulator
 
-The Linux Cosmos DB emulator runs in Docker:
+The Linux Cosmos DB emulator runs in Docker. The test suite and CI run one release of it, EN20261123,
+pinned by digest in the test project's `Infrastructure/CosmosEmulator.cs` (`Image`), which CI's workflow
+reads:
 
 ```sh
-docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+docker run -d --name cosmos-emu -p 8081:8081 mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:c274ac17c19a5f74dbadbc99f259bc49a8640a03f6789f54d7f76cbfc33ff6b6
 ```
+
+The tag `vnext-preview` in place of the digest runs Microsoft's newest release, which may answer otherwise
+than the tests expect. A new release is taken by a pull request that moves the digest in `Image`, so its
+CI runs on the new release while every other branch stays on the old one.
 
 Connect to `http://localhost:8081/` with the emulator's well-known key, `"connectionMode":
 "gateway"` (Chapter 5) and `"serviceTarget": "emulator"` (Chapter 4).

@@ -23,12 +23,24 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-24.04
+    outputs:
+      emulator-image: ${{ steps.emulator.outputs.image }}
     steps:
     - name: Checkout Source
       uses: actions/checkout@v5
       with:
         fetch-depth: 0
         submodules: recursive
+    # The emulator's image is pinned by digest in one place, the tests' own CosmosEmulator.Image, so that
+    # CI and an emulator the tests start run one release. The test job never checks the repository out,
+    # so the image is read here and handed to it.
+    - name: Read Emulator Image
+      id: emulator
+      run: |
+        image=$(grep -oP 'const string Image = "\K[^"]+' src/Apache.Calcite.Cosmos.Adapter.Tests/Infrastructure/CosmosEmulator.cs)
+        if [ -z "$image" ]; then echo "no emulator image in CosmosEmulator.cs"; exit 1; fi
+        echo "emulator image $image"
+        echo "image=$image" >> "$GITHUB_OUTPUT"
     - name: Setup .NET 9.0
       uses: actions/setup-dotnet@v5
       with:
@@ -132,11 +144,16 @@ jobs:
     # ORDER BY over an unnest alias) and to reject features Azure implements (full text search), so
     # this catches syntax the service would refuse and not much else. A job against a real account is
     # what would close the rest; see TODO.md.
+    #
+    # The image is the one CosmosEmulator.Image pins by digest, read by the build job. A new release
+    # reaches CI by a pull request that moves the digest, so a release that answers otherwise fails that
+    # pull request alone rather than every branch on the day Microsoft publishes it.
     - name: Start Cosmos DB Emulator
       if: matrix.sys == 'linux-x64'
+      env:
+        EMULATOR_IMAGE: ${{ needs.build.outputs.emulator-image }}
       run: |
-        docker run -d --name cosmos-emulator -p 8081:8081 \
-          mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+        docker run -d --name cosmos-emulator -p 8081:8081 "$EMULATOR_IMAGE"
 
         # Ready when it answers, not when the container starts. The tests bound their own connection
         # attempt, so a failure here would surface as every service test reporting inconclusive —
