@@ -1389,13 +1389,11 @@ double is the literal's. Routing by the window's double, which every number in i
 a measurement of how the service hashes a number (`TODO.md`). A cast of the key to text over the `VARIANT` column pins
 the stored string, which is all such a cast keeps, a number and a boolean casting to null there.
 
-Three older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
+Two older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
 comparison through the cast of the text to `DOUBLE` is read through `NumberCast`'s `Window`, looser than a double's
 rounding, so one the declaration rules out may still send a request that finds nothing, and on the key may route to a
-listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). Where such a comparison is
-split, the weaker form's number can meet the comparison's `DOUBLE` in Calcite's simplifier, which a connection with
-Calcite's default rules runs, and the statement fails to plan (*Two weakenings over one path still share one raw
-value*). And a key the declaration fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
+listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). And a key the declaration
+fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
 condition, so a comparison of the key the declaration shows true may be dropped from the text and the request read
 every partition (*A number pins no partition unless the declaration leaves the key one value*).
 
@@ -8590,6 +8588,17 @@ the other's accessor, means another value in Calcite: `RETURNING INTEGER` raises
 So `AccessorsOf` keeps no typed accessor for such a path, the builder writes no comparison with a number or a boolean
 over it, and that weakening is not pushed: RU, never rows, on a shape none of the inputs' 809 weakenings holds. Each
 member carrying the reader it was proven over would let the builder write it (`TODO.md`).
+
+**A number is written as Calcite's validator writes it beside its term.** Calcite's simplifier, which every connection's
+planner runs, takes every literal one term is compared with in a condition to be of one class. A bound written as an
+exact `DECIMAL` beside a term typed `DOUBLE` met the `DOUBLE` Calcite writes for the same term elsewhere: a view's own
+`= 2` or `= 2.0E0` where the split's weakening landed over the view, or the residual's `CAST(… AS DOUBLE) > 500`, and the
+statement failed to plan, `BigDecimal` against `Double`. So beside a term of an approximate type `Number` writes a
+number whose double is the number itself as a literal of that type, the same value; one whose double is another
+number, `2.1`, `0.1` or 2^53 + 1, stays the exact number the form holds. The statement sent does not move, since the
+printer binds the form's number and not the Rex's literal: a bound in the plan respells, `30` as `30.0E0`, on 51 of the
+plan digests' 1,181 lines at the pull-request size and 148 of the 3,492 at the gate's, on either target, their
+statements, parameters and facts byte-equal.
 
 **Never a member left out.** Beneath an `OR` or an odd number of `NOT`s a member left out strengthens the weakening and
 drops rows Calcite keeps. A node outside the grammar — a path no accessor reads, a literal its accessor holds no class

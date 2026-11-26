@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     ? rexBuilder.makeCast(rexBuilder.getTypeFactory().createTypeWithNullability(rexBuilder.getTypeFactory().createSqlType(org.apache.calcite.sql.type.SqlTypeName.DOUBLE), true), node)
                     : node;
                 return rexBuilder.makeCall(SqlStdOperatorTable.CASE, rexBuilder.makeCall(CosmosOperators.IsNumber, raw),
-                    rexBuilder.makeCall(comparison, number, Number(rexBuilder, member.Literal!)), rexBuilder.makeLiteral(otherwise));
+                    rexBuilder.makeCall(comparison, number, Number(rexBuilder, member.Literal!, number)), rexBuilder.makeLiteral(otherwise));
             }
 
             // A string as Calcite writes one beside the raw value: boxed beside a VARIANT field, which Calcite compares with a
@@ -174,7 +174,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return JsonValues.TypeOf(literal) switch
                 {
                     JsonValues.StringType when accessor.Raw is { } raw => StringComparison(comparison, raw, accessor, literal),
-                    JsonValues.IntegerType or JsonValues.FractionType when typed.Item1 == RenderingRexGrammar.NumberReader => rexBuilder.makeCall(comparison, typed.node, Number(rexBuilder, literal)),
+                    JsonValues.IntegerType or JsonValues.FractionType when typed.Item1 == RenderingRexGrammar.NumberReader => rexBuilder.makeCall(comparison, typed.node, Number(rexBuilder, literal, typed.node)),
                     JsonValues.BooleanType when typed.Item1 == RenderingRexGrammar.BooleanReader => rexBuilder.makeCall(comparison, typed.node, rexBuilder.makeLiteral(literal == JsonValues.Of(true))),
                     _ => null,
                 };
@@ -184,12 +184,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         }
 
         /// <summary>
-        /// A number as the exact literal it is, which the loader reads back as itself; one a decimal cannot hold as the
-        /// double it is spelled by, which the loader keeps approximate.
+        /// A number as the literal Calcite's validator writes beside the term it is compared with: the exact literal it is,
+        /// which the loader reads back as itself, or one a decimal cannot hold as the double it is spelled by, which the
+        /// loader keeps approximate; and beside a term of an approximate type, <c>DOUBLE</c>, <c>REAL</c> or <c>FLOAT</c>, a
+        /// literal of that type where the number's double is the number itself.
         /// </summary>
-        static RexNode Number(RexBuilder rexBuilder, string literal) => JsonValues.ApproximateOf(literal) is { } approximate
-            ? rexBuilder.makeApproxLiteral(new java.math.BigDecimal(approximate.ToString("R", CultureInfo.InvariantCulture)))
-            : rexBuilder.makeExactLiteral(new java.math.BigDecimal(JsonValues.NumberOf(literal).ToString(CultureInfo.InvariantCulture)));
+        /// <remarks>
+        /// Calcite's simplifier takes every literal one term is compared with in a condition to be of one class, so a
+        /// weakening's exact <c>5</c> landing over a view's own filter on the term's <c>2.0E0</c> failed to plan through a
+        /// connection, <c>BigDecimal</c> against <c>Double</c> (<c>CosmosConnectionPlanningTests.AWeakeningOverAViewMeetsTheViewsOwnLiteral</c>).
+        /// Written in the term's type it is the same value. Where the double is another number, 2.1, 0.1 or 2^53 + 1, the
+        /// literal stays exact, so that the bound is the number the form holds and the service reads it as itself.
+        /// </remarks>
+        static RexNode Number(RexBuilder rexBuilder, string literal, RexNode? term)
+        {
+            if (JsonValues.ApproximateOf(literal) is { } approximate)
+                return rexBuilder.makeApproxLiteral(new java.math.BigDecimal(approximate.ToString("R", CultureInfo.InvariantCulture)));
+
+            var exact = new java.math.BigDecimal(JsonValues.NumberOf(literal).ToString(CultureInfo.InvariantCulture));
+            return term?.getType() is { } type && org.apache.calcite.sql.type.SqlTypeUtil.isApproximateNumeric(type) && new java.math.BigDecimal(exact.doubleValue()).compareTo(exact) == 0
+                ? rexBuilder.makeApproxLiteral(exact, rexBuilder.getTypeFactory().createSqlType(type.getSqlTypeName()))
+                : rexBuilder.makeExactLiteral(exact);
+        }
 
         static SqlOperator? ComparisonOf(CosmosServiceTest op) => op switch
         {

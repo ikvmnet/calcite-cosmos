@@ -698,6 +698,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// A number compared with a term of an approximate type is written as a literal of that type where its double is the
+        /// number, as Calcite's validator writes it, so that Calcite's simplifier meets one class of literal where the
+        /// weakening lands beside a filter on the same term (<c>CosmosConnectionPlanningTests.AWeakeningOverAViewMeetsTheViewsOwnLiteral</c>);
+        /// where its double is another number, 2.1, 0.1 or 2^53 + 1, and beside a term of an exact type, the literal is the
+        /// exact number, so the bound is the number the form holds.
+        /// </summary>
+        [Fact]
+        public void ABoundIsWrittenInItsTermsTypeWhereItsDoubleIsTheNumber()
+        {
+            var loading = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias);
+            var p = SqlValue.Spell(JsonDocumentPath.Root.Property("p"));
+
+            string? Written(SqlTypeName type, string number)
+            {
+                var accessor = JsonValue("p", type);
+                var accessors = loading.AccessorsOf(Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, accessor, Rex.makeExactLiteral(new java.math.BigDecimal(number))), Rex);
+                var form = ServiceForm.Read(ServiceForm.CompareOf(CosmosServiceTest.Greater, p, JsonValues.Of(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture))),
+                    PredicateAtom.TypedReader(type.getName()));
+                if (RenderingRexBuilder.Build(form, Rex, accessors) is not RexCall call || call.getOperands().get(1) is not RexLiteral literal)
+                    return null;
+
+                var value = ((java.math.BigDecimal)literal.getValueAs((java.lang.Class)typeof(java.math.BigDecimal))).stripTrailingZeros().toPlainString();
+                return (literal.getTypeName() == SqlTypeName.DECIMAL ? "exact" : literal.getType().getSqlTypeName().getName()) + " " + value;
+            }
+
+            new[]
+            {
+                Written(SqlTypeName.DOUBLE, "2"), Written(SqlTypeName.DOUBLE, "2.5"), Written(SqlTypeName.DOUBLE, "9007199254740992"),
+                Written(SqlTypeName.REAL, "30"),
+                Written(SqlTypeName.DOUBLE, "2.1"), Written(SqlTypeName.DOUBLE, "0.1"), Written(SqlTypeName.DOUBLE, "9007199254740993"),
+                Written(SqlTypeName.BIGINT, "30"), Written(SqlTypeName.INTEGER, "2"),
+            }.Should().Equal("DOUBLE 2", "DOUBLE 2.5", "DOUBLE 9007199254740992", "REAL 30", "exact 2.1", "exact 0.1", "exact 9007199254740993", "exact 30", "exact 2");
+        }
+
+        /// <summary>
         /// One form builds one Rex, equal by Calcite's equality and read as one term, however often its accessors are read:
         /// the loop guard (<c>IsApplied</c>, <c>AlreadyApplied</c>) finds a weakening beneath by identity, one holding a test
         /// over a field or a call (<see cref="TestsAField"/>) among them.

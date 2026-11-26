@@ -1686,66 +1686,6 @@ old wording did not allow for.
   included path names it, which Azure requires. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
 
-### Two weakenings over one path still share one raw value — *small, found beside the alternatives*
-
-A connection's planner simplifies every filter the split rule makes — `RelOptUtil.registerDefaultRules`
-adds `FILTER_REDUCE_EXPRESSIONS` — and Calcite's simplifier takes every literal one expression is
-compared with in a condition to be of one class. The alternatives a refused text equality pushes broke
-that inside one weakening and no longer do: their number and boolean read the accessor re-typed, or a
-literal boxed as `VARIANT` (`DESIGN.md`, beside *What a refused text equality implies*). Two weakenings
-in one filter still meet on the accessor typed `ANY`, the numeric window's bound being a `DECIMAL` and
-the text comparison's guard a string, so `CAST(JSON_VALUE(DOC, '$.label') AS INTEGER) > 10 AND
-JSON_VALUE(DOC, '$.label') > 'bikes'` fails to plan through a connection with a `ClassCastException`,
-on `main` too, and so does the same bound beside `= '30'`. Measured through the host's prepare, offline
-and against the emulator; `CosmosPlannerTests`' `reduce` flag does *not* reproduce it, so a test for the
-two weakenings wants a connection, as `CosmosConnectionFunctionTests` and `CosmosConnectionPlanningTests`
-open one.
-
-One comparison alone does the same: where the adapter does not send `CAST(JSON_VALUE(c."DOC", '$.n')
-AS DOUBLE) > 500` whole, it splits it, and the weaker form's number, a `DECIMAL`, can meet the residual's
-`DOUBLE` in `ReduceExpressionsRule`'s simplifier, which fails with `BigDecimal` against `Double` (`Double`
-against `BigDecimal` for `< 500`). Whether the comparison is sent whole is the rendering graph's answer over
-the values the declaration lets the path hold, the comparison and its literal among its inputs. What
-follows is what was measured through the connection under both targets, `main` alike in each, not a rule
-of where it applies. It fails: `> 500` with no declaration, with `"maximum": 100` alone, with
-`"type": ["string", "integer"]`, `["number", "boolean"]`, `["integer", "object"]` or `["integer",
-"array"]`, with an `anyOf` of a string and an integer at most 100 or of an integer and an object, and over
-`"enum": [5, "5", "600"]`, the object, the array and the `anyOf` of an object among them where Calcite
-answers; `= 30` and `> 5` beside `"maximum": 100` alone; `<> 600` and `NOT (… = 600)` over `"enum": [5,
-"600"]`; with no declaration, `= 5.5`, `IN (5)`, `IN (5, 5)`, `BETWEEN 5 AND 5`, the key's
-`CAST(JSON_VALUE(c."DOC", '$.category') AS DOUBLE) = 5` and its `IN (5)`, and `> 500 AND
-JSON_VALUE(c."DOC", '$.k') = 'x'`. It plans: over a path declared `"number"` or `"integer"`, sent whole,
-or against a bound it excludes sending nothing; over `["number", "null"]`, sent whole; over a path
-declared a string, sending the path's presence and casting in Calcite; over `"enum": [5, "600"]`,
-`[5, "abc"]`, `[5, true]` or `[1, 2, 3, "XL"]`, sent whole as one filter, the last three answered by the
-service where Calcite fails (*The rendering graph lifts an agreement where a raise sits beside a truth
-value*); and, with no declaration, `= 4.6`, whose literal is not read, `IN (5, 6)`, `IN (5.5, 6.5)`,
-`NOT IN (5, 6)`, `BETWEEN 4 AND 6` and `BETWEEN 4.5 AND 6.5`, sending the path's presence, `NOT BETWEEN
-4 AND 6`, whose weaker form holds both numbers in a disjunction, and `> 500 OR k = 'x'`, whose weaker form
-holds 500. In the host Chapter 21 describes each that fails here is sent with its weaker form, and
-`CAST(… AS INTEGER) > 500` plans in both hosts. Chapter 23 says only that such a comparison may fail to
-plan; `CosmosConnectionPlanningTests.ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger`
-pins shapes of each kind through the connection the README opens.
-
-A weakening over a view meets what the view's own filter compares, since the split weakens over a projection: `SELECT
-t."id" FROM (SELECT c."id", c."DOC", JSON_VALUE(c."DOC", '$.kind' RETURNING DOUBLE) AS "e" FROM products AS c WHERE
-JSON_VALUE(c."DOC", '$.kind' RETURNING DOUBLE) = 2) AS t WHERE CASE WHEN INITCAP(JSON_VALUE(t."DOC", '$.name')) =
-'Steel' THEN t."e" <= 5 ELSE JSON_VALUE(t."DOC", '$.k') = 'a' END` is weakened over the view to
-`OR(AND(IS_DEFINED(…), <=(JSON_VALUE($0, '$.kind'), 5)), =(…, 'a'))`, whose bound is a `DECIMAL` where Calcite writes
-the view's `2` as a `DOUBLE`, and fails to plan through the connection with `Double` against `BigDecimal` under both
-targets, undeclared and declared, where `main`, weakening the filter the transpose merged beside `kind = 2`, sent
-`((c.kind = @p0) AND ((c.k = @p1) OR IS_DEFINED(c.name)))` and answered. Over that view, and over one filtered on
-`= 2.0E0`, `(INITCAP(…) = 'Steel' AND t."e" <= 5) OR JSON_VALUE(t."DOC", '$.k') = 'a'`, `INITCAP(…) = 'Steel' OR
-t."e" > 4` and `t."e" = 2.5 OR INITCAP(…) = 'Steel'` fail the same way where `main` answers; `INITCAP(…) = 'Steel'
-AND t."e" <= 5`, `t."e" IN (2, 5) AND …`, `t."e" <= 5.5 AND …` and `CASE WHEN INITCAP(…) = 'Steel' THEN t."e" >
-1.5E0 ELSE FALSE END` plan. Over the view filtered on `> 1`, the first `OR`, `INITCAP(…) = 'Steel' OR t."e" > 4` and
-`t."e" = 2.5 OR …` fail on `main` too. `CosmosConnectionPlanningTests.AWeakeningOverAViewMeetsTheViewsOwnLiteral`
-pins each.
-
-The fix is the same for all three, the bound reading the value in its own type — but the bound's literal is
-the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
-rather than a re-typing done blind.
-
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
 `CosmosToClrCursorConverter` is the wire, and since #125 it costs rows times the width it

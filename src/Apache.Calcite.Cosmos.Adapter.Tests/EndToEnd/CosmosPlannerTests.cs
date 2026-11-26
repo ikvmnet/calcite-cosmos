@@ -1675,7 +1675,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <remarks>
         /// The alternatives are not the comparison, the number keeping a fraction whose double is 30, which Azure was not
-        /// measured returning as <c>30</c>, so the comparison is still made above them.
+        /// measured returning as <c>30</c>, so the comparison is still made above them. The number's bound is written as the
+        /// <c>DOUBLE</c> Calcite compares the cast in, <c>30.0E0</c>.
         /// </remarks>
         [Fact]
         public void TheComparisonStaysAboveTheAlternatives()
@@ -1684,7 +1685,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
             plan.Should().Contain("CosmosFilter(condition=[AND(OR(=(JSON_VALUE($0, '$.label'), '30'), CASE(IS_NUMBER(JSON_VALUE($0, '$.label')), "
-                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])", plan);
+                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30.0E0), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])", plan);
         }
 
         /// <summary>

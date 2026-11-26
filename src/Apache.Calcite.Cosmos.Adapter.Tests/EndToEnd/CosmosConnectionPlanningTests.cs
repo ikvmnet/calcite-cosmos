@@ -576,11 +576,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary>
         /// A range over a path the schema lets hold a number or a string, a bound alone or nothing declared, is not ruled
-        /// out, and through <c>CAST(… AS INTEGER)</c> plans and is sent. Through <c>CAST(… AS DOUBLE)</c>, which statements
-        /// fail to plan with the simplifier's <c>ClassCastException</c> and which plan, as measured (<c>TODO.md</c>,
-        /// <em>Two weakenings over one path still share one raw value</em>): with a bound alone, nothing declared, the types
-        /// and the <c>enum</c>s listed, and with nothing declared <c>= 5.5</c> and <c>IN (5)</c> fail; <c>= 4.6</c>,
-        /// <c>IN (5, 6)</c>, <c>BETWEEN 4 AND 6</c> and <c>NOT BETWEEN 4 AND 6</c> plan, the cast Calcite's.
+        /// out, and through <c>CAST(… AS INTEGER)</c> or <c>CAST(… AS DOUBLE)</c> plans and is sent, the cast Calcite's. The
+        /// second list's shapes, the types and the <c>enum</c>s it names and, with nothing declared, <c>= 5.5</c>,
+        /// <c>IN (5)</c>, the key's cast and a range beside a text equality, failed to plan through <c>CAST(… AS DOUBLE)</c>
+        /// with the simplifier's <c>ClassCastException</c> while the weaker form's bound was a <c>DECIMAL</c> beside the
+        /// residual's <c>DOUBLE</c>; written in the cast's type (<c>RenderingRexBuilder.Number</c>) each plans, beside the
+        /// shapes that planned already.
         /// </summary>
         [Fact]
         public void ARangeOverAPathThatMayHoldANumberOrAStringIsSentThroughACastToInteger()
@@ -591,27 +592,31 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             const string ThroughInteger = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500""";
             const string ThroughDouble = """SELECT c."id" FROM items AS c WHERE CAST(JSON_VALUE(c."DOC", '$.n') AS DOUBLE) > 500""";
 
-            foreach (var declared in new[] { true, false })
-            {
-                var plan = Explain(ThroughInteger, declared, Bound);
-                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("sends=[nothing]", "a string there is not ruled out: " + plan);
-
-                FluentActions.Invoking(() => Explain(ThroughDouble, declared, Bound)).Should().Throw<Exception>()
-                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "recorded: the simplifier meets the bound's DECIMAL with the DOUBLE");
-            }
-
-            FluentActions.Invoking(() => Explain(ThroughDouble, declared: true, Both)).Should().Throw<Exception>()
-                .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "a type naming a number and a string leaves the bound's weaker form beside the DOUBLE");
-
             static string Of(string n) => $$"""{ "type": "object", "properties": { "n": {{n}} } }""";
 
-            foreach (var other in new[]
+            foreach (var declared in new[] { true, false })
+                foreach (var sql in new[] { ThroughInteger, ThroughDouble })
+                {
+                    var plan = Explain(sql, declared, Bound);
+                    plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("sends=[nothing]", "a string there is not ruled out: " + plan);
+                }
+
+            foreach (var (schema, sql) in new (string?, string)[]
             {
-                """{ "type": ["number", "boolean"] }""", """{ "type": ["integer", "object"] }""",
-                """{ "anyOf": [{ "type": "string" }, { "type": "integer", "maximum": 100 }] }""", """{ "enum": [5, "5", "600"] }""",
+                (Both, ThroughDouble),
+                (Of("""{ "type": ["number", "boolean"] }"""), ThroughDouble), (Of("""{ "type": ["integer", "object"] }"""), ThroughDouble),
+                (Of("""{ "anyOf": [{ "type": "string" }, { "type": "integer", "maximum": 100 }] }"""), ThroughDouble),
+                (Of("""{ "enum": [5, "5", "600"] }"""), ThroughDouble),
+                (Of("""{ "enum": [5, "600"] }"""), ThroughDouble.Replace("> 500", "<> 600")),
+                (null, ThroughDouble.Replace("> 500", "= 5.5")), (null, ThroughDouble.Replace("> 500", "IN (5)")),
+                (null, ThroughDouble.Replace("'$.n'", "'$.category'").Replace("> 500", "= 5")),
+                (null, ThroughDouble + " AND JSON_VALUE(c.\"DOC\", '$.k') = 'x'"),
             })
-                FluentActions.Invoking(() => Explain(ThroughDouble, declared: true, Of(other))).Should().Throw<Exception>()
-                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"{other} leaves the bound's weaker form beside the DOUBLE");
+            {
+                var plan = Explain(sql, schema is not null, schema ?? Schema);
+                plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("sends=[nothing]", $"{schema} {sql}: " + plan);
+                plan[..plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().Contain("CAST(", $"the cast is Calcite's, {schema} {sql}: " + plan);
+            }
 
             foreach (var whole in new[] { """{ "enum": [5, "600"] }""", """{ "enum": [5, true] }""", """{ "enum": [1, 2, 3, "XL"] }""", """{ "type": ["number", "null"] }""" })
             {
@@ -619,13 +624,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 plan.Should().Contain("CosmosToClrCursorConverter", plan).And.NotContain("sends=[nothing]", $"{whole}: " + plan);
                 plan[..plan.IndexOf("CosmosToClrCursorConverter", StringComparison.Ordinal)].Should().NotContain("CAST(", $"over {whole} the comparison is sent whole: " + plan);
             }
-
-            FluentActions.Invoking(() => Explain(ThroughDouble.Replace("> 500", "<> 600"), declared: true, Of("""{ "enum": [5, "600"] }"""))).Should().Throw<Exception>()
-                .Where(e => e.ToString().Contains("ReduceExpressionsRule"), "over the same enum <> 600 is split, its weaker form holding 600");
-
-            foreach (var failing in new[] { "= 5.5", "IN (5)" })
-                FluentActions.Invoking(() => Explain(ThroughDouble.Replace("> 500", failing), declared: false)).Should().Throw<Exception>()
-                    .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"with nothing declared {failing} fails to plan");
 
             foreach (var presence in new[] { "= 4.6", "IN (5, 6)", "BETWEEN 4 AND 6", "NOT BETWEEN 4 AND 6" })
             {
@@ -644,42 +642,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// A view filtered on a reading typed <c>DOUBLE</c>, beneath a condition kept in process over the view's column
-        /// of it: which statements fail to plan with the simplifier's <c>ClassCastException</c> on either target and
-        /// which plan, as measured (<c>TODO.md</c>, <em>Two weakenings over one path still share one raw value</em>). The
-        /// split's weakening over the view holds its bound as a <c>DECIMAL</c>, which meets the view's own
-        /// <c>DOUBLE</c> literal. Over the view filtered on <c>= 2</c> or <c>= 2.0E0</c> each that fails here
-        /// <c>main</c> answers; over <c>&gt; 1</c> each fails on <c>main</c> too.
+        /// A view filtered on a reading typed <c>DOUBLE</c>, beneath a condition kept in process over the view's column of
+        /// it, plans and answers through this connection as Calcite's own does over the same documents, on either target:
+        /// the split's weakening over the view lands beside the view's own <c>DOUBLE</c> literal, and its bound is written
+        /// in the term's type (<c>RenderingRexBuilder.Number</c>).
         /// </summary>
-        [Fact]
-        public void AWeakeningOverAViewMeetsTheViewsOwnLiteral()
+        /// <remarks>
+        /// Written as an exact <c>DECIMAL</c>, the bound met the view's own <c>DOUBLE</c> in the simplifier, which takes every
+        /// literal one term is compared with to be of one class, and the first four conditions failed to plan with its
+        /// <c>ClassCastException</c> over each filter; over the view filtered on <c>&gt; 1</c> <c>main</c> failed them too. The
+        /// documents hold no whole number at <c>kind</c>, which Calcite's <c>RETURNING DOUBLE</c> raises over. Calcite's own
+        /// answer is the same statement over the documents written as a <c>VALUES</c> list, which no rule of the adapter
+        /// reads.
+        /// </remarks>
+        [Theory]
+        [InlineData("= 2", CosmosServiceTarget.Azure)]
+        [InlineData("= 2", CosmosServiceTarget.Emulator)]
+        [InlineData("= 2.0E0", CosmosServiceTarget.Azure)]
+        [InlineData("= 2.0E0", CosmosServiceTarget.Emulator)]
+        [InlineData("> 1", CosmosServiceTarget.Azure)]
+        [InlineData("> 1", CosmosServiceTarget.Emulator)]
+        public void AWeakeningOverAViewMeetsTheViewsOwnLiteral(string filter, CosmosServiceTarget target)
         {
             const string Fold = "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
-            const string CaseFold = "CASE WHEN " + Fold + " THEN t.\"e\" <= 5 ELSE JSON_VALUE(t.\"DOC\", '$.k') = 'a' END";
-            const string FoldOrK = "(" + Fold + " AND t.\"e\" <= 5) OR JSON_VALUE(t.\"DOC\", '$.k') = 'a'";
-            const string FoldOrGreater = Fold + " OR t.\"e\" > 4";
-            const string EqualOrFold = "t.\"e\" = 2.5 OR " + Fold;
-
-            static string Over(string filter, string condition) =>
-                "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) AS \"e\" FROM items AS c "
-                + $"WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) {filter}) AS t WHERE {condition}";
-
-            var failing = new[] { "= 2", "= 2.0E0" }.SelectMany(f => new[] { CaseFold, FoldOrK, FoldOrGreater, EqualOrFold }.Select(c => (f, c)))
-                .Concat(new[] { FoldOrK, FoldOrGreater, EqualOrFold }.Select(c => ("> 1", c)));
-            var planning = new[] { "= 2", "= 2.0E0" }.SelectMany(f => new[]
+            var conditions = new[]
             {
+                "CASE WHEN " + Fold + " THEN t.\"e\" <= 5 ELSE JSON_VALUE(t.\"DOC\", '$.k') = 'a' END",
+                "(" + Fold + " AND t.\"e\" <= 5) OR JSON_VALUE(t.\"DOC\", '$.k') = 'a'",
+                Fold + " OR t.\"e\" > 4",
+                "t.\"e\" = 2.5 OR " + Fold,
                 Fold + " AND t.\"e\" <= 5", "t.\"e\" IN (2, 5) AND " + Fold, "t.\"e\" <= 5.5 AND " + Fold,
                 "CASE WHEN " + Fold + " THEN t.\"e\" > 1.5E0 ELSE FALSE END",
-            }.Select(c => (f, c)));
+            };
 
-            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            string[] documents =
+            [
+                """{ "id": "w01", "kind": 2.0, "name": "steel", "k": "b" }""",
+                """{ "id": "w02", "kind": 2.0, "name": "zinc", "k": "a" }""",
+                """{ "id": "w03", "kind": 2.0, "name": "zinc", "k": "b" }""",
+                """{ "id": "w04", "kind": 2.0, "k": "a" }""",
+                """{ "id": "w05", "kind": 2.5, "name": "zinc", "k": "a" }""",
+                """{ "id": "w06", "kind": 7.5, "name": "zinc", "k": "b" }""",
+                """{ "id": "w07", "kind": 7.5, "name": "Steel", "k": "b" }""",
+                """{ "id": "w08", "kind": 1.5, "name": "STEEL", "k": "a" }""",
+                """{ "id": "w09", "kind": 0.5, "name": "steel", "k": "a" }""",
+                """{ "id": "w10", "name": "steel", "k": "a" }""",
+            ];
+
+            foreach (var condition in conditions)
             {
-                foreach (var (filter, condition) in failing)
-                    FluentActions.Invoking(() => Explain(Over(filter, condition), declared: false, target: target)).Should().Throw<Exception>()
-                        .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"recorded: over the view filtered {filter}, {condition} is weakened beside the view's DOUBLE ({target})");
+                var sql = "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) AS \"e\" FROM items AS c "
+                    + $"WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) {filter}) AS t WHERE {condition}";
+                var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+                calcite.Should().NotBeEmpty("the documents are chosen so that the view and {0} keep some", condition);
 
-                foreach (var (filter, condition) in planning)
-                    Explain(Over(filter, condition), declared: false, target: target).Should().Contain("CosmosToClrCursorConverter", $"over the view filtered {filter}, {condition} plans ({target})");
+                Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "over the view filtered {0}, {1} answers as Calcite does", filter, condition);
             }
         }
 

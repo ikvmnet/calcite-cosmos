@@ -74,8 +74,7 @@ concrete type is learned per row. In practice:
   pinned only by answering where Calcite fails (Chapter 23). A key whose `enum` or `const` leaves one
   value whose double is the number's, a fraction among them, is pinned through `RETURNING DOUBLE`:
   `= 5.5` where the schema lists `[5.5, 7.25]`. A comparison through a cast to `DOUBLE` may be routed
-  to a partition where the request then finds nothing, and may fail to plan through a connection that
-  runs Calcite's default rules, as the README's does (Chapter 23). Where the schema fixes the key to one
+  to a partition where the request then finds nothing (Chapter 23). Where the schema fixes the key to one
   value, a comparison the schema shows true may be dropped from the request, which may then read every
   partition (Chapter 23). Without such a declaration Calcite compares the number by its double, so
   `= 5` also keeps a stored number written with more digits than a double holds, and the adapter does
