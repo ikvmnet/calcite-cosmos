@@ -41,14 +41,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure
     {
 
         /// <summary>
-        /// The emulator image, over plain HTTP.
+        /// The emulator image, over plain HTTP: release EN20261123, pinned by digest.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// <c>vnext-preview</c> rather than the original Linux emulator: it serves HTTP on 8081 and
         /// starts in seconds, where the original wants HTTPS with a certificate the client has to be
         /// told to trust and takes minutes. This is the image the tests already documented.
+        /// </para>
+        /// <para>
+        /// Pinned to the digest <c>vnext-preview</c> has named since 2026-11-23, release EN20261123, for both
+        /// platforms, rather than to the tag, which moves each time Microsoft publishes a release. CI's build job
+        /// reads this constant and its test job starts the emulator from it, so CI and an emulator started here run
+        /// one release. A new release reaches both by a pull request that moves the digest, which a release that
+        /// answers otherwise fails alone, where the tag turned every branch red the day it moved (Appendix E).
+        /// </para>
         /// </remarks>
-        const string Image = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview";
+        const string Image = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:c274ac17c19a5f74dbadbc99f259bc49a8640a03f6789f54d7f76cbfc33ff6b6";
 
         const int Port = 8081;
 
