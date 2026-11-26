@@ -1202,6 +1202,59 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A condition kept in process that reads a typed accessor of the document able to refuse a value only under a
+        /// branch Calcite does not take for every row, over a view carrying the document beside a column Calcite computes
+        /// or over the container, answers through this connection as Calcite's own does over the same documents, declared
+        /// or not, on either target.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosProjectResidualRule</c> carried every path such a condition reads as a column beneath it, a
+        /// <c>RETURNING INTEGER</c> under a <c>CASE</c>'s branch or a later operand of <c>COALESCE</c> among them, so the
+        /// reader refused 5.5 or 3000000000 at <c>n</c> for every row the service sent, where Calcite computes the reading
+        /// only for the rows that reach it and answers. Once the wire weighed the document a view passes through as the
+        /// document, that plan was the cheapest over the view. A path whose typed reading can refuse is not carried now,
+        /// and the condition reads it from the document. Calcite's own answer is the same statement over the documents
+        /// written as a <c>VALUES</c> list, which no rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData(UpperRegionBesideTheDocument + "CASE WHEN t.\"ur\" = 'STEEL' THEN JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) > 2 ELSE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Zinc' END", true, CosmosServiceTarget.Azure)]
+        [InlineData(UpperRegionBesideTheDocument + "CASE WHEN t.\"ur\" = 'STEEL' THEN JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) > 2 ELSE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Zinc' END", false, CosmosServiceTarget.Emulator)]
+        [InlineData(UpperRegionBesideTheDocument + "COALESCE(CASE WHEN t.\"ur\" <> 'STEEL' THEN 'x' END, CAST(JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) AS VARCHAR)) = '3'", false, CosmosServiceTarget.Azure)]
+        [InlineData(DateBesideTheDocument + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) > 2 ELSE t.\"cd\" > DATE '2024-02-01' END", false, CosmosServiceTarget.Azure)]
+        [InlineData(DateBesideTheDocument + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) > 2 ELSE t.\"cd\" > DATE '2024-02-01' END", true, CosmosServiceTarget.Emulator)]
+        [InlineData(DateBesideTheDocument + "t.\"cd\" > DATE '2024-02-01' AND CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN JSON_VALUE(t.\"DOC\", '$.n' RETURNING INTEGER) > 2 ELSE TRUE END", false, CosmosServiceTarget.Emulator)]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" AS \"D\", JSON_VALUE(c.\"DOC\", '$.region') AS \"rg\" FROM items AS c) AS t WHERE CASE WHEN INITCAP(t.\"rg\") = 'Steel' THEN JSON_VALUE(t.\"D\", '$.n' RETURNING INTEGER) > 2 ELSE INITCAP(JSON_VALUE(t.\"D\", '$.name')) = 'Zinc' END", true, CosmosServiceTarget.Azure)]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.region') AS \"r\" FROM items AS c WHERE CASE WHEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Steel' THEN UPPER(CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS VARCHAR)) = JSON_VALUE(c.\"DOC\", '$.s') ELSE FALSE END", false, CosmosServiceTarget.Azure)]
+        [InlineData("SELECT JSON_VALUE(c.\"DOC\", '$.region') AS \"r\" FROM items AS c WHERE CASE WHEN INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Steel' THEN UPPER(CAST(JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS VARCHAR)) = JSON_VALUE(c.\"DOC\", '$.s') ELSE FALSE END", true, CosmosServiceTarget.Emulator)]
+        public void AReadingThatCanRefuseUnderABranchCalciteDoesNotTakeAnswersAsCalcite(string sql, bool declared, CosmosServiceTarget target)
+        {
+            string[] documents =
+            [
+                """{ "id": "a", "name": "Zinc", "n": 5.5, "region": "north", "d": "2024-01-15", "s": "5" }""",
+                """{ "id": "b", "name": "zinc", "n": 3000000000, "region": "south", "d": "2024-03-01", "s": "3" }""",
+                """{ "id": "c", "name": "steel", "n": 3, "region": "steel", "d": "2024-01-01", "s": "3" }""",
+                """{ "id": "d", "name": "Steel", "n": 1, "region": "Steel", "d": "2024-03-01", "s": "q" }""",
+                """{ "id": "e", "name": "copper", "n": -4, "region": "north", "d": "2024-01-01", "s": "q" }""",
+            ];
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().NotBeEmpty("the documents are chosen so that the condition keeps some");
+
+            Answer(sql, new ServiceExecutor(documents, target), target, declared ? RefusingBranchSchema : null).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does: {0}", sql);
+        }
+
+        /// <summary>A view carrying the id, the document and its region upper-cased, beneath the condition that follows.</summary>
+        const string UpperRegionBesideTheDocument =
+            "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", UPPER(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ur\" FROM items AS c) AS t WHERE ";
+
+        /// <summary>A view carrying the id, the document and its day cast to a date, beneath the condition that follows.</summary>
+        const string DateBesideTheDocument =
+            "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(JSON_VALUE(c.\"DOC\", '$.d') AS DATE) AS \"cd\" FROM items AS c) AS t WHERE ";
+
+        /// <summary><c>name</c>, <c>region</c>, <c>d</c> and <c>s</c> strings, the first three always present, and <c>n</c> a number.</summary>
+        const string RefusingBranchSchema = """{ "type": "object", "required": ["name", "region", "d"], "properties": { "name": { "type": "string" }, "region": { "type": "string" }, "d": { "type": "string" }, "s": { "type": "string" }, "n": { "type": "number" } } }""";
+
+        /// <summary>
         /// A view's column holding the partition key's column cast to text, alone or inside a function, answers beside a
         /// condition kept in process as Calcite does through this connection, on either target: Calcite casts a number, a
         /// boolean and a null held in the promoted column to null.
@@ -1287,12 +1340,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
-        /// Runs a statement over a container declared nothing, on a target where one is given, whose every request the
-        /// executor given answers: the plan implemented, and its first column read.
+        /// Runs a statement over a container declared nothing, or declared <paramref name="schema"/>, on a target where one
+        /// is given, whose every request the executor given answers: the plan implemented, and its first column read.
         /// </summary>
-        static System.Collections.Generic.List<string> Answer(string sql, ICosmosQueryExecutor executor, CosmosServiceTarget? target = null)
+        static System.Collections.Generic.List<string> Answer(string sql, ICosmosQueryExecutor executor, CosmosServiceTarget? target = null, string? schema = null)
         {
-            using var source = Open(null, executor, target);
+            using var source = Open(schema, executor, target);
             using var connection = source.OpenConnection();
             using var command = connection.CreateCommand();
             command.CommandText = sql.Replace(" items AS ", " \"items\" AS ");

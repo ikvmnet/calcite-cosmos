@@ -2661,9 +2661,10 @@ across documents* and *A join of a container to itself* is the record.
   process reads whole documents.* A typed reading that can refuse a value (`CosmosJson.CanRefuse`: an
   integral width, a date or time, a UUID, GeoJSON, base64, and a collection whose elements are read to a type,
   its guard being the collection's) is no longer moved beneath a filter that stays in
-  process, nor selected beneath one under a weakening the split pushes over a view's projection where the transpose
-  would carry the filter beneath it instead (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), since there it was read for
-  rows the filter drops and failed the statement where Calcite answers.
+  process, nor carried beneath one for the filter (`CosmosProjectResidualRule.CollectPaths`), nor selected beneath one
+  under a weakening the split pushes over a view's projection where the transpose would carry the filter beneath it
+  instead (`CosmosFilterSplitRule.ReadsWhatCanRefuse`), since there it was read for rows the filter drops, or for rows
+  that never reach the branch reading it, and failed the statement where Calcite answers.
   The ORDER BY yardstick found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does
   (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
   did before #210. A path the schema declares an integer within the width's bounds, or an array of the
@@ -2684,17 +2685,6 @@ across documents* and *A join of a container to itself* is the record.
   strata use, and nothing added in C#; its gates are the statement and a document in the differential, recorded as a
   divergence the day value positions open, source A sampling a branch's false condition beside a refusing reading, and
   C6 running projections.
-- **A path the residual projection carries under a branch Calcite does not take** — *small, soundness; on `main`.*
-  `CosmosProjectResidualRule` declines a column of the projection it moves whose reading can refuse, but carries every
-  path the filter kept in process reads as a column beside it (`CollectPaths`), whatever its reading, since Calcite
-  reads those paths for every row it tests (`DESIGN.md`, *A residual filter was the same wall*). Calcite computes a
-  `CASE` branch only for the rows that reach it, and a later operand of `COALESCE` likewise, so `SELECT
-  JSON_VALUE(c."DOC", '$.region') AS "r" FROM products AS c WHERE CASE WHEN INITCAP(JSON_VALUE(c."DOC", '$.name')) =
-  'Steel' THEN UPPER(CAST(JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS VARCHAR)) = JSON_VALUE(c."DOC", '$.s') ELSE
-  FALSE END` sends `"$f2": (IS_NUMBER(c.n) ? c.n : null)` beneath that condition, bare and as a host plans, and fails over
-  `{"n":1.5,"name":"x","s":"q"}`, which Calcite drops without computing the cast. The fix is the one *A refusing reading
-  under a branch Calcite does not take* names: a path read only under a branch, where its reading can refuse, is not
-  carried.
 - **A selected `JSON_QUERY … RETURNING VARIANT ARRAY` is read back with its elements boxed** — *small, soundness; on
   `main`.* Calcite's `JSON_QUERY` holds each element of a `VARIANT ARRAY` in no box, and the reader returns a selected
   column of one with each element in a `VARIANT` box (`CosmosJson`'s collection reading). So where a plan selects the
@@ -4259,18 +4249,18 @@ across documents* and *A join of a container to itself* is the record.
   case fold of one text column of the view beside `t."a" = 'k'` on another select the column under `WHERE (c.a = @p0)`
   and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`, which Calcite drops on the `LIKE`s. A `VARCHAR
   ARRAY` holding a number is refused there even where the filter reads it, which Calcite reads without refusing: over a
-  view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`, `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'` selects
-  the array and fails over `[5]`, where Calcite answers. The residual projection moves no such column beneath its
-  filter, though it carries the paths the filter reads (*A path the residual projection carries under a branch Calcite
-  does not take*); but the view's own shape puts the projection there and the converter's width prefers it to the item
-  whole. Which plan the cost model takes over those pairs is not the split's. Planned without the trimmer, a member of a
-  weakening that a filter beneath or the declaration applies is not pushed (`CosmosFilterSplitRule.Admitted`), and the
-  half left can be the one the transpose writes beneath the view's projection for the pair over it, so the two are one
-  node and the cost model takes the narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'`
-  projecting the name as `nm` and `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE
-  FALSE END` selects `n` under Production, beneath `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))`, and
-  fails over `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and
-  so, under both targets, does `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes
+  view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`, `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'`
+  selects the array and fails over `[5]`, where Calcite answers. The residual projection neither moves such a column
+  beneath its filter nor carries a path the filter reads by such a reading; but the view's own shape puts the
+  projection there and the converter's width prefers it to the item whole. Which plan the cost model takes over those
+  pairs is not the split's. Planned without the trimmer, a member of a weakening that a filter beneath or the
+  declaration applies is not pushed (`CosmosFilterSplitRule.Admitted`), and the half left can be the one the transpose
+  writes beneath the view's projection for the pair over it, so the two are one node and the cost model takes the
+  narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'` projecting the name as `nm` and
+  `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE FALSE END` selects `n` under
+  Production, beneath `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))`, and fails over
+  `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and so,
+  under both targets, does `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes
   true; pushed again, as on `main`, that test kept the half apart and the document was selected. Through a connection
   they plan as on `main`. The proper fix is legality where the statement's projection meets a filter Calcite evaluates
   above the converter: whether the column's reading can refuse, asked by `CosmosJson.CanRefuse` of its type today and by

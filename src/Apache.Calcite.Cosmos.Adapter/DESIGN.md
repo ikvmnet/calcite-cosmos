@@ -11898,9 +11898,15 @@ narrow on purpose, and each limit was measured:
   found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does,
   `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`
   says which typed readings can refuse, beside the reader's switch, and a test holds the two together.
-  A projection holding one stays above, and the statement selects the document. The filter's own
-  paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
-  path declared within bounds pays too (`TODO.md`, section 7).
+  A projection holding one stays above, and the statement selects the document. Nor does a path the
+  filter reads by such a reading go down for it, since Calcite computes a `CASE` branch, a later
+  operand of `COALESCE` and the right side of an `AND` or an `OR` only for the rows that reach it:
+  carried, the reading failed the statement over a row whose branch Calcite never takes
+  (`CosmosConnectionPlanningTests.AReadingThatCanRefuseUnderABranchCalciteDoesNotTakeAnswersAsCalcite`).
+  The filter reads such a path from the document, and the rule moves nothing unless the projection
+  selects the document anyway; the filter's other paths still go down. Asked by type alone, so a path
+  declared within bounds pays too, and so does one the filter reads for every row it tests
+  (`TODO.md`, section 7).
 
 The split weakens a filter over a projection as it weakens any other. What lies beneath reads
 through the projection: a filter beneath it applies its conjuncts to every row the projection

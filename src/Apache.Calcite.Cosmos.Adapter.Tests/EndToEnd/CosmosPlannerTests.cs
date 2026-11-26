@@ -2135,7 +2135,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <see cref="Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosProjectResidualRule"/>'s half of <see cref="TwoReadingsOfOnePathAreTwoColumns"/>: the filter's
         /// <c>RETURNING INTEGER</c> was matched by its digest to the text accessor the projection pushes whole, and the
-        /// division above read the text column as an integer, which failed to implement.
+        /// division above read the text column as an integer, which failed to implement. The integer is a reading that
+        /// can refuse a value, and the rule carries none for a residual, since under a branch Calcite computes one only
+        /// where the branch is taken: the filter reads it from the document the statement selects, under the same
+        /// <c>WHERE</c>, and still not from the text's column.
         /// </remarks>
         [Fact]
         public void AResidualFilterReadsItsOwnReadingOfAProjectedPath()
@@ -2144,10 +2147,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12");
 
             Render(FindCosmos(best)).Should().Be(
-                "SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c WHERE IS_DEFINED(c.price)",
-                "the filter's integer is carried beside the projected text: " + Plan(best));
+                "SELECT VALUE c FROM products c WHERE IS_DEFINED(c.price)",
+                "the filter's integer is read from the document: " + Plan(best));
 
-            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/($2, 2), 12)])", "and the filter reads it: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/(JSON_VALUE($0, '$.price'), 2), 12)])", "and the filter reads it there, not from the text: " + Plan(best));
         }
 
         /// <summary>
