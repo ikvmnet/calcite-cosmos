@@ -141,14 +141,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// Line 1c (spec g05): every residual opaque conjunct S weakens in the pull request's run, under each set, evaluated
         /// by Calcite in process over source A's documents drawn from its weakening bundle's import widened to the paths the
         /// weakening reads, beside the literals the conjunct compares with; wherever Calcite keeps the row, the weakening
-        /// keeps it on every target the set serves. A document no row is, a field typed never null absent from it, is left
-        /// out; a conjunct Calcite cannot compile alone, or reading a field with no path, is counted and left out.
+        /// keeps it on every target the set serves, each computed place the conjunct reads read as the service evaluates it.
+        /// The import is widened to the weakening's paths, not to the conjunct's places, which leave out every path read
+        /// inside its opaque term. Each document is judged as the printer's round trip judges one in process
+        /// (<see cref="RenderingRexBuilderTests.JudgedInProcess"/>): one a target leaves unanswered is no evidence that target
+        /// keeps the row, so it is counted and left out of those judged, though another target dropping a row Calcite keeps
+        /// on it still fails the weakening. A document no row is, a field typed never null absent from it, is left out; a
+        /// conjunct Calcite cannot compile alone, or reading a field with no path, is counted and left out.
         /// </summary>
         [Fact(Explicit = true)]
         public void NoOpaqueWeakeningHasAWitnessInProcess()
         {
             var generated = RenderingCheckRun.PerPullRequest.Value.Generated!;
-            var (judged, kept, unread, witnesses) = (0, 0, 0, new List<string>());
+            var (judged, kept, unanswered, unread, witnesses) = (0, 0, 0, 0, new List<string>());
             var compiled = new Dictionary<object, Func<J.Obj, Truths?>?>(ReferenceEqualityComparer.Instance);
             foreach (var w in generated.Weakenings.Where(w => w.Opaque is not null && w.Mine is not null && w.Claim is not null))
             {
@@ -165,23 +170,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
                 var beside = CalciteInProcess.Literals(conjunct).Distinct().Select(l => ServiceForm.CompareOf(CosmosServiceTest.Equal, w.Mine.Paths.First(), l)).ToList();
                 var claim = w.Claim with { Imports = imports, Form = beside.Count == 0 ? w.Mine : ServiceForm.JunctionOf(CosmosServiceTest.And, [w.Mine, .. beside]) };
+
+                // The computed places the conjunct reads, by spelling, which a target reads as the service evaluates them: a
+                // weakening comparing one is answered on what the service makes of it, not left unknown.
+                var places = w.Source!.Statement.Conjuncts[w.Conjunct].Computed.Where(c => c.Spelled is not null).DistinctBy(c => c.Spelled)
+                    .ToDictionary(c => c.Spelled!, StringComparer.Ordinal);
                 foreach (var document in RenderingDocumentSampler.Sample(claim))
                 {
                     if (calcite(document) is not { } answer)
                         continue;
 
-                    judged++;
-                    if (answer != Truths.True)
-                        continue;
-
-                    kept++;
-                    foreach (var target in ProbeRows.Measured.Serves[w.Set])
-                        if (CosmosEval.On(w.Mine, document, target) is { } service && service != ServiceOutcomes.True)
-                            witnesses.Add($"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct}: {w.Mine.Text} for {conjunct} on {Documents.Json(document)}: Calcite keeps it, {target} {service}");
+                    var (isJudged, isKept, dropped) = RenderingRexBuilderTests.JudgedInProcess(answer, w.Mine!, document, ProbeRows.Measured.Serves[w.Set], places);
+                    (judged, kept, unanswered) = (judged + (isJudged ? 1 : 0), kept + (isKept ? 1 : 0), unanswered + (isJudged ? 0 : 1));
+                    witnesses.AddRange(dropped.Select(d => $"{w.Set} {w.Input} {w.Name}/{w.Statement}/{w.Conjunct}: {w.Mine.Text} for {conjunct} on {Documents.Json(document)}: Calcite keeps it, {d.Target} {d.Service}"));
                 }
             }
 
-            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; {unread} left out, not compiled alone");
+            TestContext.Current.TestOutputHelper?.WriteLine($"{generated.Weakenings.Count(w => w.Opaque is not null)} opaque weakenings; {judged} documents judged, {kept} Calcite keeps; "
+                + $"{unanswered} left out, unanswered by a target; {unread} left out, not compiled alone");
             judged.Should().BePositive();
             witnesses.Should().BeEmpty();
         }

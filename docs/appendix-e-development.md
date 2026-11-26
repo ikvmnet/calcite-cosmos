@@ -24,30 +24,31 @@ statements Azure rejects and to reject features Azure implements:
 | | emulator | Azure |
 | --- | --- | --- |
 | `ORDER BY t` over `JOIN t IN c.tags` | accepted | rejected (400) |
-| full text functions and `ORDER BY RANK` | rejected (`SC2005`) | accepted |
+| full text functions and `ORDER BY RANK` | rejected | accepted |
 | full text policies and indexes | accepted on create, then reported absent | kept |
 | composite indexes | discarded on create | kept |
 | multi-key `ORDER BY` without a composite index, a key repeated included | accepted | rejected (400) |
 | `ORDER BY` over a path the indexing policy excludes, `_etag` included | accepted | rejected (400) |
 | `ORDER BY` over a computed property no included path names | computed properties dropped on create | rejected (400) |
-| `ORDER BY RANK … ASC` or `DESC` | rejected (`SC2005`) | rejected — no direction is taken |
+| `ORDER BY RANK … ASC` or `DESC` | rejected | rejected — no direction is taken |
 | two string constants compared, `'\uE000' < '\uD83D\uDE00'` | by code point | by UTF-16 code unit |
 | an integer written in [2^63, 2^64) | kept as written, and printed projected as another integer: 2^63 as `9223372036854775800` | stored as a double, printed one way: `9.223372036854776E+18` |
 | a document holding bytes that are not UTF-8 | rejected (403, or 400) | stored and returned as written |
 | a lone surrogate written as a JSON escape | rejected (403, or 400) | stored as U+FFFD |
 | `SUBSTRING`, `LEFT`, `RIGHT` and `INDEX_OF` over a character beyond U+FFFF | count code points | count UTF-16 units, as Calcite does, and send half of a split pair as U+FFFD |
-| `UPPER('\u017F')`, `LOWER('\u0130')`, `LOWER('\u212A')` | `S`, `i`, `k` | left as they are |
-| `TRIM`, `LTRIM`, `RTRIM` | remove white space but U+0085, U+00A0, U+180E, U+2007 and U+202F | remove those too |
+| `UPPER('\u017F')`, `LOWER('\u0130')`, `LOWER('\u212A')` | `S`, `i`, `k` before EN20261123; from it, left as they are | left as they are |
+| `TRIM`, `LTRIM`, `RTRIM` | remove white space, but before EN20261123 not U+0085, U+00A0, U+180E, U+2007 or U+202F | remove those too |
 | a string holding U+0000 or U+FDD0 | stored as U+FDD0 followed by `0` or `1`, a member's name too, and compared with what it is sent unescaped: the adapter sends a compared value — a literal, a parameter, a lookup key — in that spelling, so `=`, `IN`, `<>` and `STARTSWITH` answer exactly, and queries an `id` or key holding either rather than reading or routing on it; a constant or parameter anywhere else, a path or a selected column named with either, is computed in process, a raw U+0000 returned being a 500; a `DELETE` or `UPDATE` stops, raising, at a row whose `id` or key holds either, whose point write would answer another document or none (Chapter 13); sorts and compares in that spelling, U+0000 after every character from U+0001 to U+FDCF, so a text sort, `MIN`, `MAX` or ordering over text that may hold U+0000, or against a parameter, runs in process (Chapters 8.7, 9.3, 10); and `LENGTH`, `INDEX_OF`, `REVERSE`, `LIKE` and every other function over it answers over two other characters | stored as written; `REPLACE` and `CONTAINS`, and a `LIKE` answered as one, read it only up to its first U+0000, and the rest read past it |
-| `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500 `PostgresError(E22P05)`; so does a `CONCAT` of one | replaces with it as written |
+| `REPLACE` whose replacement, a parameter, holds U+0000 | fails the statement, 500; so does a `CONCAT` of one | replaces with it as written |
 | `REPLICATE` past 10,000 code points | repeats on | undefined |
 | an `INSERT` of an `id` its partition already holds | refused, the first document untouched, but at times with a 500 from the Postgres beneath it rather than a 409: "cannot drop portal ... while it is being set up", or `SqlState(E24000)`. A fresh emulator did so once; two that had run for hours did on every repeat, across a restart | refused, 409 |
 | deleting a database or a container | an emulator that had run for 15 hours answered every delete with a 500, `SqlState(E58P01)`, and kept what it was asked to delete | deleted |
-| a container's document count | always zero | the count, lagging recent writes |
+| a container's document count | always zero before EN20261123; from it, the count | the count, lagging recent writes |
 | request charges | not representative | real |
 
 So: develop against the emulator, but verify sorting, full text search, and anything cost-related
-against a real account. A plan chosen on the emulator is chosen without row counts (Chapter 6).
+against a real account. A plan chosen on the emulator is chosen without a row count, or, from EN20261123,
+at the count the container holds where that count is above zero (Chapter 6).
 
 ## E.3 The sample program
 

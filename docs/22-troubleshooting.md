@@ -120,8 +120,8 @@ side.
 Chapter 12.
 
 **Plans on the emulator are worse than on Azure.**
-The emulator reports zero documents for every container, so plans are made without row counts. Test
-plan choices against a real account. Appendix E.
+Before EN20261123 the emulator reports zero documents for every container, so plans are made without row
+counts. Test plan choices against a real account. Appendix E.
 
 **Many short-lived connections are slow to open.**
 Each new data source reads every container's definition, creates a client, and plans its first

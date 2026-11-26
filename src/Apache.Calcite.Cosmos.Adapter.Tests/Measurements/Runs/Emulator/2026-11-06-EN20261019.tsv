@@ -2,7 +2,7 @@
 # mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview, release EN20261019 (image db53613dae19): the
 # spellings Service.StringFunctionAnswersByBand gained that day, a search, a replacement and a window's length keyed as
 # each is, and the literals the emulator stores escaped. An answer is the projection, ! where the statement fails over
-# the witness alone. Release EN20260907 (image 2db1f9e7) answered every line alike.
+# the witness alone. Releases EN20260907 (image 2db1f9e7) and EN20261123 (run on 2026-11-25) answered every line alike.
 release	row	expression	witness	answer
 EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"
 EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"b"	"a0x1c"

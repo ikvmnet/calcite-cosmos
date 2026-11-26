@@ -84,7 +84,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </summary>
         /// <remarks>
         /// Semicolon-separated <c>name=value</c> pairs — <c>documentsCount</c>, <c>documentsSize</c> in
-        /// kilobytes, <c>collectionSize</c> — and the only route to a row count that does not cost a
+        /// whole kilobytes, <c>collectionSize</c> — and the only route to a row count that does not cost a
         /// query over the container.
         /// </remarks>
         const string ResourceUsageHeader = "x-ms-resource-usage";
@@ -93,10 +93,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// Asks a container read to report its usage.
         /// </summary>
         /// <remarks>
-        /// Azure Cosmos DB returns <see cref="ResourceUsageHeader"/> only to a read that asks for it,
-        /// which the SDK does by sending <c>x-ms-documentdb-populatequotainfo</c> for this option. The
-        /// emulator sends the header unasked, so a read without it worked there and returned nothing
-        /// from every Azure account (#209).
+        /// Azure Cosmos DB, and the emulator from EN20261123, return <see cref="ResourceUsageHeader"/> only
+        /// to a read that asks for it, which the SDK does by sending
+        /// <c>x-ms-documentdb-populatequotainfo</c> for this option. The emulator's releases before send the
+        /// header unasked, so a read without it worked there and returned nothing from every Azure account
+        /// (#209).
         /// </remarks>
         static ContainerRequestOptions QuotaInfo => new() { PopulateQuotaInfo = true };
 
