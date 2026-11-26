@@ -644,6 +644,46 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A view filtered on a reading typed <c>DOUBLE</c>, beneath a condition kept in process over the view's column
+        /// of it: which statements fail to plan with the simplifier's <c>ClassCastException</c> on either target and
+        /// which plan, as measured (<c>TODO.md</c>, <em>Two weakenings over one path still share one raw value</em>). The
+        /// split's weakening over the view holds its bound as a <c>DECIMAL</c>, which meets the view's own
+        /// <c>DOUBLE</c> literal. Over the view filtered on <c>= 2</c> or <c>= 2.0E0</c> each that fails here
+        /// <c>main</c> answers; over <c>&gt; 1</c> each fails on <c>main</c> too.
+        /// </summary>
+        [Fact]
+        public void AWeakeningOverAViewMeetsTheViewsOwnLiteral()
+        {
+            const string Fold = "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+            const string CaseFold = "CASE WHEN " + Fold + " THEN t.\"e\" <= 5 ELSE JSON_VALUE(t.\"DOC\", '$.k') = 'a' END";
+            const string FoldOrK = "(" + Fold + " AND t.\"e\" <= 5) OR JSON_VALUE(t.\"DOC\", '$.k') = 'a'";
+            const string FoldOrGreater = Fold + " OR t.\"e\" > 4";
+            const string EqualOrFold = "t.\"e\" = 2.5 OR " + Fold;
+
+            static string Over(string filter, string condition) =>
+                "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) AS \"e\" FROM items AS c "
+                + $"WHERE JSON_VALUE(c.\"DOC\", '$.kind' RETURNING DOUBLE) {filter}) AS t WHERE {condition}";
+
+            var failing = new[] { "= 2", "= 2.0E0" }.SelectMany(f => new[] { CaseFold, FoldOrK, FoldOrGreater, EqualOrFold }.Select(c => (f, c)))
+                .Concat(new[] { FoldOrK, FoldOrGreater, EqualOrFold }.Select(c => ("> 1", c)));
+            var planning = new[] { "= 2", "= 2.0E0" }.SelectMany(f => new[]
+            {
+                Fold + " AND t.\"e\" <= 5", "t.\"e\" IN (2, 5) AND " + Fold, "t.\"e\" <= 5.5 AND " + Fold,
+                "CASE WHEN " + Fold + " THEN t.\"e\" > 1.5E0 ELSE FALSE END",
+            }.Select(c => (f, c)));
+
+            foreach (var target in new[] { CosmosServiceTarget.Azure, CosmosServiceTarget.Emulator })
+            {
+                foreach (var (filter, condition) in failing)
+                    FluentActions.Invoking(() => Explain(Over(filter, condition), declared: false, target: target)).Should().Throw<Exception>()
+                        .Where(e => e.ToString().Contains("ReduceExpressionsRule"), $"recorded: over the view filtered {filter}, {condition} is weakened beside the view's DOUBLE ({target})");
+
+                foreach (var (filter, condition) in planning)
+                    Explain(Over(filter, condition), declared: false, target: target).Should().Contain("CosmosToClrCursorConverter", $"over the view filtered {filter}, {condition} plans ({target})");
+            }
+        }
+
+        /// <summary>
         /// <see cref="CosmosDeclaredFactPlanningTests.ASiblingSentLeavesNothingInCalcite"/> through this connection, whose
         /// simplifier reads the whole <c>WHERE</c> before anything is pushed: the cast of <c>body</c> a sibling makes go
         /// unread is in no node, declared or not, but in the <c>CASE</c> Calcite's simplifier keeps.

@@ -1718,8 +1718,13 @@ JSON_VALUE(c."DOC", '$.kind' RETURNING DOUBLE) = 2) AS t WHERE CASE WHEN INITCAP
 `OR(AND(IS_DEFINED(…), <=(JSON_VALUE($0, '$.kind'), 5)), =(…, 'a'))`, whose bound is a `DECIMAL` where Calcite writes
 the view's `2` as a `DOUBLE`, and fails to plan through the connection with `Double` against `BigDecimal` under both
 targets, undeclared and declared, where `main`, weakening the filter the transpose merged beside `kind = 2`, sent
-`((c.kind = @p0) AND ((c.k = @p1) OR IS_DEFINED(c.name)))` and answered. Over the view filtered on `> 1`,
-`(INITCAP(…) = 'Steel' AND t."e" <= 5) OR JSON_VALUE(t."DOC", '$.k') = 'a'` fails the same way on `main` too.
+`((c.kind = @p0) AND ((c.k = @p1) OR IS_DEFINED(c.name)))` and answered. Over that view, and over one filtered on
+`= 2.0E0`, `(INITCAP(…) = 'Steel' AND t."e" <= 5) OR JSON_VALUE(t."DOC", '$.k') = 'a'`, `INITCAP(…) = 'Steel' OR
+t."e" > 4` and `t."e" = 2.5 OR INITCAP(…) = 'Steel'` fail the same way where `main` answers; `INITCAP(…) = 'Steel'
+AND t."e" <= 5`, `t."e" IN (2, 5) AND …`, `t."e" <= 5.5 AND …` and `CASE WHEN INITCAP(…) = 'Steel' THEN t."e" >
+1.5E0 ELSE FALSE END` plan. Over the view filtered on `> 1`, the first `OR`, `INITCAP(…) = 'Steel' OR t."e" > 4` and
+`t."e" = 2.5 OR …` fail on `main` too. `CosmosConnectionPlanningTests.AWeakeningOverAViewMeetsTheViewsOwnLiteral`
+pins each.
 
 The fix is the same for all three, the bound reading the value in its own type — but the bound's literal is
 the type `f9c159e` chose so that the service reads it as itself, so it wants that measurement redone
