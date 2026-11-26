@@ -37,8 +37,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
     /// </para>
     /// <para>
     /// A row's test asserts one answer, and a target that answers otherwise fails it. A release a committed record names
-    /// must also answer each line recorded for it as recorded, and a release whose own record holds a row must log no line
-    /// of that row the record misses: the record is what its pinning tests ask, and a release is named where it parts.
+    /// must also answer each line as its own line holds it, or, where it has none, as the line of the release the records
+    /// are named for, and log no line of a row they hold that neither holds (<see cref="Parts"/>): the record is what its
+    /// pinning tests ask, and a release is named where it parts. A release no record names is held to none.
     /// </para>
     /// </remarks>
     internal static class CosmosWitnessProbe
@@ -225,14 +226,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                     File.AppendAllLines(path, lines.Select(l => string.Join('\t', Release, row, l.Expression, l.Witness, l.Answer)));
                 }
 
-                // A release with a record answers as it did: every line of a release's own record, and any line another holds.
-                var (recorded, complete) = (Recorded.Value, Recorded.Value.Keys.Any(k => k.Release == Release && k.Row == row) && Complete.Value.Contains(Release));
-                var differs = lines
-                    .Select(l => (l.Expression, l.Witness, l.Answer,
-                        Found: recorded.TryGetValue((Release, row, l.Expression, l.Witness, Projected(l.Answer)), out var was) ? was : null))
-                    .Where(l => l.Found is null ? complete : l.Found != l.Answer)
-                    .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer}, recorded {l.Found ?? "nothing"}")
-                    .ToList();
+                var differs = Parts(Release, row, lines.Select(l => (l.Expression, l.Witness, l.Answer)));
                 if (differs.Count > 0)
                     Assert.Fail($"Release {Release} answers {row} otherwise than its record: " + string.Join("; ", differs.Take(20)));
 
@@ -243,6 +237,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
                 foreach (var id in ids)
                     using (await container!.DeleteItemStreamAsync(id, new PartitionKey(pk))) { }
             }
+        }
+
+        /// <summary>
+        /// Where a release answers a row's lines otherwise than the records hold them. A release a record names answers
+        /// each line as its own line holds it, or, where it has none, as the line of the release the records are named for,
+        /// and logs no line of a row they hold that neither holds. A release no record names is held to none.
+        /// </summary>
+        internal static List<string> Parts(string release, string row, IEnumerable<(string Expression, string Witness, string Answer)> lines)
+        {
+            var recorded = Recorded.Value;
+            string[] releases = recorded.Keys.Any(k => k.Release == release) ? [release, .. Complete.Value.Order(StringComparer.Ordinal)] : [];
+            var complete = recorded.Keys.Any(k => k.Row == row && releases.Contains(k.Release));
+            return lines
+                .Select(l => (l.Expression, l.Witness, l.Answer,
+                    Found: releases.Select(r => recorded.GetValueOrDefault((r, row, l.Expression, l.Witness, Projected(l.Answer)))).FirstOrDefault(a => a is not null)))
+                .Where(l => l.Found is null ? complete : l.Found != l.Answer)
+                .Select(l => $"{l.Expression} over {l.Witness}: {l.Answer}, recorded {l.Found ?? "nothing"}")
+                .ToList();
         }
 
         /// <summary>

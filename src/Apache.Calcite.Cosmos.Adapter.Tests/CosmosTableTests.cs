@@ -273,7 +273,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests
 
         /// <summary>
         /// A count of zero is not reported: at zero rows every plan ties, and the tie went to the plan that
-        /// pushes none of a split predicate. The emulator reports zero for every container.
+        /// pushes none of a split predicate. Azure reports zero for a while after a write, and the emulator's
+        /// releases before EN20261123 for every container.
         /// </summary>
         [Fact]
         public void AZeroCountIsNotAReportedRowCount()

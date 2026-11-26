@@ -45,6 +45,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
     /// subquery read first, and fails as the twin does; Calcite's own plan through this connection, a hash semi-join
     /// reading the empty outer side first, answers no rows (<c>docs/23</c>).
     /// </para>
+    /// <para>
+    /// The container holds a hundred documents, the number Calcite plans a container of no known count as, so a plan is the
+    /// one these tests mean whether the service counts them at once (the emulator's EN20261123), reports zero (its releases
+    /// before) or reports zero for a while (Azure). At the three documents the statements are about it is not: planned at
+    /// 3 or 4 rows <c>sj2</c> and <c>j6</c> keep the filter by <c>kind</c> above their lookup join, and at 3 to 11
+    /// <c>sj1</c>'s undeclared twin keeps the cast there. Measured on EN20261123, each statement plans alike in each schema
+    /// from 12 documents to 2,000, and as it does on EN20261019 and EN20260907 with no count. The other ninety-seven are as
+    /// small, a document's size moving a plan as a count does, and hold nothing a statement raises on or keeps: their
+    /// <c>kind</c> is declared, and their <c>body</c> is a number other than 1.
+    /// </para>
     /// </remarks>
     public class CosmosConnectionEmptySideTests : IClassFixture<CosmosConnectionEmptySideTests.Fixture>
     {
@@ -75,6 +85,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <summary><c>kind</c> is never <c>C</c>, <c>body</c> is any string, and <c>n</c> is 1 or 2.</summary>
         const string Schema = """{ "type": "object", "required": ["kind", "body", "n"], "properties": { "kind": { "enum": ["A", "B"] }, "body": { "type": "string" }, "n": { "enum": [1, 2] } } }""";
+
+        /// <summary>How many documents the container holds: what Calcite plans a container of no known count as.</summary>
+        const int Documents = 100;
 
         static CosmosClient? _client;
         static string? _initializationFailure;
@@ -109,17 +122,28 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 var container = (await database.CreateContainerIfNotExistsAsync(new ContainerProperties("sides", "/category"), cancellationToken: cts.Token)).Container;
 
                 // One body that is no number, which a cast to INTEGER fails on, beside two that are.
-                foreach (var json in new[]
+                var stated = new[]
                 {
                     """{ "id": "r1", "category": "a", "kind": "A", "body": "abc", "n": 1 }""",
                     """{ "id": "r2", "category": "a", "kind": "B", "body": "1", "n": 2 }""",
                     """{ "id": "r3", "category": "b", "kind": "A", "body": "1", "n": 2 }""",
-                })
+                };
+
+                foreach (var json in stated)
                 {
                     using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
                     using var doc = JsonDocument.Parse(json);
                     await container.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("category").GetString()), cancellationToken: cts.Token);
                 }
+
+                // And the rest of the hundred, in one request.
+                var rest = container.CreateTransactionalBatch(new PartitionKey("c"));
+                for (var i = stated.Length; i < Documents; i++)
+                    rest.UpsertItem(new { id = $"f{i}", category = "c", kind = "B", body = "0", n = 2 });
+
+                using (var written = await rest.ExecuteAsync(cts.Token))
+                    if (written.IsSuccessStatusCode == false)
+                        throw new InvalidOperationException($"The rest of the documents were not written: {written.StatusCode} {written.ErrorMessage}");
 
                 _client = client;
             }

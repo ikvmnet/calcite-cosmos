@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Tests.Infrastructure;
 
 using Apache.Calcite.Data;
@@ -169,6 +170,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     await labels.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("id").GetString()), cancellationToken: cts.Token);
                 }
 
+                // A fourth, which nothing is written to, so that every service counts no documents in it.
+                try { await database.GetContainer("vacant").DeleteContainerAsync(cancellationToken: cts.Token); } catch (CosmosException) { }
+                await database.CreateContainerIfNotExistsAsync(new ContainerProperties("vacant", "/category"), cancellationToken: cts.Token);
+
                 _client = client;
             }
             catch (Exception e)
@@ -224,7 +229,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                       "properties": { "kind": { "enum": ["book", "disc"] } }
                     }
                   },
-                  "labels"
+                  "labels",
+                  "vacant"
                 ],
                 "connectionMode": "gateway"
               }
@@ -333,25 +339,57 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// connection as through a bare planner.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// It did not. Through a connection the whole predicate stayed in process and the container was read
-        /// whole, while the same query under the planner the other tests use split correctly. The split was
-        /// produced either way; it lost on cost, because the connection reads its row count from the service
-        /// and the count it read was zero — every plan tying at zero rows, and the tie going to the one
-        /// registered first. The emulator reports zero for every container whatever it holds, which is why
-        /// this asserts wherever the suite runs; the service reports zero for a while after a write.
-        /// </para>
-        /// <para>
         /// <c>SIMILAR TO</c> because the service has no counterpart, so it has to stay in process and is the
         /// conjunct the split exists for.
-        /// </para>
         /// </remarks>
         [Fact]
         public async Task APartlyRenderablePredicatePushesWhatRendersThroughAConnection()
         {
             RequireService();
 
-            const string sql = """SELECT c."id" FROM "products" AS c WHERE JSON_VALUE(c."DOC", '$.category') = 'bikes' AND JSON_VALUE(c."DOC", '$.name') SIMILAR TO 'Trail%'""";
+            await PushesWhatRenders("products", "1");
+        }
+
+        /// <summary>
+        /// And does where the service counts no documents.
+        /// </summary>
+        /// <remarks>
+        /// It did not. Through a connection the whole predicate stayed in process and the container was read
+        /// whole, while the same query under the planner the other tests use split correctly. The split was
+        /// produced either way; it lost on cost, because the connection reads its row count from the service
+        /// and the count it read was zero — every plan tying at zero rows, and the tie going to the one
+        /// registered first. Asked of a container that holds nothing: of one that holds documents, the emulator
+        /// counts none before its release EN20261123, and Azure none for a while after a write. Inconclusive where
+        /// the service reports no count of it, asked by the SDK alone.
+        /// </remarks>
+        [Fact]
+        public async Task APartlyRenderablePredicatePushesWhatRendersWhereNoDocumentsAreCounted()
+        {
+            RequireService();
+
+            var vacant = _client!.GetContainer(DatabaseName, "vacant");
+            var usage = await ContainerUsage.ReadAsync(vacant, TestContext.Current.CancellationToken);
+            if (ContainerUsage.DocumentsCount(usage) is not { } counted)
+            {
+                Assert.Skip($"This account reports no document count for the container: {usage ?? "no resource usage"}.");
+                return;
+            }
+
+            counted.Should().Be(0, $"nothing is written to the container: {usage}");
+
+            var statistics = await CosmosContainerMetadataReader.ReadStatisticsAsync(vacant, TestContext.Current.CancellationToken);
+            (statistics?.DocumentCount).Should().Be(0, $"the connection reads the count the service reports: {usage}");
+
+            await PushesWhatRenders("vacant");
+        }
+
+        /// <summary>
+        /// Plans and runs a predicate on the <c>category</c> and the <c>name</c> of a container's documents, of which the
+        /// category comparison alone renders.
+        /// </summary>
+        static async Task PushesWhatRenders(string container, params string[] expected)
+        {
+            var sql = $"""SELECT c."id" FROM "{container}" AS c WHERE JSON_VALUE(c."DOC", '$.category') = 'bikes' AND JSON_VALUE(c."DOC", '$.name') SIMILAR TO 'Trail%'""";
 
             await using (var connection = await OpenAsync())
             {
@@ -363,7 +401,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 plan.Should().Contain("'$.category'), 'bikes')", plan);
             }
 
-            (await QueryAsync(sql)).Should().Equal("1");
+            (await QueryAsync(sql)).Should().Equal(expected);
         }
 
         /// <summary>
@@ -536,12 +574,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <para>
         /// The emulator does not support full text search, and the shape of that matters here: it
         /// accepts a container declaring a <c>FullTextPolicy</c> and a full text index and then
-        /// reports both back as absent, and it does not know the function names either
-        /// (<c>SC2005, 'FullTextScore' is not a recognized built-in function name</c>). Measured.
-        /// The declaration used to decline the statement before it was sent; since #85 it is a cost
-        /// rather than a gate, so the statement is sent whatever the container reports, and an
-        /// emulator's refusal arrives as the emulator's own <c>SC2005</c>, which is not the service's
-        /// answer and is reported as inconclusive rather than as a failure.
+        /// reports both back as absent. Measured. The declaration used to decline the statement before
+        /// it was sent; since #85 it is a cost rather than a gate, so the statement is sent whatever the
+        /// container reports, and an emulator's refusal, which is not the service's answer, is reported
+        /// as inconclusive rather than as a failure.
         /// </para>
         /// <para>
         /// What is not excused either way is the failure this issue is about: a name the planner

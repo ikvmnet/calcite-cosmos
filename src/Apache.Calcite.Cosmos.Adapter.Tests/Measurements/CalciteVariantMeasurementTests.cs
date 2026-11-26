@@ -66,7 +66,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Measurements
         /// A raw value is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not
         /// another case, not a trailing space, not a number or a boolean.
         /// </summary>
-        [Fact]
+        [Fact, CosmosPins("Calcite.RawStringEqualityIsOrdinal")]
         public void ARawValueIsEqualToTheStringOfItsUnitsAlone()
         {
             using var connection = MaterialisedTable.Open();

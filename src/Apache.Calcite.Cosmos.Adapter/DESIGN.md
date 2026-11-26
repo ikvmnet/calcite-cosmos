@@ -941,10 +941,10 @@ not admit, so a missed binding fails its plan rather than reading as "unknown".
 **What is static, and what a schema learns.** The process keeps only facts fixed in the assembly: the rules
 of JSON and JSON Schema as code, the service's guarantees (`CosmosServiceFacts.Rules`), the unbound
 `ServiceFacts` and `Empty` theories, S's definition read from the measured registry
-(`CosmosRendering.Definition`), and bounded pure tables of such facts (`PathCell.Units`,
-`PredicateAtom.Parsed`). They are facts, not a cache. Everything a question can teach — graphs, interned
-values, compiled declarations, `D0`, statement trees, remembered answers, S's readings of a node — hangs off the
-schema's reasoning and goes with it; connections share it as they share the schema (docs chapter 6). A weak table
+(`CosmosRendering.Definition`), and bounded pure tables of such facts (`PathCell.Units`). They are facts,
+not a cache. Everything a question can teach — graphs, interned values, compiled declarations, `D0`,
+statement trees, remembered answers, S's readings of a node — hangs off the schema's reasoning and goes
+with it; connections share it as they share the schema (docs chapter 6). A weak table
 keyed on a static object, whose value reaches the table, is a holder in its own right, whatever the table's own
 lifetime: `JsonFactGenerations._bound`, an instance table keyed on the static `ServiceFacts`, held each factory
 schema's bound copy and through it the generations, so every factory-built schema's graph lived for the process
@@ -2106,22 +2106,21 @@ documentation.
 > | | emulator | Azure |
 > | --- | --- | --- |
 > | `ORDER BY t0` over `JOIN t0 IN c.tags` | accepted | **400** |
-> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
+> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **refused** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
 > | `SUBSTRING`, `LEFT`, `RIGHT`, `INDEX_OF` past U+FFFF | code points | **UTF-16 units**, a split pair sent as U+FFFD |
-> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped | **left** |
-> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept | **removed** |
+> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped before EN20261123 | **left** |
+> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept before EN20261123 | **removed** |
 >
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
 > run. `ORDER BY t0.x` is rejected too, so it is the alias and not the arity.
 >
 > The second understates itself. The emulator does not merely reject the statements: it accepts a
-> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent,
-> and it does not know the names either — `SC2005, 'FullTextScore' is not a recognized built-in
-> function name`. The declaration used to decline the statement before it was sent; since #85 it is
-> a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
-> emulator's own answer, worth telling apart from the service's when a test reports one.
+> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent.
+> The declaration used to decline the statement before it was sent; since #85 it is a cost rather
+> than a gate, so the statement is sent and the refusal that comes back is the emulator's own answer,
+> worth telling apart from the service's when a test reports one.
 
 **Every measured fact a pushdown relies on is a row in `Sql/CosmosAxioms.cs`.** Each row has an id,
 the statement, the targets it was measured on (emulator, Azure, or Calcite's own runtime), the date,
@@ -2162,7 +2161,10 @@ join emits, at the batch size it emits, and the measurement is what says the fea
 improvement rather than a scan with a large predicate bolted on.
 
 Also measured: the index metrics header carries **JSON**, not the prose the documentation shows. The
-prose is what the portal renders.
+prose is what the portal renders. The emulator's EN20261123 answers every statement that asks by the
+header the SDK sends (`x-ms-cosmos-populateindexmetrics-V2`) with
+`{"Utilized":{"SingleIndexes":[],"CompositeIndexes":[]},"Potential":{…}}`, naming no index for any; its
+releases before answer that header with nothing.
 
 **A multi-key `ORDER BY` really does need a composite index spanning its keys.** Measured on a real
 account against a container built with the default indexing policy and so with no composite index at
@@ -2176,9 +2178,9 @@ response and none on a subsequent read, and then accepts the multi-key form rega
 
 **The document count lags, and by more than a moment.** A container read reports `documentsCount` in
 its `x-ms-resource-usage` header — on Azure only when the read asks for it, with
-`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require, so until #209 no
-Azure account ever answered — and immediately after writing four documents it reports **zero** —
-the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
+`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require before EN20261123, so
+until #209 no Azure account ever answered — and immediately after writing four documents it reports
+**zero** — the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
 is what a planner row count is allowed to be: approximate and stale. It is not what the rule against
 inferring from documents forbids, which is about the *shape* of the data — a wrong shape yields an
 incorrect plan, a wrong row count yields a slow one.
@@ -2186,9 +2188,12 @@ incorrect plan, a wrong row count yields a slow one.
 The partition count is answered immediately, being a fact about the container rather than its
 contents.
 
-**And the emulator never reports one.** `documentsCount` is zero for every container it holds — zero for
-`links` holding 200 documents that had been there for days. So every plan the emulator measures is planned
-at zero rows, unless something stops it.
+**And the emulator reports none before EN20261123.** On those releases `documentsCount` is zero for every
+container — zero for `links` holding 200 documents that had been there for days. So every plan measured on
+them is planned at zero rows, unless something stops it. EN20261123 reports the count exactly and at once,
+and `documentsSize` in whole kilobytes, rounded down. So a plan there is
+made at the few rows a test container holds, and a test of a plan's shape has to hold enough of them
+(`CosmosConnectionEmptySideTests` holds Calcite's hundred).
 
 **Zero is the one count that is worse than none, so it is reported as unknown.** Volcano compares row counts
 and nothing else. At zero rows every plan costs the same, and the tie goes to whichever registered first. Measured
@@ -4145,15 +4150,16 @@ three things; a review measured a fourth, and three functions that part over som
   string measured without one agreed — U+E000, U+FFFD and a combining sequence among them.
 - **A case mapping, outside ASCII.** Calcite maps by Java's full mapping: ß to `SS`, U+FB00 to `FF`, U+0130 to `i` and
   U+0307. Both services map by simple ones that leave ß and U+FB00; Azure's leaves U+017F, U+0130 and U+212A too, which
-  the emulator maps. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and `ENDSWITH` fold the
-  service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb` under `UPPER(s) LIKE
-  '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared path: a recheck sees
-  only the rows that arrive.
+  the emulator maps before EN20261123. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and
+  `ENDSWITH` fold the service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb`
+  under `UPPER(s) LIKE '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared
+  path: a recheck sees only the rows that arrive.
 - **A trim, over white space.** Calcite's `TRIM` removes U+0020 alone. The service's removes white space: measured on
   Azure over every unit of the basic plane, every code point of plane 1 and U+E0000 to U+E01EF, each first and last,
   projected and in a `WHERE`, it removes U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028,
   U+2029, U+202F, U+205F and U+3000 beside the space, the three functions alike — an older Unicode's white space,
-  U+180E in it and U+200B and U+FEFF not. The emulator removes a subset: not U+0085, U+00A0, U+180E, U+2007 or U+202F.
+  U+180E in it and U+200B and U+FEFF not. Before EN20261123 the emulator removes a subset: not U+0085, U+00A0, U+180E,
+  U+2007 or U+202F.
 - **A search, over U+0000.** Azure's `REPLACE` and `CONTAINS`, both modes, read a string only up to its first U+0000:
   `REPLACE(s, 'b', '!')` leaves `a`U+0000`b` as it is, and `CONTAINS` finds no `b` in it. So does a `LIKE` whose pattern
   is one run of text between two `%`, which the service answers as a `CONTAINS`: `%b%`, `%%b%` and `%b%%` lose the
@@ -5528,8 +5534,8 @@ plan as one `CosmosFilter` over one scan: `type = 'Link'`, `data.type = 'map'`, 
 emulator that read is unfiltered: the merged projection holds `CASE` columns that do not push, and the
 filter beneath them stayed in process with them. That is not this rule's. The `Link` view alone showed it
 before #177, as the unfiltered read the plan began with, and the cause is the row count — the emulator
-reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
-that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
+of the time reported zero documents for every container, and at zero rows every plan ties and the tie went
+to the one that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
 
 **And the `CASE` columns now push too (#192).** Each is `CASE WHEN M THEN q END`, and `M` carries the
@@ -6619,6 +6625,20 @@ did, which is what it would have been joined to in process. A null key matches n
 is unmatched without being asked for. A right or full join is different in kind rather than degree: it
 keeps the *container's* unmatched documents, and a fetch by the other side's keys is exactly the read
 that never sees them. Those, and semi and anti joins, stay joins.
+
+**A joined row holds each field in the form Calcite's own join writes it.** Calcite's hash join makes its
+rows with `ClrEnumUtils.JoinSelector`, which the lookup cannot call, the class being internal to
+`Apache.Calcite.Extensions`; but it writes a field with public members of the physical types, and the
+lookup's selectors call the same ones. Each input field is read by `FieldReference` with the joined row's
+storage type for it, `object` in an `object[]` row, so a boxed value stays in the Java box Calcite holds
+it in; and the row is made by the joined row's own `Record`. The readers above the join (a sort, a
+grouping, a calc, a second join, the connection's reader) expect a boxed field in the Java box Calcite
+holds a value of its type in. It is the rule *Reading a value back* states for a row read from the
+service, and here the package already decides each box, so nothing in the adapter names a type. The key
+each side is matched by is boxed apart, for `CosmosLookup.Normalize`, which takes the CLR's boxes and
+Java's alike, and nothing else reads it. `CosmosLookupJoinRowTests` holds the operators above the join to
+Calcite's own plan of the same statement, box and all, and `CosmosLookupJoinRowEndToEndTests` holds the
+connection's reader to the rows Calcite's own join answers.
 
 **A `UUID` key is restricted where the container stores one spelling per value.** The key column is a
 cast, which binds to no path and has no parameter type, and that used to be the end of it. But the cast
@@ -8171,9 +8191,23 @@ category that may hold anything the positive affix is proved, as the column of t
 union: the `ANY` renders a number or a boolean the negation keeps where the `VARIANT` reads null and drops it. Since
 rawtyped a declared field's reading names its column, which chooses (*The raw reading through its column*).
 
+**Beside a literal that is no string.** The row compares each column beside a string alone, so beside a number, a
+boolean or null no row says the cast is compared at all: a cell reads the column's key there as it does beside a
+string, and since no column answers that key, it reads anything and a raise (`RawAnswer.Unanswered`), as a raw key no
+column answers is read everywhere. `RawText.EqualOn` and `OrderOn` used to take the text's coarse answer beside such a
+literal, any truth and no raise, which left out a raise the rows do not rule out, a `VARCHAR` column's over a number or
+a `VARIANT`'s over a structure; they read the key beside every literal now, and compare the rendering on the cell beside
+a string alone. So an `IN` holding such a literal beside a string gains a raise beside what it answers, and may raise
+where it did not. The loader writes the cast beside strings, an `IN` of strings and `LIKE` alone, every comparison of it
+in the gate's corpus, so no plan reads the change: the plan digests at 200 predicates are byte-equal under both targets,
+and an evaluation of every reading over both graphs' tables moved only the cast's cells beside such a literal, each
+widened by a raise. What `Kept` keeps beside such a literal is the coarse reading's and stays as it was: every value of
+the types asked, which is what a key no column answers keeps class by class.
+`RenderingRawUnionTests.ARawCastBesideALiteralThatIsNoStringReadsItsColumnsKey` holds the cells.
+
 **What F reads is unchanged.** The coarse reading, `Text` over structures, stays the `ANY`'s rendering, and the facts
-graph decides from it as it did (`TODO.md`). A planning path parses the reader into `RawText`, whose coarse answers are
-`Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.
+graph decides from it as it did (`TODO.md`). A planning path reads the reading's evaluator off its rows (`RawText`),
+whose coarse answers are `Text`'s own: the plan digests at 200 and 1,000 predicates are byte-equal, both frameworks.
 
 **What moved in the shadow,** at 200 predicates, under every set. S owns 12 conjuncts more. 206 and 236 are the same
 form as the translator's; partition 584's disjunction holding the cast is respelled; 588's `NOT (CAST(…) <> 'Sprint!')`
@@ -8956,13 +8990,15 @@ key worse than the row, never one that answers better.
 S's licence reads every `Calcite` row. h12 moved the union over them into S and deleted the host table.
 
 **Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
-line with the release that answered (EN20261019, CI's, and EN20260907's three lines where it parts); a row measured on
+line with the release that answered (EN20261019, CI's until 2026-11-24, EN20260907's three lines where it parts, and
+EN20261123's 24, each of letters its `UPPER` or `LOWER` leaves as Azure does and the two before it map); a row measured on
 the emulator since 2026-11-02 has lines there, and no function outcome claims Azure until a run record holds it. CI
 reads the release off the container's log (`COSMOS_EMULATOR_RELEASE`) and the witness probe logs it in place of the
-endpoint; a release a record names must answer each line recorded for it as recorded, and one whose own record holds a
-row must log no line of it the record misses, so the record is what the pinning tests ask, and a new release that parts
-is named where it does. `CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary,
-element and two-path forms to the service (line 4b), as the reader's forms are held beside them.
+endpoint; a release a record names must answer each line as its own line holds it, or, where it has none, as
+EN20261019's does, and log no line of a recorded row that neither holds, so the record is what the pinning tests ask, and
+a new release that parts is named where it does. A release no record names is held to none.
+`CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary, element and
+two-path forms to the service (line 4b), as the reader's forms are held beside them.
 
 ### The IR's new shapes: F reads them, S not yet
 
@@ -10848,7 +10884,7 @@ cast's target. A raw reading has none. The atom carries each side's `readerorder
 loader's `KindOf` is gone, and its `Bare` reads a truth by the Rex's `BOOLEAN` type. `PredicateAtom.OnPair` places a
 pair by the order the cell parts its strings by only where both readings' orders hold `itself` and both sides hold
 strings, and on the diagonal only where the reading's order holds `reflexive`. It read `ReadsStrings`, the `Text`
-reading's, and placed every diagonal. `Reading.Parse` reads five readers as `Text`: the text, typed `VARCHAR` and
+reading's, and placed every diagonal. `Reading.Parse` read five readers as `Text`: the text, typed `VARCHAR` and
 `CHAR`, and a cast of the text to `VARCHAR` or `CHAR` (a cast of the raw value to `CHAR` too, read with its structures,
 which `ReadsStrings` refused). The `itself` rows hold the first three. The loader writes none of the casts, reading a
 cast of the text to an unbounded `VARCHAR` as the text itself (`CosmosRexShapes.TryTextCastValue`) and no cast to
@@ -10956,8 +10992,9 @@ binds it beside `rawunion` for `CellOutcomes.Of`, and the facts graph's Establis
 `On` and `Kept`. So a cell and the facts graph read an atom's readings in one table, class by class. The rules say:
 - a reading reads each class as its rows say (`calcitereads`), and rests on each row that names it (`calciterows`);
 - a parse of a class is decided over the character classes its witnesses held (`calcitebands`), class by class;
-- a reading a row reads as another (`calcitereadas`) is read as it over each class both read alike. The alias is a fact
-  of a reading and a class, so a cell looks it up; over a class with none the reading is evaluated by its own rows;
+- a reading a row reads as another (`calcitereadas`) is read as it over each class both read alike, where a row names
+  the other's evaluator (*Which evaluator reads a reading is its rows'*, next). The alias is a fact of a reading and a
+  class, so a cell looks it up; over a class with none the reading is evaluated by its own rows;
 - a test answers over a class what the truth table says the class's read means (`readtruths`, `KleeneTables.Reads`),
   and a comparison of a class read as itself, rendered or parsed is the cell's to decide (`readcompares`,
   `KleeneTables.Compares`);
@@ -11028,9 +11065,88 @@ one template per test and a weight in `Priced` landed with h15's first commit (*
 `AffixPattern.WrittenTest`'s, a C# switch picking one, until review 3 deleted `Written`, `WrittenTest` and
 `WrittenArgument`: the fold rule proposes one candidate a case-insensitive test that says the pattern
 (`AffixPattern.Folded`), and `foldedas`, a `Min` over `Priced`, keeps the cheapest by the tests' weights. Which evaluator
-reads a reading's rows, the text's, a raw value's, a typed one's or a cast's, is still `Reading.Parse`'s by the
-spelling, and `EvaluatorOf` and `Kept` default to the reading's own (`TODO.md`). `LikeOn`'s number and structure misses
-are evaluation, as the audit found. Digests, the census and population D were byte-equal.
+reads a reading's rows, the text's, a raw value's, a typed one's or a cast's, stayed the spelling's, until the next
+section made it the rows'. `LikeOn`'s number and structure misses are evaluation, as the audit found. Digests, the
+census and population D were byte-equal.
+
+### Which evaluator reads a reading is its rows'
+
+What Calcite's side of a cell makes of a reading was its rows' since G7, but which evaluator read those rows, the
+text's, a raw value's, a typed one's or a cast's, was chosen by parsing the reader's spelling, and over a class no alias
+row named, `EvaluatorOf` and `Kept` fell back to that evaluator: a lookup with a default. Which evaluator reads a
+reading, and over which classes, is the rows' now, on S and on the facts graph alike.
+
+**The rows.** A `Calcite` row names the evaluator that reads a reading (`Evaluators`, read into `calciteevaluator` by
+`CosmosAxiomRows.ReadCalciteEvaluators`), one of a closed set (`CalciteEvaluator`): `Text`, `RawText`, `Raw`,
+`BooleanCast` and `Raising`, or `Typed` and `NumberCast` of the SQL type the row names. A typed evaluator carries the
+kinds of value Calcite's type system says its type holds, an integer type a whole number, any other numeric type any
+number and `BOOLEAN` a boolean (`CosmosRendering.ReadTypeKinds`, the one reader of those families, which S's `typekinds`
+reads too), so no type's name is switched on to say which values it answers. Each evaluator is named on the rows its
+evaluation rests on: the text on `Calcite.JsonValueRendersScalarsAsText` and `Calcite.TextOrderIsByCodeUnit`; the raw
+value on `Calcite.RawStringEqualityIsOrdinal` and `Calcite.RawNullIsSqlNull`; its cast to text on
+`Calcite.CastOfARawValueToText` and the order row; each typed reading on `Calcite.ReturningAsserts` and
+`Calcite.ColumnReadsWholeNumbersAsItsType`, which names `RETURNING DECIMAL`'s too; `RETURNING DECIMAL` and the three
+numeric casts of the text on the rows that measured their parse and on the rendering row; the boolean cast on
+`Calcite.CastToBooleanParses`; and what a body that raises reads on `Calcite.TypeTestsAreTheirBodies`. That is 33
+namings over 17 readings, on eleven rows each pinned by its measurement; three gained the `CosmosPins` they lacked. No
+row names one for `query`, for `typed:VARCHAR` or `typed:CHAR`, for the element a traversal yields, or for a reading the
+loader writes that no row measured (`typed:VARIANT`, a numeric cast of a raw value). The rows are not `calciterows`,
+which say what a reading reads each class as and which a test through its operand inherits: a row naming an evaluator
+says how the reading is evaluated.
+
+**The rules.** Three rules of the readings vocabulary, in both graphs, derive which reading reads each class of value
+(`readerrows`): a reading a row names an evaluator for is evaluated by it over every class and over a cell of no one
+class (`cellclasses`, `CosmosValueClasses.Cells`), and rests on that row; a raw column's reading is evaluated as its
+reading through every column is; and a column no row measured likewise, as its rows are the union's. G7's alias rule now
+reads a reading as another over each class both read alike only where a row names the other's evaluator, so
+`typed:VARCHAR` and `typed:CHAR` are read as the text over a string, a null and an absent path, as before. The rules
+read no lattice value and settle in the stage that defines them (`reads` in S, `readings` at the facts graph's root),
+with no precedence among them: the readings a row names an evaluator for and those a row reads as another are apart in
+the rows, and were two readings to meet over a class, or two evaluators to be named for one reading, the run fails
+(`ReadingRows.Join`) rather than choose one, as two aliases did. S holds 209 rules, three more, and the facts graph's
+`readings` ruleset 26.
+
+**What a cell reads.** `EvaluatorOf` reads the table once: the reading the rules derive for the cell's class, built as
+the evaluator its row names (`Reading.Named`, which binds each member of the closed set to the code that evaluates it
+and chooses nothing); over a class no rule derives one for, the reading's rows alone (`Reading.Alone`): what they say a
+test answers over the class whatever the value, and anything and a raise where they say nothing, as a raw key no column
+answers is read. No evaluator is reached by default, since a reading whose row names one is read by it over every class
+and the cell of no one class. `Kept` groups the classes by the reading the table derives for each, or none, and builds
+one evaluator a group, the reader's own and the group of none first, as before; a one-place test reads its body by the
+same lookup; and a reading rests on its rows, those naming its evaluator among them. A definition that names no raw
+column, as a test planting rows may, reads a raw column's reading and the cast's column readings by their rows alone:
+with none, they read nothing and rest on nothing.
+
+**What went.** `Reading.Parse`, which chose an evaluator by the reader's spelling; `Typed.For` and its switch from a
+type's name to the kinds it answers; `Reading.With` and its overrides; each evaluator's list of the rows it rests on;
+and `PredicateAtom.Parsed`, the process-wide memo of parsed readers. The three casts the spelling read as the text that
+no row measured and the loader never writes, the text's to `VARCHAR` or `CHAR` and the raw value's to `CHAR`, are read
+by no evaluator, as every cast no row names already was since h15b. A cast to `CHAR` pads or cuts, which the text's
+evaluator never read, so a row of one is a measurement first. Beside them, the raw value's cast to text compared with a
+literal that is no string reads its column's key, which no column answers there, so the comparison gains a raise, and
+so does an `IN` holding such a literal beside a string (*The cast of a raw value to text*).
+
+**What holds it.** `ReadingEvaluatorTests`, in both graphs' tables: every reading a row names an evaluator for is read
+by it over every class, and evaluates on every cell and keeps both ways without a throw; every reading the loader builds
+that `Calcite.ReadingsAreNullOverAnAbsentPath` names is read by a row's evaluator, but the numeric casts of a raw value
+no row measured; the typed text places are read as the text where both read alike and by their rows alone elsewhere; a
+reading no row names an evaluator for, nor reads as another, is read by its rows alone; a reading is read as its rows
+say under any spelling, and one whose rows are dropped reads nothing; two evaluators for one reading, or one for a
+reading a row reads as another, fail the run; each class is kept as the reading that reads it keeps it, and one a
+planted table names no reading for as the rows alone keep it; and each reading rests on the rows naming its evaluator.
+`CosmosAxiomsTests.TheFoundationsRowsReadBackAsWritten` reads the rows back, each typed one's kinds those of its type's
+family. The plan digests are byte-equal at both sizes, both targets and both frameworks. An evaluation of 3,114 atoms
+over both graphs' tables, 614,912 lines in all (cells, coarse states, `Kept`, verdicts, raises and rests), moved in
+three classes alone, no truth answer or kept set narrower than before: the casts no row measured, now read by nothing
+(54,746 lines); the raw cast's cells beside a literal that is no string, from any truth to any truth and a raise
+(23,430); and the rests of an atom whose reader is a body that raises, which now cite the row naming its evaluator
+(154), where a body is never an atom's reader.
+
+**What stays C#.** `Reading.Named`'s binding, and each evaluator's evaluation of one atom on cells. What `Typed` and
+`NumberCast` do with the type a row names, which compare doubles, floats or booleans and which parse saturates, rounds
+or parses a decimal, and where `Text` places a number's rendering, are still theirs: a bridge until their own pull
+request, which the audit's plan puts before 3B closes (`TODO.md`, *The typed and parse evaluators read their type as
+C#*).
 
 ### What the re-audit moved into rules
 
@@ -11813,7 +11929,7 @@ span that never records them is an enumeration the caller abandoned, which is it
 `PopulateIndexMetrics`, behind the `indexMetrics` operand and off by default: the service computes
 the answer per query, so it is a thing to switch on while working out why a query is expensive
 rather than to leave on. It lands on the span as `cosmos.index_metrics`, a tag rather than a
-measurement, because it is a paragraph of prose naming indexes — something to read, not aggregate.
+measurement, because it is a report naming indexes — something to read, not aggregate.
 
 It is also the instrument for settling the composite index question below.
 

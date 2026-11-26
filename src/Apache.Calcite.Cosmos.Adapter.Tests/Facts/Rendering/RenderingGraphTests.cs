@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 
 using Apache.Calcite.Cosmos.Facts;
@@ -29,9 +30,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
 
         /// <summary>
         /// Past the gauge, a generation's successor is built while the generation goes on answering, and swapped in once
-        /// ready: defined alike, so the two share memo entries, where a planted row shares none. A retired generation serves
-        /// the bundles open on it. A bundle that found its graph out of ids or epochs declines, and its generation retires
-        /// though the gauge is not past, the next bundle waiting for the successor.
+        /// ready: defined alike, so the two share memo entries, where a planted row shares none, though it differ in an
+        /// evaluator's kinds alone. A retired generation serves the bundles open on it. A bundle that found its graph
+        /// out of ids or epochs declines, and its generation retires though the gauge is not past, the next bundle
+        /// waiting for the successor.
         /// </summary>
         [Fact]
         public void ASpentGenerationAnswersUntilItsSuccessorIsReady()
@@ -61,6 +63,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             ReferenceEquals(fourth.Theory, first.Theory).Should().BeFalse("the successor is swapped in once ready");
             RenderingAnswerMemo.DigestOf(fourth.Theory).Should().Be(RenderingAnswerMemo.DigestOf(first.Theory), "generations defined alike share memo entries");
             RenderingAnswerMemo.DigestOf(RenderingTheory.Define(Measured with { Tolerated = Truths.None })).Should().NotBe(RenderingAnswerMemo.DigestOf(first.Theory), "a planted row shares none");
+            var integer = PredicateAtom.TypedReader("INTEGER");
+            var widened = Measured with { CalciteEvaluators = [.. Measured.CalciteEvaluators.Select(e => e.Reader == integer ? (e.Reader, e.Evaluator with { Kinds = ValueSet.Of(JsonValues.FractionType, JsonValues.IntegerType) }, e.Row) : e)] };
+            RenderingAnswerMemo.DigestOf(RenderingTheory.Define(widened)).Should().NotBe(RenderingAnswerMemo.DigestOf(first.Theory), "nor one naming an evaluator with other kinds alone");
 
             first.Run().StopReason.Should().Be(RunStopReason.Completed);
             first.Read(root, Guarded, Verdict.Equal).Kind.Should().Be(RenderingVerdictKind.Proven, "a retired generation serves the bundles open on it");

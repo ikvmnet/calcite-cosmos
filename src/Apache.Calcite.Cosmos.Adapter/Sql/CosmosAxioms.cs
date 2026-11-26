@@ -89,6 +89,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         // The cast of a raw value to text, whose columns a row states; declared before the rows read it.
         static readonly string CastOfRaw = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
 
+        /// <summary>Each typed reading the typed evaluator reads, by the type it evaluates a value of (G7).</summary>
+        static IEnumerable<CosmosCalciteEvaluator> TypedEvaluators() =>
+            new[] { "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "FLOAT", "REAL", "DOUBLE", "BOOLEAN" }.Select(type => new CosmosCalciteEvaluator(PredicateAtom.TypedReader(type), CalciteEvaluator.Typed, type));
+
         // An outcome's targets, those that ran its own witnesses: one alone where the two answered apart.
         const CosmosAxiomTarget Both = CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Emulator = CosmosAxiomTarget.Emulator, Azure = CosmosAxiomTarget.Azure;
 
@@ -388,7 +392,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ReaderOrders: [new(PredicateAtom.TextReader, CosmosReaderOrder.Itself)],
                 // A string as itself, and a number and a boolean as their renderings (G5).
                 CalciteReadings: [new(PredicateAtom.TextReader, Class.String, CosmosCalciteReading.Itself), new(PredicateAtom.TextReader, Class.Number, CosmosCalciteReading.Renders),
-                    new(PredicateAtom.TextReader, Class.True, CosmosCalciteReading.Renders), new(PredicateAtom.TextReader, Class.False, CosmosCalciteReading.Renders)]),
+                    new(PredicateAtom.TextReader, Class.True, CosmosCalciteReading.Renders), new(PredicateAtom.TextReader, Class.False, CosmosCalciteReading.Renders)],
+                // The text is read by the text's evaluator, and the rendering parsed as a number by the number cast's, each
+                // resting on this row beside the others that name it (G7).
+                Evaluators: [new(PredicateAtom.TextReader, CalciteEvaluator.Text), new(PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "DECIMAL"),
+                    .. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(target => new CosmosCalciteEvaluator(PredicateAtom.CastReader(target, PredicateAtom.TextReader), CalciteEvaluator.NumberCast, target))]),
             new("Calcite.JsonValueReadsStructureAsNull",
                 "JSON_VALUE without RETURNING answers SQL null for an object, an array, a JSON null and an absent path.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.TheBareAccessorRendersEveryScalarAsText",
@@ -408,7 +416,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 9), "Measurements.CalciteJsonValueMeasurementTests.JsonValueBehaviourClausesFollowThePathModeNotTheStandardsReading"),
             new("Calcite.ReturningAsserts",
                 "RETURNING asserts the type rather than converting to it: a scalar of another type raises, NULL ON ERROR notwithstanding, while an object answers null.",
-                CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt"),
+                CosmosAxiomTarget.Calcite, new(2026, 9, 7), "Measurements.CalciteJsonValueMeasurementTests.ReturningAssertsTheTypeAndOnErrorDoesNotGovernIt",
+                // Each typed reading of a type that asserts, read by the typed evaluator of its type (G7).
+                Evaluators: [.. TypedEvaluators()]),
             new("Calcite.ArrayReturningNeverAnswersAnArray",
                 "An array RETURNING answers null over an array, an object, a null and an absent path, and raises over a scalar.",
                 CosmosAxiomTarget.Calcite, new(2026, 9, 15), "Measurements.CalciteJsonValueMeasurementTests.AnArrayReturningAnswersNullForAnArrayAndThrowsForAScalar"),
@@ -429,20 +439,26 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 ],
                 Casts: [new("BOOLEAN", PredicateAtom.TextReader)],
                 // Standing alone, its null test is the accessor's: FALSE over a string and a number it raises on (G7).
-                Through: [new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), CosmosServiceTest.IsNull, PredicateAtom.TextReader)]),
+                Through: [new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), CosmosServiceTest.IsNull, PredicateAtom.TextReader)],
+                // Read by the boolean cast's evaluator, class by class as these rows say (G7).
+                Evaluators: [new(PredicateAtom.CastReader("BOOLEAN", PredicateAtom.TextReader), CalciteEvaluator.BooleanCast)]),
             new("Calcite.CastOfTheAccessorParsesTheRendering",
                 "A cast of the accessor to INTEGER or BIGINT is Java's integer parse of the rendering, trimmed of every character up to U+0020 as String.trim trims, and to DOUBLE a double parse that reads no type suffix: a whole number written without a point lands exactly, a string spelling a number parses, and a point, an exponent, a whole number beyond the type and anything else raise under the integer types. BIGINT reads text that starts 199 and holds a colon as a timestamp instead.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 22), "Measurements.CalciteJsonValueMeasurementTests.ACastOfTheAccessorToANumberParsesTheRendering",
                 Casts: [new("INTEGER", PredicateAtom.TextReader), new("BIGINT", PredicateAtom.TextReader), new("DOUBLE", PredicateAtom.TextReader)],
                 // The cast's value compares as its type with a number Calcite wrote cast, within the whole unit PredicateAtom's
                 // window is loose by; one a cast truncated is not what it compares with (G8).
-                Comparands: [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(target => new CosmosComparand(PredicateAtom.Outermost(PredicateAtom.CastReader(target, PredicateAtom.TextReader)), false))]),
+                Comparands: [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(target => new CosmosComparand(PredicateAtom.Outermost(PredicateAtom.CastReader(target, PredicateAtom.TextReader)), false))],
+                // Each cast read by the number cast's evaluator of its target (G7).
+                Evaluators: [.. new[] { "INTEGER", "BIGINT", "DOUBLE" }.Select(target => new CosmosCalciteEvaluator(PredicateAtom.CastReader(target, PredicateAtom.TextReader), CalciteEvaluator.NumberCast, target))]),
             new("Calcite.ReturningDecimalParsesTheRendering",
                 "RETURNING DECIMAL parses the rendering as a BigDecimal, trimmed of every character up to U+0020, a string of digits among them, and raises only on what does not parse; it is typed DECIMAL(19, 0), so a literal compared with it is cast to scale zero.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 22), "Measurements.CalciteJsonValueMeasurementTests.ReturningDecimalParsesTheRendering",
                 // A literal compared with it is cast to scale zero, which PredicateAtom's parse of a decimal rescales: it takes the
                 // number, and one a cast that drops scale truncated (G8).
-                Comparands: [new(PredicateAtom.TypedReader("DECIMAL"), false), new(PredicateAtom.TypedReader("DECIMAL"), true)]),
+                Comparands: [new(PredicateAtom.TypedReader("DECIMAL"), false), new(PredicateAtom.TypedReader("DECIMAL"), true)],
+                // A parse of the rendering, read by the number cast's evaluator of DECIMAL (G7).
+                Evaluators: [new(PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "DECIMAL")]),
 
             // ── What Calcite compares, in the columns the reader fills: the rendering check's Calcite side ──
 
@@ -451,10 +467,14 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 CosmosAxiomTarget.Calcite, new(2026, 10, 22), "Measurements.CalciteColumnReadingMeasurementTests.EachColumnReadsAndComparesAsItsType",
                 // DOUBLE compares as its type with a number Calcite wrote cast, = 42.5 and < 42.5 measured: the double exactly, so
                 // not one a cast truncated (G8).
-                Comparands: [new(PredicateAtom.TypedReader("DOUBLE"), false)]),
+                Comparands: [new(PredicateAtom.TypedReader("DOUBLE"), false)],
+                // Each column's reading by the typed evaluator of its type, and DECIMAL's by the number cast's (G7).
+                Evaluators: [.. TypedEvaluators(), new(PredicateAtom.TypedReader("DECIMAL"), CalciteEvaluator.NumberCast, "DECIMAL")]),
             new("Calcite.RawStringEqualityIsOrdinal",
                 "A raw value in a VARIANT, an ANY or a VARCHAR column is equal to a string where it is the string with the same UTF-16 units, and to nothing else: not another case, not a trailing space, not a number, a boolean or a structure.",
-                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawValueIsEqualToTheStringOfItsUnitsAlone"),
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawValueIsEqualToTheStringOfItsUnitsAlone",
+                // The raw value read by the raw evaluator, which its columns' readings take too (G7).
+                Evaluators: [new(PredicateAtom.RawReader, CalciteEvaluator.Raw)]),
             new("Calcite.RawNullIsSqlNull",
                 "A stored null and an absent path are SQL null in a VARIANT, an ANY and a VARCHAR column: unknown to = and <>, and true to IS NULL. A value of another type is unequal; a VARCHAR column fails the statement over anything but a string, ANY fails an ordering across types, and VARIANT has no ordering and is equal to a number boxed with its own SQL type alone. Within a type ANY orders as the type, a string by its UTF-16 units as a VARCHAR column does and false before true, and compares a number in the box the reader built: a long by its value, and any other number by its double's exact value, so 2^53 + 1 written with a point is 2^53 and a stored 0.1 lies above 0.1; two doubles compare by Double.compareTo, so a stored -0.0 lies below a double 0 and is unequal to it, where a long 0 equals both.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteVariantMeasurementTests.ARawNullIsSqlNullAndAnotherTypeIsUnequal",
@@ -471,7 +491,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     // A string alone, the statement failing over anything else.
                     new("VARCHAR", PredicateAtom.RawReader, Column.Kinds(CalciteRead.Itself, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
                         true, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
-                ]),
+                ],
+                // The raw value read by the raw evaluator, which its columns' readings take too (G7).
+                Evaluators: [new(PredicateAtom.RawReader, CalciteEvaluator.Raw)]),
             new("Calcite.CastOfARawValueToText",
                 "A cast to VARCHAR of a raw value is its column's own. A string is itself and a null or an absent path null in each; a VARIANT casts a number and a boolean to null and raises over an object or an array; an ANY renders each value as Java renders the reader's box: a boolean as true or false, an integer within a long in its digits and any other number as Java spells its double, 42.0 as 42.0 and 99999999999999999999 as 1.0E20, an object as {a=1} and an array as [1]; and a VARCHAR column reads a string alone.",
                 CosmosAxiomTarget.Calcite, new(2026, 10, 24), "Measurements.CalciteVariantMeasurementTests.ACastOfARawValueToTextIsEachColumnsOwn",
@@ -487,7 +509,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                         false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
                     new("VARCHAR", CastOfRaw, Column.Kinds(CalciteRead.Itself, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Raises, CalciteRead.Null, CalciteRead.Null),
                         false, [Class.String], Column.Comparisons(true, true), new Dictionary<Test, Truths>()),
-                ]),
+                ],
+                // The cast read by the raw text's evaluator, which its columns' readings take too (G7).
+                Evaluators: [new(CastOfRaw, CalciteEvaluator.RawText)]),
             new("Calcite.AParameterComparesAsItsComparand",
                 "Calcite types a parameter as the value it is compared with, and the driver binds a value to that type. A VARIANT's parameter is a VARIANT, which the driver writes from no .NET value: it binds null alone, and refuses a string, a number and a boolean before the statement runs, whatever is planned; and a VARIANT's ordering against a parameter fails to compile, whatever is bound, an absent path's row among it. An ANY's parameter holds the value bound as it is: unequal across types, an integer to its digits among them, and its ordering raises across types and over an object or an array. A VARCHAR column's parameter is a VARCHAR, a number or a boolean bound as its text, so 30 is equal to a stored \"30\"; a CHAR column's is its CHAR, of the column's length; and each fails the statement over any stored value but a string, null bound or not, so a CHAR column answers each class as a VARCHAR column does. A cast of a raw value to VARCHAR compares the text its column casts to with a VARCHAR parameter. A typed reading, a cast of the text and the text type theirs as their own type: the driver refuses a string bound to a number that it does not parse as one, and converts the rest, and each raises over a stored value where it raises against a literal. A null bound is UNKNOWN wherever the value is read.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 11), "Measurements.CalciteParameterMeasurementTests.AParameterComparesAsItsComparand",
@@ -521,7 +545,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     "MOD", "ABS", "ROUND", "POWER", "SAFE_CAST", "TRY_CAST", "IN"]),
             new("Calcite.TextOrderIsByCodeUnit",
                 "Text compares by UTF-16 code unit, as String.compareTo does: U+E000 and U+FFFD above U+1F600, which code point order puts above both, and 'true' and 'false' above 'bikes', '30' below.",
-                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit"),
+                CosmosAxiomTarget.Calcite, new(2026, 10, 20), "Measurements.CalciteTextOrderMeasurementTests.TextComparesByUtf16Unit",
+                // The text and the cast of a raw value to it, each read by its evaluator, order as this row says (G7).
+                Evaluators: [new(PredicateAtom.TextReader, CalciteEvaluator.Text), new(CastOfRaw, CalciteEvaluator.RawText)]),
             new("Calcite.TextPlacesCompareAsTheirStrings",
                 "A computed text place, UPPER or SUBSTRING of the accessor, and a VARCHAR or CHAR value compare as the strings they hold, by UTF-16 code unit as the accessor's text does: U+E000 and U+FFFD above U+1F600, 'B' below 'B ', '30' below 'BIKES'; LIKE matches each as the string it holds, nothing padded, as it does the accessor's text; each is null over a null and an absent path.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Measurements.CalciteReaderOrderMeasurementTests.ATextPlaceComparesAsTheStringItHolds",
@@ -623,7 +649,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new(PredicateAtom.CallReaders, PredicateAtom.RaisesReader),
                     new(PredicateAtom.FieldForm, PredicateAtom.RaisesReader), new(PredicateAtom.ItemForm, PredicateAtom.RaisesReader),
                     new(PredicateAtom.AnyCastForm, PredicateAtom.RaisesReader), new(PredicateAtom.TextCastForm, PredicateAtom.RaisesReader),
-                ]),
+                ],
+                // What a body that raises reads, read by the evaluator that raises over every value (G7).
+                Evaluators: [new(PredicateAtom.RaisesReader, CalciteEvaluator.Raising)]),
             new("Calcite.TheFactsGraphReadsTheseReadingsExactly",
                 "The facts graph reads a reading as Calcite does on every cell a stratum resting on it keeps, so the stratum leaves out no document Calcite keeps: the accessor's text, a boolean's column or RETURNING, the text cast to INTEGER or BIGINT, a type test, which asks the document's kind, and a presence test, which asks whether it holds the path, beside any literal; and the raw value beside any literal but a number, which a VARIANT compares by its boxed type. It reads every other reading more widely: an integer type's column reads a fraction whose double is whole, a double compares doubles, RETURNING DECIMAL reads a fraction's rendering, and a cast of a raw value is its column's.",
                 CosmosAxiomTarget.Calcite, new(2026, 11, 8), "Facts.Saturation.PredicateAtomCellTests.EveryExactReadingAnswersAsItsCell",
@@ -855,10 +883,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "INDEX_OF counts UTF-16 units, so INDEX_OF + 1 is Calcite's POSITION over every string: b in a, U+1F600, b is at 3. The emulator counts the code points of what it stores and answers 2, one more for each U+0000 or U+FDD0 before the match (Service.EmulatorCountsTheStringItStores).",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.IndexOfCountsUnits"),
             new("Service.CaseMappingIsSimple",
-                "UPPER, LOWER and the case-insensitive CONTAINS, STARTSWITH and ENDSWITH map case by a simple mapping, which agrees with Java's full one over ASCII and leaves ß, U+FB00, U+017F, U+0130 and U+212A as they are. The emulator maps the last three.",
+                "UPPER, LOWER and the case-insensitive CONTAINS, STARTSWITH and ENDSWITH map case by a simple mapping, which agrees with Java's full one over ASCII and leaves ß, U+FB00, U+017F, U+0130 and U+212A as they are. The emulator maps the last three before EN20261123.",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.CaseMappingIsSimpleAndAgreesWithCalcitesOverAscii"),
             new("Service.TrimRemovesWhiteSpace",
-                "TRIM, LTRIM and RTRIM remove U+0020 and U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000, and nothing else in the basic plane, plane 1 or U+E0000 to U+E01EF, at either end. The emulator removes neither U+0085, U+00A0, U+180E, U+2007 nor U+202F. Read as data by the theory's trimmed class (JsonValues.IsTrimmed).",
+                "TRIM, LTRIM and RTRIM remove U+0020 and U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028, U+2029, U+202F, U+205F and U+3000, and nothing else in the basic plane, plane 1 or U+E0000 to U+E01EF, at either end. Before EN20261123 the emulator removes neither U+0085, U+00A0, U+180E, U+2007 nor U+202F. Read as data by the theory's trimmed class (JsonValues.IsTrimmed).",
                 CosmosAxiomTarget.Azure, Strings, "Measurements.CosmosStringFunctionMeasurementTests.TrimRemovesWhiteSpace"),
             new("Service.LoneSurrogateParameterIsNeverSent",
                 "A parameter holding a lone surrogate fails the statement before it is sent: the SDK's UTF-8 encoder refuses the unit (EncoderFallbackException), so it fails on either target where Calcite answers.",
@@ -902,8 +930,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     .. StringFunction("POSITION", 1, JsonCharacterBand.Surrogates | JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.None),
                     // The cased letters measure each band beyond ASCII (Service.CaseMappingOverCasedLetters). On the emulator LOWER
                     // over the high band, whose capitals are the fullwidth Latin ones alone, maps as Java does, and every other
-                    // band parts. On Azure, run 2, both map a surrogate as Java does, Deseret, and LOWER the high band; UPPER
-                    // parts over the high band, leaving the ligatures Java writes as two, and both outside ASCII below it.
+                    // band parts, a surrogate before EN20261123 alone. On Azure, run 2, both map a surrogate as Java does,
+                    // Deseret, and LOWER the high band; UPPER parts over the high band, leaving the ligatures Java writes as
+                    // two, and both outside ASCII below it.
                     .. CasedLetters("UPPER", JsonCharacterBand.BeyondAscii, JsonCharacterBand.HighBmp | JsonCharacterBand.NonAscii),
                     .. CasedLetters("LOWER", JsonCharacterBand.Surrogates | JsonCharacterBand.NonAscii, JsonCharacterBand.NonAscii),
                     .. StringFunction("REPLACE", 0, JsonCharacterBand.HighBmp | JsonCharacterBand.Nul, JsonCharacterBand.Nul),
@@ -956,7 +985,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                     new("POSITION", 0, Class.String, JsonCharacterBand.None, Both, CosmosFunctionAnswer.Same, CalciteYield.Value, FunctionValueClass.NonEmpty),
                 ]),
             new("Service.CaseMappingOverCasedLetters",
-                "UPPER and LOWER over cased letters of each band part from Java's full mapping over every band beyond ASCII but one: LOWER over the high band, whose capitals are the fullwidth Latin letters alone, maps U+FF21 to U+FF41 as Java does. Over a surrogate the service maps Deseret as Java does, its OI of Unicode 4.0 among it, and Osage, Adlam, Medefaidrin, Warang Citi, Old Hungarian and Vithkuqi, which Java 8's tables leave, as a later Unicode does, and leaves Garay, cased in Unicode 16, as Java does; UPPER over the high band leaves U+FB00 and U+FB13, which Java writes as two; and outside ASCII below the surrogates it leaves ß and maps the final sigma, U+0130 and the letters Cherokee and Georgian cased later otherwise than Java. Both emulator images answer alike. Azure (runs 2 and 3) maps fewer: over a surrogate Deseret as Java does, and leaves as Java does each script Unicode cased after Java 8's tables, Osage, Adlam, Medefaidrin, Warang Citi, Old Hungarian, Vithkuqi and Garay, every supplementary script Unicode 16 cases but Deseret, so both mappings answer as Calcite's there; LOWER maps the high band as Java does and UPPER leaves the ligatures there; and outside ASCII below the surrogates it leaves U+00B5, U+0131, U+01C5, U+03C2, U+0130 and U+1E9E, which Java maps, and ß, so both part there.",
+                "On the emulator's EN20260907 and EN20261019, which answer alike, UPPER and LOWER over cased letters of each band part from Java's full mapping over every band beyond ASCII but one: LOWER over the high band, whose capitals are the fullwidth Latin letters alone, maps U+FF21 to U+FF41 as Java does. Over a surrogate they map Deseret as Java does, its OI of Unicode 4.0 among it, and Osage, Adlam, Medefaidrin, Warang Citi, Old Hungarian and Vithkuqi, which Java 8's tables leave, as a later Unicode does, and leave Garay, cased in Unicode 16, as Java does; UPPER over the high band leaves U+FB00 and U+FB13, which Java writes as two; and outside ASCII below the surrogates they leave ß and map the final sigma, U+0130 and the letters Cherokee and Georgian cased later otherwise than Java. Azure (runs 2 and 3) maps fewer, and EN20261123 as Azure does: over a surrogate Deseret as Java does, and leaves as Java does each script Unicode cased after Java 8's tables, Osage, Adlam, Medefaidrin, Warang Citi, Old Hungarian, Vithkuqi and Garay, every supplementary script Unicode 16 cases but Deseret, so both mappings answer as Calcite's there; LOWER maps the high band as Java does and UPPER leaves the ligatures there; and outside ASCII below the surrogates it leaves U+00B5, U+0131, U+01C5, U+03C2, U+0130 and U+1E9E, which Java maps, and ß, so both part there.",
                 CosmosAxiomTarget.Emulator | CosmosAxiomTarget.Azure, Edges, "Measurements.CosmosStringFunctionMeasurementTests.CaseMappingOverCasedLetters",
                 Readers: [PredicateAtom.TextReader, PredicateAtom.TypedReader("VARCHAR"), PredicateAtom.CastReader("VARCHAR", PredicateAtom.TextReader)]),
             new("Service.RightOverASplitPair",
@@ -1014,7 +1043,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 "The emulator's LENGTH, SUBSTRING, LEFT, RIGHT, REVERSE and INDEX_OF work on a path's string as it stores it, U+0000 and U+FDD0 two units each, and what they return is decoded wherever a whole escape pair comes back: LENGTH of U+0000 is 2, LEFT of it by 1 a lone U+FDD0, its REVERSE 0 then U+FDD0.",
                 CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.TheEmulatorCountsAndCutsTheStringItStores"),
             new("Service.EmulatorFailsANulMadeFromAPath",
-                "On the emulator a function that makes U+0000 from a path fails the statement with a 500: CONCAT of a path and U+0000, a literal or a parameter, and REPLACE whose replacement holds one wherever the search is found. A constant CONCAT of U+0000 loses it.",
+                "On the emulator a function that makes U+0000 from a path fails the statement with a 500: CONCAT of a path and U+0000, a literal or a parameter, and REPLACE whose replacement holds one wherever the search is found. Returned, CONCAT of \"a\" and U+0000, both constants, fails it too on EN20261123, where EN20260907 and EN20261019 answer \"a\", what precedes the U+0000.",
                 CosmosAxiomTarget.Emulator, Spelling, "Measurements.CosmosStringFunctionMeasurementTests.AFunctionThatMakesU0000FromAPathFails"),
             new("Service.EmulatorDecodesWhatItReturns",
                 "The emulator returns a constant decoded as it returns a stored string, U+FDD0 followed by 0 as U+0000, U+FDD0 followed by 1 as U+FDD0, a lone U+FDD0 as itself: a constant sent in the stored spelling comes back as written, alone, in a conditional's arm, in a coalesce, as an object's or an array's member and inside an object sent whole, and a U+0000 sent as written fails the statement with a 500 wherever a value is returned.",

@@ -173,7 +173,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a reading reads each class as its rows say",
                     "a reading rests on each row that names it",
                     "a reading's parse of a class is decided over the character classes its witnesses held",
-                    "a reading a row reads as another is read as it over each class both read alike",
+                    "a reading a row names an evaluator for is evaluated by it over every class, and rests on that row",
+                    "a reading a row reads as another is read as it over each class both read alike, where a row names the other's evaluator",
                     "a reading's test of a class answers what the truth table says its read of the class means",
                     "a reading's comparison of a class read as the value read decides it is decided on the cell",
                     "a reading whose test a row says is its operand's answers over each class what its operand's read of it means, beside its own",
@@ -193,6 +194,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a raw column answers a parameter as the column a row says it answers one as",
                     "a raw column's reading reads each class as its column's rows say, and the reading through every column as each",
                     "a raw column no row measured reads each class as the union of those that were",
+                    "a raw column's reading is evaluated as its reading through every column is",
+                    "a raw column no row measured is evaluated as the reading through every column is",
                     "a raw column no row measured is null over an absent path where the union's reading is",
                     "a raw column no row measured holds each order the union's reading holds",
                 ],
@@ -389,7 +392,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                     "a LIKE over a fold S images proposes each case-insensitive affix its set's rows match alike that says its pattern, over the fold's subject",
                 ],
             });
-            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(206, "the raw columns' nine rules moved into the readings vocabulary, its two that give a comparison with a parameter its column's answer, the two that give a raw column's reading its rows, which the rendering graph runs as the facts graph does, and the vocabulary's two that read the element a traversal yields");
+            ProbeTheory.Graph.Rulesets.Sum(r => r.Rules.Count).Should().Be(209, "the raw columns' nine rules moved into the readings vocabulary, its two that give a comparison with a parameter its column's answer, the two that give a raw column's reading its rows, which the rendering graph runs as the facts graph does, the vocabulary's two that read the element a traversal yields, and its three that derive which reading reads each class from the rows naming each reading's evaluator");
         }
 
         /// <summary>

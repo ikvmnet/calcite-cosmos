@@ -82,7 +82,7 @@ namespace Apache.Calcite.Cosmos.Facts
         /// <summary>
         /// A character the service's <c>TRIM</c>, <c>LTRIM</c> and <c>RTRIM</c> remove beside U+0020, which Calcite's do not:
         /// measured on the probe account, U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028,
-        /// U+2029, U+202F, U+205F and U+3000 (<c>Service.TrimRemovesWhiteSpace</c>). The emulator removes fewer.
+        /// U+2029, U+202F, U+205F and U+3000 (<c>Service.TrimRemovesWhiteSpace</c>).
         /// </summary>
         Trimmed = 8,
 

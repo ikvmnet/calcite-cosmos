@@ -50,6 +50,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
     /// <param name="ReadAs">The readings a <c>Calcite</c> row says are read as another over each class both read alike
     /// (<see cref="CosmosAxiomRows.ReadCalciteReadAs"/>, G7).</param>
     /// <param name="Through">The tests of a reading a <c>Calcite</c> row says are its operand's (<see cref="CosmosAxiomRows.ReadCalciteThrough"/>, G7).</param>
+    /// <param name="Evaluators">The evaluator a <c>Calcite</c> row says reads a reading's rows (<see cref="CosmosAxiomRows.ReadCalciteEvaluators"/>, G7).</param>
     /// <param name="LikeUnits">What <c>LIKE</c> reads each unit of its pattern as on each target the row names: Calcite's
     /// (<see cref="CosmosAxiomRows.ReadLikeUnits"/>) and the service's (<see cref="CosmosAxiomRows.ReadServiceLikeUnits"/>), G7.</param>
     /// <param name="TestReads">The readings a one-place test's in-process body takes apart, and what it reads instead
@@ -72,6 +73,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         IReadOnlyList<CosmosCast>? Casts = null, IReadOnlyList<CosmosReaderOrder>? ReaderOrders = null, IReadOnlyList<CosmosComparand>? Comparands = null,
         IReadOnlyList<CosmosRewrite>? Rewrites = null, IReadOnlyList<string>? Unsent = null, IReadOnlyList<CosmosWholeReading>? WholeReadings = null,
         IReadOnlyList<CosmosFold>? Folds = null, IReadOnlyList<CosmosCalciteReadAs>? ReadAs = null, IReadOnlyList<CosmosCalciteThrough>? Through = null,
+        IReadOnlyList<CosmosCalciteEvaluator>? Evaluators = null,
         IReadOnlyList<CosmosLikeUnit>? LikeUnits = null, IReadOnlyList<CosmosTestRead>? TestReads = null, IReadOnlyList<CosmosExactReading>? ExactReadings = null,
         IReadOnlyList<string>? AsOfAPath = null, IReadOnlyList<(string Column, string As)>? ParametersAs = null, IReadOnlyList<CosmosTraversalYield>? Yields = null);
 

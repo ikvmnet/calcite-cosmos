@@ -131,7 +131,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                     {
                         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
                         using var doc = JsonDocument.Parse(json);
-                        using var response = await container.CreateItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("id").GetString()), cancellationToken: cts.Token);
+                        using var response = await container.UpsertItemStreamAsync(stream, new PartitionKey(doc.RootElement.GetProperty("id").GetString()), cancellationToken: cts.Token);
                         response.EnsureSuccessStatusCode();
                     }
                 }

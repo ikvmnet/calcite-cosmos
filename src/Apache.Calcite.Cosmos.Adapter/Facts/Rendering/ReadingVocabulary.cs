@@ -13,15 +13,17 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
     /// What Calcite makes of each reading, as rules over its rows (G7, <c>DESIGN.md</c> "Calcite's readings as rows"): one
     /// vocabulary both graphs define, S at its root and the facts graph at its, so a cell and the facts graph read an atom's
     /// readings in one table (<see cref="ReaderRows"/>), class by class. A reading reads each class as its rows say; a parse
-    /// of a class is decided over the character classes its witnesses held; a reading a row says is read as another is read
-    /// as it over each class both read alike, and as itself over any other; a test answers over a class what the truth
-    /// table says the class's read means, beside its operand's where a row says the test is the operand's; and a comparison
-    /// of a class read as itself, rendered or parsed is the cell's to decide; <c>LIKE</c> reads each unit of its pattern as
-    /// its row says; and a type test is TRUE, by the name the service spells it by, of the JSON kinds of each class its
-    /// row says, which the predicate vocabulary's type-test rule reads. Beside them, what each raw column answers on a key,
-    /// from its rows alone, and the columns' union (h12, G5), so both graphs read a raw reading's keys alike; a comparison
-    /// with a parameter reads its column's answer beside every class it is compared beside. And, by element type and the
-    /// traversal's form, the kinds of the elements a traversal yields and the reading they read as.
+    /// of a class is decided over the character classes its witnesses held; a reading a row names an evaluator for is
+    /// evaluated by it over every class and over a cell of no one class, a raw column's reading as its reading through every
+    /// column is; a reading a row says is read as another is read as it over each class both read alike, where a row names
+    /// the other's evaluator; and a class no rule names a reading for is read by the reading's rows alone. A test answers
+    /// over a class what the truth table says the class's read means, beside its operand's where a row says the test is the
+    /// operand's; and a comparison of a class read as itself, rendered or parsed is the cell's to decide; <c>LIKE</c> reads
+    /// each unit of its pattern as its row says; and a type test is TRUE, by the name the service spells it by, of the JSON
+    /// kinds of each class its row says, which the predicate vocabulary's type-test rule reads. Beside them, what each raw
+    /// column answers on a key, from its rows alone, and the columns' union (h12, G5), so both graphs read a raw reading's
+    /// keys alike; a comparison with a parameter reads its column's answer beside every class it is compared beside. And, by
+    /// element type and the traversal's form, the kinds of the elements a traversal yields and the reading they read as.
     /// </summary>
     internal sealed class ReadingVocabulary
     {
@@ -43,6 +45,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             Rows = graph.DefineRelation<string, string>("calciterows");
             ReadAs = graph.DefineRelation<string, string>("calcitereadas");
             Through = graph.DefineRelation<string, CosmosServiceTest, string>("calcitethrough");
+            graph.Values.Register<ReadingEvaluator>("reading evaluator");
+            Evaluators = graph.DefineRelation<string, ReadingEvaluator, string>("calciteevaluator");
+            CellClasses = graph.DefineRelation<CosmosValueClass>("cellclasses");
             ReadTruths = graph.DefineFunction<CosmosServiceTest, string, Truths>("readtruths");
             ReadCompares = graph.DefineRelation<CosmosServiceTest, string>("readcompares");
             LikeUnits = graph.DefineRelation<LikeUnit, string>("likeunits");
@@ -112,6 +117,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 
         /// <summary>A test of a reading a row says is its operand's, by the operand's reading.</summary>
         public Relation<string, CosmosServiceTest, string> Through { get; }
+
+        /// <summary>The evaluator a row names for a reading, with the SQL type it evaluates a value of, citing the row (G7).</summary>
+        public Relation<string, ReadingEvaluator, string> Evaluators { get; }
+
+        /// <summary>Every class a cell is keyed by, a cell of no one class among them (<see cref="CosmosValueClasses.Cells"/>), constant data.</summary>
+        public Relation<CosmosValueClass> CellClasses { get; }
 
         /// <summary>What a test answers of a value read so, where the read decides it (<see cref="KleeneTables.Reads"/>).</summary>
         public Function<CosmosServiceTest, string, Truths> ReadTruths { get; }
@@ -236,6 +247,12 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
             foreach (var (reader, test, operand) in rows.Through)
                 yield return Through.Of(reader, test, operand);
 
+            foreach (var (reader, evaluator, row) in rows.Evaluators)
+                yield return Evaluators.Of(reader, evaluator, row);
+
+            foreach (var kind in CosmosValueClasses.Cells)
+                yield return CellClasses.Of(kind);
+
             foreach (var (unit, row) in rows.LikeUnits)
                 yield return LikeUnits.Of(unit, row);
 
@@ -344,11 +361,23 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 r.Then(ReaderRows.Of().Is(Compute.Of(rd, k, b, ReadingTable.Measured)));
             });
 
-            reads.DefineRule("a reading a row reads as another is read as it over each class both read alike", r =>
+            // The evaluator a row names reads the reading over every class, and over a cell of no one class, so a cell reads
+            // which reading reads it in the table alone; a class no rule names one for is read by the reading's rows alone.
+            reads.DefineRule("a reading a row names an evaluator for is evaluated by it over every class, and rests on that row", r =>
             {
-                var (rd, al, a) = r.Vars<string, string, string>("rd", "al", "a");
+                var (rd, row) = r.Vars<string, string>("rd", "row");
+                var e = r.Var<ReadingEvaluator>("e");
                 var k = r.Var<CosmosValueClass>("k");
-                r.When(ReadAs.Of(rd, al), Reads.Of(rd, k, a), Reads.Of(al, k, a));
+                r.When(Evaluators.Of(rd, e, row), CellClasses.Of(k));
+                r.Then(ReaderRows.Of().Is(Compute.Of(rd, k, e, row, ReadingTable.EvaluatedBy)));
+            });
+
+            reads.DefineRule("a reading a row reads as another is read as it over each class both read alike, where a row names the other's evaluator", r =>
+            {
+                var (rd, al, a, row) = r.Vars<string, string, string, string>("rd", "al", "a", "row");
+                var k = r.Var<CosmosValueClass>("k");
+                var e = r.Var<ReadingEvaluator>("e");
+                r.When(ReadAs.Of(rd, al), Reads.Of(rd, k, a), Reads.Of(al, k, a), Evaluators.Of(al, e, row));
                 r.Then(ReaderRows.Of().Is(Compute.Of(rd, k, al, ReadingTable.Evaluated)));
             });
 
@@ -539,6 +568,27 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
                 var k = r.Var<CosmosValueClass>("k");
                 r.When(a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u));
                 r.Then(ReaderRows.Of().Is(Compute.Of(rd, u, k, a, ReadingTable.Raw)));
+            });
+
+            // A raw reading through one column is evaluated as the reading through every column is, by the evaluator the rows
+            // name for the latter and resting on them, as its rows are its column's (rawtyped); a column no row measured
+            // likewise, as it reads as the union.
+            reads.DefineRule("a raw column's reading is evaluated as its reading through every column is", r =>
+            {
+                var (rd, c, a, row) = r.Vars<string, string, string, string>("rd", "c", "a", "row");
+                var k = r.Var<CosmosValueClass>("k");
+                var e = r.Var<ReadingEvaluator>("e");
+                r.When(Evaluators.Of(rd, e, row), a.Is(RawReads.Of(rd, c, k)));
+                r.Then(Evaluators.Of(Compute.Of(rd, c, PredicateAtom.InColumn), e, row));
+            });
+
+            reads.DefineRule("a raw column no row measured is evaluated as the reading through every column is", r =>
+            {
+                var (rd, c, a, row) = r.Vars<string, string, string, string>("rd", "c", "a", "row");
+                var (k, u) = r.Vars<CosmosValueClass, string>("k", "u");
+                var e = r.Var<ReadingEvaluator>("e");
+                r.When(Evaluators.Of(rd, e, row), a.Is(RawReads.Of(rd, c, k)), UnionColumn.Of(u));
+                r.Then(Evaluators.Of(Compute.Of(rd, u, PredicateAtom.InColumn), e, row));
             });
         }
 

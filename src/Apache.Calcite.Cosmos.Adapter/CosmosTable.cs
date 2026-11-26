@@ -375,9 +375,10 @@ namespace Apache.Calcite.Cosmos.Adapter
             // at zero rows every plan costs the same and the tie goes to whichever registered first --
             // measured, the plan that pushes no part of a split predicate and reads the container whole.
             // A zero is also the count least likely to be true: the service reports it for a while after
-            // documents are written, and the emulator reports it always, for a container holding 200. A
-            // container that really is empty costs nothing to read whichever plan wins, so treating its
-            // zero as unmeasured loses nothing, and lets the planner fall back on its own default.
+            // documents are written, and the emulator's releases before EN20261123 report it always, for a
+            // container holding 200. A container that really is empty costs nothing to read whichever plan
+            // wins, so treating its zero as unmeasured loses nothing, and lets the planner fall back on its
+            // own default.
             var rowCount = _container.Statistics is CosmosContainerStatistics statistics && statistics.DocumentCount > 0
                 ? java.lang.Double.valueOf(statistics.DocumentCount)
                 : null;

@@ -476,8 +476,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
 
                 response.EnsureSuccessStatusCode();
 
-                // Reported on the span rather than as a measurement: it is a paragraph of text naming
-                // the indexes the service considered, which is a thing to read and not a thing to
+                // Reported on the span rather than as a measurement: it is a report naming the
+                // indexes the service considered, which is a thing to read and not a thing to
                 // aggregate. Present only on the first page, and only where it was asked for.
                 if (response.IndexMetrics is string metrics && metrics.Length > 0)
                     _activity?.SetTag("cosmos.index_metrics", metrics);

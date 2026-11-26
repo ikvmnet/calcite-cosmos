@@ -281,8 +281,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Planning
         /// <remarks>
         /// Statistics attached after the container's keys used to drop the keys, so with any document count
         /// the self-join merge had no unique key to read and every view was a read of its own. Without a
-        /// count, as on the emulator, the planner has no sense of scale and pages in process, which is why
-        /// this is planned against one. Paged by the link's identifier, a UUID in a declared spelling, whose
+        /// count the planner has no sense of scale and pages in process, which is why this is planned
+        /// against one. Paged by the link's identifier, a UUID in a declared spelling, whose
         /// stored strings order as the UUIDs do.
         /// </remarks>
         [Fact]

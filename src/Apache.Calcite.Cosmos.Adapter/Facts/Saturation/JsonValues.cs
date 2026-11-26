@@ -317,8 +317,7 @@ namespace Apache.Calcite.Cosmos.Facts.Saturation
         /// points: measured on the probe account over every unit of the basic plane but the surrogates, every code point of
         /// plane 1 and U+E0000 to U+E01EF, each first and last in a string, projected and in a <c>WHERE</c>, the three
         /// functions alike (<c>Service.TrimRemovesWhiteSpace</c>). It is the white space of an older Unicode, U+180E
-        /// among it and U+FEFF and U+200B not, and nothing past the basic plane. The emulator removes fewer: neither
-        /// U+0085, U+00A0, U+180E, U+2007 nor U+202F.
+        /// among it and U+FEFF and U+200B not, and nothing past the basic plane.
         /// </summary>
         static readonly (int Lo, int Hi)[] Trimmed =
         [

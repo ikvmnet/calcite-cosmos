@@ -52,6 +52,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             PairReadings = Measured.PairReadings,
             ReaderOrders = Measured.ReaderOrders,
             ReaderKinds = Measured.ReaderKinds,
+            CalciteEvaluators = Measured.CalciteEvaluators,
         };
 
         /// <summary>S defined from the registry, once a run.</summary>
