@@ -2154,6 +2154,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         }
 
         /// <summary>
+        /// A reading a residual filter carries down is a column of its own beside the text the projection pushes of the
+        /// same path.
+        /// </summary>
+        /// <remarks>
+        /// What <see cref="AResidualFilterReadsItsOwnReadingOfAProjectedPath"/> held before its integer was no longer
+        /// carried: <see cref="Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosProjectResidualRule"/> matches each path it
+        /// carries to a column the projection pushes whole, and the digest, which prints no type, matched a typed reading
+        /// to the text accessor. <c>RETURNING DOUBLE</c> refuses nothing, so it is carried, as a column of its own, and the
+        /// filter reads it there.
+        /// </remarks>
+        [Fact]
+        public void AResidualFilterReadsItsOwnCarriedColumnOfAProjectedPath()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) / 2 = 12.5");
+
+            Render(FindCosmos(best)).Should().Be(
+                "SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c WHERE IS_DEFINED(c.price)",
+                "the text and the double are a column each: " + Plan(best));
+
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/($2, 2), CAST(12.5:DECIMAL(3, 1)):DOUBLE NOT NULL)])", "and the filter reads the double's, not the text's: " + Plan(best));
+        }
+
+        /// <summary>
         /// An expression with nothing renderable inside it still sends what the residual reads.
         /// </summary>
         /// <remarks>
