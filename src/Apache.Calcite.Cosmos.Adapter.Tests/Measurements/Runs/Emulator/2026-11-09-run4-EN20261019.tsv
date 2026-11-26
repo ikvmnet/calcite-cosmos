@@ -4,8 +4,8 @@
 # unanswered on the probe account, each asked alone in a statement of its own, and LENGTH(c.v) over "a0b1c" beside them.
 # Every line answers as the records holding it hold it, where the row's own test asked them over every witness at
 # once: the length as 2026-11-03-EN20261019.tsv does, and the six searches as 2026-11-06-EN20261019.tsv, the record
-# that added this spelling, does; each statement at the first asking. Release EN20260907 answered every line alike.
-# A function's answer is the projection.
+# that added this spelling, does; each statement at the first asking. Releases EN20260907 and EN20261123 (asked alone on
+# 2026-11-25) answered every line alike. A function's answer is the projection.
 release	row	expression	witness	answer
 EN20261019	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	5
 EN20261019	Service.StringFunctionAnswersByBand	REPLACE("a0b1c", c.v, "x")	"a0b1c"	"x"

@@ -6,7 +6,7 @@
     /// declares.
     /// </summary>
     /// <param name="DocumentCount">How many documents the container holds.</param>
-    /// <param name="DocumentSizeInBytes">What they occupy in total.</param>
+    /// <param name="DocumentSizeInBytes">What they occupy in total, as the whole kilobytes the service reports.</param>
     /// <param name="PartitionCount">How many physical partitions the container is spread over.</param>
     /// <remarks>
     /// <para>
@@ -31,11 +31,12 @@
     {
 
         /// <summary>
-        /// Gets the average size of a document, or zero where the container is empty.
+        /// Gets the average size of a document, or zero where no documents are counted or they come to no
+        /// whole kilobyte.
         /// </summary>
         /// <remarks>
         /// What a row costs to move, which for a row model carrying whole documents is the term that
-        /// dominates everything else.
+        /// dominates everything else. A zero beside a count is priced as a size nobody reported.
         /// </remarks>
         public double AverageDocumentSizeInBytes => DocumentCount > 0 ? (double)DocumentSizeInBytes / DocumentCount : 0d;
 

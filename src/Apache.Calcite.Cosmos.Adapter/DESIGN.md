@@ -2106,22 +2106,21 @@ documentation.
 > | | emulator | Azure |
 > | --- | --- | --- |
 > | `ORDER BY t0` over `JOIN t0 IN c.tags` | accepted | **400** |
-> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **400** | accepted |
+> | `FULLTEXTCONTAINS` and `ORDER BY RANK` | **refused** | accepted |
 > | multi-key `ORDER BY`, no composite index | accepted | **400** |
 > | `SUBSTRING`, `LEFT`, `RIGHT`, `INDEX_OF` past U+FFFF | code points | **UTF-16 units**, a split pair sent as U+FFFD |
-> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped | **left** |
-> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept | **removed** |
+> | `UPPER`/`LOWER` of U+017F, U+0130, U+212A | mapped before EN20261123 | **left** |
+> | `TRIM` of U+0085, U+00A0, U+180E, U+2007, U+202F | kept before EN20261123 | **removed** |
 >
 > The first is why `CosmosSort` refuses any sort key rooted at an unnest alias: a single-key
 > allowance stood for a long time on the emulator's word, and emitted a statement Azure will not
 > run. `ORDER BY t0.x` is rejected too, so it is the alias and not the arity.
 >
 > The second understates itself. The emulator does not merely reject the statements: it accepts a
-> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent,
-> and it does not know the names either — `SC2005, 'FullTextScore' is not a recognized built-in
-> function name`. The declaration used to decline the statement before it was sent; since #85 it is
-> a cost rather than a gate, so the statement is sent and the `SC2005` that comes back is the
-> emulator's own answer, worth telling apart from the service's when a test reports one.
+> container declaring a `FullTextPolicy` and a full text index and then reports both back as absent.
+> The declaration used to decline the statement before it was sent; since #85 it is a cost rather
+> than a gate, so the statement is sent and the refusal that comes back is the emulator's own answer,
+> worth telling apart from the service's when a test reports one.
 
 **Every measured fact a pushdown relies on is a row in `Sql/CosmosAxioms.cs`.** Each row has an id,
 the statement, the targets it was measured on (emulator, Azure, or Calcite's own runtime), the date,
@@ -2162,7 +2161,10 @@ join emits, at the batch size it emits, and the measurement is what says the fea
 improvement rather than a scan with a large predicate bolted on.
 
 Also measured: the index metrics header carries **JSON**, not the prose the documentation shows. The
-prose is what the portal renders.
+prose is what the portal renders. The emulator's EN20261123 answers every statement that asks by the
+header the SDK sends (`x-ms-cosmos-populateindexmetrics-V2`) with
+`{"Utilized":{"SingleIndexes":[],"CompositeIndexes":[]},"Potential":{…}}`, naming no index for any; its
+releases before answer that header with nothing.
 
 **A multi-key `ORDER BY` really does need a composite index spanning its keys.** Measured on a real
 account against a container built with the default indexing policy and so with no composite index at
@@ -2176,9 +2178,9 @@ response and none on a subsequent read, and then accepts the multi-key form rega
 
 **The document count lags, and by more than a moment.** A container read reports `documentsCount` in
 its `x-ms-resource-usage` header — on Azure only when the read asks for it, with
-`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require, so until #209 no
-Azure account ever answered — and immediately after writing four documents it reports **zero** —
-the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
+`ContainerRequestOptions.PopulateQuotaInfo`, which the emulator does not require before EN20261123, so
+until #209 no Azure account ever answered — and immediately after writing four documents it reports
+**zero** — the statistic is computed in the background. That is what the row count in `getStatistic` is, and it
 is what a planner row count is allowed to be: approximate and stale. It is not what the rule against
 inferring from documents forbids, which is about the *shape* of the data — a wrong shape yields an
 incorrect plan, a wrong row count yields a slow one.
@@ -2186,9 +2188,12 @@ incorrect plan, a wrong row count yields a slow one.
 The partition count is answered immediately, being a fact about the container rather than its
 contents.
 
-**And the emulator never reports one.** `documentsCount` is zero for every container it holds — zero for
-`links` holding 200 documents that had been there for days. So every plan the emulator measures is planned
-at zero rows, unless something stops it.
+**And the emulator reports none before EN20261123.** On those releases `documentsCount` is zero for every
+container — zero for `links` holding 200 documents that had been there for days. So every plan measured on
+them is planned at zero rows, unless something stops it. EN20261123 reports the count exactly and at once,
+and `documentsSize` in whole kilobytes, rounded down. So a plan there is
+made at the few rows a test container holds, and a test of a plan's shape has to hold enough of them
+(`CosmosConnectionEmptySideTests` holds Calcite's hundred).
 
 **Zero is the one count that is worse than none, so it is reported as unknown.** Volcano compares row counts
 and nothing else. At zero rows every plan costs the same, and the tie goes to whichever registered first. Measured
@@ -4145,15 +4150,16 @@ three things; a review measured a fourth, and three functions that part over som
   string measured without one agreed — U+E000, U+FFFD and a combining sequence among them.
 - **A case mapping, outside ASCII.** Calcite maps by Java's full mapping: ß to `SS`, U+FB00 to `FF`, U+0130 to `i` and
   U+0307. Both services map by simple ones that leave ß and U+FB00; Azure's leaves U+017F, U+0130 and U+212A too, which
-  the emulator maps. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and `ENDSWITH` fold the
-  service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb` under `UPPER(s) LIKE
-  '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared path: a recheck sees
-  only the rows that arrive.
+  the emulator maps before EN20261123. Over ASCII the three agree. The case-insensitive `CONTAINS`, `STARTSWITH` and
+  `ENDSWITH` fold the service's way, so the `LIKE` rewrites built on them lost the rows Calcite's fold keeps — `aßb`
+  under `UPPER(s) LIKE '%SS%'` — on both targets, and so did the weakening that stood in for them over an undeclared
+  path: a recheck sees only the rows that arrive.
 - **A trim, over white space.** Calcite's `TRIM` removes U+0020 alone. The service's removes white space: measured on
   Azure over every unit of the basic plane, every code point of plane 1 and U+E0000 to U+E01EF, each first and last,
   projected and in a `WHERE`, it removes U+0009 to U+000D, U+0085, U+00A0, U+1680, U+180E, U+2000 to U+200A, U+2028,
   U+2029, U+202F, U+205F and U+3000 beside the space, the three functions alike — an older Unicode's white space,
-  U+180E in it and U+200B and U+FEFF not. The emulator removes a subset: not U+0085, U+00A0, U+180E, U+2007 or U+202F.
+  U+180E in it and U+200B and U+FEFF not. Before EN20261123 the emulator removes a subset: not U+0085, U+00A0, U+180E,
+  U+2007 or U+202F.
 - **A search, over U+0000.** Azure's `REPLACE` and `CONTAINS`, both modes, read a string only up to its first U+0000:
   `REPLACE(s, 'b', '!')` leaves `a`U+0000`b` as it is, and `CONTAINS` finds no `b` in it. So does a `LIKE` whose pattern
   is one run of text between two `%`, which the service answers as a `CONTAINS`: `%b%`, `%%b%` and `%b%%` lose the
@@ -5528,8 +5534,8 @@ plan as one `CosmosFilter` over one scan: `type = 'Link'`, `data.type = 'map'`, 
 emulator that read is unfiltered: the merged projection holds `CASE` columns that do not push, and the
 filter beneath them stayed in process with them. That is not this rule's. The `Link` view alone showed it
 before #177, as the unfiltered read the plan began with, and the cause is the row count — the emulator
-reports zero documents for every container, and at zero rows every plan ties and the tie went to the one
-that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
+of the time reported zero documents for every container, and at zero rows every plan ties and the tie went
+to the one that pushes nothing. #180 reports a zero count as unknown; with it, every link plans as one `CosmosFilter`
 over one scan, with only the `CASE` columns computed in process.
 
 **And the `CASE` columns now push too (#192).** Each is `CASE WHEN M THEN q END`, and `M` carries the
@@ -8984,13 +8990,15 @@ key worse than the row, never one that answers better.
 S's licence reads every `Calcite` row. h12 moved the union over them into S and deleted the host table.
 
 **Each emulator row names its release.** `Measurements/Runs/Emulator` holds the run that measured the rows, line by
-line with the release that answered (EN20261019, CI's, and EN20260907's three lines where it parts); a row measured on
+line with the release that answered (EN20261019, CI's until 2026-11-24, EN20260907's three lines where it parts, and
+EN20261123's 24, each of letters its `UPPER` or `LOWER` leaves as Azure does and the two before it map); a row measured on
 the emulator since 2026-11-02 has lines there, and no function outcome claims Azure until a run record holds it. CI
 reads the release off the container's log (`COSMOS_EMULATOR_RELEASE`) and the witness probe logs it in place of the
-endpoint; a release a record names must answer each line recorded for it as recorded, and one whose own record holds a
-row must log no line of it the record misses, so the record is what the pinning tests ask, and a new release that parts
-is named where it does. `CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary,
-element and two-path forms to the service (line 4b), as the reader's forms are held beside them.
+endpoint; a release a record names must answer each line as its own line holds it, or, where it has none, as
+EN20261019's does, and log no line of a recorded row that neither holds, so the record is what the pinning tests ask, and
+a new release that parts is named where it does. A release no record names is held to none.
+`CosmosEvalServiceTests.EveryStageThreeFormIsKeptAsCosmosEvalSays` holds `CosmosEval`'s ternary, element and
+two-path forms to the service (line 4b), as the reader's forms are held beside them.
 
 ### The IR's new shapes: F reads them, S not yet
 
@@ -11924,7 +11932,7 @@ span that never records them is an enumeration the caller abandoned, which is it
 `PopulateIndexMetrics`, behind the `indexMetrics` operand and off by default: the service computes
 the answer per query, so it is a thing to switch on while working out why a query is expensive
 rather than to leave on. It lands on the span as `cosmos.index_metrics`, a tag rather than a
-measurement, because it is a paragraph of prose naming indexes — something to read, not aggregate.
+measurement, because it is a report naming indexes — something to read, not aggregate.
 
 It is also the instrument for settling the composite index question below.
 

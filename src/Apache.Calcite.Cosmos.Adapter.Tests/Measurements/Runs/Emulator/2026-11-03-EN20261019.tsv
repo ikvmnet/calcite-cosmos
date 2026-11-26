@@ -2,8 +2,8 @@
 # 2026-11-03 against mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview, release EN20261019 (image
 # db53613dae19), the release CI ran then. An answer is value/kept: the projection, then T, F or U as WHERE and WHERE NOT
 # keep the witness, ! where the statement fails over it alone; a function row's lines are projections alone. Every line
-# is EN20261019's; the three lines of release EN20260907 (image 2db1f9e7) are where it answered otherwise, and it
-# answered every other line alike.
+# is EN20261019's but the last four: the three of release EN20260907 (image 2db1f9e7) and the one of EN20261123, run on
+# 2026-11-25, are where each answered otherwise, and each answered every other line alike.
 release	row	expression	witness	answer
 EN20261019	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"a0b1c"	5
 EN20261019	Service.StringFunctionAnswersByBand	LENGTH(c.v)	"b"	1
@@ -2817,3 +2817,4 @@ EN20261019	Service.TwoPathsCompareAsAPathAndALiteral	(c.w <= c.v)	"v":"\uD83D\uD
 EN20260907	Service.IntegerArithmeticIsExactWithinLong	c.v + 1	9223372036854775807	9223372036854775800
 EN20260907	Service.IntegerArithmeticIsExactWithinLong	c.v / 2	9223372036854775807	4611686018427387900
 EN20260907	Service.IntegerArithmeticIsExactWithinLong	c.v % 2	9223372036854775807	0
+EN20261123	Service.StringFunctionAnswersByBand	LOWER(c.v)	"İb1"	"İb1"

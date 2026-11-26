@@ -3598,7 +3598,8 @@ across documents* and *A join of a container to itself* is the record.
   not sent and the answer is no rows with no request. The declaration does not decide it: the cost of the shared build
   side cancels between the two plans
   (`CosmosConnectionEmptySideTests.ASemiJoinOverAnEmptiedSubqueryAnswersAsOneWithNothingReduced`); main answers the
-  same, an empty `Values` and no request. The fix wants the lookup join offered only where nothing above it that reads
+  same, an empty `Values` and no request. Over a container the service counts at 3 to 11 documents the undeclared
+  twin is planned so too, and answers no rows. The fix wants the lookup join offered only where nothing above it that reads
   the probe side may raise, asked of the facts graph, or such a filter kept beneath the probe side, which reads every
   document and fails as Calcite does.
 - **Calcite's own join never matches a `REAL`, `FLOAT` or `DOUBLE` `-0.0` key with `0.0`, and the lookup join matches it
