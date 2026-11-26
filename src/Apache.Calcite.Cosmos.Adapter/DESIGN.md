@@ -1479,10 +1479,9 @@ the merged filter and the residual over the half sent cost the same, so the orde
 cost model charges a filter Calcite evaluates holding the service's form more rows than any estimate reaches
 (`CosmosRelMetadataQuery.getNonCumulativeCost`), legality it keeps, and the point read's split lifts none
 (`CosmosConnectionPlanningTests.AConditionHoldingTheServicesFormIsNeverLeftToCalcite`). What it does not reach is
-`TODO.md`'s:
-a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a projection
-whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*); and,
-through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
+`TODO.md`'s: a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a
+projection whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*);
+and, through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
 connection, a filter above the half sent is reduced with what that half holds*).
 
 **The correlate rule takes Calcite's transposition at every correlate of a statement, or at none.**
@@ -11205,10 +11204,10 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   fold was written into a filter beneath the view the translator writes no item of a `JSON_QUERY` in, and failed to
   implement over every document
   (`CosmosConnectionPlanningTests.AnItemOfAViewsTypedArrayAnswersAsCalciteBesideAConditionKeptInProcess`). Every other
-  column a projection binds is
-  read through its field, where the field reads it at all, as the same kind of reading of the same path and type as its
-  expression (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`, and
-  over a filtered view `CosmosPredicateLoaderTests.AColumnAProjectionOverAFilteredViewBindsReadsThroughItsFieldAsItsExpressionReadsOverTheScan`).
+  column a projection binds is read through its field, where the field reads it at all, as the same kind of reading of
+  the same path and type as its expression
+  (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`, and over a filtered
+  view `CosmosPredicateLoaderTests.AColumnAProjectionOverAFilteredViewBindsReadsThroughItsFieldAsItsExpressionReadsOverTheScan`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
   (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no
