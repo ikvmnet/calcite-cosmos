@@ -1083,6 +1083,50 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             "SELECT u.\"id\" FROM (SELECT * FROM (SELECT c.\"id\", c.\"DOC\" FROM items AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE {0}) AS u "
             + "WHERE INITCAP(JSON_VALUE(u.\"DOC\", '$.region')) = 'Steel'";
 
+        /// <summary>
+        /// A stack of four or five filtered views beneath a case fold, each view computing a column or none, answers
+        /// through this connection as Calcite's own does over the same documents, on either target.
+        /// </summary>
+        /// <remarks>
+        /// In the plan chosen a host's filter merge put the case fold's weakening back beside the last view's equality
+        /// and the fold, in a calculation Calcite evaluates over the statement holding the rest, which failed to implement
+        /// over every document; three levels planned. The cost model charges such a filter now
+        /// (<c>CosmosRelMetadataQuery</c>), as <see cref="AConditionHoldingTheServicesFormIsNeverLeftToCalcite"/> holds of
+        /// three. Calcite's own answer is the same statement over the documents written as a <c>VALUES</c> list, which no
+        /// rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData(4, false, CosmosServiceTarget.Azure)]
+        [InlineData(4, false, CosmosServiceTarget.Emulator)]
+        [InlineData(4, true, CosmosServiceTarget.Azure)]
+        [InlineData(5, false, CosmosServiceTarget.Emulator)]
+        [InlineData(5, true, CosmosServiceTarget.Azure)]
+        [InlineData(5, true, CosmosServiceTarget.Emulator)]
+        public void AStackOfFourOrFiveFilteredViewsBeneathACaseFoldAnswersAsCalcite(int levels, bool computed, CosmosServiceTarget target)
+        {
+            // From the innermost out: view n reads view n - 1 and is filtered on its own path k<n>, computing UPPER of it.
+            var sql = "SELECT c.\"id\", c.\"DOC\" FROM items AS c";
+            for (var n = 1; n <= levels; n++)
+                sql = $"SELECT v{n}.\"id\", v{n}.\"DOC\"{(computed ? $", UPPER(JSON_VALUE(v{n}.\"DOC\", '$.k{n}')) AS \"u{n}\"" : "")} FROM ({sql}) AS v{n} "
+                    + $"WHERE JSON_VALUE(v{n}.\"DOC\", '$.k{n}') = 'a'";
+            sql = $"SELECT q.\"id\" FROM ({sql}) AS q WHERE INITCAP(JSON_VALUE(q.\"DOC\", '$.name')) = 'Steel'";
+
+            string[] documents =
+            [
+                """{ "id": "s1", "k1": "a", "k2": "a", "k3": "a", "k4": "a", "k5": "a", "name": "steel" }""",
+                """{ "id": "s2", "k1": "a", "k2": "a", "k3": "a", "k4": "a", "k5": "a", "name": "Steel" }""",
+                """{ "id": "s3", "k1": "a", "k2": "a", "k3": "b", "k4": "a", "k5": "a", "name": "steel" }""",
+                """{ "id": "s4", "k1": "a", "k2": "a", "k3": "a", "k4": "a", "k5": "a", "name": "zinc" }""",
+                """{ "id": "s5", "k1": "a", "k2": "a", "k3": "a", "k4": "a", "name": "STEEL" }""",
+                """{ "id": "s6", "k1": "a", "k2": "a", "k3": "a", "k4": "a", "k5": "a" }""",
+            ];
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().HaveCount(levels == 4 ? 3 : 2, "the stack and the fold keep some of the documents");
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does: {0}", sql);
+        }
+
         /// <summary>A document as a row of a <c>VALUES</c> list: its id and its text.</summary>
         static string ValuesRow(string document)
         {
