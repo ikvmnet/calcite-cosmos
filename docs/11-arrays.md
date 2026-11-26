@@ -81,14 +81,16 @@ unnesting then de-duplicating is a heavier way to ask the same question.
 
 ## 11.3 Subscripts
 
-A JSON path subscript counts from **zero**, as SQL/JSON paths do and as Cosmos does, and is passed through:
+A JSON path subscript counts from **zero**, as SQL/JSON paths do and as Cosmos does, and is passed
+through:
 
 ```sql
 JSON_VALUE(c."DOC", '$.tags[0]')   →   (IS_PRIMITIVE(c.tags[0]) ? c.tags[0] : null)
 ```
 
 A SQL array subscript, which counts from **one**, over a typed array is computed in process, since
-Calcite converts the element to the array's element type, which is no value the path holds: nothing of
+Calcite converts the element to the array's element type, a stored 5 to '5' for a `VARCHAR ARRAY`,
+which need not be what the path holds: nothing of
 `(JSON_QUERY(c."DOC", '$.tags' RETURNING VARCHAR ARRAY))[1]` is sent, and Calcite takes it over the
 document or over the array read as a column, whose elements are read as 11.1 says. Compare an element
 at the service through its JSON path. `ARRAY_SLICE` and `SUBSTRING`, which count from one, are adjusted
