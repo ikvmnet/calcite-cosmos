@@ -77,6 +77,9 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
         /// <summary>A row a reading rests on.</summary>
         public static ReadingTable Cited(string reader, string row) => Of(reader, ReadingRows.Cited(row));
 
+        /// <summary>A reading read by itself over a class, by the evaluator a row names, resting on that row, as the rule joins it in.</summary>
+        public static ReadingTable EvaluatedBy(string reader, CosmosValueClass kind, ReadingEvaluator evaluator, string row) => Of(reader, ReadingRows.EvaluatedBy(kind, reader, evaluator, row));
+
         /// <summary>A reading's rows; none where no row names it.</summary>
         public ReadingRows this[string reader] => _rows.TryGetValue(reader, out var rows) ? rows : ReadingRows.None;
 

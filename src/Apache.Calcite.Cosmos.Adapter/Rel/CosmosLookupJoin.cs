@@ -386,9 +386,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// Builds the lambda combining a matching pair into a joined row.
         /// </summary>
         /// <remarks>
-        /// Written out rather than borrowed from <c>ClrEnumUtils.JoinSelector</c>, which takes the
-        /// implementor by an interface internal to <c>Apache.Calcite.Extensions</c> and so cannot be
-        /// called from here. What it does is this: the build's fields in order, then the probe's.
+        /// <para>
+        /// Written out rather than borrowed from <c>ClrEnumUtils.JoinSelector</c>, which is internal to
+        /// <c>Apache.Calcite.Extensions</c> and so cannot be called from here. What it does is this: the build's
+        /// fields in order, then the probe's — and each is written as that selector writes it, through the same
+        /// public members of the physical types.
+        /// </para>
+        /// <para>
+        /// <b>A field is read in the form the joined row stores it, and the row is made by the row's own type.</b>
+        /// <see cref="ClrPhysType.FieldReference(Expression, int, Type)"/> is given the joined row's storage type for
+        /// the field, which for an <c>object[]</c> row is <see cref="object"/>, so the value Calcite boxed stays in
+        /// its box; and <see cref="ClrPhysType.Record"/> writes the row.
+        /// </para>
         /// </remarks>
         LambdaExpression ResultSelector(ClrPhysType physType, ClrPhysType buildPhysType, Type buildType, ClrPhysType probePhysType, Type probeType)
         {
@@ -398,12 +407,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var fields = new List<Expression>();
 
             for (var i = 0; i < getLeft().getRowType().getFieldCount(); i++)
-                fields.Add(buildPhysType.FieldReference(b, i));
+                fields.Add(buildPhysType.FieldReference(b, i, physType.FieldType(fields.Count)));
 
             for (var i = 0; i < getRight().getRowType().getFieldCount(); i++)
-                fields.Add(probePhysType.FieldReference(p, i));
+                fields.Add(probePhysType.FieldReference(p, i, physType.FieldType(fields.Count)));
 
-            return Expression.Lambda(Expression.NewArrayInit(typeof(object), fields.ConvertAll(f => f.Type == typeof(object) ? f : Expression.Convert(f, typeof(object)))), b, p);
+            return Expression.Lambda(physType.Record(fields), b, p);
         }
 
         /// <summary>
@@ -412,7 +421,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
         /// </summary>
         /// <remarks>
         /// A lambda of its own rather than the result selector over a null container row, because a
-        /// container row of one column is the column's own type, which may be a value and has no null.
+        /// container row of one column is the column's own type, which may be a value and has no null. The
+        /// build's fields are written as <see cref="ResultSelector"/> writes them.
         /// </remarks>
         LambdaExpression UnmatchedSelector(ClrPhysType physType, ClrPhysType buildPhysType, Type buildType)
         {
@@ -421,15 +431,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
             var fields = new List<Expression>();
 
             for (var i = 0; i < getLeft().getRowType().getFieldCount(); i++)
-            {
-                var field = buildPhysType.FieldReference(b, i);
-                fields.Add(field.Type == typeof(object) ? field : Expression.Convert(field, typeof(object)));
-            }
+                fields.Add(buildPhysType.FieldReference(b, i, physType.FieldType(fields.Count)));
 
             for (var i = 0; i < getRight().getRowType().getFieldCount(); i++)
                 fields.Add(Expression.Constant(null, typeof(object)));
 
-            return Expression.Lambda(Expression.NewArrayInit(typeof(object), fields), b);
+            return Expression.Lambda(physType.Record(fields), b);
         }
 
     }

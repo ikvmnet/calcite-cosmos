@@ -156,6 +156,39 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         }
 
         /// <summary>
+        /// Beside a literal that is no string the cast of a raw value to text reads its column's key as beside a string: the
+        /// columns are compared beside strings alone (<c>Calcite.CastOfARawValueToText</c>), so no column answers a key beside
+        /// a number, and an equality, an ordering and a membership of numbers read anything and a raise over a stored string,
+        /// a stored number and an absent path, through the union and through a <c>VARCHAR</c> column alike, where the text's
+        /// coarse answer left the raise out. Beside a string the answers are those <see cref="ARawCellReadsTheUnion"/> holds;
+        /// a membership of a string and a number reads the number's key beside the string's equality, so it may raise, over an
+        /// absent path too.
+        /// </summary>
+        [Fact]
+        public void ARawCastBesideALiteralThatIsNoStringReadsItsColumnsKey()
+        {
+            var columns = ProbeRows.Columns;
+            var cast = PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawReader);
+            Truths On(PredicateAtom atom, PathCell cell) => atom.OnCell(cell, columns, ProbeRows.ReaderRows);
+            PathCell text = new PathCell.Point(Of("30")), thirty = new PathCell.Point(Of(30m)), absent = new PathCell.Absent();
+
+            foreach (var reader in new[] { cast, PredicateAtom.CastReader("VARCHAR", PredicateAtom.RawIn("VARCHAR")) })
+                foreach (var atom in new[] { PredicateAtom.Compare(reader, "=", Of(30m)), PredicateAtom.Compare(reader, "<", Of(30m)), PredicateAtom.In(reader, ValueSet.Of(Of(30m), Of(31m))) })
+                    foreach (var cell in new[] { text, thirty, absent })
+                        On(atom, cell).Should().Be(T | F | U | R, $"{atom} on {cell}");
+
+            On(PredicateAtom.Compare(cast, "=", Of("30")), text).Should().Be(T);
+            On(PredicateAtom.Compare(cast, "=", Of("30")), thirty).Should().Be(T | F | U | R);
+            On(PredicateAtom.Compare(cast, "=", Of("31")), thirty).Should().Be(F | U | R);
+            On(PredicateAtom.Compare(cast, "=", Of("30")), absent).Should().Be(U);
+
+            var mixed = PredicateAtom.In(cast, ValueSet.Of(Of("30"), Of(30m)));
+            On(mixed, text).Should().Be(T | R);
+            On(mixed, absent).Should().Be(T | U | R);
+            mixed.RaisesOver(PathValues.OfKinds(ValueSet.Of(PathValues.AbsentKind)), columns, ProbeRows.ReaderRows).Should().BeTrue("the number's key no column answers may raise");
+        }
+
+        /// <summary>
         /// A reading through one column reads that column's truths alone (rawtyped): a <c>VARIANT</c>'s ordering raises and an
         /// <c>ANY</c>'s places the number; a <c>VARCHAR</c> column raises over a number beside a string; the cast of a number
         /// is null through a <c>VARIANT</c> and its rendering through an <c>ANY</c>, so a negated affix over it is UNKNOWN
@@ -192,7 +225,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             var theory = RenderingTheory.Define(ProbeRows.Measured with { Columns = RawColumnRows.None });
             var empty = theory.Theory.Get(theory.RawUnion.Of());
             empty.Should().Be(RawTruths.Empty);
-            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty, ReadingTable.Empty).Should().Be(T | F | U | R);
+            PredicateAtom.Compare(PredicateAtom.RawReader, "=", Of("b")).OnCell(new PathCell.Point(Of("b")), empty, theory.Theory.Get(theory.ReaderRows.Of())).Should().Be(T | F | U | R);
             GC.KeepAlive(theory);
         }
 

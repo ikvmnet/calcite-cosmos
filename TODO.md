@@ -99,6 +99,22 @@ three with the reasoning — chapters 2, 9 and 21.
    currently scores *cheaper* than the statement it replaces and would be chosen for the wrong
    reason.
 
+### A suite run on a long-lived emulator meets what the emulator kept — *small*
+
+Each emulator-backed class deletes its database or container before seeding and catches the failure,
+and the newer emulator image answers those deletes with a 500 and keeps what it was asked to delete
+(Appendix E.2). A class that then creates a document of a fixed id answers 409 and fails, or skips its
+tests, on any emulator a previous run seeded. Deleting each document by hand clears most of it, but a
+document whose id holds an escape (the differential's planted containers and the read-many escape
+test's) cannot be deleted either, its delete failing in the emulator's own store, so on 8089 in
+November 2026 these failed alike before and after a lookup join change, at seeding:
+`CosmosDifferentialTests.EveryPlantedStatementAnswersAsCalcite`, `EveryPlantedPredicatePartitionsTheRows`,
+`APlantedWriteStopsAtAnIdItCannotAddress`, `EveryOrderIsOneCalciteAllows`,
+`ASeekPastTwoKeysIsOneCalciteAllows` and `APlantedWindowBaseIsCaught`, and
+`CosmosReadManyMeasurementTests.AnIdHoldingAnEscapeIsNotReadByItsId`. Upserting the seed where a
+test does not rest on a create's 409, or seeding under names fresh to each run, would make a run
+independent of the ones before it; until then, a fresh emulator is the clean run.
+
 ---
 
 ## 1. Statistics and the cost model
@@ -2432,10 +2448,10 @@ checked: population D*, is the record; `Facts/Saturation/README.md` is the catal
   process on `main`; with the grouping reading the rows the filter kept, the `DISTINCT` pushes, and Volcano prefers
   one routed query with it to the batch. The rows are the same. Pricing `ReadMany` below a query where it reads a few
   ids would bring the batch back; nothing measured says which is cheaper for two documents.
-- **The atom's readers are strings** — *small, no behaviour.* `typed:T` and `cast:T:inner` are parsed back by
-  `Reading.Parse`, restating the IR's `SqlValue`, because the rules carry a reader as a string value. A reader
-  registered as a record value would state it once. (What a conversion does is read off its target once, in
-  `NumberCast`'s constructor: saturation, rounding, a parse that raises, a decimal's exact parse.)
+- **The atom's readers are strings** — *small, no behaviour.* `typed:T` and `cast:T:inner` are strings the rules carry,
+  and a column, a typed reading's type and a cast's target are parsed back out of them (`PredicateAtom.ColumnOf`,
+  `Columnless`, `Outermost`; `CosmosRendering.ReadReaderKinds`), restating the IR's `SqlValue`; a reader registered as a
+  record value would state them once. No evaluator is chosen by the spelling: a row names it and its type.
 - **A `DISTINCT`'s key binding reads the declaration** — *small, and it waits on the statement node.* The binding is
   asked by the sort's rule on its own walk and again at implementation, so only what holds of every document answers
   alike on both; a key only the filter proves present binds nothing, and a sort over the `DISTINCT` stays in process
@@ -3069,6 +3085,19 @@ across documents* and *A join of a container to itself* is the record.
   since, as it draws the cast elsewhere: `Statements.Besides`, to name the column again with the fix); and the unnamed
   `IrEval`. It is on main, and left for a change of its own after "fail like Calcite": the fix goes with F's reading of
   the cells, which reads the union where the rendering is read.
+- **`SAFE_CAST` of a raw value to text loads as the plain cast's reading** — *small, latent; older, main the same.* The
+  loader reads `SAFE_CAST(c."$.category" AS VARCHAR)` as it reads the `CAST` (`CosmosPredicateLoader.Cast`'s branch for
+  a text cast, which `CosmosRexShapes.TryTextCastValue` opens to both), so the null test of either loads to
+  `(cast(VARCHAR, raw($["category"] VARIANT)) is null)`. That reading's `VARIANT` column raises over an object or an
+  array (`Calcite.CastOfARawValueToText`), so its cell there reads a raise alone, in both graphs, where Calcite in
+  process answers `SAFE_CAST`'s null test TRUE over either and raises on nothing. `Cast`'s own remarks say `SAFE_CAST`
+  converts as no row measured, which its last branch keeps (`kind == CAST`) and its branch for a text cast does not. No
+  wrong form came of it: the statements over it judged against Calcite in process on both targets found none, S keeping
+  its null tests in process and its exact forms agreeing over the structures. The fix is the loader reading a
+  `SAFE_CAST` of a raw value as no reading, as its last branch does, or a row measuring `SAFE_CAST`'s null where the
+  cast raises and a reading named for it. `DESIGN.md`'s *Casts over document values* says the two differ only where a
+  conversion fails, "which rendering a value as text never does", which the row contradicts for a `VARIANT`; it is
+  corrected with the fix.
 - **A projected or grouped type test over `JSON_VALUE` is written over the rendering** — *medium, a wrong answer; the
   column's, h37.* The translator writes a column's `IS_STRING(JSON_VALUE(DOC, '$.v'))`, and every type test and
   `IS_DEFINED` beside it, as the function over the value's rendering, `IS_STRING((IS_PRIMITIVE(c.v) ? c.v : null))`
@@ -4454,10 +4483,10 @@ across documents* and *A join of a container to itself* is the record.
   S's rules read (G8)*); `structureonly` is the `query` reading's `calcitereads` since h15,
   and `measuredcast` on the cast targets' (below),
   and G6 the D class's `Defined`, which no row states yet. Rows still owed: the emulator's stored escapes (U+0000 stored as U+FDD0 followed by `0`, U+FDD0 escaped) as `storedas` rows of its own, where
-  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose; and
-  `itself` of a cast of the text to `VARCHAR` or `CHAR`, or of the raw value to `CHAR`, which `Reading.Parse` reads as
-  the text and the loader never writes. A cast to `CHAR` may cut a string to its length, so its row is a measurement
-  first; until the loader writes one, nothing reads it (DESIGN.md, *Answer roles, pairs and failure, S's (G2, G3, G4)*).
+  `Service.NulEndsWhatReplaceAndContainsRead` and #246 say them in prose. A cast of the text to `VARCHAR` or `CHAR`,
+  or of the raw value to `CHAR`, owes none while the loader writes none: no row names an evaluator for one, so it reads
+  nothing (DESIGN.md, *Which evaluator reads a reading is its rows'*); a cast of the text to an unbounded `VARCHAR` is
+  the text itself to the loader, and one to `CHAR` pads or cuts, so its row is a measurement first.
 - **A box's miss is a cell no rule reads** — *small, G8's remainder.* `Calcite.VariantEqualsOnlyItsOwnBox` says a value
   equals no literal in another box (`CAST(42 AS VARIANT)` no stored 42, which is boxed `BIGINT`), but S's box rules read
   only a match, so a comparison with a literal in another box is no atom, where it is `FALSE` under `=`, `TRUE` under
@@ -4519,14 +4548,16 @@ across documents* and *A join of a container to itself* is the record.
   `LIKE` moves for it: the corpus's patterns beyond one affix, `_ike_`, `_prin_` and `A__B`, run over strings that may
   hold U+0000 or a line terminator and stay in process as at h15, and the two emulator statements in the census that
   hold an affix call and move do so for another conjunct, the call byte-equal.
-- **`Reading.Parse` still picks the evaluator by the reader's spelling** — *medium, after h15.* Both graphs read every
-  reading's rows from one table now (DESIGN.md, *Calcite's readings as rows (G7)*), but which evaluator reads them, the
-  text's, a raw value's, a typed one's or a cast's, is the spelling's, and `EvaluatorOf` and `Kept` fall back to the
-  reading's own evaluator where no alias row names one, a lookup with a default; and `RawText.EqualOn` and `OrderOn`
-  beside a literal that is no string take the coarse answer beside G5's rows. An
-  evaluator that is a function of the rows alone, with the casts owed above as rows, finishes G7. It waits past the
-  switch because the audit's plan puts the rest of G7 there, before 3B closes (§3): which evaluator reads a row is
-  provenance, never an answer, and the switch read the rows as they stand.
+- **The typed and parse evaluators read their type as C#** — *medium, G7's last sites, a bridge until its own pull
+  request, before 3B closes as the audit's plan puts the rest of G7 (§3).* A row names the evaluator that reads a
+  reading's rows, the type it evaluates a value of and the kinds that type holds (DESIGN.md, *Which evaluator reads a
+  reading is its rows'*), but what `Typed` and `NumberCast` do with that type is theirs: which compare doubles, floats
+  or booleans, which `RETURNING` reads an int's box or a long's, which raise over digits, which parse saturates, rounds
+  from a double's whole unit or parses a decimal, and that `BIGINT` reads a timestamp's text; `Rendered` cuts at 2^53,
+  `Window` at 2^52, and `Text.FirstUnit` places every number's rendering by a first unit no row states. Each is the
+  audit's number placement (re-audit 2, P4 and P5): modes as rows the evaluator reads as parameters (`NumberReads`,
+  `FirstUnits`, `Saturates`, `RoundsFrom`), each re-pinned by its measurement, finish G7. Byte-equal where the rows say
+  what the branches do. Until then a row naming `NumberCast` of another target needs its mode first.
 - **No row names a refinement or a band of a service outcome** — *small, the rows' half of F1 and F2.* f12 gave the
   keys the columns (DESIGN.md, *The foundation's rows*): `CosmosOutcome.Band`, the classes `replacement`, `escape`,
   `unpaired` and `lineterm`, and `CosmosFunctionOutcome.Value`, which `REPLACE`'s search and `SUBSTRING`'s length name
@@ -5043,6 +5074,14 @@ across documents* and *A join of a container to itself* is the record.
   the evaluator tosses a coin on — a cast of a raw value or of text to a number, a typed `DECIMAL` — and none is beneath a
   stratum. The pull request's 30 trials meet none (line 2). Modelling those readings in `IrEval`, beside the raw orderings above, would
   measure them.
+- **Source A's evaluator throws on some bundles the loader builds** — *small.* `IrEval` compares no cast of a raw value
+  to `BOOLEAN` with a boolean over a stored number, though `CAST(c."$.category" AS BOOLEAN) = TRUE` loads to that
+  comparison; no raw value, nor its cast, on the left of another reading or a function's value, since it takes the
+  right side as a literal; and no type or presence test over a function's value. Each throws an exception other than
+  `NotSupportedException`, so source A (`RenderingSoundnessTests.Generated`) would fail on such a bundle rather than
+  count it unmeasured. The pull request's run meets none, and judging those statements' forms in process found nothing.
+  Modelling the three in `IrEval`, or raising `NotSupportedException` where it models none, would let the soundness line
+  read them or say that it did not.
 - **The service-backed fixtures name their service** — *small.* A fixture that plans against the account the tests run on
   (the differential, the connection, lookup and self-join tests) names the emulator (`serviceTarget`) wherever the
   endpoint is this machine's, so the emulator legs plan under the emulator's set and the probe account's run under

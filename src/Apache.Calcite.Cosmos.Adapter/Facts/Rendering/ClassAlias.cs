@@ -4,8 +4,8 @@ namespace Apache.Calcite.Cosmos.Facts.Rendering
 {
 
     /// <summary>
-    /// The reading a reading is evaluated as over one class of value (<c>calcitereadas</c>, G7): another a row says it is
-    /// read as, over a class both read alike.
+    /// The reading a reading is evaluated as over one class of value (G7): itself, where a row names its evaluator
+    /// (<c>calciteevaluator</c>), or another a row says it is read as, over a class both read alike (<c>calcitereadas</c>).
     /// </summary>
     /// <param name="Kind">The class of the stored value.</param>
     /// <param name="Reader">The reading it is evaluated as there.</param>

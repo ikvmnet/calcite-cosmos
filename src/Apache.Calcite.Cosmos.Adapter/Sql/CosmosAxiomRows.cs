@@ -237,7 +237,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
 
         /// <summary>Every <c>Calcite</c> row of readings, as the readings vocabulary of either graph reads them (G7).</summary>
         public static CalciteRows ReadCalcite(IEnumerable<CosmosAxiom> axioms) =>
-            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadLikeUnits(axioms), ReadTestKinds(axioms),
+            new(ReadCalciteReadings(axioms), ReadCalciteBands(axioms), ReadCalciteRows(axioms), ReadCalciteReadAs(axioms), ReadCalciteThrough(axioms), ReadCalciteEvaluators(axioms),
+                ReadLikeUnits(axioms), ReadTestKinds(axioms),
                 ReadTestReads(axioms), ReadExactReadings(axioms), ReadBoxes(axioms), ReadSeesThrough(axioms), ReadNullThrough(axioms), ReadComparands(axioms),
                 Metadata.CosmosStrictness.Operators, ReadCasts(axioms), ReadAsOfAPath(axioms), ReadYieldKinds(axioms), ReadYieldReads(axioms), ReadColumns(axioms),
                 CosmosValueClasses.Types, ReadParametersAs(axioms));
@@ -329,6 +330,19 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// <summary>One row per reading a <c>Calcite</c> row says is read as another over each class both read alike (G7), <c>calcitereadas</c>.</summary>
         public static IReadOnlyList<(string Reader, string As)> ReadCalciteReadAs(IEnumerable<CosmosAxiom> axioms) =>
             [.. axioms.SelectMany(axiom => axiom.ReadAs ?? []).Select(read => (read.Reader, read.As)).Distinct()];
+
+        /// <summary>
+        /// One row per evaluator a <c>Calcite</c> row names for a reading, with the SQL type it evaluates a value of and the kinds
+        /// of value Calcite's type system says that type holds (<see cref="Metadata.CosmosRendering.ReadTypeKinds"/>, the one
+        /// reader of those families), citing the row (G7), <c>calciteevaluator</c>: which evaluator reads the reading's rows, and
+        /// the rows that say so. It merges no rows and chooses nothing.
+        /// </summary>
+        public static IReadOnlyList<(string Reader, ReadingEvaluator Evaluator, string Row)> ReadCalciteEvaluators(IEnumerable<CosmosAxiom> axioms)
+        {
+            var kinds = Metadata.CosmosRendering.ReadTypeKinds();
+            return [.. axioms.SelectMany(axiom => (axiom.Evaluators ?? [])
+                .Select(e => (e.Reader, new ReadingEvaluator(e.Evaluator, e.Type, ValueSet.From(kinds.Where(t => t.Type == e.Type).Select(t => t.Kind))), axiom.Id))).Distinct()];
+        }
 
         /// <summary>One row per test of a reading a <c>Calcite</c> row says is its operand's (G7), <c>calcitethrough</c>.</summary>
         public static IReadOnlyList<(string Reader, CosmosServiceTest Test, string Operand)> ReadCalciteThrough(IEnumerable<CosmosAxiom> axioms) =>
