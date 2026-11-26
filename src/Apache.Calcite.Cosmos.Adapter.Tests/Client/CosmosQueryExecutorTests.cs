@@ -1233,8 +1233,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// span it produced.
         /// </summary>
         /// <remarks>
-        /// The body runs under an activity of its own, whose trace the adapter's span joins, so that a span
-        /// stopped meanwhile by a class running beside this one is not taken for it.
+        /// The body runs under an activity of its own, whose trace the adapter's span joins, so that only a
+        /// span of the body's statement is taken, whatever else stops meanwhile on another flow. The assembly
+        /// runs one test at a time (TestInitialization), so nothing does today; this keeps the reading right
+        /// if that changes.
         /// </remarks>
         static async Task<Activity?> Trace(Func<Task> body)
         {
