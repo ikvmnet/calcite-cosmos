@@ -4255,16 +4255,16 @@ across documents* and *A join of a container to itself* is the record.
   case fold of one text column of the view beside `t."a" = 'k'` on another select the column under `WHERE (c.a = @p0)`
   and fail, through a connection, over `{"a":"k","b":"q","n":1.5}`, which Calcite drops on the `LIKE`s. A `VARCHAR
   ARRAY` holding a number is refused there even where the filter reads it, which Calcite reads without refusing: over a
-  view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`, `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'`
-  selects the array and fails over `[5]`, where Calcite answers. The residual projection neither moves such a column
-  beneath its filter nor carries a path the filter reads by such a reading; but the view's own shape puts the
-  projection there and the converter's width prefers it to the item whole. Which plan the cost model takes over those
-  pairs is not the split's. Planned without the trimmer, a member of a weakening that a filter beneath or the
-  declaration applies is not pushed (`CosmosFilterSplitRule.Admitted`), and the half left can be the one the transpose
-  writes beneath the view's projection for the pair over it, so the two are one node and the cost model takes the
-  narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'` projecting the name as `nm` and
-  `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE FALSE END` selects `n` under
-  Production, beneath `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))`, and fails over
+  view selecting `JSON_QUERY(c."DOC", '$.x' RETURNING VARCHAR ARRAY)`, `t."a"[1] = 'a' OR INITCAP(…) = 'Steel'`,
+  planned without a connection, selects the array and fails over `[5]`, where Calcite answers. The residual projection
+  neither moves such a column beneath its filter nor carries a path the filter reads by such a reading; but the view's
+  own shape puts the projection there and the converter's width prefers it to the item whole. Which plan the cost
+  model takes over those pairs is not the split's. Planned without the trimmer, a member of a weakening that a filter
+  beneath or the declaration applies is not pushed (`CosmosFilterSplitRule.Admitted`), and the half left can be the
+  one the transpose writes beneath the view's projection for the pair over it, so the two are one node and the cost
+  model takes the narrower projection: over a view filtered on `JSON_VALUE(c."DOC", '$.name') > 'R'` projecting the
+  name as `nm` and `n` `RETURNING INTEGER`, `CASE WHEN INITCAP(t."nm") = 'Steel' THEN t."n" > 2 ELSE FALSE END`
+  selects `n` under Production, beneath `WHERE (((c.name > @p0) OR IS_BOOL(c.name)) AND (c.n > @p1))`, and fails over
   `{"name":"S_teel","n":3000000000}` and `{"name":"Zinc","n":2.5}`, which Calcite drops on the case fold, and so,
   under both targets, does `INITCAP(t."id")` over the view unfiltered, whose definedness test the declaration makes
   true; pushed again, as on `main`, that test kept the half apart and the document was selected. Through a connection
