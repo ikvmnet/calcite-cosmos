@@ -3136,8 +3136,9 @@ across documents* and *A join of a container to itself* is the record.
   predicates, or the residual kept beside it; it moves plans of every such stack, and is its own change. Chapter 14.2
   and Chapter 23 record it.
 - **A split over a computed projection keeps what Calcite reads otherwise** — *medium, a failure where Calcite answers,
-  and an answer where it fails; older than "fail like Calcite", on `main`, and over more views planned without a
-  connection since the split weakens over a projection; left for a change of its own.*
+  and an answer where it fails; older than "fail like Calcite", on `main`; over more views planned without a connection
+  since the split weakens over a projection, and through the connection over a declared container since the wire weighs
+  the document under any name; left for a change of its own.*
   Measured on both emulators under both targets over documents of kind `A` holding a `body` of `"abc"`, declared and
   not unless said. Over a projection whose `z` is the constant `'A'` and `bi` the cast of `body` to `INTEGER`,
   `x.k = 'A' AND (x.z = 'A' OR x.bi = 1)` (p1) sends `kind = 'A'` and keeps the `OR` above the pushed projection, over
