@@ -11912,9 +11912,9 @@ narrow on purpose, and each limit was measured:
   `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`
   says which typed readings can refuse, beside the reader's switch, and a test holds the two together.
   A projection holding one stays above, and the statement selects the document. Nor does a path the
-  filter reads by such a reading go down for it, since Calcite computes a `CASE` branch, a later
-  operand of `COALESCE` and the right side of an `AND` or an `OR` only for the rows that reach it:
-  carried, the reading failed the statement over a row whose branch Calcite never takes
+  filter reads by such a reading go down for it, since Calcite computes a `CASE` branch, and so a
+  later operand of `COALESCE`, only for the rows that reach it: carried, the reading failed the
+  statement over a row whose branch Calcite never takes
   (`CosmosConnectionPlanningTests.AReadingThatCanRefuseUnderABranchCalciteDoesNotTakeAnswersAsCalcite`).
   The filter reads such a path from the document, and the rule moves nothing unless the projection
   selects the document anyway; the filter's other paths still go down. Asked by type alone, so a path

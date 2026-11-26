@@ -54,10 +54,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// yardstick found it on a service that prints a stored 2^63 as <c>9.223372036854776E+18</c>, under
     /// <c>LOWER</c> over a string nothing proves ASCII. So a projection holding such a reading stays
     /// above, and the statement selects the document as it did before #210. Nor is a path the filter
-    /// reads by such a reading carried for it, since Calcite computes a <c>CASE</c> branch, a later
-    /// operand of <c>COALESCE</c> and the right side of an <c>AND</c> or an <c>OR</c> only for the rows
-    /// that reach it: the filter reads that path from the document, where Calcite does, and the rule
-    /// moves nothing unless the projection selects the document anyway.
+    /// reads by such a reading carried for it, since Calcite computes a <c>CASE</c> branch, and so a
+    /// later operand of <c>COALESCE</c>, only for the rows that reach it: the filter reads that path
+    /// from the document, where Calcite does, and the rule moves nothing unless the projection selects
+    /// the document anyway.
     /// </para>
     /// <para>
     /// <b>Why it terminates.</b> The filter it produces sits over a projection, and a subtree that has
