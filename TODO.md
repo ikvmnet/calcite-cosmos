@@ -3175,8 +3175,14 @@ across documents* and *A join of a container to itself* is the record.
   where Calcite's planner takes that transposition, and the test asks such a part only where Calcite reads the whole, or
   a rest, as false: for example `kind = 'A' AND NOT (u.t IS NULL OR CAST(body AS INTEGER) <> 7)` (n1) fails on the
   `body` `"q"` of a document with no element where Calcite without the transposition answers, and a side the
-  transposition writes as keeping nothing answers no rows where it fails (u3b, below). Where it is not taken, the
-  condition is evaluated above the correlate as Calcite without the transposition evaluates it: for example `kind = 'B'
+  transposition writes as keeping nothing answers no rows where it fails (u3b, below). An `EXISTS` Calcite writes as a
+  correlate is one too, measured offline without a connection: `CASE WHEN INITCAP(JSON_VALUE(t."DOC", '$.name')) =
+  'Steel' THEN MOD(JSON_VALUE(t."DOC", '$.n' RETURNING INTEGER), 2) = 1 ELSE … END AND EXISTS (SELECT 1 FROM products
+  AS d WHERE JSON_VALUE(d."DOC", '$.k') = JSON_VALUE(t."DOC", '$.k') AND …)` moves the `CASE` into the correlate's left
+  and fails on an `n` of `"x"` where Calcite without the transposition answers no row, over the container as on `main`,
+  and over a view carrying the document beside a computed column now that the residual projection carries no reading
+  that can refuse; through the README's connection its Calcite fails alike. Where it is not taken, the condition is
+  evaluated above the correlate as Calcite without the transposition evaluates it: for example `kind = 'B'
   AND ((kind = 'A' AND CAST(u.t AS INTEGER) = 1) OR (kind = 'B' AND u.t = 'x'))` (a1) answers where Calcite with
   `FILTER_CORRELATE` fails on `"x"`. A sub-query's own `WHERE` over a traversal is not transposed where a `WHERE` above
   it would move a part and is not transposed: for example, where nothing declares `n`, so that the `RETURNING` of `n`
