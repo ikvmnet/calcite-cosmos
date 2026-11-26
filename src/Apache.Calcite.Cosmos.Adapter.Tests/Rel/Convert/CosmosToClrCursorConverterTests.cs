@@ -1988,6 +1988,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             kept.Should().Equal(["x2", "x3", "x4", "x5", "x6"], "Calcite casts a key that is no string to null: {0}", string.Join(" ;; ", KeyDocuments));
         }
 
+        /// <summary>
+        /// The partition key's column cast to text, selected or grouped on, answers as Calcite does, bare and as a host
+        /// plans: Calcite casts a number, a boolean and a null held in the promoted column to null.
+        /// </summary>
+        /// <remarks>
+        /// The translator wrote the cast as the raw value read as its text, so the select list read <c>5</c> or
+        /// <c>true</c> where Calcite reads null, and the grouping grouped on that. The cast is computed in process now
+        /// (<c>CosmosRexTranslator.TryRenderedTextOperand</c>). The stub serves each document, one at a time, as the
+        /// statement's select list selects it.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, SelectedKeyCast, "x1|bikes x2|null x3|null x4|null x5|null x6|null x7|null")]
+        [InlineData(true, SelectedKeyCast, "x1|bikes x2|null x3|null x4|null x5|null x6|null x7|null")]
+        [InlineData(false, GroupedKeyCast, "bikes|1 null|1 null|1 null|1 null|1 null|1 null|1")]
+        [InlineData(true, GroupedKeyCast, "bikes|1 null|1 null|1 null|1 null|1 null|1 null|1")]
+        public async Task ShouldSelectOrGroupAPromotedColumnsCastToTextAsCalciteCastsIt(bool trimmed, string sql, string rows)
+        {
+            var read = new List<string>();
+            foreach (var document in KeyDocuments)
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                read.AddRange((await Execute(best)).Select(Row));
+            }
+
+            read.Should().Equal(rows.Split(' '), "Calcite casts a key that is no string to null: {0}", string.Join(" ;; ", KeyDocuments));
+        }
+
+        /// <summary>The partition key's column cast to text, selected beside the id.</summary>
+        const string SelectedKeyCast = "SELECT c.\"id\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c";
+
+        /// <summary>The partition key's column cast to text, grouped on and counted.</summary>
+        const string GroupedKeyCast = "SELECT CAST(c.\"$.category\" AS VARCHAR) AS \"e\", COUNT(*) AS \"n\" FROM products AS c GROUP BY CAST(c.\"$.category\" AS VARCHAR)";
+
         /// <summary>The case fold of a view's name a condition keeps in process, beside a condition over the key's column.</summary>
         const string StoredNameFold = "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
 
