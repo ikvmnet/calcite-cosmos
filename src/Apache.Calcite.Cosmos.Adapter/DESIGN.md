@@ -11881,11 +11881,11 @@ implementation reads the row by (`CosmosImplementor.TryBindOutput`), not off the
 document passed straight through a projection weighs as the document under any name, as `$f1` where
 `CosmosProjectSplitRule` names it, and a computed column called `DOC` weighs as one value. Weighed by
 name, a plan reading the document whole over a view carrying it beside a computed column tied with
-the one reading the texts a condition kept in process needs, or was narrower than one reading two,
+the one reading the path a condition kept in process needs, or was narrower than one reading two,
 and was taken
 (`CosmosConnectionPlanningTests.AViewCarryingTheDocumentBesideAComputedColumnReadsTheTextsAConditionKeptInProcessNeeds`).
 In the plan digests it moves three lines on either target at both sizes, `Project.DeepPaths` and
-`differential` 53 and 54, each with no `WHERE`, from the document under `$f0` or `$f3` beside guarded
+`differential` 53 and 54, each with no `WHERE`, from the document under `$f0` or `$f3` beside other
 values to `SELECT VALUE c`, Calcite computing the values over the document; planned as a host plans,
 `Project.DeepPaths` alone.
 
