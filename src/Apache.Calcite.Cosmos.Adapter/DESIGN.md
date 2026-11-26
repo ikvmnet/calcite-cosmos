@@ -1215,9 +1215,9 @@ applied (`OracleLicence.Applied`) assumes its row's conjuncts however the facts 
 projection among them, on another ground: a wrong answer there only declines a push, the conjunct the weakening is drawn
 from staying above to be rechecked, and gated on exactness it sent a test a coarse conjunct implies in 20 of 64
 statements measured, no answer changed. The translator's later rounds, which write a parameter or an opaque comparison
-from the chain node, rest on it too, a bridge that 3B ends for the parameter comparisons it moves into S's rounds, and
-the translator's removal (h42) for the rest. What the audit leaves open — a reading added later whose `Kept` is too
-narrow, and the raw value read through `CHAR`, which no list names — is `TODO.md`'s.
+from the chain node, rest on that audit too, a bridge that 3B ends for the parameter comparisons it moves into S's
+rounds, and the translator's removal (h42) for the rest. What the audit leaves open — a reading added later whose `Kept`
+is too narrow, and the raw value read through `CHAR`, which no list names — is `TODO.md`'s.
 
 **An order the service computes is read through `CosmosServiceOrder` under the consumer's own row, and nowhere
 else.** The table gains no row for it: a sort and an extreme ask under the last stratum (L1), an ordering comparison
