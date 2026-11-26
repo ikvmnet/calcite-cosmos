@@ -1144,6 +1144,56 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does: {0}", sql);
         }
 
+        /// <summary>
+        /// A view carrying the document beside a column Calcite computes, beneath a condition kept in process over the
+        /// document, reads through this connection the id and the texts the statement needs, as <c>main</c> does, not the
+        /// document, on either target, and answers as Calcite's own does over the same documents: the wire weighs the
+        /// column the view's projection passes the document through as the document, whatever the column is called.
+        /// </summary>
+        /// <remarks>
+        /// <c>CosmosToClrCursorConverter</c> weighed the document by its column's name, and a projection the split pushes
+        /// names its columns <c>$f0</c>, <c>$f1</c>: the document under <c>$f1</c> counted as one value, so the plan
+        /// reading it whole tied with the one reading the path, or was narrower than the one reading two, and was taken,
+        /// sending <c>SELECT VALUE { "$f0": c.id, "$f1": c, … }</c> under the same <c>WHERE</c>. It reads the column's
+        /// reading off what the projection binds now. Calcite's own answer is the same statement over the documents written
+        /// as a <c>VALUES</c> list, which no rule of the adapter reads.
+        /// </remarks>
+        [Theory]
+        [InlineData(DocumentBesideAComputedColumn + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            """SELECT VALUE { "$f0": c.id, "$f1": (IS_PRIMITIVE(c.n) ? c.n : null), "$f2": (IS_PRIMITIVE(c.name) ? c.name : null) } FROM items c WHERE IS_DEFINED(c.name)""",
+            CosmosServiceTarget.Azure)]
+        [InlineData(DocumentBesideAComputedColumn + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            """SELECT VALUE { "$f0": c.id, "$f1": (IS_PRIMITIVE(c.n) ? c.n : null), "$f2": (IS_PRIMITIVE(c.name) ? c.name : null) } FROM items c WHERE IS_DEFINED(c.name)""",
+            CosmosServiceTarget.Emulator)]
+        [InlineData(DocumentBesideAComputedColumn + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND UPPER(JSON_VALUE(t.\"DOC\", '$.region')) = 'NORTH'",
+            """SELECT VALUE { "$f0": c.id, "$f1": (IS_PRIMITIVE(c.n) ? c.n : null), "$f2": (IS_PRIMITIVE(c.name) ? c.name : null), "$f3": (IS_PRIMITIVE(c.region) ? c.region : null) } FROM items c WHERE (IS_DEFINED(c.name) AND IS_DEFINED(c.region))""",
+            CosmosServiceTarget.Azure)]
+        [InlineData("SELECT t.\"id\", t.\"ci\" FROM (SELECT c.\"id\", c.\"DOC\" AS \"D\", CAST(JSON_VALUE(c.\"DOC\", '$.n') AS INTEGER) AS \"ci\" FROM items AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"D\", '$.name')) = 'Steel'",
+            """SELECT VALUE { "$f0": c.id, "$f1": (IS_PRIMITIVE(c.n) ? c.n : null), "$f2": (IS_PRIMITIVE(c.name) ? c.name : null) } FROM items c WHERE IS_DEFINED(c.name)""",
+            CosmosServiceTarget.Emulator)]
+        public void AViewCarryingTheDocumentBesideAComputedColumnReadsTheTextsAConditionKeptInProcessNeeds(string sql, string sends, CosmosServiceTarget target)
+        {
+            Sends(sql, declared: false, Schema, target, null).Should().Be(sends, "the document under another name is weighed as the document");
+
+            string[] documents =
+            [
+                """{ "id": "a", "name": "steel", "n": "5", "region": "north" }""",
+                """{ "id": "b", "name": "zinc", "n": "7", "region": "north" }""",
+                """{ "id": "c", "name": "Steel", "n": "1", "region": "south" }""",
+                """{ "id": "d", "n": "2", "region": "north" }""",
+                """{ "id": "e", "name": "STEEL", "region": "North" }""",
+            ];
+
+            var calcite = Answer(sql.Replace(" items AS c", $" (VALUES {string.Join(", ", documents.Select(ValuesRow))}) AS c(\"id\", \"DOC\")"), new NoExecutor());
+            calcite.Should().NotBeEmpty("the documents are chosen so that the condition keeps some");
+
+            Answer(sql, new ServiceExecutor(documents, target), target).Should().BeEquivalentTo(calcite, "the adapter answers as Calcite does: {0}", sql);
+        }
+
+        /// <summary>A view carrying the id, the document and a column Calcite computes, beneath the condition that follows.</summary>
+        const string DocumentBesideAComputedColumn =
+            "SELECT t.\"id\", t.\"ci\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(JSON_VALUE(c.\"DOC\", '$.n') AS INTEGER) AS \"ci\" FROM items AS c) AS t WHERE ";
+
         /// <summary>A document as a row of a <c>VALUES</c> list: its id and its text.</summary>
         static string ValuesRow(string document)
         {
