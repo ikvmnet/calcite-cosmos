@@ -1232,15 +1232,25 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// Runs a statement with a listener attached to the adapter's activity source, returning the
         /// span it produced.
         /// </summary>
+        /// <remarks>
+        /// The body runs under an activity of its own, whose trace the adapter's span joins, so that a span
+        /// stopped meanwhile by a class running beside this one is not taken for it.
+        /// </remarks>
         static async Task<Activity?> Trace(Func<Task> body)
         {
             Activity? captured = null;
+
+            using var root = new Activity(nameof(Trace)).Start();
 
             using var listener = new ActivityListener
             {
                 ShouldListenTo = source => source.Name == CosmosInstrumentation.Name,
                 Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-                ActivityStopped = activity => captured = activity,
+                ActivityStopped = activity =>
+                {
+                    if (activity.TraceId == root.TraceId)
+                        captured = activity;
+                },
             };
 
             ActivitySource.AddActivityListener(listener);
