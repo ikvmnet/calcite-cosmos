@@ -98,7 +98,7 @@ concrete type is learned per row. In practice:
   path instead: `UPPER(JSON_VALUE(c."DOC", '$.category'))` pushes where the schema declares the path a
   string and its characters are proved (Appendix B.2).
 - **Selected or grouped as text, it is computed in process.** `CAST(c."$.category" AS VARCHAR)` is null
-  for a number or a boolean, as Calcite casts them, which the service has no form for, so in a select
+  for a number or a boolean, as Calcite casts them, which the adapter does not yet send, so in a select
   list or a `GROUP BY` the column is read as it is and cast in process, and a grouping on the cast groups
   there. Select or group the path to have the service read it: `JSON_VALUE(c."DOC", '$.category')`.
 - **To read a typed value**, select the path rather than the column: `JSON_VALUE(c."DOC",
