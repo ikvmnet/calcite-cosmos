@@ -1286,10 +1286,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
         /// caller who never reads it.
         /// </para>
         /// <para>
-        /// Inconclusive where the service returns nothing to the statement asked by the SDK alone, as the
-        /// emulator's releases before EN20261123 do, so that an adapter that does not ask or does not carry
-        /// the report fails rather than skips. EN20261123 returns a report for every statement, naming no
-        /// index in any.
+        /// Asked, the span carries what the service sends the statement asked by the SDK alone, a report or
+        /// none: a report the adapter rewrote or made up fails on every release, and one it did not ask for
+        /// or did not carry wherever the service sends one. Inconclusive after that where the service sends
+        /// none, as the emulator's releases before EN20261123 do. EN20261123 returns a report for every
+        /// statement, naming no index in any.
         /// </para>
         /// </remarks>
         [Fact]
@@ -1303,16 +1304,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
             (await Trace(() => Run(indexMetrics: false)))!.GetTagItem("cosmos.index_metrics").Should().BeNull();
 
-            if (await ServiceIndexMetrics(Query(Builder())) is not string sent)
-            {
-                Assert.Skip("This account returns no index metrics to a statement that asks for them.");
-                return;
-            }
+            var sent = await ServiceIndexMetrics(Query(Builder()));
 
-            var asked = await Trace(() => Run(indexMetrics: true));
+            (await Trace(() => Run(indexMetrics: true)))!.GetTagItem("cosmos.index_metrics")
+                .Should().Be(sent, "the span carries what the service sends the statement asked by the SDK alone, a report or none");
 
-            asked!.GetTagItem("cosmos.index_metrics").Should().BeOfType<string>()
-                .Which.Should().NotBeEmpty("the service returns the statement asked alone a report: " + sent);
+            if (sent is null)
+                Assert.Skip("This account returns no index metrics to a statement that asks for them, and the span carried none.");
         }
 
         // ── What the lookup join's restriction costs ──────────────────────────────
