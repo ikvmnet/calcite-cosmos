@@ -39,11 +39,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
         /// </summary>
         public static IEnumerable<J.Obj> Sample(RenderingMemo.Claimed claim, int most = Most)
         {
-            var literals = claim.Conjuncts.SelectMany(Literals).Concat(claim.Form.Literals).Distinct().ToList();
-            var typed = claim.Conjuncts.Any(c => c.ToString()!.Contains("typed(", StringComparison.Ordinal) || c.ToString()!.Contains("cast(", StringComparison.Ordinal));
-            var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
-            var values = paths.Select(p => Values(literals, typed).Concat((claim.Imports[p].Values.Values ?? ValueSet<string>.Empty).Select(PathCellTests.Decode))
-                .Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList();
+            var (paths, values) = Drawn(claim);
 
             // A claim reading no path, a constant's, reads every document alike: the empty one measures it.
             if (paths.Count == 0)
@@ -66,6 +62,42 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 if (paths.All(p => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), CosmosEval.At(document, p))) && seen.Add(Documents.Json(document)))
                     yield return document;
             }
+        }
+
+        /// <summary>
+        /// Each value source A draws for a place, set alone beside the others at their first: a disjunct over one place is
+        /// told apart, which source A's mixing draws past its cap only by chance. For each path in
+        /// <see cref="Sample"/>'s order, and each value it draws there, the document holding that value at the path and every
+        /// other path at the first value its import admits, which is absence wherever absence is admitted; one an import does
+        /// not admit, or one already yielded, is left out.
+        /// </summary>
+        public static IEnumerable<J.Obj> Apart(RenderingMemo.Claimed claim)
+        {
+            var (paths, values) = Drawn(claim);
+            if (paths.Count == 0 || values.Any(v => v.Count == 0))
+                yield break;
+
+            var seen = new HashSet<string>();
+            for (var i = 0; i < paths.Count; i++)
+                foreach (var value in values[i])
+                {
+                    var document = Document(paths, [.. values.Select((v, k) => k == i ? value : v[0])]);
+                    if (paths.All(p => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), CosmosEval.At(document, p))) && seen.Add(Documents.Json(document)))
+                        yield return document;
+                }
+        }
+
+        /// <summary>
+        /// The paths a claim imported, shortest first, and the values source A draws at each that its import admits: those
+        /// the import names, the literals the claim compares with and their neighbours, and every kind (<see cref="Values"/>).
+        /// </summary>
+        static (List<string> Paths, List<List<J?>> Values) Drawn(RenderingMemo.Claimed claim)
+        {
+            var literals = claim.Conjuncts.SelectMany(Literals).Concat(claim.Form.Literals).Distinct().ToList();
+            var typed = claim.Conjuncts.Any(c => c.ToString()!.Contains("typed(", StringComparison.Ordinal) || c.ToString()!.Contains("cast(", StringComparison.Ordinal));
+            var paths = claim.Imports.Keys.OrderBy(p => p.Length).ThenBy(p => p, StringComparer.Ordinal).ToList();
+            return (paths, paths.Select(p => Values(literals, typed).Concat((claim.Imports[p].Values.Values ?? ValueSet<string>.Empty).Select(PathCellTests.Decode))
+                .Where(v => PathCellTests.Admitted((p, claim.Imports[p].Values, claim.Imports[p].Chars), v)).DistinctBy(Show).ToList()).ToList());
         }
 
         static IEnumerable<J?> Values(IReadOnlyList<string> literals, bool typed)

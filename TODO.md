@@ -4760,27 +4760,30 @@ across documents* and *A join of a container to itself* is the record.
 - **The in-process judge of an opaque weakening fills typed fields alone** — *done at h15.* `CalciteInProcess` fills a
   field read as text or JSON, a view's column among them, as the reader renders it, so line 1c judges those conjuncts
   too: none is left out at the pull request's size.
-- **Line 13 judges four of the gate's weakenings on nothing** — *small, the round trip's.* At `COSMOS_PARTITION_GATE=1`
-  the round trip read 3,109 weakenings at h15, and of the 343 sent as S's form of what Calcite reads of them it judged
-  all but seventeen, from partitions 1909 (six statements), 2395, 2396, 2688 and 2689 under both sets and 2411, 2419 and
-  2420 under `Production`. Three gaps, each the judge's: the conjunct of 1909 holds `tags[0]`, opaque, and Calcite in
-  process returns no compiled conjunct for it (line 1c leaves 30 of its 407 opaque weakenings out at the gate's size so,
-  none at the pull request's); the conjuncts of 2395, 2396, 2688 and 2689 hold a numeric cast of a `JSON_VALUE` or
-  arithmetic over one, and no document source A draws is one IrEval answers in every mode; and over 2411, 2419 and 2420,
-  a concatenation over `id`, S proves under the weakening's own bundle no exact form of what the built Rex reads, though
-  the plan sends one. Each was read by hand: what is sent keeps every row its conjunct keeps
-  (`reports/stage3-3A/h15/line13-gate.txt`), and the partition gate runs every one of those statements on both
-  emulators. Since h15b it reads 3,691 and of its 343 judges all but four, under `Production`: 2411, 2419 and 2420, and
-  2410, whose weakening sends the category's test since h15b beside the same concatenation
-  (`reports/stage3-3A/h15b/line13-gate.txt`). 1909's six were read there as tests over an element's raw value, which the
-  filter beneath declined; since that raw value is measured as a path's it reads 3,561, none over the element reading,
-  and fails on the same four. It reads 130 fewer, 198 weakenings gone and 68 new, each in a statement that reads an
-  element: S now sends whole a conjunct that tests an element beside other tests, which it had weakened by dropping the
-  element's tests, and under `Emulator` weakens one that orders an element against a string, which it had kept in
-  process (DESIGN.md, *An element's raw value is a path's*). 2395, 2396, 2688 and 2689 are judged, each holding a type
-  test the builder now writes over the accessor re-typed `ANY`. Line 13's leg is the pull request's size, where it
-  passes. The fix is to judge in process any conjunct IrEval measures on no document, and to claim as the filter beneath
-  does.
+- **Past source A's cap no judge draws two places set together beside the others absent but by chance, and lines 1, 2
+  and 1c none apart** — *small, source A's.* Source A draws every combination of the values it draws for a bundle's
+  places where there are no more than its cap, and otherwise the *i*-th value of each place beside the *i*-th of every
+  other, then draws at random. Line 13 adds each value set alone beside the others at their first
+  (`RenderingDocumentSampler.Apart`); lines 1 and 2 (`NoGeneratedFormHasAWitness`) and 1c draw no document apart. So a
+  weakening can pass that drops a row Calcite keeps: at the gate's size, weakenings planted with `G13`'s dropped
+  disjunct pass line 13 though a wider draw (512 of source A's documents, each value apart and each pair of places)
+  finds such a row, partition 147's `{"category":"Road Runner","name":"Sprint\uD83D\uDE00","price":2}` and 267's
+  `{"metadata":true,"price":"30"}`. Nor does line 13's in-process claim set a binding field a conjunct reads only
+  through an opaque term (`c.id` in partition 416), so such a conjunct is judged in process on no document, and one
+  reaching line 13's witness fails. Drawing pairs, or apart in lines 1, 2 and 1c, multiplies their documents by the
+  places a bundle reads, which wants measuring.
+- **`Tally.Judge` lets one target's missing answer hide another target's dropped row** — *small.*
+  `RenderingSoundnessTests.Tally.Judge` reads the targets a set serves in turn and counts a document unmeasured at the
+  first that leaves it unanswered, before it reads the next. `Portable` serves the emulator and then the probe account,
+  so a row Calcite keeps that the probe account drops is no witness wherever the emulator leaves the document
+  unanswered: a string ordered against a literal holding U+0000, which the probe account answers on `{"category":"b"}`
+  and the emulator does not. Every judge that calls it over `Portable` shares this, lines 1 and 2
+  (`NoGeneratedFormHasAWitness`), the reported proofs (`NoReportedProofHasAWitness`), source C, population D and the
+  gate faults among them. Line 13 calls it only over sets serving one target, and its in-process judge and line 1c judge
+  each document through `RenderingRexBuilderTests.JudgedInProcess`, where a row one target drops is a witness whatever
+  another answers. With every target read before a document is counted unmeasured, lines 1 and 2 and the reported proofs
+  print the same tallies at the pull request's size, so the order hides no witness there today; the others were not
+  measured.
 - **The rewrite test judges a lowering, never a deletion** — *small.* Line 33 holds S's best for each lowered conjunct to
   Calcite's own evaluation of the original, opaque or not; a conjunct the rewrite deleted as implied by the declaration
   is unpaired and counted, and that deletion is held by nothing in S until Stage 3 makes the lowering templates.

@@ -10321,23 +10321,22 @@ answer of it to part from, and neither graph reads it as a place.
 
 **Line 13 is the printer's round trip.** `RoundTrip` takes the printer in place of the translator: each pushed
 weakening's Rex is read back by the loader and printed as the filter beneath prints it, and must be the form, or S's
-best of what was read, which the conjunct implies: proven by the check, or, where claim mode leaves it unproven (a
-junction of two atoms of one path, a junction beside an opaque term), kept on every document source A draws from the
-weakening's bundle that the conjunct keeps, judged by Calcite in process where the conjunct holds an opaque term, as
-line 1c judges one. Of the 915 weakenings of the pull request's run under the asserted sets, 766 print and read back as
-themselves and 78 are sent as S's form of what Calcite reads of them; 20 of the 178 with a `CASE` are declined beneath,
-S proving no pair the gate holds implied there (`TODO.md`), and the split rule pushes only what the filter beneath
-admits of each (*Site W pushes S's weakening*); 17 holding a test over a declared field are not built, the test's body
-raising over the field; and 34 testing an element are read beneath as opaque, the translator's. At the gate's size it
-reads 3,109: 2,604 read back as themselves, 343 sent as S's form of the reading, 425 with a `CASE` (the same 20
-declined), 17 over a declared field and 108 testing an element; of the 343 it judges seventeen on nothing, as Calcite
-in process compiles no conjunct for one statement, IrEval answers no document drawn for four, and S proves no exact
-form under the bundle alone for three that concatenate over `id`. Each was read by hand and keeps its conjunct's rows,
-and the partition gate runs them. Since h15b the builder writes a field's test over the path's accessor re-typed `ANY`,
-and until an element's raw value was measured as a path's the filter beneath read an element's as the element reading
-and declined it (*An element's raw value is a path's*); what line 13 read from h15b is h15b's, four of the gate's judged
-on nothing (`TODO.md`, *Line 13 judges four of the gate's weakenings on nothing*; *Elements, forms apart and the
-emulator's `LIKE` (h15b)*).
+best of what was read, which the conjunct implies. Every question it asks S is imported as the filter beneath's oracle
+imports it: each place the question reads, a path read only inside a call among them, and each computed place's
+characters, each as the weakening's bundle held it. Over the paths alone, with no computed place's characters, S proves
+nothing exact of a comparison over `CONCAT(c.id, '!')`, which the filter beneath proves and sends. Where S proves no
+implication, documents judge it: source A's, drawn from the weakening's bundle and for the form sent (`DrawnFor`), mixed
+and each value set alone beside the others at their first. IrEval judges each where it models every reading, and Calcite
+in process each drawn for the form wherever the conjunct compiles alone through its binding. A document counts only
+where every target the set serves answers the form, its computed places read as the service evaluates them, but a row
+Calcite keeps in process that one target drops is a witness whatever another answers. Either evaluator's witness fails
+the weakening, and so does finding no document that keeps a row its conjunct keeps, since an implication fails on no
+other; for a conjunct holding an opaque term that row must be Calcite's in process, since IrEval answers one only where
+the opaque term does not decide. Line 1c reads computed places and counts answered documents the same way. At the pull
+request's size the round trip reads 996 weakenings: 887 back as themselves, 78 sent as S's form, 20 declined beneath and
+11 testing a path over a field or a call, not pushed. At the gate's size it reads 3,275: 2,911, 333, the same 20 and 11.
+At either size the witness is reached by two, partitions 328 under each set, which both evaluators judge without a
+witness; every other is decided before any document is drawn.
 
 **What the switch moved is listed.** At the gate's size 1,208 of the 3,492 statements plan otherwise than at the raises
 step under `Production` and 1,101 under `Emulator` (`WriteDigests`, net10.0 and net8.0 byte-equal). Each moved line is
@@ -10477,8 +10476,7 @@ with the field's test it needed. TLP passes on both emulators at both sizes, and
 size on EN20261019, which fails the five statements over `v` it failed at h15 (`TODO.md`); the differential class and
 C6 pass. Line 13's leg passes over the pull request's 1,076 weakenings: 918 read back as themselves, 86 sent as S's
 form, 180 with a `CASE` (20 declined beneath), 17 not pushed and 35 over an element's raw value declined beneath, which
-the pull request after 3A gave back (*An element's raw value is a path's*). At the gate's size it reads 3,691 and
-judges four on nothing (`TODO.md`, *Line 13 judges four of the gate's weakenings on nothing*).
+the pull request after 3A gave back (*An element's raw value is a path's*). At the gate's size it reads 3,691.
 
 ### The deletions (h16)
 
@@ -11297,16 +11295,15 @@ S's spelling, an element's presence beside a branch no row reaches.
 the probe 13 to 13, and under `Emulator` 93, 905 to 915, 896 to 912 and 13; at the gate's size the partitions 5,066 to
 5,145 and 4,265 to 4,307. Line 13 at the pull request's size reads 1,066 weakenings, 951 back as themselves and 78 as
 S's form, 180 with a `CASE` (20 declined beneath), 17 not pushed and none over the element reading, where 13fd800 read
-35 there; at the gate's size it reads 3,561, none over the element reading where 13fd800 read 112, and fails on the four
-concatenations over `id` it failed on before (`TODO.md`, *Line 13 judges four of the gate's weakenings on nothing*). It
-reads fewer because S sends more conjuncts as they stand, each in a statement that reads an element. A conjunct testing
-an element's presence or kind beside other tests, which 13fd800's S weakened by dropping the element's tests, is sent
-whole and leaves no weakening to check: 60 fewer at the pull request's size, 30 under each set (partitions 261, 262, 274
-and 489 and differential 356, six statements each), and 198 at the gate's. Under `Emulator` a conjunct ordering an
-element against a string, alone or beside other tests, which 13fd800's S kept in process whole, is weakened now by the
-element's type test, where `Production` sends it exactly: 50 more at the pull request's size, all but one under
-`Emulator` (differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. Line 1c at
-the gate's size judges 498 opaque weakenings over 26,067 documents and loses no row.
+35 there; at the gate's size it reads 3,561, none over the element reading where 13fd800 read 112. It reads fewer
+because S sends more conjuncts as they stand, each in a statement that reads an element. A conjunct testing an element's
+presence or kind beside other tests, which 13fd800's S weakened by dropping the element's tests, is sent whole and
+leaves no weakening to check: 60 fewer at the pull request's size, 30 under each set (partitions 261, 262, 274 and 489
+and differential 356, six statements each), and 198 at the gate's. Under `Emulator` a conjunct ordering an element
+against a string, alone or beside other tests, which 13fd800's S kept in process whole, is weakened now by the element's
+type test, where `Production` sends it exactly: 50 more at the pull request's size, all but one under `Emulator`
+(differential 172, 173, 175 and 176 and partitions 45, 46, 111 and 112), and 68 at the gate's. Line 1c at the gate's
+size judges 498 opaque weakenings over 26,067 documents and loses no row.
 
 ### An element a traversal yields is a path of its own
 
