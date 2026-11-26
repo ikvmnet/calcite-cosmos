@@ -11876,6 +11876,19 @@ returns them with it, so selecting the document returns six values before anythi
 itself holds. What a single value weighs is the one guess, and it is made in the direction that can
 only under-sell projecting.
 
+Which column is the document is read off what the converted subtree binds, the readings
+implementation reads the row by (`CosmosImplementor.TryBindOutput`), not off the column's name. The
+document passed straight through a projection weighs as the document under any name, as `$f1` where
+`CosmosProjectSplitRule` names it, and a computed column called `DOC` weighs as one value. Weighed by
+name, a plan reading the document whole over a view carrying it beside a computed column tied with
+the one reading the texts a condition kept in process needs, or was narrower than one reading two,
+and was taken
+(`CosmosConnectionPlanningTests.AViewCarryingTheDocumentBesideAComputedColumnReadsTheTextsAConditionKeptInProcessNeeds`).
+In the plan digests it moves three lines on either target at both sizes, `Project.DeepPaths` and
+`differential` 53 and 54, each with no `WHERE`, from the document under `$f0` or `$f3` beside guarded
+values to `SELECT VALUE c`, Calcite computing the values over the document; planned as a host plans,
+`Project.DeepPaths` alone.
+
 **A residual filter was the same wall by another route (#210).** Where one conjunct does not render,
 the filter split leaves it above the conjunct that does, and the query's projection is above both.
 One statement has one `SELECT`, and the residual sat between the projection and the statement, so the
