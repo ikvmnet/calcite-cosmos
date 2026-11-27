@@ -33,6 +33,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>RETURNING INTEGER</c> is not here: Calcite raises on it in process, so there is nothing to compare, and
         /// <c>CosmosPlannerTests.TwoReadingsOfOnePathAreTwoColumns</c> holds its plan.
         /// </para>
+        /// <para>
+        /// A residual filter's <c>RETURNING INTEGER</c> beside a projected text is not carried beneath the filter, since the
+        /// integer can refuse a value, so that statement reads the document and only its answer is compared. The residual
+        /// half is held by a projected <c>RETURNING BOOLEAN</c> beside a residual filter's text over <c>ordering</c>'s
+        /// <c>b</c>, which holds booleans alone. Both readings go down; matched by the digest to the column the projection
+        /// pushes whole, the filter's text was the boolean's column, and the statement failed to implement. A residual
+        /// filter's <c>RETURNING DOUBLE</c>, which would be carried too, is not here, since Calcite raises reading a stored
+        /// integer as one in process; <c>CosmosPlannerTests.AResidualFilterReadsItsOwnCarriedColumnOfAProjectedPath</c>
+        /// holds its plan.
+        /// </para>
         /// </remarks>
         static readonly (string Sql, string[] Sends)[] TwoReadings =
         [
@@ -45,11 +55,13 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2, JSON_VALUE(c.\"DOC\", '$.price') || '!' FROM products AS c",
                 ["(IS_PRIMITIVE(c.price) ? c.price : null)", "(IS_NUMBER(c.price) ? c.price : null)"]),
             ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12",
-                ["(IS_PRIMITIVE(c.price) ? c.price : null)", "(IS_NUMBER(c.price) ? c.price : null)"]),
+                []),
+            ("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.b' RETURNING BOOLEAN) FROM ordering AS c WHERE JSON_VALUE(c.\"DOC\", '$.b') || '!' = 'true!'",
+                ["(IS_BOOL(c.b) ? c.b : null)", "(IS_PRIMITIVE(c.b) ? c.b : null)"]),
         ];
 
         /// <summary>
-        /// Every statement reading one path two ways answers as Calcite would, and sends each reading that renders.
+        /// Every statement reading one path two ways answers as Calcite would, and sends the readings listed with it.
         /// </summary>
         [Fact]
         public async Task TwoReadingsOfOnePathAnswerWhatCalciteAnswers()
