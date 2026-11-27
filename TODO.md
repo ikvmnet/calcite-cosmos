@@ -1685,6 +1685,12 @@ old wording did not allow for.
   paths. Their names are read now, for one question only: a sort over one pushes only where an
   included path names it, which Azure requires. Declared metadata is the one kind this adapter trusts, so they should promote to real columns
   with real index awareness rather than being reached as ordinary document paths.
+- **The projection split sends a column it pushes whole again as another column's fragment** — *small, the
+  wire alone; on `main`.* `CosmosProjectSplitRule` keys a fragment apart from the columns it pushes whole, so
+  `SELECT c."id", JSON_VALUE(c."DOC", '$.b' RETURNING BOOLEAN), JSON_VALUE(c."DOC", '$.b' RETURNING BOOLEAN)
+  IS NOT TRUE FROM ordering AS c` sends `(IS_BOOL(c.b) ? c.b : null)` twice, with a filter kept in process or
+  without. The answer is Calcite's. `CosmosProjectResidualRule` takes the whole column for a fragment equal to
+  it, and the split would do the same.
 
 ### A row's width is weighed at the wire and nowhere else — *medium*
 
