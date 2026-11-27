@@ -2669,7 +2669,9 @@ across documents* and *A join of a container to itself* is the record.
   (`DESIGN.md`, *A residual filter was the same wall*). Such a statement reads whole documents now, as it
   did before #210. A path the schema declares an integer within the width's bounds, or an array of the
   element's type, cannot be refused, and could move. That is a fact about documents, so the question
-  belongs to the theory rather than to a second list in C#.
+  belongs to the theory rather than to a second list in C#. A path the filter reads for every row it tests
+  could be carried, as it was before #272, since it is then read for the rows Calcite reads it for; telling
+  it from one read under a branch Calcite may not take waits on value positions in the IR (the entry below).
 - **A refusing reading under a branch Calcite does not take** — *small, a failure where Calcite answers;
   found beside the fix above, and not yet fixed.* `CosmosProjectSplitRule` pushes the sub-expressions of a
   projection it cannot push whole, and each is read for every row the service sends. Calcite computes a
