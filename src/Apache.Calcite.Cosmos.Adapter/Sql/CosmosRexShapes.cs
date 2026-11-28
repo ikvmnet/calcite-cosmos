@@ -24,10 +24,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// Determines whether a call is one of the SQL/JSON accessors this can render as a path.
         /// </summary>
         /// <remarks>
-        /// A plain <c>JSON_VALUE</c> that neither parses nor returns an array, or a plain <c>JSON_QUERY</c>; by name, since a
-        /// call resolved through a schema carries an operator Calcite built around the declaration. The single gate every
-        /// consumer of a path goes through, so refusing a spelling here refuses it everywhere. See DESIGN.md, <i>Casts over
-        /// document values</i> and <i>The document column</i>.
+        /// A plain <c>JSON_VALUE</c> that neither parses nor returns an array or a <c>VARIANT</c>, or a plain
+        /// <c>JSON_QUERY</c>; by name, since a call resolved through a schema carries an operator Calcite built around the
+        /// declaration. The single gate every consumer of a path goes through, so refusing a spelling here refuses it
+        /// everywhere. See DESIGN.md, <i>Casts over document values</i> and <i>The document column</i>.
         /// </remarks>
         internal static bool IsJsonAccessor(RexCall call)
         {
@@ -35,7 +35,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             {
                 if (IsPlainJsonValue(call) == false)
                     return false;
-                if (IsParsingJsonValue(call))
+                if (IsParsingJsonValue(call) || IsVariantReturningJsonValue(call))
                     return false;
                 return IsArrayReturningJsonValue(call) == false;
             }
@@ -141,6 +141,45 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return false;
 
             return call.getType()?.getSqlTypeName() == SqlTypeName.DECIMAL;
+        }
+
+        /// <summary>
+        /// Determines whether an expression is a <c>JSON_VALUE</c> whose <c>RETURNING</c> is <c>VARIANT</c>: typed as a document
+        /// value, and no raw value.
+        /// </summary>
+        /// <remarks>
+        /// Calcite holds what it reads in no box, so it equals no value cast to <c>VARIANT</c>, and it is null where the path
+        /// holds an array or an object (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>), where a promoted column holding the same
+        /// value is the value. So it is refused as a path (<see cref="IsJsonAccessor"/>), as <c>RETURNING DECIMAL</c> is, and
+        /// so is what reads through it; the oracle's loader reads it as the reading it is, <c>typed:VARIANT</c>. See
+        /// DESIGN.md, <i><c>RETURNING VARIANT</c> is a reading of its own</i>.
+        /// </remarks>
+        internal static bool IsVariantReturningJsonValue(RexNode node)
+        {
+            if (node is not RexCall call || call.getOperator().getName() != "JSON_VALUE")
+                return false;
+
+            return call.getType()?.getSqlTypeName() == SqlTypeName.VARIANT;
+        }
+
+        /// <summary>
+        /// Determines whether a call is an item of an array or a map typed by its elements, which Calcite reads as the member
+        /// stored converted to the element type, and so addresses no path.
+        /// </summary>
+        /// <remarks>
+        /// A <c>JSON_QUERY</c> returning a typed array or map, or a view's column holding one, is read by Calcite to its
+        /// element type, and an item of it is the member so converted: an <c>INTEGER</c> raises over another kind, and a
+        /// <c>VARCHAR</c> reads a stored 5 as '5', where the path the item would address holds the member as stored. So it is
+        /// refused as a path (<see cref="CosmosRexPaths.TryResolvePath"/>) and as an item the translator writes, as
+        /// <c>RETURNING VARIANT</c> is refused, and so is what reads through it. An item of a promoted column or of a
+        /// document value, typed <c>VARIANT</c> or <c>ANY</c>, is the member as stored, and is a path.
+        /// </remarks>
+        internal static bool IsConvertingItem(RexCall call)
+        {
+            return KindOf(call) == nameof(SqlKind.__Enum.ITEM)
+                && call.getOperands().size() == 2
+                && ((RexNode)call.getOperands().get(0)).getType() is org.apache.calcite.rel.type.RelDataType container
+                && (SqlTypeUtil.isCollection(container) || SqlTypeUtil.isMap(container));
         }
 
         /// <summary>

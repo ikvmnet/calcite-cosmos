@@ -108,6 +108,109 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         }
 
         /// <summary>
+        /// An executor that serves one document as each statement's select list selects it, whatever its <c>WHERE</c>: the item
+        /// whole, or an object of the item, its paths and its guarded paths, as a projection writes them.
+        /// </summary>
+        internal sealed class SelectingExecutor(string document) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                return new(ListCursor.Documents(new[] { Select(query.Sql) }));
+            }
+
+            /// <summary>
+            /// The row a statement's select list selects of the document, failing where it is no shape this reads.
+            /// </summary>
+            string Select(string sql)
+            {
+                var statement = System.Text.RegularExpressions.Regex.Match(sql, @"^SELECT VALUE (c|\{ (?<members>.*) \}) FROM \w+ c( WHERE .*)?$");
+                if (statement.Success == false)
+                    throw new InvalidOperationException("No row is served for " + sql);
+
+                if (statement.Groups["members"].Success == false)
+                    return document;
+
+                var item = System.Text.Json.Nodes.JsonNode.Parse(document)!;
+                var row = new System.Text.Json.Nodes.JsonObject();
+                foreach (var member in Members(statement.Groups["members"].Value))
+                {
+                    var named = System.Text.RegularExpressions.Regex.Match(member, @"^""(?<key>[^""]+)"": (?<value>.+)$");
+                    var value = named.Groups["value"].Value;
+                    var guarded = System.Text.RegularExpressions.Regex.Match(value, @"^\(IS_(?<test>[A-Z]+)\((?<path>c[\w.]*)\) \? \k<path> : null\)$");
+                    var path = guarded.Success ? guarded.Groups["path"].Value : value;
+                    if (named.Success == false || System.Text.RegularExpressions.Regex.IsMatch(path, @"^c(\.\w+)*$") == false)
+                        throw new InvalidOperationException("No column is served for " + member + " in " + sql);
+
+                    // An undefined value is no member of the row, as the service omits it.
+                    if (At(item, path, out var held) == false)
+                        continue;
+
+                    row[named.Groups["key"].Value] = guarded.Success && Holds(guarded.Groups["test"].Value, held) == false ? null : held?.DeepClone();
+                }
+
+                return row.ToJsonString();
+            }
+
+            static IEnumerable<string> Members(string members)
+            {
+                var (depth, start) = (0, 0);
+                for (var i = 0; i < members.Length; i++)
+                {
+                    if (members[i] == '(')
+                        depth++;
+                    else if (members[i] == ')')
+                        depth--;
+                    else if (depth == 0 && string.CompareOrdinal(members, i, ", ", 0, 2) == 0)
+                    {
+                        yield return members[start..i];
+                        start = i + 2;
+                    }
+                }
+
+                yield return members[start..];
+            }
+
+            static bool At(System.Text.Json.Nodes.JsonNode item, string path, out System.Text.Json.Nodes.JsonNode? held)
+            {
+                held = item;
+                foreach (var name in path.Split('.').Skip(1))
+                    if (held is not System.Text.Json.Nodes.JsonObject members || members.TryGetPropertyValue(name, out held) == false)
+                        return false;
+
+                return true;
+            }
+
+            static bool Holds(string test, System.Text.Json.Nodes.JsonNode? held)
+            {
+                var kind = held switch
+                {
+                    null => "NULL",
+                    System.Text.Json.Nodes.JsonArray => "ARRAY",
+                    System.Text.Json.Nodes.JsonObject => "OBJECT",
+                    _ => held.GetValueKind() switch { JsonValueKind.String => "STRING", JsonValueKind.Number => "NUMBER", _ => "BOOL" },
+                };
+
+                return test == kind || (test == "PRIMITIVE" && kind is "NULL" or "STRING" or "NUMBER" or "BOOL");
+            }
+
+        }
+
+        /// <summary>
+        /// An executor that answers each request over the documents given as the service answers it on a target, its
+        /// <c>WHERE</c> evaluated on each document (<see cref="DocumentRequests"/>).
+        /// </summary>
+        sealed class AnsweringExecutor(string[] documents, CosmosServiceTarget target) : ICosmosQueryExecutor
+        {
+
+            public ValueTask<IClrCursor<JsonElement>> OpenAsync(CosmosQuery query, PartitionKey? partitionKey = null, CancellationToken cancellationToken = default)
+            {
+                return new(ListCursor.Documents(DocumentRequests.Answer(query, partitionKey, documents, target)));
+            }
+
+        }
+
+        /// <summary>
         /// The minimum a compiled plan needs to find its way back to the table it reads.
         /// </summary>
         sealed class TestDataContext : DataContext
@@ -278,7 +381,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// survives.
         /// </para>
         /// </remarks>
-        RelNode PlanToClrWithHostRules(string sql)
+        /// <param name="sql">The statement.</param>
+        /// <param name="reduce">Whether the engine's <c>FILTER_REDUCE_EXPRESSIONS</c> is registered too, which every
+        /// connection-based host has.</param>
+        RelNode PlanToClrWithHostRules(string sql, bool reduce = false)
         {
             var logical = PlanLogical(sql);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
@@ -289,11 +395,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.Rules())
                 planner.addRule(rule);
 
+            if (reduce)
+                planner.addRule(org.apache.calcite.rel.rules.CoreRules.FILTER_REDUCE_EXPRESSIONS);
+
             var desired = logical.getTraitSet().replace(ClrCursorConvention.Instance).simplify();
             planner.setRoot(planner.changeTraits(logical, desired));
 
-            var best = planner.findBestExp();
+            return Calcs(planner.findBestExp());
+        }
 
+        /// <summary>
+        /// Runs the calc pass a host runs over the plan chosen, without which a projection left in process does not
+        /// implement (<see cref="PlanToClrWithHostRules"/>).
+        /// </summary>
+        static RelNode Calcs(RelNode best)
+        {
             var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
 
             foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.CalcRules())
@@ -1343,6 +1459,656 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             refusing.Should().Contain("CosmosFilter", "what renders of the filter still reaches the service: " + refusing);
 
             total.Should().Contain("CosmosProject(b=[JSON_VALUE($0, '$.data.name')], n=[JSON_VALUE($0, '$.data.count')]", "the DOUBLE moves beneath: " + total);
+        }
+
+        /// <summary>
+        /// The document beside a column read from it, under a typed comparison that stays in process.
+        /// </summary>
+        const string DocumentBesideATypedResidual =
+            "SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12";
+
+        /// <summary>
+        /// A weakening is pushed once beneath a residual over a projection that carries the document, though the split
+        /// weakens a filter over a projection as it weakens any other.
+        /// </summary>
+        /// <remarks>
+        /// The trimmer leaves its projection of the document beneath the filter, and the residual projection and the
+        /// transpose put a projection between a residual and the half beneath it, where the weakening is already pushed.
+        /// What a filter beneath a projection applies is read through the rows it reads
+        /// (<c>CosmosFilterSplitRule.AlreadyApplied</c>), so the filter over the projection finds the weakening applied
+        /// there. Read only through its own rows, with the split weakening over a projection, the same plan sent
+        /// <c>IS_DEFINED(c.price) AND IS_DEFINED(c.price)</c> over two filters, as #210 found.
+        /// </remarks>
+        [Fact]
+        public void ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument()
+        {
+            var best = PlanToClrAsAHostDoes(DocumentBesideATypedResidual);
+            var plan = RelOptUtil.toString(best);
+
+            System.Text.RegularExpressions.Regex.Matches(plan, "CosmosFilter").Count.Should().Be(1, "the weakening is pushed in one filter: " + plan);
+
+            var sent = Sent(best).Should().ContainSingle(plan).Which;
+            System.Text.RegularExpressions.Regex.Matches(sent, System.Text.RegularExpressions.Regex.Escape("IS_DEFINED(c.price)")).Count.Should().Be(1, "and sent once: {0}", sent);
+        }
+
+        /// <summary>
+        /// Where a condition stays in process over the trimmer's projection of the document, the statement selects that
+        /// projection, or the view's, under the <c>WHERE</c> it sent before.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The split weakens the filter over the trimmer's projection as over any input, and its pair there is the plan
+        /// whose <c>SELECT</c> is that projection beneath the residual, which the converter's width prefers to the item
+        /// whole or to the document beside columns read from it: the condition kept in process reads the document anyway,
+        /// and what a column held is read from the document in process.
+        /// </para>
+        /// <para>
+        /// The <c>WHERE</c> is a regression pin: the conjuncts the statement sent while the split weakened nothing over a
+        /// projection, each once, so the same documents are read.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(DocumentBesideATypedResidual,
+            "SELECT VALUE { \"DOC\": c }",
+            "IS_DEFINED(c.price)")]
+        [InlineData("SELECT c.\"DOC\" FROM products AS c WHERE UPPER(JSON_VALUE(c.\"DOC\", '$.name')) LIKE '%STEEL%' AND JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) > 10",
+            "SELECT VALUE { \"DOC\": c }",
+            "(IS_DEFINED(c.name) AND (c.price > @p0))")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.type') = 'Park') AS t WHERE UPPER(JSON_VALUE(t.\"DOC\", '$.name')) LIKE '%STEEL%'",
+            "SELECT VALUE { \"id\": c.id, \"DOC\": c }",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData("SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') > 'st' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "SELECT VALUE { \"DOC\": c }",
+            "((IS_BOOL(c.name) OR (c.name > @p0)) AND ((c.name > @p1) OR NOT IS_STRING(c.name)) AND IS_DEFINED(c.region))")]
+        [InlineData("SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') = '30' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "SELECT VALUE { \"DOC\": c }",
+            "(((c.price = @p0) OR (IS_NUMBER(c.price) AND (c.price = @p1))) AND IS_DEFINED(c.price) AND IS_DEFINED(c.region))")]
+        public void ShouldSelectTheTrimmersProjectionUnderTheSameWhereWhereAConditionStaysInProcess(string sql, string select, string where)
+        {
+            var best = PlanToClrAsAHostDoes(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var from = sent.IndexOf(" FROM products c", StringComparison.Ordinal);
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            from.Should().BePositive("{0}", sent);
+            conditions.Should().BeGreaterThan(from, "{0}", sent);
+
+            sent[..from].Should().Be(select, "the statement selects the projection beneath the condition kept in process: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "under the WHERE it sent before: {0}", sent);
+            ConjunctsOf(sent[(conditions + " WHERE ".Length)..]).Should().OnlyHaveUniqueItems("no conjunct is sent twice: {0}", sent);
+        }
+
+        /// <summary>
+        /// Not a view's column whose reading can refuse a value, under a condition a split over the view leaves in process,
+        /// whatever that condition reads: the statement selects no such column, under the <c>WHERE</c> it sends where the
+        /// split pushes beneath the view.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The view's projection, the statement's <c>SELECT</c> beneath the condition kept in process, is read for every row
+        /// the service returns, and Calcite computes the column only for the rows that reach it: a stored 1.5 read as an
+        /// <c>INTEGER</c> is refused, and over a document whose name the case fold drops the statement failed where Calcite
+        /// answers.
+        /// </para>
+        /// <para>
+        /// A condition that reads the column only in a <c>CASE</c> branch, or in a later operand of <c>COALESCE</c>, does not
+        /// read it for every row, so it was selected there too and failed; and a <c>JSON_QUERY</c> returning an
+        /// <c>INTEGER ARRAY</c> refuses <c>[1.5]</c>, though the walk reads it as JSON text, and one returning a
+        /// <c>VARCHAR ARRAY</c> refuses <c>[1]</c>, an element the array's guard lets through.
+        /// </para>
+        /// <para>
+        /// A view over a filtered view passes the column up as a bare reference, and the transpose carries the half beneath
+        /// both projections, so the statement selected the column the view beneath computes and failed the same way.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, ViewOfARefusingReading + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN t.\"n\" > 10 ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND (c.n > @p0))")]
+        [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"a\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT u.\"d\"" + ThroughAFilteredViewOfARefusingReading,
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(false, "SELECT u.\"n\"" + ThroughAFilteredViewOfARefusingReading,
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(true, "SELECT t.\"n\", t.\"s\" FROM (SELECT u.\"DOC\", u.\"n\", UPPER(JSON_VALUE(u.\"DOC\", '$.s')) AS \"s\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS u WHERE JSON_VALUE(u.\"DOC\", '$.type') = 'Park') AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "((c.type = @p0) AND IS_DEFINED(c.name))")]
+        [InlineData(true, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"n\" FROM (SELECT c.\"DOC\", c.\"$.category\" AS \"cat\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE t.\"cat\" = 'bikes') AS u WHERE INITCAP(JSON_VALUE(u.\"d\", '$.name')) = 'Steel'",
+            "((c.category = @p0) AND IS_DEFINED(c.name))")]
+        public void ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(bool trimmed, string sql, string where)
+        {
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var from = sent.IndexOf(" FROM products c", StringComparison.Ordinal);
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            from.Should().BePositive("{0}", sent);
+            conditions.Should().BeGreaterThan(from, "{0}", sent);
+
+            System.Text.RegularExpressions.Regex.IsMatch(sent[..from], @"c\.n\b").Should().BeFalse("the view's reading that can refuse is not selected beneath the condition kept in process: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "the split beneath the view sends what it pushes: {0}", sent);
+        }
+
+        /// <summary>
+        /// A view whose projection holds the document and an <c>INTEGER</c> read from it, filtered above.
+        /// </summary>
+        const string ViewOfARefusingReading =
+            "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE ";
+
+        /// <summary>
+        /// The rest of a statement over a view that passes up, as they are, the document and the <c>INTEGER</c> a filtered view
+        /// beneath it reads from it, filtered above on a case fold.
+        /// </summary>
+        const string ThroughAFilteredViewOfARefusingReading =
+            " FROM (SELECT t.\"DOC\" AS \"d\", t.\"n\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE INITCAP(JSON_VALUE(u.\"d\", '$.name')) = 'Steel'";
+
+        /// <summary>
+        /// Over a document the condition kept in process drops, and whose value at the view's column its reading refuses, the
+        /// plan answers as Calcite does: no row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Planned bare, with the engine's rules and the calc pass, and run over the stub, which serves the document as the
+        /// statement selects it: the item whole. Calcite drops the document on the case fold, or reads the column only in a
+        /// branch or an operand it never reaches there, so it never reads the 1.5 or the 11.5 at <c>n</c>, and a statement that
+        /// selected the column beneath the condition failed with "A JSON number of '1.5' is not a whole number and cannot be
+        /// read as INTEGER", and over a <c>VARCHAR ARRAY</c> holding 1 with "Expected a JSON string".
+        /// </remarks>
+        [Theory]
+        [InlineData(ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": 1.5, \"name\": \"x\" }")]
+        [InlineData(ViewOfARefusingReading + "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND COALESCE(JSON_VALUE(t.\"DOC\", '$.s'), CAST(t.\"n\" AS VARCHAR)) = 'a'",
+            "{ \"id\": \"x1\", \"n\": 1.5, \"name\": \"x\", \"s\": \"q\" }")]
+        [InlineData(ViewOfARefusingReading + "CASE WHEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' THEN t.\"n\" > 10 ELSE FALSE END",
+            "{ \"id\": \"x1\", \"n\": 11.5, \"name\": \"x\" }")]
+        [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING INTEGER ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": [1.5], \"name\": \"x\" }")]
+        [InlineData("SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.n' RETURNING VARCHAR ARRAY) AS \"a\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "{ \"id\": \"x1\", \"n\": [1], \"name\": \"x\" }")]
+        [InlineData("SELECT u.\"n\"" + ThroughAFilteredViewOfARefusingReading,
+            "{ \"id\": \"x1\", \"type\": \"Park\", \"n\": 1.5, \"name\": \"x\" }")]
+        public async Task ShouldAnswerAsCalciteOverAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess(string sql, string document)
+        {
+            Given(document);
+
+            var best = PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+            sent.Should().StartWith("SELECT VALUE c ", "the statement selects the item whole, which the stub serves: {0}", sent);
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops the document without reading the view's column: {0}", sent);
+        }
+
+        /// <summary>
+        /// Over a view whose projection holds a reading that can refuse, a split that would leave a condition in process
+        /// still pushes the conjuncts it admits, and the plan answers as Calcite does over documents they drop: no row, and
+        /// no failure.
+        /// </summary>
+        /// <remarks>
+        /// Planned as a host plans, with the calc pass, and run over the stub, which answers each request as the service
+        /// does on the target. The comparison of the view's <c>DOUBLE</c> column is admitted, and the case fold of its text
+        /// column weakens to a definedness test the comparison already applies. The split over the view's projection
+        /// registered nothing there, and the cost model kept the condition above the projection the service selects, with
+        /// no <c>WHERE</c>: the view's <c>INTEGER</c> was read for every document and failed over 7.5, which the comparison
+        /// drops before Calcite computes the column.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure)]
+        [InlineData(CosmosServiceTarget.Emulator)]
+        public async Task ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct(CosmosServiceTarget target)
+        {
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor(
+                ["{ \"id\": \"w01\", \"name\": \"Iron\", \"n\": 7.5 }", "{ \"id\": \"w08\", \"name\": \"Iron\", \"n\": 9.5 }"], target)));
+
+            const string sql = "SELECT t.\"id\", t.\"n\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\", "
+                + "JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"dn\", JSON_VALUE(c.\"DOC\", '$.n') AS \"nt\" FROM products AS c) AS t WHERE t.\"dn\" < 5 AND INITCAP(t.\"nt\") = '2'";
+            var best = Calcs(PlanToClrAsAHostDoes(sql));
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("the comparison drops both documents before Calcite computes the view's INTEGER: {0}", sent);
+        }
+
+        /// <summary>
+        /// Where the transpose will not carry a filter beneath a view whose projection holds a reading that can refuse, the
+        /// split over the view still pushes what renders beneath it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's column, read through the view's projection, grow past the
+        /// transpose's bloat, so the filter stays above the view whatever the split does. Declining the split's pair there
+        /// left nothing of the condition beneath the view, and the statement selected the view's projection with less of a
+        /// <c>WHERE</c>: over <c>{"a":"z","n":1.5}</c>, which the equality drops, it read the 1.5 as an <c>INTEGER</c> and
+        /// failed where Calcite answers; and a type test only the service evaluates, left to Calcite beside the
+        /// <c>LIKE</c>s, did not implement.
+        /// </para>
+        /// <para>
+        /// The statement selects the view's column beneath the condition kept in process, as it did before the split weakened
+        /// over a projection (<c>TODO.md</c>, <em>A filter kept in process over a view projecting a reading that can
+        /// refuse</em>).
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(true, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(false, "SELECT t.\"DOC\" FROM " + ViewOfTextBesideARefusingReading + " WHERE t.\"a\" = 'k' AND ", "t.\"a\"",
+            "(c.a = @p0)")]
+        [InlineData(false, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"a\", t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE u.\"a\" = 'k' AND ", "u.\"a\"",
+            "((c.type = @p0) AND (c.a = @p1))")]
+        [InlineData(true, "SELECT u.\"n\" FROM (SELECT t.\"DOC\" AS \"d\", t.\"a\", t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE u.\"a\" = 'k' AND ", "u.\"a\"",
+            "((c.type = @p0) AND (c.a = @p1))")]
+        [InlineData(false, "SELECT t.\"n\" FROM " + ViewOfTextBesideARefusingReading + " WHERE IS_STRING(JSON_VALUE(t.\"DOC\", '$.k')) AND ", "t.\"a\"",
+            "(IS_STRING(c.k) AND IS_DEFINED(c.a))")]
+        public void ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string sql, string folded, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP({folded}) LIKE 'W{i}%'")) + ")";
+            var best = trimmed ? PlanToClrAsAHostDoes(sql + likes) : PlanToClrWithHostRules(sql + likes);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split beneath the view sends what renders: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "the split beneath the view sends what renders: {0}", sent);
+        }
+
+        /// <summary>
+        /// A view whose projection holds the document, a text column and an <c>INTEGER</c> read from it.
+        /// </summary>
+        const string ViewOfTextBesideARefusingReading =
+            "(SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\" FROM products AS c) AS t";
+
+        /// <summary>
+        /// Over a filter on a view that the transpose will not carry beneath the view, the split of a condition stacked on it
+        /// still pushes that condition's weakening, and the plan answers as Calcite does over a document the weakening
+        /// excludes: no row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Sixty equalities of the view's text column, read through the view's projection, grow past the transpose's bloat, so
+        /// they stay a filter over the view, the service's <c>WHERE</c> beneath the view's projection, and the case fold of
+        /// the name is left above. Its split was declined as though the transpose would carry it beneath the view, which it
+        /// does only once it has carried the filter there, so the statement selected the view's <c>VARCHAR ARRAY</c> under
+        /// the equalities alone, and over a document with no name, which Calcite drops on the case fold without reading the
+        /// array, its reading refused the element that is no string. Planned bare, with the engine's rules and the calc pass,
+        /// and run over the stub, which answers each request as the service does on the target.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q1\", \"a\": \"w1\", \"x\": [\"5\", 5] }")]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q2\", \"a\": \"w1\", \"x\": [\"5\", 1.5] }")]
+        [InlineData(CosmosServiceTarget.Azure, "{ \"id\": \"q3\", \"a\": \"w1\", \"x\": [\"5\", { \"b\": 1 }] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q1\", \"a\": \"w1\", \"x\": [\"5\", 5] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q2\", \"a\": \"w1\", \"x\": [\"5\", 1.5] }")]
+        [InlineData(CosmosServiceTarget.Emulator, "{ \"id\": \"q3\", \"a\": \"w1\", \"x\": [\"5\", { \"b\": 1 }] }")]
+        public async Task ShouldAnswerAsCalciteOverAViewsArrayBeneathAFilterTheTransposeWillNotCarry(CosmosServiceTarget target, string document)
+        {
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor([document], target)));
+
+            var sql = "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"t.\"a\" = 'w{i}'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+            var best = PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops a document with no name on the case fold without reading the view's array: {0}", sent);
+        }
+
+        /// <summary>
+        /// Over a filter on a view that the transpose carries beneath the view only as the engine reduces it, the split of a
+        /// condition stacked on it is declined as over any filter the transpose carries, and the plan answers as Calcite does
+        /// over a document the condition drops: no row, and no failure.
+        /// </summary>
+        /// <remarks>
+        /// Sixty equalities of the view's text column grow past the transpose's bloat as written, and the engine's reduction
+        /// writes them, in the same set, as one <c>SEARCH</c>, which the transpose carries. Asked whether a projection the
+        /// service may select beneath the filter holds a reading that can refuse, the walk met the view's projection first
+        /// through the equalities, which the transpose declines, remembered it by itself alone, and met through the
+        /// <c>SEARCH</c> did not ask it again. So the split of the case fold was registered, the statement selected the
+        /// view's <c>VARCHAR ARRAY</c> or <c>INTEGER</c> under the condition kept in process, and its reading refused the
+        /// element that is no string, or 1.5, of a document Calcite drops on the case fold without reading the column. Planned
+        /// bare, with the engine's rules, its reduction of filters and the calc pass, and run over the stub, which answers
+        /// each request as the service does on the target.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\"")]
+        [InlineData(CosmosServiceTarget.Azure, "JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\"")]
+        [InlineData(CosmosServiceTarget.Emulator, "JSON_QUERY(c.\"DOC\", '$.x' RETURNING VARCHAR ARRAY) AS \"m\"")]
+        [InlineData(CosmosServiceTarget.Emulator, "JSON_VALUE(c.\"DOC\", '$.n' RETURNING INTEGER) AS \"n\"")]
+        public async Task ShouldAnswerAsCalciteOverAViewsReadingBeneathAFilterTheTransposeCarriesOnceReduced(CosmosServiceTarget target, string column)
+        {
+            const string document = "{ \"id\": \"d1\", \"a\": \"w1\", \"name\": \"iron\", \"region\": \"north\", \"x\": [\"5\", 5], \"n\": 1.5 }";
+            Register(new CosmosTable(Products.WithServiceTarget(target), new AnsweringExecutor([document], target)));
+
+            var sql = "SELECT q.\"id\" FROM (SELECT * FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", " + column + " FROM products AS c) AS v WHERE "
+                + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"v.\"a\" = 'w{i}'")) + ") AS q WHERE INITCAP(JSON_VALUE(q.\"DOC\", '$.name')) = 'Steel'";
+            var best = PlanToClrWithHostRules(sql, reduce: true);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            (await Execute(best)).Should().BeEmpty("Calcite drops the document on the case fold without reading the view's column: {0}", sent);
+        }
+
+        /// <summary>
+        /// A weakening over a projection's typed or text column, a view's or the query's own select list, is pushed once,
+        /// where a filter beneath the projection applies it already.
+        /// </summary>
+        /// <remarks>
+        /// The transpose or the residual projection carries the filter beneath the projection, where the split pushes its
+        /// weakening, and the filter left over the projection asks the same weakening over the projection's column. What the
+        /// filter beneath applies is also read over the projection's own columns, where they carry everything it reads, so the
+        /// column is one term above and beneath it: read only over the scan, a <c>RETURNING DOUBLE</c> or a text accessor is
+        /// its accessor there and a field of the projection here, and the weakening was sent in two filters.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t WHERE NOT (t.\"n\" > 10) OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(true, "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING DOUBLE) AS \"n\" FROM products AS c) AS t WHERE NOT (t.\"n\" > 10) OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.name)")]
+        [InlineData(false, "SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.price') AS \"p\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price') = '30' AND INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) = 'North'",
+            "IS_NUMBER(c.price)")]
+        public void ShouldPushAWeakeningOverAViewsTypedColumnOnce(bool trimmed, string sql, string once)
+        {
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var plan = RelOptUtil.toString(best);
+
+            System.Text.RegularExpressions.Regex.Matches(plan, "CosmosFilter").Count.Should().Be(1, "the weakening is pushed in one filter: " + plan);
+
+            var sent = Sent(best).Should().ContainSingle(plan).Which;
+            System.Text.RegularExpressions.Regex.Matches(sent, System.Text.RegularExpressions.Regex.Escape(once)).Count.Should().Be(1, "and sent once: {0}", sent);
+        }
+
+        /// <summary>
+        /// A filter over a view that renames the document sends the weakening of the condition it keeps in process.
+        /// </summary>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void ShouldPushAWeakeningOverAViewThatRenamesTheDocument(bool trimmed)
+        {
+            const string sql = "SELECT t.\"d\" FROM (SELECT c.\"DOC\" AS \"d\" FROM products AS c) AS t WHERE INITCAP(JSON_VALUE(t.\"d\", '$.name')) = 'Steel'";
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+
+            Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which
+                .Should().Be("SELECT VALUE { \"d\": c } FROM products c WHERE IS_DEFINED(c.name)", "the case fold of the name weakens to its definedness");
+        }
+
+        /// <summary>
+        /// A filter over an item of a view's <c>RETURNING VARIANT</c> column, where the transpose will not carry it beneath the
+        /// view, sends no test of the item's path.
+        /// </summary>
+        /// <remarks>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's text column, read through the view's projection, grow past the
+        /// transpose's bloat, so the split weakens the filter over the view, through the binding of its columns. Bound to
+        /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
+        /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c>
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), so a projection binds none for the item and the split sends what it derives
+        /// of the rest.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.a)")]
+        [InlineData(true, "t.\"e\" IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            "IS_DEFINED(c.a)")]
+        [InlineData(false, "CASE WHEN t.\"e\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(true, "CASE WHEN t.\"e\" IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        public void ShouldSendNoTestOfAnItemOfAViewsReturningVariantColumnWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string condition, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP(t.\"a\") LIKE 'W{i}%'")) + ")";
+            var sql = "SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a'] AS \"e\", "
+                + "INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE (" + condition + ") AND " + likes;
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the item's path is sent: {0}", sent);
+        }
+
+        /// <summary>
+        /// A filter over a view that tests an item of a <c>RETURNING VARIANT</c>, or an accessor over one, read from the
+        /// document the view passes up or renames, sends no test of the path beneath it where the transpose will not carry the
+        /// filter beneath the view.
+        /// </summary>
+        /// <remarks>
+        /// Sixty <c>LIKE</c>s of a case fold of the view's text column grow past the transpose's bloat, so the split weakens the
+        /// filter over the view, through the binding of its columns, where the document is bound to the root. Resolved to
+        /// <c>c.x.a</c> and read as the raw value there, the item's null test was weakened to <c>IS_NULL(c.x.a) OR … OR NOT
+        /// IS_DEFINED(c.x.a)</c>, which drops <c>{"a":"w1","x":{"a":1}}</c> where Calcite keeps it: its item is null, because
+        /// the accessor is null over an object. No path is resolved through a <c>RETURNING VARIANT</c>
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), so the split sends what it derives of the rest.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "DOC", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "DOC", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(false, "DOC", "CASE WHEN {0}['a'] IS NULL THEN {1} ELSE FALSE END", "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(true, "DOC", "CASE WHEN {0}['a'] IS NULL THEN {1} ELSE FALSE END", "(IS_DEFINED(c.name) AND IS_DEFINED(c.a))")]
+        [InlineData(false, "d", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "d", "{0}['a'] IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(false, "DOC", "JSON_VALUE({0}, '$.a') IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        [InlineData(true, "DOC", "JSON_VALUE({0}, '$.a') IS NULL OR {1}", "IS_DEFINED(c.a)")]
+        public void ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter(bool trimmed, string document, string condition, string where)
+        {
+            var likes = "(" + string.Join(" OR ", Enumerable.Range(1, 60).Select(i => $"INITCAP(t.\"a\") LIKE 'W{i}%'")) + ")";
+            var tested = string.Format(condition, $"JSON_VALUE(t.\"{document}\", '$.x' RETURNING VARIANT)", $"INITCAP(JSON_VALUE(t.\"{document}\", '$.name')) = 'Steel'");
+            var sql = $"SELECT t.\"{document}\" FROM (SELECT c.\"DOC\" AS \"{document}\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", "
+                + "INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE (" + tested + ") AND " + likes;
+            var best = trimmed ? PlanToClrAsAHostDoes(sql) : PlanToClrWithHostRules(sql);
+            var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+
+            var conditions = sent.IndexOf(" WHERE ", StringComparison.Ordinal);
+            conditions.Should().BePositive("the split over the view sends what it derives: {0}", sent);
+            sent[(conditions + " WHERE ".Length)..].Should().Be(where, "no test of the path beneath the RETURNING VARIANT is sent: {0}", sent);
+        }
+
+        const string ReturningVariant = "JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)";
+
+        /// <summary>
+        /// Where a plan would select a <c>RETURNING VARIANT</c> itself, the statement answers as Calcite does over an array and
+        /// an object at the path, bare and as a host plans: a filter over an item of it beside a computed column, a view's
+        /// column holding it or an item of it, and a select list holding it or an accessor over it.
+        /// </summary>
+        /// <remarks>
+        /// Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an object, so an item
+        /// of it or an accessor over it is null there too. Written as the bare path, <c>c.x</c>, and read back as the raw
+        /// value, the column held the array or the object, and what Calcite computed over it failed over <c>[1]</c> and
+        /// read 1 over <c>{"a":1}</c>, so the null test dropped the document: wherever the residual projection carried the
+        /// accessor beneath the filter, a view or a select list held it, or the planner split a view's item column into the
+        /// accessor beneath an item computed in process. No clause writes it as a path now
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>), as none writes <c>RETURNING DECIMAL</c>, so Calcite computes it from the
+        /// document. The stub serves each document as the statement's select list selects it, whatever its <c>WHERE</c>; the
+        /// statement sends none, every condition reading the <c>RETURNING VARIANT</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|Steel")]
+        [InlineData(true, "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.name') AS \"n\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|Steel")]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c) AS t WHERE t.\"v\"['a'] IS NULL", "x1")]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c) AS t WHERE t.\"v\"['a'] IS NULL", "x1")]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + "['a'] AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL", "x1")]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", " + ReturningVariant + "['a'] AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL", "x1")]
+        [InlineData(false, "SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|null")]
+        [InlineData(true, "SELECT c.\"id\", " + ReturningVariant + " AS \"v\" FROM products AS c WHERE " + ReturningVariant + "['a'] IS NULL", "x1|null")]
+        [InlineData(false, "SELECT c.\"id\", JSON_VALUE(" + ReturningVariant + ", '$.a') AS \"e\" FROM products AS c", "x1|null")]
+        [InlineData(true, "SELECT c.\"id\", JSON_VALUE(" + ReturningVariant + ", '$.a') AS \"e\" FROM products AS c", "x1|null")]
+        public async Task ShouldAnswerAsCalciteWhereAPlanWouldSelectAReturningVariant(bool trimmed, string sql, string row)
+        {
+            foreach (var document in new[] { "{ \"id\": \"x1\", \"name\": \"Steel\", \"x\": [1] }", "{ \"id\": \"x1\", \"name\": \"Steel\", \"x\": { \"a\": 1 } }" })
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                var sent = Sent(best).Should().ContainSingle(RelOptUtil.toString(best)).Which;
+                sent.Should().NotContain(" WHERE ", "every condition reads the RETURNING VARIANT, which is Calcite's: {0}", sent);
+
+                (await Execute(best)).Select(Row).Should().Equal([row], "Calcite's RETURNING VARIANT is null over {0}: {1}", document, sent);
+            }
+        }
+
+        /// <summary>
+        /// A view's column holding the partition key's column cast to text, alone or inside a function, answers beside a
+        /// condition kept in process as Calcite does, bare and as a host plans: Calcite casts a number, a boolean and a null
+        /// held in the promoted column to null, so every document whose name the case fold keeps and whose key is no string
+        /// is kept.
+        /// </summary>
+        /// <remarks>
+        /// The translator wrote the cast as the raw value read as its text, which Calcite's cast over an <c>ANY</c> value is,
+        /// and the key's column is a <c>VARIANT</c>: the column read <c>5</c> or <c>true</c> where Calcite reads null. Once the
+        /// split weakened over a projection, its pair over the view left the condition to that column, selected under the
+        /// fold's weakening, and the null test dropped each such document. The cast is computed in process now, over the raw
+        /// value the column holds (<c>CosmosRexTranslator.TryRenderedTextOperand</c>). The stub serves each document as the
+        /// statement's select list selects it, whatever its <c>WHERE</c>.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", COALESCE(CAST(c.\"$.category\" AS VARCHAR), 'none') AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = 'none' AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", COALESCE(CAST(c.\"$.category\" AS VARCHAR), 'none') AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = 'none' AND " + StoredNameFold)]
+        [InlineData(false, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CHAR_LENGTH(CAST(c.\"$.category\" AS VARCHAR)) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        [InlineData(true, "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", CHAR_LENGTH(CAST(c.\"$.category\" AS VARCHAR)) AS \"e\" FROM products AS c) AS t WHERE t.\"e\" IS NULL AND " + StoredNameFold)]
+        public async Task ShouldComputeAPromotedColumnsCastToTextInProcess(bool trimmed, string sql)
+        {
+            var kept = new List<string>();
+            foreach (var document in KeyDocuments)
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                kept.AddRange((await Execute(best)).Select(Row));
+            }
+
+            kept.Should().Equal(["x2", "x3", "x4", "x5", "x6"], "Calcite casts a key that is no string to null: {0}", string.Join(" ;; ", KeyDocuments));
+        }
+
+        /// <summary>
+        /// The partition key's column cast to text, selected or grouped on, answers as Calcite does, bare and as a host
+        /// plans: Calcite casts a number, a boolean and a null held in the promoted column to null.
+        /// </summary>
+        /// <remarks>
+        /// The translator wrote the cast as the raw value read as its text, so the select list read <c>5</c> or
+        /// <c>true</c> where Calcite reads null, and the grouping grouped on that. The cast is computed in process now
+        /// (<c>CosmosRexTranslator.TryRenderedTextOperand</c>). The stub serves each document, one at a time, as the
+        /// statement's select list selects it.
+        /// </remarks>
+        [Theory]
+        [InlineData(false, SelectedKeyCast, "x1|bikes x2|null x3|null x4|null x5|null x6|null x7|null")]
+        [InlineData(true, SelectedKeyCast, "x1|bikes x2|null x3|null x4|null x5|null x6|null x7|null")]
+        [InlineData(false, GroupedKeyCast, "bikes|1 null|1 null|1 null|1 null|1 null|1 null|1")]
+        [InlineData(true, GroupedKeyCast, "bikes|1 null|1 null|1 null|1 null|1 null|1 null|1")]
+        public async Task ShouldSelectOrGroupAPromotedColumnsCastToTextAsCalciteCastsIt(bool trimmed, string sql, string rows)
+        {
+            var read = new List<string>();
+            foreach (var document in KeyDocuments)
+            {
+                Register(new CosmosTable(Products, new SelectingExecutor(document)));
+
+                var best = trimmed ? Calcs(PlanToClrAsAHostDoes(sql)) : PlanToClrWithHostRules(sql);
+                read.AddRange((await Execute(best)).Select(Row));
+            }
+
+            read.Should().Equal(rows.Split(' '), "Calcite casts a key that is no string to null: {0}", string.Join(" ;; ", KeyDocuments));
+        }
+
+        /// <summary>The partition key's column cast to text, selected beside the id.</summary>
+        const string SelectedKeyCast = "SELECT c.\"id\", CAST(c.\"$.category\" AS VARCHAR) AS \"e\" FROM products AS c";
+
+        /// <summary>The partition key's column cast to text, grouped on and counted.</summary>
+        const string GroupedKeyCast = "SELECT CAST(c.\"$.category\" AS VARCHAR) AS \"e\", COUNT(*) AS \"n\" FROM products AS c GROUP BY CAST(c.\"$.category\" AS VARCHAR)";
+
+        /// <summary>The case fold of a view's name a condition keeps in process, beside a condition over the key's column.</summary>
+        const string StoredNameFold = "INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+        /// <summary>Documents whose name the case fold keeps but the last, each holding another kind at the partition key.</summary>
+        static readonly string[] KeyDocuments =
+        [
+            "{ \"id\": \"x1\", \"category\": \"bikes\", \"name\": \"steel\" }",
+            "{ \"id\": \"x2\", \"category\": 5, \"name\": \"steel\" }",
+            "{ \"id\": \"x3\", \"category\": true, \"name\": \"steel\" }",
+            "{ \"id\": \"x4\", \"name\": \"steel\" }",
+            "{ \"id\": \"x5\", \"category\": 1.5, \"name\": \"Steel\" }",
+            "{ \"id\": \"x6\", \"category\": null, \"name\": \"STEEL\" }",
+            "{ \"id\": \"x7\", \"category\": 5, \"name\": \"zinc\" }",
+        ];
+
+        /// <summary>
+        /// Writes a row as its columns' values joined by a bar, a null as <c>null</c>.
+        /// </summary>
+        static string Row(object? row)
+        {
+            return string.Join("|", (row as object?[] ?? [row]).Select(v => v is null ? "null" : System.Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        /// <summary>
+        /// Renders the statement each pushed subtree of a plan sends.
+        /// </summary>
+        List<string> Sent(RelNode best)
+        {
+            var sent = new List<string>();
+            void Walk(RelNode node)
+            {
+                if (ReferenceEquals(node.getConvention(), _table.Convention))
+                {
+                    var implementor = new CosmosImplementor(node.getCluster().getRexBuilder(), Products);
+                    implementor.Visit(node);
+                    sent.Add(implementor.Build().Sql);
+                    return;
+                }
+
+                var inputs = node.getInputs();
+                for (var i = 0; i < inputs.size(); i++)
+                    Walk((RelNode)inputs.get(i));
+            }
+
+            Walk(best);
+            return sent;
+        }
+
+        /// <summary>
+        /// Returns the top-level conjuncts of a <c>WHERE</c> as the statement writes it: within the parentheses that wrap the
+        /// whole, the parts joined by <c>AND</c> outside any other.
+        /// </summary>
+        static List<string> ConjunctsOf(string where)
+        {
+            int Closes(int open)
+            {
+                var depth = 0;
+                for (var i = open; i < where.Length; i++)
+                    if (where[i] == '(')
+                        depth++;
+                    else if (where[i] == ')' && --depth == 0)
+                        return i;
+
+                return -1;
+            }
+
+            if (where.StartsWith('(') && Closes(0) == where.Length - 1)
+                where = where[1..^1];
+
+            var conjuncts = new List<string>();
+            var (level, start) = (0, 0);
+            for (var i = 0; i < where.Length; i++)
+            {
+                if (where[i] == '(')
+                    level++;
+                else if (where[i] == ')')
+                    level--;
+                else if (level == 0 && string.CompareOrdinal(where, i, " AND ", 0, 5) == 0)
+                {
+                    conjuncts.Add(where[start..i]);
+                    start = i + 5;
+                }
+            }
+
+            conjuncts.Add(where[start..]);
+            return conjuncts;
         }
 
         // ── What a point read can read ────────────────────────────────────────────

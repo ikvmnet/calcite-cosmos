@@ -429,7 +429,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// written at implementation as the string or the boolean, exact, so the plan's filter is the conjunct itself; for
         /// <c>'30'</c>, which a fraction whose double is 30 was not measured rendering as on Azure, the string or a number
         /// equal to it beside the property's
-        /// presence, the text-equality alternatives (h09), rechecked above, its rows the same.
+        /// presence, the text-equality alternatives (h09), rechecked above, its rows the same. The number's bound is
+        /// written as the <c>DOUBLE</c> Calcite compares the cast in, <c>30.0E0</c>, as
+        /// <c>CosmosPlannerTests.TheComparisonStaysAboveTheAlternatives</c> holds it without a service.
         /// </para>
         /// </remarks>
         [Fact]
@@ -438,7 +440,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             RequireService();
 
             const string Alternatives = "CosmosFilter(condition=[AND(OR(=(JSON_VALUE($0, '$.label'), '30'), CASE(IS_NUMBER(JSON_VALUE($0, '$.label')), "
-                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])";
+                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30.0E0), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])";
             foreach (var (predicate, expected, pushed) in new[]
             {
                 ("""JSON_VALUE(c."DOC", '$.label') = '30'""", new[] { "n", "s" }, Alternatives),

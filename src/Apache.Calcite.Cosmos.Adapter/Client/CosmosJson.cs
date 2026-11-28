@@ -492,7 +492,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
         /// <c>(IS_NUMBER(c.w) ? c.w : null)</c> — so a value of another kind arrives as null and is never
         /// refused. What is left is the value itself: a number that is not whole or not within an integral
         /// width (2^63, 1E+19 and 42.5 as a <c>BIGINT</c>), text that is not an ISO-8601 date or time, a
-        /// UUID, GeoJSON or base64, and a collection's element where its type is one of those.
+        /// UUID, GeoJSON or base64. A collection's guard is the collection's,
+        /// <c>(IS_ARRAY(c.x) ? c.x : null)</c>, and its elements are read to the type the plan named, so an
+        /// element of another kind is refused as well (<c>[1]</c> as a <c>VARCHAR ARRAY</c>), unless that
+        /// type reads every kind, as the natural value and a <c>VARIANT</c> do.
         /// </para>
         /// <para>
         /// <b>Why a plan asks.</b> Calcite reads a value only for the rows that reach the expression, and
@@ -522,7 +525,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Client
                 nameof(SqlTypeName.TINYINT) or nameof(SqlTypeName.SMALLINT) or nameof(SqlTypeName.INTEGER) or nameof(SqlTypeName.BIGINT) => true,
                 nameof(SqlTypeName.DATE) or nameof(SqlTypeName.TIME) or nameof(SqlTypeName.TIMESTAMP) or nameof(SqlTypeName.TIMESTAMP_TZ) => true,
                 nameof(SqlTypeName.UUID) or nameof(SqlTypeName.GEOMETRY) or nameof(SqlTypeName.BINARY) or nameof(SqlTypeName.VARBINARY) => true,
-                nameof(SqlTypeName.ARRAY) or nameof(SqlTypeName.MULTISET) => componentTypeName is not null && CanRefuse(componentTypeName),
+                nameof(SqlTypeName.ARRAY) or nameof(SqlTypeName.MULTISET) => componentTypeName?.name() is not (null or nameof(SqlTypeName.NULL) or nameof(SqlTypeName.ANY) or nameof(SqlTypeName.OTHER) or nameof(SqlTypeName.VARIANT)),
                 _ => false,
             };
         }

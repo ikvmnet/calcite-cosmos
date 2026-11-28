@@ -47,7 +47,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// where the WHERE as written raises on no document the declaration admits, or for a projected <c>CASE</c> condition no
     /// predicate of the projected expression</description></item>
     /// <item><term>a weakening already applied (<see cref="IsApplied"/>)</term><description>every admitted conjunct, what
-    /// the filters beneath apply and the weakenings pushed before it, and the declaration</description></item>
+    /// the filters beneath apply — beneath a projection too, each read over the relation it reads — and the weakenings
+    /// pushed before it, and the declaration</description></item>
     /// <item><term>a clause after the filter: a projection, a sort, a grouping, a lookup's key (<see cref="After"/>,
     /// <see cref="CosmosRowFacts"/>)</term><description>the last stratum: every admitted conjunct, which the service applies
     /// before the clause reads a row, or beside the key's restriction</description></item>
@@ -732,7 +733,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// Determines whether a weakening pushed beside this statement adds nothing to what is applied there: its admitted
-        /// conjuncts, what the filters beneath apply and the weakenings pushed before it, and the declaration.
+        /// conjuncts, what the filters beneath apply, beneath a projection too, and the weakenings pushed before it, and the
+        /// declaration.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -743,22 +745,53 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
         /// </para>
         /// <para>
         /// Which of this statement's conjuncts count is the licence's (<see cref="OracleLicence.Applied"/>): the admitted
-        /// ones. What lies beneath is the plan's, which the rule walks; it is read through this statement's loading, so a
-        /// weakening spelled as a conjunct beneath is that conjunct's term. So it rests on nothing the engine might not
-        /// finish: a predicate a scope assumes is always true there, read off what the scope assumes before any run
-        /// (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row is asked. What a run adds is what
-        /// the conjuncts beneath imply beyond spelling the weakening themselves.
+        /// ones. What lies beneath is the plan's, which the rule walks. Over the same binding it is read through this
+        /// statement's loading, so a weakening spelled as a conjunct beneath is that conjunct's term. So it rests on nothing
+        /// the engine might not finish: a predicate a scope assumes is always true there, read off what the scope assumes
+        /// before any run (<see cref="StatementTerms"/>), and so is anything a scope that keeps no row is asked. What a run
+        /// adds is what the conjuncts beneath imply beyond spelling the weakening themselves. Each is assumed however the
+        /// facts graph reads it, exactly or coarsely: a wrong answer here only declines a push, never a row, so the rule that
+        /// a conjunct is deleted only beside siblings it reads exactly does not reach it.
+        /// </para>
+        /// <para>
+        /// <b>Beneath a projection, through the rows it reads.</b> Every row a projection returns is a row its input
+        /// returned, so what a filter beneath it applies holds of the document behind each; but it is written over the
+        /// input's ordinals, not this statement's. Each such conjunct is read through a reader of the relation it reads
+        /// (<see cref="CosmosPredicateLoader.Loading.Through"/>), in this statement's numbering: a path it reads is this
+        /// statement's term, and what the loader cannot read is numbered beside that relation, never one of this
+        /// statement's opaque terms. Assumed, it can only make a weakening applied that was not, so a push is declined,
+        /// never added. Where the projection's columns carry everything such a conjunct reads, it is also written over
+        /// them: over this statement's rows it is among <paramref name="beneath"/>, read through this statement's loading,
+        /// so that a typed or text column is one term above the projection and beneath it, and one node the loader cannot
+        /// read one term; over the rows of a projection met beneath another, beside the relation that projection is met
+        /// in (<see cref="BoundConjunct"/>).
         /// </para>
         /// </remarks>
         /// <param name="weakening">The weakening.</param>
-        /// <param name="beneath">What the filters beneath apply, and the weakenings pushed before this one, over the same
-        /// binding.</param>
+        /// <param name="beneath">What the filters beneath apply, what a filter beneath a projection there applies written
+        /// over its columns, and the weakenings pushed before this one, over the same binding.</param>
+        /// <param name="across">What the filters beneath a projection apply, each conjunct beside the relation it reads and
+        /// that relation's binding.</param>
         /// <returns><c>true</c> where the weakening adds nothing to what is applied.</returns>
-        public bool IsApplied(RexNode weakening, IReadOnlyList<RexNode> beneath)
+        public bool IsApplied(RexNode weakening, IReadOnlyList<RexNode> beneath, IReadOnlyList<BoundConjunct>? across = null)
         {
-            var verdict = Scope.Judge(_loading.Read(weakening), OracleLicence.Applied(beneath.Select(_loading.Read).ToArray()));
+            var verdict = Scope.Judge(_loading.Read(weakening), OracleLicence.Applied(beneath.Select(_loading.Read)
+                .Concat((across ?? Array.Empty<BoundConjunct>()).Select(b => _loading.Through(b.Relation, b.Fields, b.Readings).Read(b.Conjunct)))
+                .ToArray()));
             return verdict.AlwaysTrue || verdict.Contradictory;
         }
+
+        /// <summary>
+        /// A conjunct a filter beneath a projection applies, beside the relation it reads and that relation's binding, which
+        /// it is read through (<see cref="IsApplied"/>).
+        /// </summary>
+        /// <param name="Conjunct">The conjunct, over the relation's rows.</param>
+        /// <param name="Relation">The relation the conjunct reads, compared by reference: the projection's input, or, where
+        /// it is written over the columns of a projection met beneath another, the relation that projection is met in. Two
+        /// projections over one input read one set of rows.</param>
+        /// <param name="Fields">The ordinal-to-path binding of that relation.</param>
+        /// <param name="Readings">How each of those fields is read.</param>
+        internal readonly record struct BoundConjunct(RexNode Conjunct, object Relation, IReadOnlyList<CosmosPath?> Fields, IReadOnlyList<CosmosReading> Readings);
 
     }
 

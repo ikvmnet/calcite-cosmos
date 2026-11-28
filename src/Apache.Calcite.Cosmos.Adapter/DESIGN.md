@@ -1210,11 +1210,14 @@ self-join (`Kept`), a single filter's projection, sort, grouping and lookup key 
 and the reduce assume the conjuncts their rows above name, however the facts graph reads them, and rest on that audit by
 decision: each is provable on what each reading keeps, and gating them on exactness would decline pushes that are
 provable, losing routes the manual documents (Chapters 7.3 and 8.5) and sorts the service runs, 10 of the pull-request
-digests' 1,181 lines and 17 of the gate's 3,492, measured on Production. The translator's later rounds, which write a
-parameter or an opaque comparison from the chain node, rest on it too, a bridge that 3B ends for the parameter
-comparisons it moves into S's rounds, and the translator's removal (h42) for the rest. What the audit leaves open — a
-reading added later whose `Kept` is too narrow, and the raw value read through `CHAR`, which no list names — is
-`TODO.md`'s.
+digests' 1,181 lines and 17 of the gate's 3,492, measured on Production. Whether a weakening adds anything to what is
+applied (`OracleLicence.Applied`) assumes its row's conjuncts however the facts graph reads them too, beneath a
+projection among them, on another ground: a wrong answer there only declines a push, the conjunct the weakening is drawn
+from staying above to be rechecked, and gated on exactness it sent a test a coarse conjunct implies in 20 of 64
+statements measured, no answer changed. The translator's later rounds, which write a parameter or an opaque comparison
+from the chain node, rest on that audit too, a bridge that 3B ends for the parameter comparisons it moves into S's
+rounds, and the translator's removal (h42) for the rest. What the audit leaves open — a reading added later whose `Kept`
+is too narrow, and the raw value read through `CHAR`, which no list names — is `TODO.md`'s.
 
 **An order the service computes is read through `CosmosServiceOrder` under the consumer's own row, and nowhere
 else.** The table gains no row for it: a sort and an extreme ask under the last stratum (L1), an ordering comparison
@@ -1322,7 +1325,7 @@ for them; and the questions a rule asks, each named for its licence rather than 
 | `CosmosImplementor.TranslateCondition` | `Translate`, conjunct by conjunct | the same strata, so what was admitted is what renders |
 | `CosmosFilterSplitRule`, which conjuncts push | `IsAdmitted` | L2 |
 | the split rule, a weakening rendered and its guards deleted | `TranslatorFor` a conjunct left above | the last stratum: what every pushed conjunct establishes, never the conjunct's own |
-| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath and the weakenings pushed before it (`Applied`) |
+| the split rule, whether a weakening is already applied | `IsApplied` | every admitted conjunct, what lies beneath — beneath a projection too, each read over its own relation — and the weakenings pushed before it (`Applied`) |
 | `CosmosFactRewriter`, the text sent made `FALSE`, and a projection's `CASE` conditions, in the text sent alone, through `RewriteConditions`; `CosmosImplementor.Build`, whether the statement is sent | `IsContradictory` | the reduce's: the WHERE, assumed only where it raises on no admitted document, and for a projected condition only where no predicate of the projected expression does (`Reduce`); several filters' WHERE as one statement (`CosmosRowFacts.KeepsNothing`) |
 | the rewriter, a conjunct deleted | `Redundant` | its siblings still kept, one at a time, the admitted only for an admitted conjunct (L3), each the facts graph reads exactly; only a conjunct it reads exactly |
 | the rewriter, a comparison lowered onto its stored form | `Siblings` | L3, of the conjuncts the deletions keep, each the facts graph reads exactly |
@@ -1386,13 +1389,11 @@ double is the literal's. Routing by the window's double, which every number in i
 a measurement of how the service hashes a number (`TODO.md`). A cast of the key to text over the `VARIANT` column pins
 the stored string, which is all such a cast keeps, a number and a boolean casting to null there.
 
-Three older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
+Two older behaviours sit beside this, each the same on `main` and each recorded as measured in `TODO.md`. A
 comparison through the cast of the text to `DOUBLE` is read through `NumberCast`'s `Window`, looser than a double's
 rounding, so one the declaration rules out may still send a request that finds nothing, and on the key may route to a
-listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). Where such a comparison is
-split, the weaker form's number can meet the comparison's `DOUBLE` in Calcite's simplifier, which a connection with
-Calcite's default rules runs, and the statement fails to plan (*Two weakenings over one path still share one raw
-value*). And a key the declaration fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
+listed value's partition (*A cast to `DOUBLE` is read more loosely than a double rounds*). And a key the declaration
+fixes to one value is routed by `CosmosFilter.Implement` only where it sends a
 condition, so a comparison of the key the declaration shows true may be dropped from the text and the request read
 every partition (*A number pins no partition unless the declaration leaves the key one value*).
 
@@ -1468,10 +1469,17 @@ false alone and not beside the cast, split its own outer until the stack overflo
 holds the service's form, which Calcite has no body for (`CosmosOperators.HoldsServiceForm`, legality): through a
 connection that merges filters, `FILTER_MERGE` carried a split's weaker forms up beside the conjuncts they weaken, and a
 split of the merged filter left them in a filter Calcite evaluates, which failed with "cannot translate call IS_NUMBER"
-where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). What it does not reach is `TODO.md`'s:
-a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a projection
-whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*); and,
-through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
+where Calcite answers (`CosmosConnectionPlanningTests.NoWeakerFormIsCalcites`). Nor is one a host's rules make taken
+where another plan answers: a host's filter merge folds a split's residual and the half sent into one condition, which
+its converter rules make a filter Calcite evaluates over the statement beneath, and the point read's split lifted that
+condition's weakening above a view. Volcano compares rows alone, and where what is pushed brings the estimate to one row
+the merged filter and the residual over the half sent cost the same, so the order they were registered in chose; the
+cost model charges a filter Calcite evaluates holding the service's form more rows than any estimate reaches
+(`CosmosRelMetadataQuery.getNonCumulativeCost`), legality it keeps, and the point read's split lifts none
+(`CosmosConnectionPlanningTests.AConditionHoldingTheServicesFormIsNeverLeftToCalcite`). What it does not reach is
+`TODO.md`'s: a subquery's split under a filter above, which Calcite's calc pass merges without the half sent (below); a
+projection whose columns the service computes (*A split over a computed projection keeps what Calcite reads otherwise*);
+and, through a connection, `FILTER_REDUCE_EXPRESSIONS` reading the half sent beneath the filter above (*Through a
 connection, a filter above the half sent is reduced with what that half holds*).
 
 **The correlate rule takes Calcite's transposition at every correlate of a statement, or at none.**
@@ -1639,7 +1647,25 @@ of what lies beneath, which kept the split rule from pushing a weakening under i
 oracle reads a weakening spelled as a conjunct beneath as assumed, before any run, so the loop cannot return. And it
 is more: `IS_DEFINED(c.id)`, which a comparison over `id` implies, is true of every document by the service's own
 statement, and pushed it filtered nothing while making a filter a host could plan in process, where the service's
-test has no body.
+test has no body. What lies beneath includes what a filter beneath a projection applies, each conjunct read over the
+relation it reads (`CosmosPredicateLoader.Loading.Through`), with what the loader cannot read numbered beside that
+relation's reader, so that a term means one thing within the question. Where the projection's columns carry everything
+a conjunct reads, it is also written over them, over the rows the projection returns, and read as those rows are read:
+through the statement's own loading where they are the statement's, so that a typed or text column, a field above the
+projection and an accessor beneath it, is one term
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce`), and one node the loader cannot read
+is one term too (`CosmosPlannerTests.AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn`).
+Each member of what the filter admits of a weakening is asked whether what lies beneath already applies it, beside none
+of the filter's own conjuncts, whose facts a later question over the half reads otherwise, and one that is is not
+pushed beside the rest where the rest is admitted whole without it: the weakening of a `CASE` read beneath a view holds
+the comparison its branch reads, which the half pushed over the view's projection applies, and pushed again it sent one
+comparison twice
+(`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`).
+Over the container that question respells a filter stacked on a split's half: in the corpus a `BETWEEN`, a `NOT IN` and
+a negated `IN` over `c.price` send `IS_DEFINED(c.price)` once where they sent it in both filters, the same documents
+kept. Planned without the trimmer, a member not pushed can leave a view's column whose reading can refuse selected
+beneath a condition kept in process (`TODO.md`, *A filter kept in process over a view projecting a reading that can
+refuse*).
 
 #### How the oracle is checked: population D
 
@@ -3092,14 +3118,15 @@ truncates `'bikes'` to `'bik'` while `CHAR(8)` pads it — so both keep the cast
 is admitted beside `CAST`, the two differing only in what happens when a conversion fails, which
 rendering a value as text never does. **Casts to a number are still declined**, and for the reason
 above: they convert rather than render, and no reading reproduces a conversion the service did not do.
-**Only a value typed `ANY` or `VARIANT`** (`CosmosRexShapes.IsDocumentValueType`). The cast over `JSON_VALUE` drops
-in a comparison, where the literal excludes every case that could differ; a projection has no literal, and measured,
-`JSON_VALUE` answers null for an object or an array where the reader renders one as `{x=1}` or `[x, y]`. A rendered
-column over it would carry text for a document the in-process plan carries nothing for, so it stays in process — the
-filters around it push regardless. The `VARIANT` key column is admitted and is wrong: Calcite casts a number or a
-boolean there to null, where the pushed column carries its rendering, `30` or `true`, older than "fail like Calcite"
-and the same on `main` (`TODO.md`, *The facts graph reads a text cast of a raw value as its rendering*, whose column
-writer is the fix; Chapter 23 records it). Admitting the cast over an `ANY` value alone is the bridge.
+**Only a value typed `ANY`.** The cast over `JSON_VALUE` drops in a comparison, where the literal excludes every case
+that could differ; a projection has no literal, and measured, `JSON_VALUE` answers null for an object or an array where
+the reader renders one as `{x=1}` or `[x, y]`. A rendered column over it would carry text for a document the
+in-process plan carries nothing for, so it stays in process — the filters around it push regardless. So does the cast
+of the `VARIANT` key column: Calcite casts a number or a boolean there to null and raises over a structure, where the
+reader renders each, and the pushed column read `30` or `true` where Calcite reads null, which a condition kept in
+process over a view's column of it then read
+(`CosmosToClrCursorConverterTests.ShouldComputeAPromotedColumnsCastToTextInProcess`). The column is the raw value it
+holds, cast in process. Admitting the cast over an `ANY` value alone is the bridge until S writes the column (h37).
 
 **A rendered column addresses no document path, and that is what makes it sound.** The column carries
 text where the document holds something else, so a filter or a sort above it written against the raw
@@ -8568,6 +8595,17 @@ So `AccessorsOf` keeps no typed accessor for such a path, the builder writes no 
 over it, and that weakening is not pushed: RU, never rows, on a shape none of the inputs' 809 weakenings holds. Each
 member carrying the reader it was proven over would let the builder write it (`TODO.md`).
 
+**A number is written as Calcite's validator writes it beside its term.** Calcite's simplifier, which every connection's
+planner runs, takes every literal one term is compared with in a condition to be of one class. A bound written as an
+exact `DECIMAL` beside a term typed `DOUBLE` met the `DOUBLE` Calcite writes for the same term elsewhere: a view's own
+`= 2` or `= 2.0E0` where the split's weakening landed over the view, or the residual's `CAST(… AS DOUBLE) > 500`, and the
+statement failed to plan, `BigDecimal` against `Double`. So beside a term of an approximate type `Number` writes a
+number whose double is the number itself as a literal of that type, the same value; one whose double is another
+number, `2.1`, `0.1` or 2^53 + 1, stays the exact number the form holds. The statement sent does not move, since the
+printer binds the form's number and not the Rex's literal: a bound in the plan respells, `30` as `30.0E0`, on 51 of the
+plan digests' 1,181 lines at the pull-request size and 148 of the 3,492 at the gate's, on either target, their
+statements, parameters and facts byte-equal.
+
 **Never a member left out.** Beneath an `OR` or an odd number of `NOT`s a member left out strengthens the weakening and
 drops rows Calcite keeps. A node outside the grammar — a path no accessor reads, a literal its accessor holds no class
 of, a bare path, an opaque form — makes the whole weakening `null`, and none is pushed: sound, since each residual's
@@ -10297,12 +10335,13 @@ only through its cast, so the whole weakening went unbuilt: partitions 1908 sent
 translator had sent the ordering beside it, and line 13 at the gate's size found thirteen weakenings not built. A
 weakening that is one of the filter's own conjuncts, read through its loading (`IsOwn`) or equal to one, is not pushed:
 a filter of weakenings that does not admit one weakens it in turn, and to itself it would be pushed under that filter
-for ever; nor is one the filters beneath apply (`IsApplied` over `AlreadyApplied`), nor one of which all the filter
-beneath admits is applied there. The filter left above asks the same weakening, which is not applied where only a weaker
-form of it was pushed, and that form would be pushed under itself for ever: measured as a stack overflow on the
-rendering check's inputs, a `RETURNING DECIMAL` comparison or a number past 2^53 whose weakening's `CASE` the filter
-beneath declines and whose weaker form it admits (`AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther`). The capture is
-told S's weakening as the printer writes it (`PrintWeakening`) where something of it is pushed, which line 12 reads.
+for ever; nor is one the filters beneath apply (`IsApplied` over `AlreadyApplied`, beneath a projection too), nor one
+of which all the filter beneath admits is applied there. The filter left above asks the same weakening, which is not
+applied where only a weaker form of it was pushed, and that form would be pushed under itself for ever: measured as a
+stack overflow on the rendering check's inputs, a `RETURNING DECIMAL` comparison or a number past 2^53 whose weakening's
+`CASE` the filter beneath declines and whose weaker form it admits (`AWeakeningItsFilterDoesNotAdmitIsPushedNoFurther`).
+The capture is told S's weakening as the printer writes it (`PrintWeakening`) where something of it is pushed, which
+line 12 reads.
 
 **A filter folded onto a `WHERE` never fails where that `WHERE` excludes.** Filters stacked over one scan are conjoined
 (`Rel/CosmosFilter.cs`), which is sound at `Pos` for the truths, but the service then evaluates the upper form over every
@@ -11266,7 +11305,32 @@ rows. Against h15's digests 40 statements under `Production` and 42 under `Emula
   test's body over it is the raw value's, `testreads`, but the test is asked over the reading), so S proves nothing over
   it and Calcite evaluates every filter over it, a comparison, a null test and a type test
   (`CosmosPlannerTests.AFilterOverAReturningVariantIsCalcites`, over a path and an element). No corpus statement reads
-  one, so no digest line moves for it.
+  one, so no digest line moves for it. It addresses no path either (`CosmosRexShapes.IsJsonAccessor`), as `RETURNING
+  DECIMAL` addresses none, and so neither does an item of it, an accessor over it or `StringToArray` over it: Calcite
+  reads each through the accessor's value, null wherever a path beneath it is defined. Resolved to its path, a view's
+  column of it read as the raw value and a weakening over the view dropped `{"x":[]}`, an item's null test was sent as
+  the raw value's and dropped `{"x":{"a":1}}`, and the column selected as `c.x` was read back raw, so an item computed
+  over it failed over `[1]`. Refused, it is Calcite's to compute from the document, in a filter and in a select list
+  alike
+  (`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereAPlanWouldSelectAReturningVariant`,
+  `CosmosToClrCursorConverterTests.ShouldSendNoTestThroughAReturningVariantReadFromAViewsDocumentWhereTheTransposeWillNotCarryTheFilter`,
+  `CosmosPlannerTests.AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps`,
+  `CosmosPredicateLoaderTests.AProjectionBindsNoPathForWhatReadsThroughAReturningVariant`), and the loader still reads
+  the accessor itself as `typed:VARIANT` (`CosmosPredicateLoaderTests.AReturningVariantIsATypedReadingAndNoRawValue`),
+  its path still resolved for that (`CosmosRexTranslatorTests.AVariantReturningAddressesNoPathAndIsLeftToTheEngine`).
+  `StringToArray` over it, which only a host chaining the adapter's operators into its own validator can write (a
+  connection's finds no `STRINGTOARRAY(<VARIANT>)`), has no in-process body and fails to implement. Nor does an item
+  of an array or a map typed by its elements address a path, a `JSON_QUERY` returning one or a view's column holding
+  one, in any clause (`CosmosRexShapes.IsConvertingItem`): Calcite converts the member stored to the element type, a
+  stored 5 to '5' for `VARCHAR`, where the path reads what the document holds there, so a projection binds nothing for
+  it and nothing is sent of it. Resolved to the member's path, an item of a view's `VARCHAR ARRAY` column beside a case
+  fold was written into a filter beneath the view the translator writes no item of a `JSON_QUERY` in, and failed to
+  implement over every document
+  (`CosmosConnectionPlanningTests.AnItemOfAViewsTypedArrayAnswersAsCalciteBesideAConditionKeptInProcess`). Every other
+  column a projection binds is read through its field, where the field reads it at all, as the same kind of reading of
+  the same path and type as its expression
+  (`CosmosPredicateLoaderTests.EveryColumnAProjectionBindsReadsThroughItsFieldAsItsExpressionReads`, and over a filtered
+  view `CosmosPredicateLoaderTests.AColumnAProjectionOverAFilteredViewBindsReadsThroughItsFieldAsItsExpressionReadsOverTheScan`).
 - **What still reads the element reading.** `ITEM` over a raw value, and a field or a cast to `ANY` of an element, are
   written apart, and no run measured them as of a path: over a scalar an `ANY`'s `ITEM` raises
   (`Calcite.ItemIsNullWhereNoElementIs`). An element's raw value in a column reads it too, since the cell names no
@@ -11817,6 +11881,19 @@ returns them with it, so selecting the document returns six values before anythi
 itself holds. What a single value weighs is the one guess, and it is made in the direction that can
 only under-sell projecting.
 
+Which column is the document is read off what the converted subtree binds, the readings
+implementation reads the row by (`CosmosImplementor.TryBindOutput`), not off the column's name. The
+document passed straight through a projection weighs as the document under any name, as `$f1` where
+`CosmosProjectSplitRule` names it, and a computed column called `DOC` weighs as one value. Weighed by
+name, a plan reading the document whole over a view carrying it beside a computed column tied with
+the one reading the path a condition kept in process needs, or was narrower than one reading two,
+and was taken
+(`CosmosConnectionPlanningTests.AViewCarryingTheDocumentBesideAComputedColumnReadsTheTextsAConditionKeptInProcessNeeds`).
+In the plan digests it moves three lines on either target at both sizes, `Project.DeepPaths` and
+`differential` 53 and 54, each with no `WHERE`, from the document under `$f0` or `$f3` beside other
+values to `SELECT VALUE c`, Calcite computing the values over the document; planned as a host plans,
+`Project.DeepPaths` alone.
+
 **A residual filter was the same wall by another route (#210).** Where one conjunct does not render,
 the filter split leaves it above the conjunct that does, and the query's projection is above both.
 One statement has one `SELECT`, and the residual sat between the projection and the statement, so the
@@ -11834,18 +11911,90 @@ narrow on purpose, and each limit was measured:
 - **It declines a projection with a reading that can refuse a value.** The two commute in what they
   answer, not in what they raise. Beneath the filter, the projection is read for every row the service
   sends, and Calcite computes it only for the rows the filter keeps. So a value the reader refuses
-  (2^63 or 42.5 as a `BIGINT`, text that is no date) failed the statement over a row the filter would
+  (2^63 or 42.5 as a `BIGINT`, text that is no UUID) failed the statement over a row the filter would
   drop, where Calcite answers, which the error refinement order never allows. The ORDER BY yardstick
   found it on CI's linux-x64 emulator, which prints a stored 2^63 as Azure does,
   `9.223372036854776E+18`, under `LOWER` over a string nothing proves ASCII. `CosmosJson.CanRefuse`
   says which typed readings can refuse, beside the reader's switch, and a test holds the two together.
-  A projection holding one stays above, and the statement selects the document. The filter's own
-  paths still go down, because Calcite reads them for every row it tests. Asked by type alone, so a
-  path declared within bounds pays too (`TODO.md`, section 7).
+  A projection holding one stays above, and the statement selects the document. Nor does a path the
+  filter reads by such a reading go down for it, since Calcite computes a `CASE` branch, and so a
+  later operand of `COALESCE`, only for the rows that reach it: carried, the reading failed the
+  statement over a row whose branch Calcite never takes
+  (`CosmosConnectionPlanningTests.AReadingThatCanRefuseUnderABranchCalciteDoesNotTakeAnswersAsCalcite`).
+  The filter reads such a path from the document, and the rule moves nothing unless the projection
+  selects the document anyway; the filter's other paths still go down. Asked by type alone, so a path
+  declared within bounds pays too, and so does one the filter reads for every row it tests
+  (`TODO.md`, section 7).
 
-The split, for its part, no longer weakens a filter over a projection. `FILTER_PROJECT_TRANSPOSE`
-gives that filter an equivalent beneath the projection, where its weakenings are derived against what
-is already applied; derived above, they were blind to it and pushed a definedness test twice.
+The split weakens a filter over a projection as it weakens any other. What lies beneath reads
+through the projection: a filter beneath it applies its conjuncts to every row the projection
+returns, and each is read over the relation it reads (`CosmosPredicateLoader.Loading.Through`),
+what the loader cannot read numbered beside that relation's reader, and, where the projection's
+columns carry everything it reads, also written over them and read as the rows the projection
+returns are read (*A weakening the rest already implies is not pushed*). So a weakening Calcite's
+`FILTER_PROJECT_TRANSPOSE` (the transpose) or the residual projection has already pushed beneath
+is applied there, and the facts graph finds it so. Derived above and blind to what lies beneath,
+a weakening is pushed twice: read only through its own rows, `SELECT c."DOC", JSON_VALUE(c."DOC",
+'$.price') AS "p" FROM products AS c WHERE JSON_VALUE(c."DOC", '$.price' RETURNING INTEGER) / 2 =
+12` sent `IS_DEFINED(c.price)` twice, over two filters, as #210 found; read beneath, it is sent once
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOnceUnderAResidualProjectionCarryingTheDocument`).
+The split still ends: each push adds to what is applied beneath its residual a predicate not applied
+there before, drawn from a finite set, and reading beneath a projection only adds what is assumed.
+The half a weakening rides in goes over a projection only where it reaches the service, through a
+member already part of a statement or through the transpose asked its own conditions (a window, a
+correlation, its bloat); elsewhere the conjuncts admitted go alone, since Calcite has no body for
+the service's form
+(`CosmosPlannerTests.ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone`),
+and they are asked the same, since a host's filter merge brings a split's weakening among them
+(`CosmosPlannerTests.UnderAHostsRewritesASplitPushesNoServiceFormTheTransposeWillNotCarry`).
+Where the half lands, over a member already part of a statement, a filter, the scan or a traversal,
+it reaches the service only where the filter rule translates a filter of it there, whatever the
+binding of the rows above reads
+(`CosmosPlannerTests.AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands`), and
+over the set it sits over, which the rule binds through the member the set was built from
+(`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`); on a
+filter no host merges it with, that is onto the filter's `WHERE`, which takes only a statement that
+never fails there
+(`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere`),
+and only where that filter reaches the service itself, asked of its own condition
+(`CosmosPlannerTests.AHalfStackedOnAFilterReachesTheServiceOnlyWhereThatFilterDoes`); and over a
+traversal, only where its left side is part of a statement as it stands, which nothing carries a
+projection out of
+(`CosmosPlannerTests.EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates`,
+over a traversal of a view computing `INITCAP`).
+Nor does the split push a weakening over a projection the service may select holding a computed
+column whose reading can refuse a value, whatever the condition left above reads, nor over a
+projection or a filter above one, since the transpose carries the half beneath every projection of
+the stack and a column passed up as it is may be the one beneath: beneath that condition the column
+is read for every row the half returns, where Calcite computes it only for the rows that reach it, a
+`CASE` branch or a later operand of `COALESCE` only where it is reached, the reason the residual
+projection declines such a projection. There the conjuncts admitted go alone, the pair the split
+made before it weakened over a projection. Declining the pair whole cannot make the plan split the
+filter beneath the projection, since the cost model may keep the filter above the projection the
+service selects, which then read the column under no `WHERE` and failed where Calcite answers
+(`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct`).
+Asked by type alone, as the residual projection asks it (`TODO.md`, section 7), and only of a
+projection the transpose would carry the filter beneath
+(`CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess`):
+where the transpose declines, the filter stays above the projection whatever the split does, and
+the weakenings only narrow what the service selects beneath it
+(`CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter`);
+beneath a filter it is stacked on, likewise, only where the transpose carries that filter as well
+(`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteOverAViewsArrayBeneathAFilterTheTransposeWillNotCarry`),
+in any form of it the set holds, its reduction to a `SEARCH` among them
+(`CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteOverAViewsReadingBeneathAFilterTheTransposeCarriesOnceReduced`).
+A collection whose elements are read to a type can refuse too (`CosmosJson.CanRefuse`): its guard
+is the collection's, so an element of another kind arrives, and neither this pair nor the residual
+projection selects a `VARCHAR ARRAY` a traversal above reads beneath the condition, where it would
+fail over `[1]` in a document the condition drops
+(`CosmosConnectionPlanningTests.AnArrayATraversalReadsIsReadOnlyForTheRowsTheConditionKeptInProcessKeeps`).
+So a filter over a projection is weakened as any other is, where these allow: over a view that
+renames the document, `INITCAP` of its name sends `IS_DEFINED(c.name)`
+(`CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewThatRenamesTheDocument`). And over
+the trimmer's projection of the document the split offers the plan whose `SELECT` is that projection
+beneath the residual, which the converter's width prefers where the condition kept in process reads
+the document anyway; in the corpus planned as a host plans, Calcite's field trimmer first, such
+statements moved their `SELECT` alone, their `WHERE` unchanged.
 
 `RelMdSize` is the metadata that would answer this properly, and it does not: measured over these
 plans `getAverageRowSize` returns `null` at every node. A handler for the Cosmos nodes is what

@@ -41,7 +41,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
     /// The split terminates. It fires only where both parts are non-empty and something it would push is not yet
     /// applied beneath, compared as Calcite compares expressions. The inner is wholly renderable; the outer holds no
     /// term of a conjunct sent, or is the condition kept whole above the half sent, so split again it pushes only
-    /// weakenings not yet applied, or nothing new, and stops.
+    /// weakenings not yet applied, or nothing new, and stops. What is applied beneath is read through a projection
+    /// too (<see cref="AlreadyApplied"/>): a weakening the transpose or the residual projection has already pushed
+    /// beneath it is found applied over the rows the filter there reads, or over the projection's own columns, and is
+    /// pushed once. Reading beneath a projection only adds what is assumed, so it can take a push away and never add
+    /// one.
     /// </para>
     /// <para>
     /// <b>The outer is the conjuncts the inner does not decide, as written</b>, or what Calcite's simplification of
@@ -176,13 +180,37 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             if (pushable.Count == 0 || residual.Count == 0)
                 return;
 
+            var rexBuilder = filter.getCluster().getRexBuilder();
+
+            // The conjuncts admitted alone, asked as the half is; none where nothing is admitted or nothing carries them.
+            List<RexNode>? Alone()
+            {
+                var alone = Compose(rexBuilder, admitted);
+                return admitted.Count == 0 || (CosmosOperators.HoldsServiceForm(alone) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), alone) == false) ? null : admitted;
+            }
+
+            // Legality: a weakening is the service's form, which Calcite has no body for, so the half split off holds one only
+            // where it reaches the service: through a member already part of a statement, or over a projection through
+            // Calcite's FILTER_PROJECT_TRANSPOSE, asked its own conditions (Transposed), landing only where the filter rule
+            // translates it (Reaches). Where nothing carries it, the conjuncts admitted go alone, asked the same: a host's
+            // filter merge brings a split's weakening into the condition beside the conjunct it weakens, where it is admitted
+            // as the condition's own, and where nothing carries them either the split registers nothing.
+            var half = Compose(rexBuilder, pushable);
+            if (CosmosOperators.HoldsServiceForm(half) && Reaches(_convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half) == false)
+            {
+                if (Alone() is not { } alone)
+                    return;
+
+                pushable = alone;
+            }
+
             // Split no further where everything it would push is applied beneath already, compared as Calcite compares
             // expressions: the filter is a split's outer, and split again it would stack the same half under itself for ever.
-            var applied = AlreadyApplied(filter.getInput());
+            // That half is a filter over these rows, so what the filters over them apply is asked alone (Own); what a filter
+            // beneath a projection applies is weighed in Split, by the facts graph.
+            var (applied, _, _) = AlreadyApplied(filter.getInput());
             if (pushable.All(applied.Contains))
                 return;
-
-            var rexBuilder = filter.getCluster().getRexBuilder();
 
             // What Calcite evaluates of the condition over the rows the half sent returns; true, nothing is left above, and the
             // conjuncts admitted are the filter, the weakenings of what is left out with it.
@@ -193,6 +221,24 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // left them above it, which failed with "cannot translate call IS_NUMBER".
             if (CosmosOperators.HoldsServiceForm(left))
                 return;
+
+            // Legality: the pair leaves the filter's input beneath what Calcite evaluates, and a projection there the service
+            // selects is read for every row the half returns, where Calcite computes a column only for the rows that reach it.
+            // A computed column whose reading can refuse a value then failed the statement over a row the condition drops, where
+            // Calcite answers, whatever the condition reads: a CASE branch, COALESCE's later operands among them, is computed only
+            // for the rows that reach it (ReadsWhatCanRefuse). Asked only of a projection the transpose carries this filter
+            // beneath: where the transpose declines, the filter stays above the projection whatever this split does. Where such a
+            // column is held, the weakenings the split adds over a projection are taken away and the conjuncts admitted go
+            // alone, asked as the half is: the pair it made before it weakened over a projection. Declining the pair cannot make
+            // the plan split the filter beneath the projection, since the cost model may keep the filter above the projection
+            // the service selects, which then reads the column under less of a WHERE.
+            if (left.isAlwaysTrue() == false && pushable.Count > admitted.Count && ReadsWhatCanRefuse(filter.getInput(), filter.getCondition()))
+            {
+                if (Alone() is not { } alone || alone.All(applied.Contains))
+                    return;
+
+                pushable = alone;
+            }
 
             if (left.isAlwaysTrue())
             {
@@ -234,7 +280,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var written = Compose(rexBuilder, own.Where((_, i) => sent[i] == false).ToList());
 
             // Beneath a second projection the condition would be read through both, as Calcite merges them.
-            if (project is not null && OverProjection(project.getInput()))
+            if (project is not null && ProjectOf(project.getInput()) is not null)
                 return written;
 
             var plain = new RexSimplify(rexBuilder, RelOptPredicateList.EMPTY, RexUtil.EXECUTOR);
@@ -287,6 +333,144 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                     found = project;
 
             return found;
+        }
+
+        /// <summary>
+        /// Determines whether a projection the service may select, among a subtree's equivalent forms or beneath a filter or a
+        /// projection there, holds a computed column whose reading can refuse a value, where the transpose would carry the
+        /// filter beneath it instead.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A filter and a projection commute in what they answer, not in what they raise: the service's projection is read
+        /// for every row the statement returns, and Calcite computes a column only for the rows that reach it. A reading that
+        /// can refuse a value (<see cref="Client.CosmosJson.CanRefuse(org.apache.calcite.rel.type.RelDataType)"/>: 1.5 as an
+        /// <c>INTEGER</c>, text that is no UUID) then fails the statement over a row the condition above drops, where Calcite
+        /// answers. Measured: <c>SELECT t."n" FROM (SELECT c."DOC", JSON_VALUE(c."DOC", '$.n' RETURNING INTEGER) AS "n" FROM
+        /// products AS c) AS t WHERE INITCAP(JSON_VALUE(t."DOC", '$.name')) = 'Steel'</c>, split over the view's projection,
+        /// selected the column under <c>WHERE IS_DEFINED(c.name)</c> and failed over <c>{"n":1.5,"name":true}</c>, which
+        /// Calcite drops on <c>INITCAP</c> before it computes the column
+        /// (<c>CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess</c>).
+        /// </para>
+        /// <para>
+        /// <b>Whatever the condition reads.</b> Calcite computes a <c>CASE</c> branch, and so a later operand of
+        /// <c>COALESCE</c>, only for the rows that reach it, so a column the condition reads there is not computed for every
+        /// row it tests: <c>… AND COALESCE(JSON_VALUE(t."DOC", '$.s'), CAST(t."n" AS VARCHAR)) = 'a'</c> over the same view
+        /// selected the column and failed over <c>{"n":1.5,"name":"x","s":"q"}</c>, which Calcite drops without reading it.
+        /// </para>
+        /// <para>
+        /// <b>Asked of the column's type alone</b>, as <see cref="CosmosProjectResidualRule"/> asks it of the projection it
+        /// moves (<c>TODO.md</c>, section 7). Implementation reads a column of every type that can refuse as that type, its
+        /// other readings being of text and of the document, which refuse nothing; the walk's reading is not implementation's,
+        /// since it reads a <c>JSON_QUERY</c> returning an <c>INTEGER ARRAY</c> as JSON text where implementation reads the
+        /// array and refuses <c>[1.5]</c>. A projection Calcite implements is its own evaluation, not the service's.
+        /// </para>
+        /// <para>
+        /// <b>Every projection beneath, too.</b> A bare reference stands for a column of the projection's input, which a
+        /// projection beneath may compute, and the transpose carries the half beneath every projection of the stack, where
+        /// the service may select each. Measured: a view passing up, as they are, the document and the column of a filtered
+        /// view beneath it selected that view's column under the condition kept in process and failed in the same way.
+        /// </para>
+        /// <para>
+        /// <b>Only where the transpose carries the filter beneath</b> (<see cref="Transposed"/>). Where it declines, the filter
+        /// stays above the projection whatever the split does, and the service selects the projection under what lies
+        /// beneath it, which the pair, weakenings and all, only narrows
+        /// (<c>CosmosToClrCursorConverterTests.ShouldPushWhatRendersBeneathAViewsReadingThatCanRefuseWhereTheTransposeWillNotCarryTheFilter</c>).
+        /// Where it carries the filter, the cost model may still keep the filter above the projection the service selects, so
+        /// the split takes away only the weakenings it adds over a projection, and the conjuncts admitted go alone
+        /// (<see cref="onMatch"/>): declined whole, the pair left nothing beneath, and <c>t."dn" &lt; 5 AND INITCAP(t."nt") =
+        /// '2'</c> over a view also projecting the <c>INTEGER</c>, planned as a host plans, sent no <c>WHERE</c> and failed
+        /// over 7.5, which the comparison drops
+        /// (<c>CosmosToClrCursorConverterTests.ShouldAnswerAsCalciteWhereASplitOverAViewsReadingThatCanRefuseAdmitsAConjunct</c>).
+        /// Beneath a filter the filter is stacked on, likewise only where the transpose carries that filter beneath as well,
+        /// which it moves first: over a filter on a view too wide for it, the case fold's weakening taken away there was sent
+        /// nowhere, and the view's <c>VARCHAR ARRAY</c> was read for documents that weakening excludes and failed over
+        /// <c>["5",5]</c>.
+        /// </para>
+        /// </remarks>
+        /// <param name="node">The filter's input.</param>
+        /// <param name="condition">The filter's condition, carried beneath each projection as the transpose writes it there.</param>
+        static bool ReadsWhatCanRefuse(RelNode? node, RexNode condition)
+        {
+            // What was asked is remembered by member and the conditions carried, compared as Calcite compares expressions: a
+            // member met again by another route may be carried beneath where the first route's conditions grew past the
+            // transpose's bloat, as one met through a filter's reduction to a SEARCH, in the filter's set, is. A member already
+            // on the route, or met again under conditions already asked, is not asked again, which ends a cycle and errs
+            // toward registering the pair.
+            var asked = new Dictionary<RelNode, List<IReadOnlyList<RexNode>>>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+            var route = Rel.CosmosPlanMembers.NewSeen();
+
+            // Carried: the filter's condition, then that of each filter it is stacked on above the candidate, each as the
+            // transpose writes it there.
+            bool Holds(RelNode? candidate, IReadOnlyList<RexNode> carried)
+            {
+                foreach (var member in Rel.CosmosPlanMembers.Of(candidate))
+                {
+                    if ((member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention) || route.Contains(member) || Asks(member, carried) == false)
+                        continue;
+
+                    route.Add(member);
+
+                    // The transpose carries the half beneath every projection of the stack, and a column passed up as it is may be
+                    // one a projection beneath computes; asked where it carries the filter itself beneath. A filter keeps its row
+                    // type, so a projection beneath it holds this relation's columns in the same ordinals; the transpose carries
+                    // this filter beneath one only once it has carried that filter there.
+                    var holds = member switch
+                    {
+                        Project project => Beneath(carried, project) is { } beneath && (Refuses(project) || Holds(project.getInput(), beneath)),
+                        Filter filter => Holds(filter.getInput(), [.. carried, filter.getCondition()]),
+                        _ => false,
+                    };
+
+                    route.Remove(member);
+                    if (holds)
+                        return true;
+                }
+
+                return false;
+            }
+
+            // Whether a member is yet to be asked under the conditions carried, remembering that it is.
+            bool Asks(RelNode member, IReadOnlyList<RexNode> carried)
+            {
+                if (asked.TryGetValue(member, out var conditions) == false)
+                    asked[member] = conditions = [];
+                else if (conditions.Any(each => each.SequenceEqual(carried)))
+                    return false;
+
+                conditions.Add(carried);
+                return true;
+            }
+
+            // Each condition carried as the transpose writes it beneath the projection, or null where it declines any.
+            static List<RexNode>? Beneath(IReadOnlyList<RexNode> carried, Project project)
+            {
+                var beneath = new List<RexNode>();
+                foreach (var each in carried)
+                {
+                    if (Transposed(each, project) is not RexNode transposed)
+                        return null;
+
+                    beneath.Add(transposed);
+                }
+
+                return beneath;
+            }
+
+            bool Refuses(Project project)
+            {
+                var projects = project.getProjects();
+                for (var i = 0; i < projects.size(); i++)
+                {
+                    var expression = (RexNode)projects.get(i);
+                    if (expression is not RexInputRef && Client.CosmosJson.CanRefuse(expression.getType()))
+                        return true;
+                }
+
+                return false;
+            }
+
+            return Holds(node, [condition]);
         }
 
         /// <summary>
@@ -376,14 +560,6 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
             var rexBuilder = filter.getCluster().getRexBuilder();
 
-            // No weakening over a projection. FILTER_PROJECT_TRANSPOSE gives every such filter an
-            // equivalent beneath the projection, where its weakenings are derived against the filters
-            // already applied. Derived here they are blind to those: a filter left over a pushed
-            // projection is a residual whose weakenings are already below it, and pushing them again
-            // put a redundant definedness test in the statement, or one a declared presence had
-            // deleted (#210).
-            var weakens = OverProjection(filter.getInput()) == false;
-
             // Lowered before it is split, and that order is the point: a fact is usually conditional,
             // and the conjunct that proves the condition is a sibling of the one being lowered. Split
             // first and each conjunct would be weighed on its own, with nothing left to prove the
@@ -403,13 +579,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var residual = new List<RexNode>();
 
             // What lies beneath a weakening, beside the conjuncts the statement admits: every conjunct the
-            // filters beneath apply, and the weakenings pushed before it. A weakening they, the admitted
+            // filters beneath apply, what a filter beneath a projection there applies written over its columns,
+            // and the weakenings pushed before it, all over these rows; and beside them what a filter beneath
+            // a projection applies, each conjunct with the relation it reads. A weakening they, the admitted
             // conjuncts and the declaration already imply restricts nothing -- one beneath, applied by a
             // filter the residual was split from, would be pushed under itself for ever -- and is not pushed.
             // Nor is one equal to a conjunct of this filter, which a filter not admitting it would push under
             // itself for ever (h15). Equal, not implied: every weakening is implied by its own conjunct, which
             // is not applied.
             List<RexNode>? beneath = null;
+            IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across = null;
             var own = Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition());
 
             // What the filter split off holds beside a weakening: every conjunct admitted, and the weakenings pushed before it.
@@ -430,27 +609,30 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
                 // replacement for the predicate, so the original is still rechecked above.
                 residual.Add(conjunct);
 
-                if (weakens == false)
-                    continue;
-
                 // S's weakening of it, read in the stratum a conjunct no round admitted is read in, which is never
                 // its own facts, as the Rex the builder writes: none where S gave none or the builder writes none.
                 if (statement.WeakeningOf(i).Rex is not RexNode weakened)
                     continue;
 
-                beneath ??= AlreadyApplied(filter.getInput()).ToList();
-                if (own.Contains(weakened) || statement.IsOwn(weakened) || statement.IsApplied(weakened, beneath))
+                if (beneath is null)
+                {
+                    var applied = AlreadyApplied(filter.getInput());
+                    beneath = [.. applied.Own, .. applied.Over];
+                    across = applied.Across;
+                }
+
+                if (own.Contains(weakened) || statement.IsOwn(weakened) || statement.IsApplied(weakened, beneath, across))
                     continue;
 
                 // Of it, what the filter it is pushed in admits through S: a member that filter declined would stay in
                 // process beneath the conjunct it weakens, where it restricts nothing that conjunct does not, and where
                 // Calcite has no body for a Cosmos type test nor an order between a raw value's kinds (h15).
-                var kept = admit ? Admitted(weakened, held, beneath, fields, readings, container, rexBuilder) : new List<RexNode> { weakened };
+                var kept = admit ? Admitted(weakened, held, beneath, across, fields, readings, container, rexBuilder) : new List<RexNode> { weakened };
 
                 // Nor where what is admitted of it is applied beneath, all of it: the filter left above is matched next and
                 // asks the same weakening, which is not applied where only what was admitted of it was pushed, and pushed
                 // again that would be under itself for ever (h15, measured as TryBindOutput recursing through the filters).
-                if (kept.Count == 0 || (admit && kept.All(k => statement.IsApplied(k, beneath))))
+                if (kept.Count == 0 || (admit && kept.All(k => statement.IsApplied(k, beneath, across))))
                     continue;
 
                 pushable.AddRange(kept);
@@ -499,9 +681,23 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// residual implies, and the residual is rechecked above as before. S's weakening of a member declined there is
         /// asked in its stead, and so on, each asked once.
         /// </para>
+        /// <para>
+        /// <b>Nor a member what lies beneath already applies</b>, asked of the facts graph member by member
+        /// (<see cref="Metadata.CosmosFilterStatement.IsApplied"/>) over a statement of no conjunct, where the rest is admitted
+        /// whole without it. The weakening of <c>CASE WHEN INITCAP(…) = 'Steel' THEN t."n" &gt; 10 ELSE FALSE END</c>, read
+        /// beneath a view, holds the comparison the half pushed over the view's projection applies, and pushed beside the
+        /// definedness test it sent one comparison twice
+        /// (<c>CosmosToClrCursorConverterTests.ShouldNotSelectAViewsReadingThatCanRefuseUnderAConditionASplitLeavesInProcess</c>).
+        /// Not beside the conjuncts the filter admits, whose facts are read as this statement reads them and not as a later
+        /// question reads the half beneath it: <c>label NOT IN ('TRUE', '9')</c>, its tests of the label's definedness and
+        /// type dropped beside <c>label &lt;&gt; 'TRUE'</c>, which implies them here, was split again over that half and sent
+        /// <c>c.label != "TRUE"</c> twice. Planned without the trimmer, a member not pushed can leave a view's column whose
+        /// reading can refuse selected beneath a condition kept in process (<c>TODO.md</c>, <em>A filter kept in process over
+        /// a view projecting a reading that can refuse</em>).
+        /// </para>
         /// </remarks>
-        static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<CosmosPath?> fields,
-            IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
+        static List<RexNode> Admitted(RexNode weakening, IReadOnlyList<RexNode> held, IReadOnlyList<RexNode> beneath, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct>? across,
+            IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading>? readings, Metadata.CosmosContainerMetadata container, RexBuilder rexBuilder)
         {
             var kept = new List<RexNode>();
             var asked = new HashSet<RexNode> { weakening };
@@ -520,18 +716,36 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                     if (statement.IsAdmitted(k))
                         kept.Add(conjunct);
-                    else if (statement.WeakeningOf(k).Rex is RexNode weaker && asked.Add(weaker) && statement.IsOwn(weaker) == false && statement.IsApplied(weaker, beneath) == false)
+                    else if (statement.WeakeningOf(k).Rex is RexNode weaker && asked.Add(weaker) && statement.IsOwn(weaker) == false && statement.IsApplied(weaker, beneath, across) == false)
                         next.Add(weaker);
                 }
 
                 pending = next;
             }
 
-            return kept;
+            // Nor a member what lies beneath already applies, asked of each over a statement of no conjunct, so that what counts
+            // is the filters beneath, the weakenings pushed before it and the declaration, which stay beneath every later
+            // question; and only where the rest is admitted whole beside what the filter holds, since a member may be the guard
+            // another is admitted beside.
+            if (kept.Count < 2)
+                return kept;
+
+            var nothing = Metadata.CosmosFilterStatement.Of(rexBuilder.makeLiteral(true), fields, readings, container, rexBuilder);
+            var rest = kept.Where(k => nothing.IsApplied(k, beneath, across) == false).ToList();
+            if (rest.Count == kept.Count || rest.Count == 0)
+                return kept;
+
+            var alone = Metadata.CosmosFilterStatement.Of(Metadata.CosmosFactRewriter.Planned(
+                Compose(rexBuilder, [.. held, .. rest]), fields, container, CosmosImplementor.DefaultRootAlias, rexBuilder, readings), fields, readings, container, rexBuilder);
+
+            return Enumerable.Range(0, alone.Conjuncts.Count).All(k => held.Contains(alone.Conjuncts[k]) || alone.IsAdmitted(k)) ? rest : kept;
         }
 
         /// <summary>
-        /// Returns every conjunct any equivalent form of a subtree already applies, once each.
+        /// Returns every conjunct any equivalent form of a subtree already applies, once each (<c>Own</c>); what a filter
+        /// beneath a projection there applies, written over that projection's columns, over the subtree's own rows
+        /// (<c>Over</c>); and what a filter beneath a projection applies, each conjunct beside the relation it reads and that
+        /// relation's binding (<c>Across</c>).
         /// </summary>
         /// <remarks>
         /// <para>
@@ -548,12 +762,38 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// depends on how far the planner has got. Reading the whole set is stable, because once a
         /// weakening has been pushed the filter carrying it stays in the set.
         /// </para>
+        /// <para>
+        /// <b>And beneath a projection.</b> Every row a projection returns is a row its input returned, so what a filter
+        /// beneath it applies holds of the document behind each, read through the binding of the rows that filter reads.
+        /// It is written over the input's ordinals, not this relation's, so it is kept apart from <c>Own</c>, which is
+        /// compared by Calcite's equality over one row type: each conjunct beside the relation it reads, the projection's
+        /// input, and that relation's binding, which the statement reads it through. Each projection met at the subtree or
+        /// beneath a filter there is crossed once, and one met beneath it the same way with its own input; one set of
+        /// what was seen keeps a graph finite, and reads a filter once, in <c>Own</c> where the first walk met it.
+        /// </para>
+        /// <para>
+        /// <b>And over the projection's own columns.</b> Where the projection's columns carry everything a conjunct reads, it
+        /// is also written over them, as Calcite writes a condition back over a projection, and holds of every row the
+        /// projection returns, which the relation the projection is met in reads: it reads a column as a weakening over that
+        /// relation's binding reads it. Read only over the projection's input, a typed or text column is its accessor there
+        /// and a field here, two terms, and a weakening the transpose had pushed beneath was found not applied and pushed
+        /// again: <c>NOT (t."n" &gt; 10) OR INITCAP(…) = 'Steel'</c> over a view's <c>RETURNING DOUBLE</c> column sent its
+        /// weakening in two filters (<c>CosmosToClrCursorConverterTests.ShouldPushAWeakeningOverAViewsTypedColumnOnce</c>).
+        /// Over this subtree's own rows it is <c>Over</c>, which the statement reads as it reads <c>Own</c>, through its own
+        /// loading, so that one node the loader cannot read is one term above the projection and beneath it
+        /// (<c>CosmosPlannerTests.AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn</c>); over the rows of a
+        /// projection met beneath another, it is beside that relation in <c>Across</c>.
+        /// </para>
         /// </remarks>
-        internal static IReadOnlyList<RexNode> AlreadyApplied(RelNode? node)
+        internal static (IReadOnlyList<RexNode> Own, IReadOnlyList<RexNode> Over, IReadOnlyList<Metadata.CosmosFilterStatement.BoundConjunct> Across) AlreadyApplied(RelNode? node)
         {
             // Once each by Calcite's equality, which compares types where the digest prints none.
             var applied = new List<RexNode>();
             var once = new HashSet<RexNode>();
+            var over = new List<RexNode>();
+            var overOnce = new HashSet<RexNode>();
+            var across = new List<Metadata.CosmosFilterStatement.BoundConjunct>();
+            var projections = new List<Project>();
             var seen = Rel.CosmosPlanMembers.NewSeen();
 
             // Through a stack of filters as well as across a set's members: a filter keeps its input's
@@ -563,6 +803,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             // halves the estimated rows, was then the plan chosen (#210).
             void Collect(RelNode? candidate)
             {
+                if (candidate is Project project)
+                    projections.Add(project);
+
                 if (candidate is not Filter filter || seen.Add(filter) == false)
                     return;
 
@@ -580,15 +823,80 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
                 Collect(member);
 
-            return applied;
+            // Beneath a projection, every conjunct the filters there apply, over the rows the projection reads.
+            void Beneath(RelNode? candidate, RelNode relation, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, List<RexNode> conjuncts)
+            {
+                if (candidate is Project project)
+                    Cross(project, relation, fields, readings);
+
+                if (candidate is not Filter filter || seen.Add(filter) == false)
+                    return;
+
+                conjuncts.AddRange(Metadata.CosmosFilterStatement.ConjunctsOf(filter.getCondition()));
+
+                foreach (var member in Rel.CosmosPlanMembers.Of(filter.getInput()))
+                    Beneath(member, relation, fields, readings, conjuncts);
+            }
+
+            // Each projection once, over its input's binding, one whose input binds nothing giving nothing: each conjunct beside
+            // the relation it reads, and where the projection's columns carry everything it reads, written over them over the
+            // rows the projection returns, which the relation it is met in reads: this subtree's own, read as Own is, or beside
+            // that relation and its binding.
+            void Cross(Project project, RelNode? outer, IReadOnlyList<CosmosPath?> outerFields, IReadOnlyList<CosmosReading> outerReadings)
+            {
+                var input = project.getInput();
+                if (seen.Add(project) == false || CosmosImplementor.TryBindOutput(input, out var fields, out var readings, out _) == false)
+                    return;
+
+                var conjuncts = new List<RexNode>();
+                foreach (var member in Rel.CosmosPlanMembers.Of(input))
+                    Beneath(member, input, fields, readings, conjuncts);
+
+                foreach (var conjunct in conjuncts)
+                {
+                    across.Add(new(conjunct, input, fields, readings));
+
+                    var columns = new Columns(project, project.getCluster().getRexBuilder());
+                    var carried = (RexNode)conjunct.accept(columns);
+                    if (outer is null || columns.Unread)
+                        continue;
+
+                    if (ReferenceEquals(outer, node))
+                    {
+                        if (overOnce.Add(carried))
+                            over.Add(carried);
+                    }
+                    else
+                    {
+                        across.Add(new(carried, outer, outerFields, outerReadings));
+                    }
+                }
+            }
+
+            if (projections.Count > 0)
+            {
+                var bound = CosmosImplementor.TryBindOutput(node, out var fields, out var readings, out _);
+                foreach (var project in projections)
+                    Cross(project, bound ? node : null, fields, readings);
+            }
+
+            return (applied, over, across);
         }
 
         /// <summary>
         /// Determines whether a filter over a subtree can be a <see cref="CosmosFilter"/>: some equivalent form of it is part
         /// of a statement already, or one a rule converts over a subtree that can be: this container's scan, a projection,
         /// a filter <see cref="CosmosFilterRule"/> converts whole, or a traversal <see cref="CosmosUnnestRule"/> converts.
+        /// Given the half a split pushes, a projection carries it only where Calcite's transpose writes it beneath
+        /// (<see cref="Transposed"/>), and the projection's input is asked of the half as written there; a filter's input is
+        /// asked of the half as it stands, and the filter itself of its own condition, over a projection the project rule
+        /// converts or through the transpose; a traversal carries it only over a left side part of a statement as it stands
+        /// (<see cref="IsStatement"/>); and where it lands, over a member part of a statement, a filter, the scan or a
+        /// traversal, the half reaches the service only where <see cref="CosmosFilterRule"/> translates a filter of it there and
+        /// over the set, which the rule binds through the member the set was built from.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The filter rule converts a filter only over an input that converts, so a filter it declines leaves every filter
         /// above it in Calcite; and a filter Calcite implements copies as one. Split in either, the pushed half was a filter
         /// Calcite evaluates, and a weakening in it the service's form written as a Rex:
@@ -597,16 +905,77 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// the two filters. So did one over a lateral, an <c>UNNEST</c> or a scalar sub-query beside such a cast, while any
         /// member that was no filter counted: the correlate moved the half pushed into its left side, beside the cast. Which
         /// rule converts a member is legality, the question each asks of it.
+        /// </para>
+        /// <para>
+        /// <b>A half holding the service's form, over a projection no statement holds.</b> Such a projection reaches the
+        /// service only by the transpose moving the half beneath it, and the transpose declines a projection holding a
+        /// window, a condition holding a correlation, and one that read through the projection's expressions grows past its
+        /// bloat, as a half holding an 80-way <c>LIKE</c> of a view's column beside a weakening does over a view that also
+        /// computes <c>INITCAP</c>. A filter keeps its row type, so a projection beneath a filter the filter rule converts is
+        /// asked of the half too, as it stands. Asked without the half, the projection counts wherever its input reaches, the
+        /// transpose taken for granted, which is the cheap question <see cref="matches"/> asks before the half is built.
+        /// </para>
+        /// <para>
+        /// <b>Where the half lands</b> it is asked of the filter rule, whatever the binding of the rows above read. A view's
+        /// column holding an item of a map, bound to the member's path, read as the value stored there, and the split over the
+        /// view registered a half holding <c>IS_DEFINED(c.name) OR c.x.a = "5"</c>: written beneath the view it read the item
+        /// of the map, which the filter rule does not translate, so it stayed a filter Calcite evaluates holding the
+        /// service's form, and the statement failed to implement. Over a filter, where no host merges the two, the half lands
+        /// on the filter itself, and onto a <c>WHERE</c> the filter rule folds only a statement that never fails there: a
+        /// half holding a <c>RETURNING REAL</c> comparison beside <c>IS_DEFINED(c.name)</c>, over a view's filter, was asked
+        /// only of the scan beneath it, stayed a filter Calcite evaluates, and failed the statement the same way. And the filter
+        /// is part of a statement only where it reaches the service itself, over a projection the project rule converts or
+        /// through the transpose: a filter over a view on an item of its map column, a view no statement selects, reaches it
+        /// only through the transpose, which writes an item of a <c>JSON_QUERY</c> the filter rule does not translate, and the
+        /// case fold's weakening stacked on that filter stayed one Calcite evaluates. The rule binds the set the half sits over
+        /// through the member it was built from, so it is asked there too: a traversal holding its element's filter writes no
+        /// <c>WHERE</c>, but in one set with that filter over the traversal the rule binds the filter, which writes one, and a
+        /// half holding a <c>RETURNING REAL</c> comparison landed over the traversal where the rule would not fold it. And the
+        /// unnest rule converts a traversal only over a left side part of a statement, which nothing carries a projection out
+        /// of: over a traversal of a view computing <c>INITCAP</c>, its left side asked only whether a filter over it could
+        /// reach the service, the case fold's weakening was registered over the traversal with no form the service evaluates.
+        /// </para>
         /// </remarks>
-        static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
+        /// <param name="convention">The convention whose statements the filter would be part of.</param>
+        /// <param name="node">The subtree the filter sits over.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        /// <param name="half">The condition of the filter split off, where it holds the service's form; <c>null</c> asks
+        /// whether any filter over the subtree can reach the service.</param>
+        internal static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen, RexNode? half = null)
         {
+            return Reaches(convention, node, seen, half, new Dictionary<RelNode, bool>(System.Collections.Generic.ReferenceEqualityComparer.Instance), converted: false);
+        }
+
+        /// <inheritdoc cref="Reaches(CosmosConvention, RelNode?, HashSet{RelNode}, RexNode?)" />
+        /// <param name="convention">The convention whose statements the filter would be part of.</param>
+        /// <param name="node">The subtree the filter sits over.</param>
+        /// <param name="seen">The expressions already asked, which keeps a graph finite.</param>
+        /// <param name="half">The condition of a filter over the subtree: the half a split pushes, holding the service's form,
+        /// or the condition of a filter the half lands on, asked whether that filter reaches the service itself; <c>null</c>
+        /// asks whether any filter over the subtree can.</param>
+        /// <param name="reached">Whether each filter a half lands on reaches the service with its own condition, asked once a
+        /// question; a filter still being asked answers no, which keeps a graph finite.</param>
+        /// <param name="converted">Whether a filter of the condition lands over a projection the project rule converts, as a
+        /// filter the half lands on is asked of itself; the half is carried beneath a projection only by the transpose, and a
+        /// later split pushes what it drops over one the project rule converts.</param>
+        static bool Reaches(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen, RexNode? half, Dictionary<RelNode, bool> reached, bool converted)
+        {
+            bool? overTheSet = null;
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
             {
+                // Remembered by member alone, since keyed by the half as well the walk need not end through a cycle of
+                // projections: a member met again under another spelling of the half is not asked again, which errs toward
+                // the half reaching nothing, its weakenings dropped, never toward a half the service cannot take.
                 if (seen.Add(member) == false)
                     continue;
 
                 if (member.getConvention() is CosmosConvention)
-                    return true;
+                {
+                    if (Lands(member))
+                        return true;
+
+                    continue;
+                }
 
                 // A form Calcite implements says nothing of what the service can be handed: a set holds one beside its
                 // logical forms once Volcano has converted any of them.
@@ -615,10 +984,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
 
                 var reaches = member switch
                 {
-                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
-                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && Reaches(convention, filter.getInput(), seen),
-                    Project project => Reaches(convention, project.getInput(), seen),
-                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen),
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention) && Lands(scan),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && (half is null || ReachesItself(filter)) && Reaches(convention, filter.getInput(), seen, half, reached, converted) && Lands(filter),
+                    Project project => half is null
+                        ? Reaches(convention, project.getInput(), seen, null, reached, converted)
+                        : (Transposed(half, project) is RexNode beneath && Reaches(convention, project.getInput(), seen, beneath, reached, converted))
+                            || (converted && IsStatement(convention, project, Rel.CosmosPlanMembers.NewSeen()) && Lands(project)),
+                    Correlate correlate => (half is null
+                        ? CosmosUnnestRule.IsTranslatable(convention, correlate) && Reaches(convention, correlate.getLeft(), seen, null, reached, converted)
+                        : IsStatement(convention, correlate, Rel.CosmosPlanMembers.NewSeen())) && Lands(correlate),
                     _ => false,
                 };
 
@@ -627,18 +1001,135 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             }
 
             return false;
+
+            // Where the half lands it is a filter over the member, which the filter rule converts only where it translates the
+            // half there; and a filter over this set, which the rule binds through the member the set was built from, so it is
+            // asked there as well, once.
+            bool Lands(RelNode member) => half is null
+                || ((overTheSet ??= CosmosFilterRule.IsTranslatable(convention, org.apache.calcite.rel.logical.LogicalFilter.create(node!, half)))
+                    && CosmosFilterRule.IsTranslatable(convention, org.apache.calcite.rel.logical.LogicalFilter.create(member, half)));
+
+            // A filter the half lands on is part of a statement only as a filter of its own condition over its input that reaches
+            // the service: over a projection, only where the project rule converts it or the transpose carries the filter
+            // beneath, landing where the filter rule translates it.
+            bool ReachesItself(Filter filter)
+            {
+                if (reached.TryGetValue(filter, out var known))
+                    return known;
+
+                reached[filter] = false;
+                return reached[filter] = Reaches(convention, filter.getInput(), Rel.CosmosPlanMembers.NewSeen(), filter.getCondition(), reached, converted: true);
+            }
         }
 
         /// <summary>
-        /// Determines whether any equivalent form of a subtree is a projection.
+        /// Determines whether some equivalent form of a subtree is part of a statement as it stands: a member already in the
+        /// convention, this container's scan, or a filter <see cref="CosmosFilterRule"/>, a projection
+        /// <see cref="CosmosProjectRule"/> or a traversal <see cref="CosmosUnnestRule"/> converts over a subtree that is.
         /// </summary>
-        static bool OverProjection(RelNode? node)
+        /// <remarks>
+        /// What a projection the project rule converts, or a traversal, sits on: each rule converts only over an input in the
+        /// convention, and nothing carries a projection out of one, so a projection there counts only where the project rule
+        /// converts it, not wherever its input reaches.
+        /// </remarks>
+        static bool IsStatement(CosmosConvention convention, RelNode? node, HashSet<RelNode> seen)
         {
             foreach (var member in Rel.CosmosPlanMembers.Of(node))
-                if (member is Project)
+            {
+                if (seen.Add(member) == false || (member.getConvention() != Convention.NONE && member.getConvention() is not CosmosConvention))
+                    continue;
+
+                var statement = member.getConvention() is CosmosConvention || member switch
+                {
+                    TableScan scan => scan.getTable()?.unwrap(typeof(CosmosTable)) is CosmosTable table && ReferenceEquals(table.Convention, convention),
+                    Filter filter => CosmosFilterRule.IsTranslatable(convention, filter) && IsStatement(convention, filter.getInput(), seen),
+                    Project project => Converts(convention, project) && IsStatement(convention, project.getInput(), seen),
+                    Correlate correlate => CosmosUnnestRule.IsTranslatable(convention, correlate) && IsStatement(convention, correlate.getLeft(), seen),
+                    _ => false,
+                };
+
+                if (statement)
                     return true;
+            }
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether <see cref="CosmosProjectRule"/> converts a logical projection: its operand asked as the planner
+        /// asks it, and what its match and its conversion decline, which they repeat here, a projection holding a correlation
+        /// or naming a field the container's target stores escaped
+        /// (<c>CosmosPlannerTests.TheSplitAsksWhetherTheProjectRuleConvertsAProjectionAsTheRuleAnswers</c>).
+        /// </summary>
+        internal static bool Converts(CosmosConvention convention, Project project)
+        {
+            if (CosmosProjectRule.Create(convention).getOperand().matches(project) == false)
+                return false;
+
+            var projects = project.getProjects();
+            for (var i = 0; i < projects.size(); i++)
+                if (RexUtil.containsCorrelation((RexNode)projects.get(i)))
+                    return false;
+
+            return CosmosImplementor.TryBindOutput(project.getInput(), out _, out _, out _, out _, out var container)
+                && CosmosImplementor.NamesAnEscape(project.getRowType(), container) == false;
+        }
+
+        /// <summary>
+        /// Returns a condition read through a projection's expressions as Calcite's <c>FILTER_PROJECT_TRANSPOSE</c> writes it
+        /// beneath, asked that rule's own conditions, or <c>null</c> where it declines: the projection holds a window, the
+        /// condition a correlation, or the condition so read grows past the rule's bloat.
+        /// </summary>
+        /// <remarks>
+        /// The rule the adapter registers (<see cref="CosmosRules"/>). Its operand is asked of a filter of the condition over the
+        /// projection, and of the projection, as the planner asks it, and its bloat and whether it copies the filter are read
+        /// from its configuration; the window, and what its match writes of the condition, repeat its match in the Calcite
+        /// build the adapter resolves
+        /// (<c>CosmosPlannerTests.AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt</c>).
+        /// </remarks>
+        internal static RexNode? Transposed(RexNode condition, Project project) =>
+            TransposedBy(condition, project, org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE);
+
+        /// <summary>
+        /// Returns a condition read through a projection's expressions as a <c>FilterProjectTransposeRule</c> writes it
+        /// beneath, asked that rule's own conditions, or <c>null</c> where it declines.
+        /// </summary>
+        /// <param name="condition">The condition of a filter over the projection.</param>
+        /// <param name="project">The projection.</param>
+        /// <param name="rule">The rule, the one the adapter registers or another configuration of it, for the test.</param>
+        internal static RexNode? TransposedBy(RexNode condition, Project project, org.apache.calcite.rel.rules.FilterProjectTransposeRule rule)
+        {
+            var operand = rule.getOperand();
+            if (project.containsOver()
+                || operand.matches(org.apache.calcite.rel.logical.LogicalFilter.create(project, condition)) == false
+                || ((RelOptRuleOperand)operand.getChildOperands().get(0)).matches(project) == false)
+                return null;
+
+            var transpose = (org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config)rule.config;
+            if (RelOptUtil.pushPastProjectUnlessBloat(condition, project, transpose.bloat()) is not RexNode pushed)
+                return null;
+
+            // Each conjunct that compares a null literal written as false, as the match writes the condition.
+            var rexBuilder = project.getCluster().getRexBuilder();
+            var conjuncts = RelOptUtil.conjunctions(pushed);
+            var written = new java.util.ArrayList();
+            for (var i = 0; i < conjuncts.size(); i++)
+                written.add(RexSimplify.simplifyComparisonWithNull((RexNode)conjuncts.get(i), rexBuilder));
+
+            var composed = RexUtil.composeConjunction(rexBuilder, written);
+
+            // Copying the filter, the match takes away a cast of nullability alone. Otherwise it builds the filter through the
+            // rule's builder, which simplifies the condition again: the condition of the filter it builds, true where it
+            // builds none, false where it builds the empty relation instead.
+            if (transpose.isCopyFilter())
+                return RexUtil.removeNullabilityCast(rexBuilder.getTypeFactory(), composed);
+
+            var input = project.getInput();
+            var built = rule.relBuilderFactory.create(project.getCluster(), null).push(input).filter(new RexNode[] { composed }).build();
+            if (built == input)
+                return rexBuilder.makeLiteral(true);
+
+            return built is Filter filter ? filter.getCondition() : rexBuilder.makeLiteral(false);
         }
 
         static RexNode Compose(RexBuilder rexBuilder, List<RexNode> conjuncts)

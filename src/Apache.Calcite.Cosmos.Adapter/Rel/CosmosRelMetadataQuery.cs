@@ -9,7 +9,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
     /// <summary>
     /// Answers the planner's row count for a Cosmos filter that addresses a single document, where
-    /// Calcite would otherwise guess.
+    /// Calcite would otherwise guess, and charges a filter Calcite evaluates that holds the service's form.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -71,6 +71,43 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel
 
             public object get() => new CosmosRelMetadataQuery();
 
+        }
+
+        /// <summary>
+        /// The rows a filter Calcite evaluates is charged beside its own cost where its condition holds the service's form,
+        /// so that a plan holding one is taken only where no other plan is: more than any estimate this model makes reaches,
+        /// and few enough that what such plans cost beside it still orders them.
+        /// </summary>
+        internal const double ServiceFormInProcessRows = 1e15;
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// <para>
+        /// <b>Legality the cost model keeps.</b> The service's form, the adapter's own type tests a weakening or a lowering is
+        /// written with (<see cref="Sql.CosmosOperators.HoldsServiceForm"/>), has no body in process, so a filter outside the
+        /// Cosmos convention holding it is a plan Calcite cannot implement. The rules never leave one above what they push,
+        /// but a host's own rules can: its filter merge folds a split's residual and the half the split sent into one
+        /// condition, and its converter rules make that a filter Calcite evaluates over the statement beneath. Volcano
+        /// compares rows alone, and where what is pushed already brings the estimate to one row, the merged filter and the
+        /// residual over the half sent cost the same rows, so the order the two were registered in chose, and a by-id lookup
+        /// through a view beside a weakened conjunct, or a stack of three filtered views beneath a case fold, failed to
+        /// implement over every document where the residual alone answers
+        /// (<c>CosmosConnectionPlanningTests.AConditionHoldingTheServicesFormIsNeverLeftToCalcite</c>).
+        /// </para>
+        /// <para>
+        /// <b>Charged, not made infinite</b>, so that a statement every plan of which holds one still plans, and fails where
+        /// Calcite comes to emit it, as it did: a planner that names a type test by these operators rather than by the
+        /// schema's functions, which carry the in-process bodies, has nothing else to choose.
+        /// </para>
+        /// </remarks>
+        public override RelOptCost getNonCumulativeCost(RelNode rel)
+        {
+            var cost = base.getNonCumulativeCost(rel);
+            if (cost is not null && rel is org.apache.calcite.rel.core.Filter filter && filter.getConvention() is not CosmosConvention
+                && Sql.CosmosOperators.HoldsServiceForm(filter.getCondition()))
+                return cost.plus(filter.getCluster().getPlanner().getCostFactory().makeCost(ServiceFormInProcessRows, 0d, 0d));
+
+            return cost!;
         }
 
         /// <inheritdoc />

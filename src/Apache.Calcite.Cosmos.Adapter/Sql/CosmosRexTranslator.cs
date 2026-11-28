@@ -1479,6 +1479,12 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 throw new CosmosTranslationException(
                     "JSON_VALUE with RETURNING DECIMAL parses what the path holds -- a stored \"2\" is 2 to it, and \"x\" raises -- where the service has the value as it stands, so it is left to the engine; a comparison through it sends the property's presence.");
 
+            // The same for RETURNING VARIANT, whose value is no box the service holds -- see
+            // IsVariantReturningJsonValue.
+            if (IsVariantReturningJsonValue(call))
+                throw new CosmosTranslationException(
+                    "JSON_VALUE with RETURNING VARIANT holds what it reads in no box, and is null where the path holds an array or an object, where the service has the value as it stands, so it is left to the engine.");
+
             // The position a NOT puts its operand in belongs to predicates, and only the connectives
             // pass it on -- see CarriesPosition. Everything else is a value, written as one: cleared
             // here, once, rather than by each writer remembering to. And an operand of anything else
@@ -2074,13 +2080,18 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
         /// never does.
         /// </para>
         /// <para>
-        /// <b>Only a document value — typed <c>ANY</c> or <c>VARIANT</c>; see
-        /// <see cref="IsDocumentValueType"/>.</b> The same cast over <c>JSON_VALUE</c> drops in a
+        /// <b>Only a raw value typed <c>ANY</c>.</b> The same cast over <c>JSON_VALUE</c> drops in a
         /// comparison — see <see cref="IsRenderedDocumentValue"/> — and does not here, because a
         /// projection has no literal to exclude the cases on. Measured, <c>JSON_VALUE</c> answers null
         /// for an object or an array where the reader renders one as <c>{x=1}</c> or <c>[x, y]</c>, so
         /// a rendered column over it would carry text for a document Calcite carries nothing for. It
-        /// stays in process, and the filters around it push regardless.
+        /// stays in process, and the filters around it push regardless. Over a promoted column, typed
+        /// <c>VARIANT</c>, Calcite casts a number or a boolean to null and raises over a structure
+        /// (<c>Calcite.CastOfARawValueToText</c>), where the reader renders each: the column read <c>30</c>
+        /// or <c>true</c> where Calcite reads null, and a condition kept in process over a view's column of
+        /// it dropped and kept documents Calcite does not
+        /// (<c>CosmosToClrCursorConverterTests.ShouldComputeAPromotedColumnsCastToTextInProcess</c>). It
+        /// stays in process too, the column read as the raw value it holds.
         /// </para>
         /// </remarks>
         /// <param name="node">The expression to inspect.</param>
@@ -2104,7 +2115,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
                 return null;
 
             var operand = Operand(call, 0);
-            if (IsDocumentValueType(operand.getType()?.getSqlTypeName()) == false)
+            if (operand.getType()?.getSqlTypeName() != SqlTypeName.ANY)
                 return null;
 
             return operand;
@@ -4299,6 +4310,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Sql
             var target = Operand(call, 0);
             if (target is not RexInputRef && (target is not RexCall inner || KindOf(inner) != nameof(SqlKind.__Enum.ITEM)))
                 throw new CosmosTranslationException("ITEM may only be applied to a field reference or another ITEM.");
+
+            // A field holding a typed array or map is read to its element type, and an item of it is the member so converted,
+            // which no path addresses (CosmosRexShapes.IsConvertingItem).
+            if (IsConvertingItem(call))
+                throw new CosmosTranslationException("An item of a typed array or map is the member converted to the element type, which no path addresses.");
 
             Write(builder, target);
 

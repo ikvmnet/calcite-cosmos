@@ -50,7 +50,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
     /// <para>
     /// <b>What a statement asks of later is read the same way.</b> A <c>CASE</c> condition a rewrite descends to, or a
     /// weakening asked about beside the conjuncts beneath, is read by the <see cref="Loading"/> that read the statement,
-    /// so that what is opaque is numbered alike and a condition spelled as a conjunct is the conjunct's term.
+    /// so that what is opaque is numbered alike and a condition spelled as a conjunct is the conjunct's term. A conjunct a
+    /// filter beneath a projection applies is read through a reader of the relation it reads
+    /// (<see cref="Loading.Through"/>), in the statement's numbering: its paths are the statement's terms, and what is
+    /// opaque is numbered beside that reader, one node over one relation one term.
     /// </para>
     /// </remarks>
     internal static class CosmosPredicateLoader
@@ -94,7 +97,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
         /// <summary>
         /// One binding being read: the paths its fields address, how each is read, and the numbering of what is opaque,
-        /// shared by everything read through it.
+        /// shared by everything read through it and by the readers of other relations made through it.
         /// </summary>
         internal sealed class Loading
         {
@@ -105,9 +108,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
 
             /// <summary>The input field bound to the document itself, the <c>DOC</c> column, where the input holds it.</summary>
             readonly int? _document;
-            readonly Dictionary<RexNode, long> _opaque = new();
-            readonly List<RexNode> _opaqueNodes = new();
-            readonly object _lock = new();
+
+            /// <summary>What is opaque, numbered once for this loading and every reader made through it (<see cref="Through"/>).</summary>
+            readonly Numbering _numbering;
 
             /// <summary>
             /// A binding read as both graphs read it since the switch (h15): a call the service can spell as a computed place
@@ -118,15 +121,47 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// wrote cast as the casts' terms, a one-place test of the reading as it stands and <c>LIKE</c> of any place
             /// against a pattern a bracket may be in.
             /// </summary>
-            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias)
+            public Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias) :
+                this(fields, readings, rootAlias, new Numbering())
+            {
+
+            }
+
+            /// <summary>
+            /// A binding read into a numbering another loading holds: a reader of another relation (<see cref="Through"/>).
+            /// </summary>
+            Loading(IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings, string rootAlias, Numbering numbering)
             {
                 // The path readers a statement resolves through, so the accepted path forms are the ones it would address.
                 _paths = new CosmosRexPaths(fields, spelled: false, readings);
                 _readings = readings;
                 _rootAlias = rootAlias;
+                _numbering = numbering;
                 for (var i = 0; i < fields.Count && _document is null; i++)
                     if (CosmosDocumentPaths.From(fields[i], rootAlias) is { IsRoot: true })
                         _document = i;
+            }
+
+            /// <summary>
+            /// Returns the reader of another relation in this loading's numbering: a predicate over that relation's rows, a
+            /// conjunct a filter beneath a projection applies, is read through its binding, so that a path it reads is the
+            /// term this loading's predicates read and what it cannot read is numbered beside that reader, apart from what
+            /// any other relation reads as opaque. One reader for each relation, compared by reference, and never this
+            /// loading: two bindings equal as lists are not one relation, since a computed column binds no path and two
+            /// projections can hold different columns at one ordinal.
+            /// </summary>
+            /// <param name="relation">The relation whose rows the predicate reads.</param>
+            /// <param name="fields">The ordinal-to-path binding of those rows; the first given for a relation is its reader's.</param>
+            /// <param name="readings">How each of those fields is read.</param>
+            public Loading Through(object relation, IReadOnlyList<CosmosPath?> fields, IReadOnlyList<CosmosReading> readings)
+            {
+                lock (_numbering)
+                {
+                    if (_numbering.Readers.TryGetValue(relation, out var reader) == false)
+                        _numbering.Readers[relation] = reader = new Loading(fields, readings, _rootAlias, _numbering);
+
+                    return reader;
+                }
             }
 
             /// <summary>
@@ -136,18 +171,21 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 // Its opaque predicates are read when first asked, through this reading, which none is held to where none was read.
                 var read = conjuncts.Select(Read).ToArray();
-                return new(read, conjuncts.Cast<object?>().ToArray(), mentions, _opaqueNodes.Count > 0 ? Reading : null);
+                return new(read, conjuncts.Cast<object?>().ToArray(), mentions, _numbering.Nodes.Count > 0 ? Reading : null);
             }
 
             /// <summary>
-            /// Reads an opaque predicate as a value: the value it is, or its call with each operand read as a value where it
-            /// is one and left out where it is not, at every depth. A predicate compared with <c>TRUE</c> is that call too,
-            /// whose strictness is the rows' (<c>strictop</c> of <c>=</c>), never the loader's.
+            /// Reads an opaque predicate as a value, through the reader that numbered it: the value it is, or its call with each
+            /// operand read as a value where it is one and left out where it is not, at every depth. A predicate compared with
+            /// <c>TRUE</c> is that call too, whose strictness is the rows' (<c>strictop</c> of <c>=</c>), never the loader's.
             /// </summary>
             SqlValue? Reading(long id)
             {
-                lock (_lock)
-                    return Partially(_opaqueNodes[(int)id]);
+                lock (_numbering)
+                {
+                    var (reader, node) = _numbering.Nodes[(int)id];
+                    return reader.Partially(node);
+                }
             }
 
             SqlValue? Partially(RexNode node) => Value(node) ?? (node is RexCall call ? Computed(call, partial: true) : null);
@@ -158,7 +196,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </summary>
             public SqlPredicate Read(RexNode node)
             {
-                lock (_lock)
+                lock (_numbering)
                     return Predicate(Expand(node));
             }
 
@@ -525,7 +563,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </remarks>
             public SqlValue? ReadValue(RexNode node)
             {
-                lock (_lock)
+                lock (_numbering)
                     return Value(node);
             }
 
@@ -582,7 +620,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
                             Walk(operand);
                 }
 
-                lock (_lock)
+                lock (_numbering)
                     Walk(Expand(conjunct));
 
                 if (_document is int index)
@@ -893,7 +931,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             static string? Returning(SqlTypeName? type) => type == SqlTypeName.VARIANT ? type.getName() : Scalar(type);
 
             /// <summary>
-            /// Numbers what is not read by the node itself, so that one predicate is one term and two are two.
+            /// Numbers what is not read by the node itself, beside this reader, so that one predicate is one term and two are
+            /// two: one node over one relation is one term, and over two relations two, since what it means is its rows'.
             /// </summary>
             /// <remarks>
             /// By Calcite's equality, which compares a call's type at every level, and not by its digest, which prints
@@ -905,11 +944,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             /// </remarks>
             SqlPredicate Opaque(RexNode node)
             {
-                if (_opaque.TryGetValue(node, out var id) == false)
+                if (_numbering.Ids.TryGetValue((this, node), out var id) == false)
                 {
-                    id = _opaque.Count;
-                    _opaque[node] = id;
-                    _opaqueNodes.Add(node);
+                    id = _numbering.Nodes.Count;
+                    _numbering.Ids[(this, node)] = id;
+                    _numbering.Nodes.Add((this, node));
                 }
 
                 return new SqlPredicate.Opaque(id);
@@ -919,6 +958,20 @@ namespace Apache.Calcite.Cosmos.Adapter.Metadata
             {
                 for (var i = 0; i < call.getOperands().size(); i++)
                     yield return (RexNode)call.getOperands().get(i);
+            }
+
+            /// <summary>
+            /// What a loading and the readers made through it hold that is opaque, numbered once for all of them, each id
+            /// beside the reader that read its node; the readers of other relations, by reference; and the lock every read
+            /// through any of them takes.
+            /// </summary>
+            sealed class Numbering
+            {
+
+                public readonly Dictionary<(Loading Reader, RexNode Node), long> Ids = new();
+                public readonly List<(Loading Reader, RexNode Node)> Nodes = new();
+                public readonly Dictionary<object, Loading> Readers = new(ReferenceEqualityComparer.Instance);
+
             }
 
         }

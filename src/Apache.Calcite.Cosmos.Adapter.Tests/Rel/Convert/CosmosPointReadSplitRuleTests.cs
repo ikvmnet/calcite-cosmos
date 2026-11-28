@@ -67,12 +67,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
             _products = new CosmosTable(metadata);
         }
 
-        RelNode PlanLogical(string sql)
+        /// <param name="sql">The statement.</param>
+        /// <param name="functions">Whether a Cosmos function is named as a connection names it, through the schema's
+        /// functions, whose type tests carry their in-process bodies, rather than through the adapter's own operators, which
+        /// carry none.</param>
+        RelNode PlanLogical(string sql, bool functions = false)
         {
             var typeFactory = new JavaTypeFactoryImpl();
 
             var rootSchema = CalciteSchema.createRootSchema(false);
             rootSchema.add("products", _products);
+            if (functions)
+                for (var entries = Apache.Calcite.Cosmos.Adapter.Sql.CosmosSchemaFunctions.Instance.entries().iterator(); entries.hasNext();)
+                {
+                    var entry = (java.util.Map.Entry)entries.next();
+                    rootSchema.plus().add((string)entry.getKey(), (org.apache.calcite.schema.Function)entry.getValue());
+                }
 
             var properties = new java.util.Properties();
             properties.setProperty("caseSensitive", "true");
@@ -85,8 +95,9 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
 
             var parsed = SqlParser.create(sql, SqlParser.config().withUnquotedCasing(Casing.UNCHANGED)).parseQuery();
 
-            var operators = org.apache.calcite.sql.util.SqlOperatorTables.chain(
-                SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance);
+            var operators = functions
+                ? org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), catalogReader)
+                : org.apache.calcite.sql.util.SqlOperatorTables.chain(SqlStdOperatorTable.instance(), Apache.Calcite.Cosmos.Adapter.Sql.CosmosOperators.Instance);
 
             var validator = SqlValidatorUtil.newValidator(
                 operators, catalogReader, typeFactory, SqlValidator.Config.DEFAULT);
@@ -108,10 +119,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// <summary>
         /// Plans a statement for the CLR convention, which is where a finishing filter can live.
         /// </summary>
-        RelNode Plan(string sql)
+        /// <param name="sql">The statement.</param>
+        /// <param name="functions">Whether a Cosmos function is named through the schema's functions (<see cref="PlanLogical"/>).</param>
+        /// <param name="listener">A listener added to the planner before it plans, where one is given.</param>
+        RelNode Plan(string sql, bool functions = false, RelOptListener? listener = null)
         {
-            var logical = PlanLogical(sql);
+            var logical = PlanLogical(sql, functions);
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+            if (listener is not null)
+                planner.addListener(listener);
 
             foreach (var rule in CosmosRules.GetRules(_products.Convention))
                 planner.addRule(rule);
@@ -263,13 +279,15 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// soft-delete shape issue #92 was really about, which asks <c>IS_NULL</c> rather than SQL's
         /// <c>IS NULL</c>, now reaches a point read instead of pinning the statement to a query. The test is of a
         /// path the pinned half says nothing of, so it is a residual: one the pinned half implies leaves none (below).
+        /// Named as a connection names it, through the schema's functions, whose operators carry the body; the adapter's
+        /// own carry none (<c>ATypeTestOfTheAdaptersOwnOperatorIsNotLifted</c>).
         /// </remarks>
         [Fact]
         public void ATypeTestResidualIsLiftedBecauseItHasABody()
         {
             Use(SmallDocuments());
 
-            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(JSON_VALUE(c.\"DOC\", '$.name'))");
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(JSON_VALUE(c.\"DOC\", '$.name'))", functions: true);
 
             var query = Query(Find<CosmosFilter>(plan)!);
 
@@ -283,20 +301,61 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Rel.Convert
         /// document accessor apart and raises over a field whatever it holds (<c>Calcite.TypeTestsAreTheirBodies</c>), and
         /// the facts graph reads it so since the switch (h15, listed under the owner's reason of 2026-11-08: a filter Calcite
         /// fails on every row fails as Calcite fails it): it is not deleted, as it was (h07), nor sent, and is held back
-        /// beside the read, where the statement fails as Calcite's does. The read is still the pinned half's.
+        /// beside the read, where the statement fails as Calcite's does. The read is still the pinned half's. Named through
+        /// the schema's functions, as <c>ATypeTestResidualIsLiftedBecauseItHasABody</c> names it.
         /// </remarks>
         [Fact]
         public void ATypeTestOfAFieldThePinnedHalfImpliesIsHeldBackAsCalciteRaisesIt()
         {
             Use(SmallDocuments());
 
-            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(c.\"$.category\")");
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(c.\"$.category\")", functions: true);
 
             var query = Query(Find<CosmosFilter>(plan)!);
 
             query.PointReadId.Should().Be("x");
             query.Sql.Should().NotContain("IS_STRING", "the service would answer where Calcite raises");
             Text(plan).Should().Contain("ClrCursorFilter(condition=[IS_STRING($4)])", "it is Calcite's to raise, in process: " + Text(plan));
+        }
+
+        /// <remarks>
+        /// A type test written with the adapter's own operator, which is how a weakening the split pushed is written, and a
+        /// host's filter merge brings it beside the pinned equalities, has no body in process, so lifted above the projection
+        /// it failed the statement over every document. The rule lifts none, and the plan sends it with the rest.
+        /// </remarks>
+        [Fact]
+        public void ATypeTestOfTheAdaptersOwnOperatorIsNotLifted()
+        {
+            Use(SmallDocuments());
+
+            var lifts = new Lifts();
+            var plan = Plan("SELECT * FROM products AS c WHERE c.\"id\" = 'x' AND c.\"$.category\" = 'bikes' AND IS_STRING(JSON_VALUE(c.\"DOC\", '$.name'))", listener: lifts);
+
+            lifts.Count.Should().Be(0, "a filter above the projection holding the adapter's own type test cannot be implemented");
+            Text(plan).Should().NotContain("ClrCursorFilter", "the type test has no body in process");
+            Query(Find<CosmosFilter>(plan)!).Sql.Should().Contain("IS_STRING", "it is sent with the pinned equalities");
+        }
+
+        /// <summary>Counts the plans <c>CosmosPointReadSplitRule</c> registers.</summary>
+        sealed class Lifts : RelOptListener
+        {
+
+            public int Count { get; private set; }
+
+            public void relEquivalenceFound(RelOptListener.RelEquivalenceEvent e) { }
+
+            public void ruleAttempted(RelOptListener.RuleAttemptedEvent e) { }
+
+            public void relDiscarded(RelOptListener.RelDiscardedEvent e) { }
+
+            public void relChosen(RelOptListener.RelChosenEvent e) { }
+
+            public void ruleProductionSucceeded(RelOptListener.RuleProductionEvent e)
+            {
+                if (e.isBefore() && e.getRuleCall().getRule() is Adapter.Rel.Convert.CosmosPointReadSplitRule)
+                    Count++;
+            }
+
         }
 
         /// <remarks>

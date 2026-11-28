@@ -1,9 +1,14 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Apache.Calcite.Cosmos.Adapter.Metadata;
 using Apache.Calcite.Cosmos.Adapter.Rel;
 using Apache.Calcite.Cosmos.Adapter.Sql;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering;
+using Apache.Calcite.Cosmos.Adapter.Tests.Facts.Saturation;
+using Apache.Calcite.Cosmos.Facts.Rendering;
+using Apache.Calcite.Cosmos.Facts.Saturation;
 
 using FluentAssertions;
 
@@ -1670,7 +1675,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         /// <remarks>
         /// The alternatives are not the comparison, the number keeping a fraction whose double is 30, which Azure was not
-        /// measured returning as <c>30</c>, so the comparison is still made above them.
+        /// measured returning as <c>30</c>, so the comparison is still made above them. The number's bound is written as the
+        /// <c>DOUBLE</c> Calcite compares the cast in, <c>30.0E0</c>.
         /// </remarks>
         [Fact]
         public void TheComparisonStaysAboveTheAlternatives()
@@ -1679,7 +1685,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
             plan.Should().Contain("ClrCursorFilter(condition=[=(JSON_VALUE($0, '$.label'), '30')])", plan);
             plan.Should().Contain("CosmosFilter(condition=[AND(OR(=(JSON_VALUE($0, '$.label'), '30'), CASE(IS_NUMBER(JSON_VALUE($0, '$.label')), "
-                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])", plan);
+                + "=(CAST(JSON_VALUE($0, '$.label')):DOUBLE, 30.0E0), false)), IS_DEFINED(JSON_VALUE($0, '$.label')))])", plan);
         }
 
         /// <summary>
@@ -2129,7 +2135,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <remarks>
         /// <see cref="Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosProjectResidualRule"/>'s half of <see cref="TwoReadingsOfOnePathAreTwoColumns"/>: the filter's
         /// <c>RETURNING INTEGER</c> was matched by its digest to the text accessor the projection pushes whole, and the
-        /// division above read the text column as an integer, which failed to implement.
+        /// division above read the text column as an integer, which failed to implement. The integer is a reading that
+        /// can refuse a value, and the rule carries none for a residual, since under a branch Calcite computes one only
+        /// where the branch is taken: the filter reads it from the document the statement selects, under the same
+        /// <c>WHERE</c>, and still not from the text's column.
         /// </remarks>
         [Fact]
         public void AResidualFilterReadsItsOwnReadingOfAProjectedPath()
@@ -2138,10 +2147,34 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
                 "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING INTEGER) / 2 = 12");
 
             Render(FindCosmos(best)).Should().Be(
-                "SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c WHERE IS_DEFINED(c.price)",
-                "the filter's integer is carried beside the projected text: " + Plan(best));
+                "SELECT VALUE c FROM products c WHERE IS_DEFINED(c.price)",
+                "the filter's integer is read from the document: " + Plan(best));
 
-            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/($2, 2), 12)])", "and the filter reads it: " + Plan(best));
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/(JSON_VALUE($0, '$.price'), 2), 12)])", "and the filter reads it there, not from the text: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A reading a residual filter carries down is a column of its own beside the text the projection pushes of the
+        /// same path.
+        /// </summary>
+        /// <remarks>
+        /// What <see cref="AResidualFilterReadsItsOwnReadingOfAProjectedPath"/> held before its integer was no longer
+        /// carried: <see cref="Apache.Calcite.Cosmos.Adapter.Rel.Convert.CosmosProjectResidualRule"/> matches each path it
+        /// carries to a column the projection pushes whole, and the digest, which prints no type, matched a typed reading
+        /// to the text accessor. <c>RETURNING DOUBLE</c> refuses nothing, so it is carried, as a column of its own, and the
+        /// filter reads it there.
+        /// </remarks>
+        [Fact]
+        public void AResidualFilterReadsItsOwnCarriedColumnOfAProjectedPath()
+        {
+            var best = PlanToAsync(
+                "SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.price') FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.price' RETURNING DOUBLE) / 2 = 12.5");
+
+            Render(FindCosmos(best)).Should().Be(
+                "SELECT VALUE { \"id\": c.id, \"EXPR$1\": (IS_PRIMITIVE(c.price) ? c.price : null), \"$f2\": (IS_NUMBER(c.price) ? c.price : null) } FROM products c WHERE IS_DEFINED(c.price)",
+                "the text and the double are a column each: " + Plan(best));
+
+            Plan(best).Should().Contain("ClrCursorFilter(condition=[=(/($2, 2), CAST(12.5:DECIMAL(3, 1)):DOUBLE NOT NULL)])", "and the filter reads the double's, not the text's: " + Plan(best));
         }
 
         /// <summary>
@@ -3031,7 +3064,7 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// <c>RETURNING VARIANT</c> holds what it reads in no box, so its equality with a string is FALSE and its
         /// inequality TRUE wherever the path holds the string, and its null test TRUE where the path holds an object:
         /// every filter over it is Calcite's, a comparison, a null test and a type test, of a path and of an element
-        /// alike.
+        /// alike, and so is one over an item of it or an accessor over it, which Calcite reads through its value.
         /// </summary>
         /// <remarks>
         /// The loader read the accessor typed <c>VARIANT</c> as the raw value, as it reads the one re-typed <c>ANY</c>,
@@ -3040,6 +3073,10 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         /// IS_DEFINED(c.category) OR IS_NULL(c.category)</c>, dropping a document holding an object there, which
         /// Calcite keeps; once an element's raw value was read as a path's, an element's was sent so too. It is a
         /// <c>RETURNING</c> of its own type, whose value no row measured (<c>Calcite.VariantEqualsOnlyItsOwnBox</c>).
+        /// An item of it was resolved to the path beneath and its null test sent as the raw value's there, <c>(NOT
+        /// IS_DEFINED(c.category.a) OR IS_NULL(c.category.a))</c>, dropping a document holding <c>{"a":1}</c> at the
+        /// path, whose item Calcite reads as null because the accessor is; it addresses no path now, nor does what reads
+        /// through it (<c>CosmosRexShapes.IsJsonAccessor</c>).
         /// </remarks>
         [Theory]
         [InlineData("$.category", "{0} = 'bikes'")]
@@ -3052,12 +3089,104 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
         [InlineData("$.tags[0]", "{0} IS NULL")]
         [InlineData("$.tags[0]", "{0} IS NOT NULL")]
         [InlineData("$.tags[0]", "IS_STRING({0})")]
+        [InlineData("$.category", "{0}['a'] IS NULL")]
+        [InlineData("$.category", "{0}['a'] IS NOT NULL")]
+        [InlineData("$.category", "{0}['a']['b'] IS NULL")]
+        [InlineData("$.category", "{0}[1] IS NULL")]
+        [InlineData("$.category", "JSON_VALUE({0}, '$.a') IS NULL")]
         public void AFilterOverAReturningVariantIsCalcites(string path, string filter)
         {
             var best = PlanToAsync($"SELECT c.\"id\" FROM products AS c WHERE " + string.Format(filter, $"JSON_VALUE(c.\"DOC\", '{path}' RETURNING VARIANT)"));
 
             Render(FindCosmos(best)).Should().Be("SELECT VALUE c FROM products c", "no reading of the path is sent: " + Plan(best));
             Plan(best).Should().Contain("ClrCursorFilter", "the filter is Calcite's to evaluate: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A <c>RETURNING VARIANT</c>, or an item of one, is no raw value, whether a view's column holds it or a filter over the
+        /// view reads it from the view's document, so nothing derived through it drops a document Calcite keeps: each form the
+        /// split rule pushes of a filter over the view, read beneath the view as the filter rule reads it there, is judged on
+        /// both targets over every document Calcite keeps of the whole condition, the path absent, a JSON null, a number, an
+        /// empty and a full array, and an empty, a full and a nested object, each with and without the name.
+        /// </summary>
+        /// <remarks>
+        /// Bound to its path, the column read through its field as the raw value, and S, asked to weaken the filter over the
+        /// view, proved <c>IS_NULL(c.x) OR IS_DEFINED(c.name) OR NOT IS_DEFINED(c.x)</c> of the disjunction and <c>IS_NULL(c.x)
+        /// OR NOT IS_DEFINED(c.x)</c> beside <c>IS_DEFINED(c.name)</c> of the <c>CASE</c>, each false over <c>{"x":[]}</c>, which
+        /// Calcite keeps: Calcite holds what <c>RETURNING VARIANT</c> reads in no box, and it is null over an array or an
+        /// object. An item of it, resolved to <c>c.x.a</c>, proved the same of <c>c.x.a</c>, false over <c>{"x":{"a":1}}</c>,
+        /// where Calcite's item is null because the accessor is, whether a view's column held it or the filter read it from the
+        /// document the view passes up or renames. It addresses no path, nor does what reads through it
+        /// (<c>CosmosRexShapes.IsJsonAccessor</c>, the gate the resolver and a projection's binding ask), so no weakening is
+        /// derived through either.
+        /// </remarks>
+        [Theory]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)", "t.\"v\"")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']", "t.\"v\"")]
+        [InlineData("JSON_VALUE(c.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']", "t.\"v\"")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"DOC\", '$.x' RETURNING VARIANT)['a']")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"DOC\", '$.x' RETURNING VARIANT)['a']['b']")]
+        [InlineData("c.\"DOC\"", "JSON_VALUE(t.\"v\", '$.x' RETURNING VARIANT)['a']")]
+        public void AWeakeningOverAViewThroughAReturningVariantKeepsWhatCalciteKeeps(string column, string tested)
+        {
+            var view = $"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", {column} AS \"v\" FROM products AS c) AS t WHERE ";
+            var values = new J?[]
+            {
+                null, new J.Null(), new J.Num(1m), new J.Arr([]), new J.Arr([new J.Num(1m)]),
+                new J.Obj(new SortedDictionary<string, J>()), new J.Obj(new SortedDictionary<string, J> { ["a"] = new J.Num(1m) }),
+                new J.Obj(new SortedDictionary<string, J> { ["a"] = new J.Obj(new SortedDictionary<string, J> { ["b"] = new J.Num(1m) }) }),
+            };
+            var documents = values.SelectMany(value => new[] { false, true }.Select(named =>
+            {
+                var properties = new SortedDictionary<string, J> { ["id"] = new J.Str("x1") };
+                if (value is not null)
+                    properties["x"] = value;
+                if (named)
+                    properties["name"] = new J.Str("steel");
+                return new J.Obj(properties);
+            })).ToList();
+
+            foreach (var condition in new[]
+            {
+                $"{tested} IS NULL OR INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+                $"CASE WHEN {tested} IS NULL THEN INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' ELSE FALSE END",
+            })
+            {
+                var filter = Filters(PlanLogical(view + condition)).Single();
+                var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+                CosmosImplementor.TryBindOutput(project.getInput(), out var fields, out var readings, out _).Should().BeTrue();
+
+                // Calcite in process: the whole condition over the scan's binding.
+                var calcite = CalciteInProcess.Compile(RelOptUtil.pushPastProject(filter.getCondition(), project), fields, readings);
+                calcite.Should().NotBeNull(condition);
+
+                // The half as the rule splits it, read beneath the view as the filter rule reads it there.
+                var rex = filter.getCluster().getRexBuilder();
+                var (pushable, _) = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(filter, _table.Container, admit: true);
+                var forms = new List<ServiceForm>();
+                if (pushable.Count > 0)
+                {
+                    var beneath = RelOptUtil.pushPastProject(RexUtil.composeConjunction(rex, Java(pushable)), project);
+                    var planned = CosmosFactRewriter.Planned(beneath, fields, _table.Container, CosmosImplementor.DefaultRootAlias, rex, readings);
+                    var statement = CosmosFilterStatement.Of(planned, fields, readings, _table.Container, rex);
+                    forms.AddRange(Enumerable.Range(0, statement.Conjuncts.Count).Select(statement.Form).OfType<ServiceForm>());
+                }
+
+                var kept = documents.Where(document => calcite!(document) == Truths.True).ToList();
+                kept.Should().NotBeEmpty(condition);
+                kept.SelectMany(document => forms.SelectMany(form => new[] { RenderingTarget.Azure, RenderingTarget.Emulator }
+                        .Where(target => CosmosEval.On(form, document, target) is { } outcome && outcome != ServiceOutcomes.True)
+                        .Select(target => $"Calcite keeps {Documents.Json(document)}; {target} drops it under {form}")))
+                    .Should().BeEmpty($"{condition} over {column} pushes [{string.Join(" & ", pushable)}]");
+            }
+
+            static java.util.List Java(IEnumerable<RexNode> nodes)
+            {
+                var list = new java.util.ArrayList();
+                foreach (var node in nodes)
+                    list.add(node);
+                return list;
+            }
         }
 
         /// <summary>
@@ -3506,9 +3635,17 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
 
         RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce) => PlanToAsync(sql, hostRewrites, reduce, null);
 
-        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce, RelOptListener? listener)
+        /// <param name="sql">The statement.</param>
+        /// <param name="hostRewrites">Whether the three rewrites above are registered.</param>
+        /// <param name="reduce">Whether <c>FILTER_REDUCE_EXPRESSIONS</c> is registered.</param>
+        /// <param name="listener">A listener added to the planner before the search, or <c>null</c>.</param>
+        /// <param name="trimmed">Whether Calcite's field trimmer runs before the search, as a host's prepare runs it.</param>
+        RelNode PlanToAsync(string sql, bool hostRewrites, bool reduce, RelOptListener? listener, bool trimmed = false)
         {
             var logical = PlanLogical(sql);
+            if (trimmed)
+                logical = new org.apache.calcite.sql2rel.RelFieldTrimmer(null, org.apache.calcite.tools.RelBuilder.proto(Contexts.EMPTY_CONTEXT).create(logical.getCluster(), null)).trim(logical);
+
             var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
             if (listener is not null)
                 planner.addListener(listener);
@@ -4139,6 +4276,557 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.EndToEnd
             for (var i = 0; i < inputs.size(); i++)
                 foreach (var below in Filters((RelNode)inputs.get(i)))
                     yield return below;
+        }
+
+        /// <summary>
+        /// What a filter beneath a projection applies is read through its own rows. Over a view's projection the filter above
+        /// has no filter beneath it over its own rows, and the view's filter applies both its conjuncts to every row the
+        /// projection returns: each is read beside the relation it reads, the projection's input, and that relation's
+        /// binding, the scan's; and the null test, whose document the view carries, is also written over the view's columns,
+        /// over the rows the view returns, which the filter above reads, where the category, which the view drops, is not. So
+        /// the weakening of the filter above, the name's definedness, which the view's null test of the same text implies,
+        /// is applied there, and is not without what is read beneath the projection.
+        /// </summary>
+        [Fact]
+        public void WhatAFilterBeneathAProjectionAppliesIsReadThroughItsOwnRows()
+        {
+            var logical = PlanLogical("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.name') IS NOT NULL AND c.\"$.category\" = 'bikes') AS t WHERE UPPER(JSON_VALUE(t.\"DOC\", '$.name')) LIKE '%STEEL%'");
+            var filter = Filters(logical).Single(f => f.getCondition().toString().Contains("UPPER"));
+            var view = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the filter above reads the view's projection").Subject;
+            var viewFilter = Filters(view).Single();
+
+            var (own, over, across) = Adapter.Rel.Convert.CosmosFilterSplitRule.AlreadyApplied(filter.getInput());
+            TestContext.Current.TestOutputHelper?.WriteLine($"own: {string.Join(" | ", own)}");
+            TestContext.Current.TestOutputHelper?.WriteLine($"over: {string.Join(" | ", over)}");
+            foreach (var b in across)
+                TestContext.Current.TestOutputHelper?.WriteLine($"across: {b.Conjunct} over [{string.Join(", ", b.Fields.Select(f => f?.ToString() ?? "-"))}]");
+
+            own.Should().BeEmpty("no filter beneath the filter above reads its rows");
+            var beneathTheView = across.Where(b => ReferenceEquals(b.Relation, view.getInput())).ToList();
+            beneathTheView.Select(b => b.Conjunct).Should().Equal(CosmosFilterStatement.ConjunctsOf(viewFilter.getCondition()), "the view's filter applies both its conjuncts, each over the relation it reads, the projection's input");
+
+            CosmosImplementor.TryBindOutput(view.getInput(), out var beneathFields, out var beneathReadings, out _).Should().BeTrue();
+            string.Join(", ", beneathFields.Select(f => f?.ToString() ?? "-")).Should().Be("c, c.id, c._ts, c._etag, c.category", "the rows the view's filter reads are the scan's");
+            beneathTheView.Should().OnlyContain(b => b.Fields.SequenceEqual(beneathFields) && b.Readings.SequenceEqual(beneathReadings), "each beside that relation's binding");
+
+            over.Select(c => c.ToString()).Should().Equal(["IS NOT NULL(JSON_VALUE($1, '$.name'))"], "the null test written over the view's columns, over the rows the filter above reads; the view carries the document it reads, and drops the category");
+            across.Should().HaveCount(2, "nothing else is read beneath the view");
+
+            CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _).Should().BeTrue();
+            var statement = CosmosFilterStatement.Of(filter.getCondition(), fields, readings, _table.Container, filter.getCluster().getRexBuilder());
+            var weakening = statement.WeakeningOf(0).Rex;
+            weakening.Should().NotBeNull("S weakens a case fold of the name to its definedness");
+            weakening!.ToString().Should().Be("IS_DEFINED(JSON_VALUE($1, '$.name'))");
+            statement.IsApplied(weakening, own).Should().BeFalse("without what is read beneath the projection, nothing applies it");
+            statement.IsApplied(weakening, own, across).Should().BeTrue("the view's null test of the same text implies it, read over the scan");
+            statement.IsApplied(weakening, [.. own, .. over]).Should().BeTrue("and read over the view's columns");
+        }
+
+        /// <summary>
+        /// A conjunct beneath a view that the view's columns carry is written over them and read as the statement reads its own
+        /// conjuncts, so that one node the loader cannot read is one term above the view and beneath it. The view's filter
+        /// applies a case fold the filter above repeats over the view's columns; written over those columns it is that very
+        /// conjunct, among what <c>AlreadyApplied</c> returns over the filter's own rows and not beside a relation of its own,
+        /// and read through the statement's loading the case fold above is applied. Read through a reader of its own relation,
+        /// as any conjunct beneath a projection is, the same node was a second opaque term, and the case fold was not applied.
+        /// </summary>
+        [Fact]
+        public void AConjunctBeneathAViewWrittenOverItsColumnsIsReadAsTheStatementsOwn()
+        {
+            var logical = PlanLogical("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE INITCAP(JSON_VALUE(c.\"DOC\", '$.name')) = 'Steel') AS t WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel' AND UPPER(JSON_VALUE(t.\"DOC\", '$.region')) LIKE '%N%'");
+            var filter = Filters(logical).Single(f => f.getCondition().toString().Contains("UPPER"));
+            filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the filter above reads the view's projection");
+            var fold = CosmosFilterStatement.ConjunctsOf(filter.getCondition()).Single(c => c.toString().Contains("INITCAP"));
+
+            var (own, over, across) = Adapter.Rel.Convert.CosmosFilterSplitRule.AlreadyApplied(filter.getInput());
+            TestContext.Current.TestOutputHelper?.WriteLine($"own: {string.Join(" | ", own)}; over: {string.Join(" | ", over)}");
+
+            own.Should().BeEmpty("no filter beneath the filter above reads its rows");
+            over.Should().Equal([fold], "the view's case fold, written over the view's columns, is the conjunct above");
+            across.Should().NotContain(b => ReferenceEquals(b.Relation, filter.getInput()), "what is over the filter's own rows has no relation of its own");
+
+            CosmosImplementor.TryBindOutput(filter.getInput(), out var fields, out var readings, out _).Should().BeTrue();
+            var statement = CosmosFilterStatement.Of(filter.getCondition(), fields, readings, _table.Container, filter.getCluster().getRexBuilder());
+            statement.IsApplied(fold, [.. own, .. over], across).Should().BeTrue("one node over the statement's rows is one term");
+            statement.IsApplied(fold, own, [.. across, new CosmosFilterStatement.BoundConjunct(fold, filter.getInput(), fields, readings)])
+                .Should().BeFalse("beside a relation of its own, read through a reader that is never the statement's, the same node is a second term");
+        }
+
+        /// <summary>
+        /// A split over a projection the transpose will not carry pushes the conjuncts it admits alone. The view computes
+        /// <c>INITCAP</c>, which no statement holds, so the half split off over it reaches the service only by the transpose,
+        /// and an 80-way <c>LIKE</c> of the view's column, read through the view's expressions, grows past the transpose's
+        /// bloat: a half holding it beside S's weakening of the case fold above would be the service's form in a filter only
+        /// Calcite can evaluate. Planned as the harness plans for a host, with what the split rule registers recorded before
+        /// Volcano takes it: over that view one half holds the disjunction and no service form; every half holding the
+        /// service's form reaches the service, as <c>Reaches</c> asks it of the half; and no filter Calcite evaluates in the
+        /// plan chosen holds the service's form.
+        /// </summary>
+        [Fact]
+        public void ASplitOverAProjectionTheTransposeWillNotCarryPushesTheAdmittedConjunctsAlone()
+        {
+            var sql = "SELECT t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 80).Select(i => $"t.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            // As the harness's PlanToAsync plans it, the recorder added first.
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            var productions = new SplitProductions();
+            var logical = harness.ToLogical(sql);
+            var planner = (VolcanoPlanner)logical.getCluster().getPlanner();
+            planner.addListener(productions);
+            harness.AddCosmosRules(planner);
+            Corpus.PlannerHarness.AddAsyncRules(planner);
+            planner.setRoot(planner.changeTraits(logical, logical.getTraitSet().replace(Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorConvention.Instance).simplify()));
+            var best = planner.findBestExp();
+
+            var halves = productions.Halves.Select(half => (
+                OverTheView: CosmosPlanMembers.Of(half.getInput()).OfType<org.apache.calcite.rel.core.Project>().Any(ComputesInitcap),
+                Likes: Likes(half.getCondition()),
+                ServiceForm: CosmosOperators.HoldsServiceForm(half.getCondition()),
+                Reaches: Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, half.getInput(), CosmosPlanMembers.NewSeen(), half.getCondition()))).ToList();
+            foreach (var half in halves)
+                TestContext.Current.TestOutputHelper?.WriteLine($"half over {(half.OverTheView ? "the view computing INITCAP" : "another input")}: LIKEs {half.Likes}, service form {half.ServiceForm}, reaches {half.Reaches}");
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            halves.Where(half => half.OverTheView && half.Likes == 80).Should().ContainSingle("the split over the view pushes the disjunction it admits")
+                .Which.ServiceForm.Should().BeFalse("nothing carries a half holding a weakening beneath a view the transpose will not cross");
+            halves.Where(half => half.ServiceForm).Should().OnlyContain(half => half.Reaches, "a half holding the service's form is one that reaches the service");
+
+            var inProcess = Filters(best).Where(filter => filter is not CosmosRel).ToList();
+            inProcess.Should().NotBeEmpty("the case fold is Calcite's to evaluate: " + Plan(best));
+            inProcess.Should().NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+
+            static bool ComputesInitcap(org.apache.calcite.rel.core.Project project)
+            {
+                var projects = project.getProjects();
+                for (var i = 0; i < projects.size(); i++)
+                    if (RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, (RexNode)projects.get(i)) is not null)
+                        return true;
+
+                return false;
+            }
+
+            static int Likes(RexNode node)
+            {
+                if (node is not RexCall call)
+                    return 0;
+
+                var count = call.getKind() == org.apache.calcite.sql.SqlKind.LIKE ? 1 : 0;
+                var operands = call.getOperands();
+                for (var i = 0; i < operands.size(); i++)
+                    count += Likes((RexNode)operands.get(i));
+
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// Under a host's rewrites, a split over a projection the transpose will not carry pushes nothing holding the service's
+        /// form that reaches nothing, the conjuncts it admits included. The host's filter merge brings a split's weakening
+        /// into a condition beside the conjunct it weakens, where it is admitted as the condition's own, and pushed with the
+        /// 80-way <c>LIKE</c> over the view computing <c>INITCAP</c> it grew past the transpose's bloat as the half did: a
+        /// filter holding the service's form that only Calcite could evaluate, kept out of the plan chosen by the cost model
+        /// alone. Planned with the host's rewrites, with what the split rule registers recorded before Volcano takes it: every
+        /// half holding the service's form reaches the service, as <c>Reaches</c> asks it of the half, and no filter Calcite
+        /// evaluates in the plan chosen holds the service's form.
+        /// </summary>
+        [Theory]
+        [InlineData(80, false)]
+        [InlineData(80, true)]
+        [InlineData(60, false)]
+        [InlineData(60, true)]
+        public void UnderAHostsRewritesASplitPushesNoServiceFormTheTransposeWillNotCarry(int ways, bool reduce)
+        {
+            var sql = "SELECT t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, ways).Select(i => $"t.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+
+            var productions = new SplitProductions();
+            var best = PlanToAsync(sql, hostRewrites: true, reduce, productions);
+
+            var halves = productions.Halves.Select(half => (
+                Condition: half.getCondition(),
+                ServiceForm: CosmosOperators.HoldsServiceForm(half.getCondition()),
+                Reaches: Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(_table.Convention, half.getInput(), CosmosPlanMembers.NewSeen(), half.getCondition()))).ToList();
+            foreach (var half in halves)
+                TestContext.Current.TestOutputHelper?.WriteLine($"half: service form {half.ServiceForm}, reaches {half.Reaches}: {half.Condition.toString().Length} characters");
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            halves.Should().Contain(half => half.ServiceForm == false, "the split over the view pushes the disjunction it admits");
+            halves.Where(half => half.ServiceForm).Should().OnlyContain(half => half.Reaches, "a half holding the service's form is one that reaches the service");
+
+            var inProcess = Filters(best).Where(filter => filter is not CosmosRel).ToList();
+            inProcess.Should().NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+        }
+
+        /// <summary>
+        /// A half over a filter the filter rule converts, over a projection the transpose will not carry it past, does not
+        /// reach the service. The view computing <c>INITCAP</c> is filtered by a comparison that renders, and the filter
+        /// above reads it through a second view: the half S's weakening rides in, beside the 80-way <c>LIKE</c> of the view's
+        /// column, sits over the filter as over its input, and read through the first view's expressions it grows past the
+        /// transpose's bloat. Asked of the half at the projection beneath the filter, as at a projection the half sits over,
+        /// it reaches nothing; asked without it, any filter over the subtree can.
+        /// </summary>
+        [Fact]
+        public void AHalfOverAFilterOverAProjectionIsAskedOfTheTransposeBeneathIt()
+        {
+            var sql = "SELECT u.\"ic\" FROM (SELECT t.\"DOC\", t.\"a\", t.\"ic\" FROM (SELECT c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.a') AS \"a\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t "
+                + "WHERE JSON_VALUE(t.\"DOC\", '$.type') = 'Park') AS u WHERE ("
+                + string.Join(" OR ", Enumerable.Range(1, 80).Select(i => $"u.\"a\" LIKE 'w{i}%'")) + ") AND INITCAP(JSON_VALUE(u.\"DOC\", '$.name')) = 'Steel'";
+
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            var logical = harness.ToLogical(sql);
+            var filter = Filters(logical).Single(f => f.getCondition().toString().Contains("LIKE"));
+            var beneath = Filters(filter.getInput()).Should().ContainSingle("the view's comparison filters the view computing INITCAP").Subject;
+            beneath.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("beneath the filter is the projection the transpose must cross");
+
+            var (pushable, residual) = Adapter.Rel.Convert.CosmosFilterSplitRule.Split(filter, harness.Tables["products"].Container);
+            var rex = filter.getCluster().getRexBuilder();
+            var list = new java.util.ArrayList();
+            foreach (var conjunct in pushable)
+                list.add(conjunct);
+            var half = RexUtil.composeConjunction(rex, list);
+            TestContext.Current.TestOutputHelper?.WriteLine($"pushable {pushable.Count}, residual {residual.Count}; the half holds the service's form: {CosmosOperators.HoldsServiceForm(half)}");
+
+            CosmosOperators.HoldsServiceForm(half).Should().BeTrue("S's weakening of the case fold rides in the half beside the disjunction");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, filter.getInput(), CosmosPlanMembers.NewSeen()).Should().BeTrue("asked without the half, a filter over the subtree can reach the service");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, filter.getInput(), CosmosPlanMembers.NewSeen(), half).Should().BeFalse("the half, read through the view computing INITCAP beneath the filter, grows past the transpose's bloat");
+        }
+
+        /// <summary>
+        /// A condition read through a projection is the one Calcite's transpose writes beneath it, each conjunct comparing a
+        /// null written as its match writes it: copying the filter, as the rule the adapter registers does, or building it
+        /// through the rule's builder, as a configuration that copies no filter does.
+        /// </summary>
+        /// <remarks>
+        /// The transpose reads the condition through the projection's expressions, then writes each conjunct that compares a
+        /// null literal as false, and takes away a cast of nullability alone, before it copies the filter beneath. Read
+        /// without those two, a condition over a view's column projecting a null was asked of the filter rule as a comparison
+        /// with the null, where the filter registered beneath holds <c>FALSE</c>. Configured to copy no filter, it builds one
+        /// through its builder, which simplifies the condition again and builds no filter where it is true and the empty
+        /// relation where it is false; asked of that configuration, the condition is that filter's, true or false. The rule
+        /// <c>Transposed</c> asks is the one <c>CosmosRules</c> registers, so the configuration it reads is the one the
+        /// planner runs.
+        /// </remarks>
+        [Theory]
+        [InlineData("t.\"z\" = 'a'", true)]
+        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", true)]
+        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", true)]
+        [InlineData("t.\"z\" IS NULL", true)]
+        [InlineData("t.\"z\" = 'a'", false)]
+        [InlineData("t.\"z\" = 'a' AND JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", false)]
+        [InlineData("t.\"z\" = 'a' OR JSON_VALUE(t.\"DOC\", '$.name') = 'Steel'", false)]
+        [InlineData("t.\"z\" IS NULL", false)]
+        public void AConditionReadThroughAProjectionIsTheOneTheTransposeWritesBeneathIt(string condition, bool copyFilter)
+        {
+            var harness = new Corpus.PlannerHarness();
+            var filter = Filters(harness.ToLogical($"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", CAST(NULL AS VARCHAR) AS \"z\" FROM products AS c) AS t WHERE {condition}")).Single();
+            var project = filter.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            var rule = copyFilter
+                ? org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE
+                : (org.apache.calcite.rel.rules.FilterProjectTransposeRule)org.apache.calcite.rel.rules.FilterProjectTransposeRule.Config.DEFAULT.withCopyFilter(false).toRule();
+
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(rule).build());
+            hep.setRoot(org.apache.calcite.rel.logical.LogicalFilter.create(project, filter.getCondition()));
+            var transposed = hep.findBestExp().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>("the transpose carries the filter beneath the projection").Subject;
+            var rex = filter.getCluster().getRexBuilder();
+            var beneath = transposed.getInput() switch
+            {
+                org.apache.calcite.rel.core.Filter written => written.getCondition(),
+                org.apache.calcite.rel.core.Values values when values.getTuples().isEmpty() => rex.makeLiteral(false),
+                org.apache.calcite.rel.core.TableScan => rex.makeLiteral(true),
+                var other => throw new InvalidOperationException("the transpose wrote " + RelOptUtil.toString(other)),
+            };
+
+            Adapter.Rel.Convert.CosmosFilterSplitRule.TransposedBy(filter.getCondition(), project, rule).Should().Be(beneath, "the transpose writes {0} beneath", beneath);
+            if (copyFilter)
+            {
+                CosmosRules.GetRules(harness.Tables["products"].Convention).Should().Contain(r => ReferenceEquals(r, org.apache.calcite.rel.rules.CoreRules.FILTER_PROJECT_TRANSPOSE),
+                    "Transposed reads the configuration of the transpose the adapter registers");
+                Adapter.Rel.Convert.CosmosFilterSplitRule.Transposed(filter.getCondition(), project).Should().Be(beneath, "the rule the adapter registers copies the filter");
+            }
+        }
+
+        /// <summary>
+        /// A half holding the service's form reaches the service only where the filter rule translates a filter of it where it
+        /// lands, whatever the binding of the rows it sits over reads: over a member already part of a statement, the
+        /// container's scan in its logical form, or a traversal. The half is the one a view's column holding an item of a map
+        /// gave while that column was bound to the member's path: its equality beside the definedness of the name. Written
+        /// beneath the view, or over a traversal of the container, it reads the item of the map, which the filter rule does not
+        /// translate; the definedness alone it does.
+        /// </summary>
+        [Fact]
+        public void AHalfReachesTheServiceOnlyWhereTheFilterRuleTranslatesItWhereItLands()
+        {
+            var harness = new Corpus.PlannerHarness();
+            var convention = harness.Tables["products"].Convention;
+            const string item = "JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>)['a']";
+            const string fold = "INITCAP(JSON_VALUE({0}.\"DOC\", '$.name')) = 'Steel'";
+
+            // Over the view: its scan is a member of a statement as the table makes it.
+            var overView = Filters(harness.ToLogical($"SELECT t.\"DOC\" FROM (SELECT c.\"DOC\", {item} AS \"e\" FROM products AS c) AS t WHERE t.\"e\" = '5' OR " + string.Format(fold, "t"))).Single();
+            var view = overView.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+            var (half, defined) = BesideTheName(overView);
+            CosmosOperators.HoldsServiceForm(half).Should().BeTrue("the definedness of the name is the service's form");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, view, CosmosPlanMembers.NewSeen(), defined).Should().BeTrue("the definedness alone is translated beneath the view");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, view, CosmosPlanMembers.NewSeen(), half).Should().BeFalse("beneath the view the half reads an item of a map");
+
+            // The container's scan in its logical form, the half written beneath the view.
+            var scan = view.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.TableScan>().Subject;
+            var logical = org.apache.calcite.rel.logical.LogicalTableScan.create(scan.getCluster(), scan.getTable(), java.util.Collections.emptyList());
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, logical, CosmosPlanMembers.NewSeen(), RelOptUtil.pushPastProject(defined, view)).Should().BeTrue("the definedness alone is translated over the scan");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, logical, CosmosPlanMembers.NewSeen(), RelOptUtil.pushPastProject(half, view)).Should().BeFalse("over the scan the half reads an item of a map");
+
+            // Over a traversal of the container, the same half written over the document; the projection naming the element
+            // removed, as the planner removes it, so the unnest rule converts the traversal.
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(new org.apache.calcite.plan.hep.HepProgramBuilder().addRuleInstance(org.apache.calcite.rel.rules.CoreRules.PROJECT_REMOVE).build());
+            hep.setRoot(harness.ToLogical($"SELECT c.\"id\" FROM products AS c, UNNEST(JSON_QUERY(c.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS u(t) WHERE {item} = '5' OR " + string.Format(fold, "c")));
+            var overTraversal = Filters(hep.findBestExp()).Single();
+            var traversal = overTraversal.getInput().Should().BeAssignableTo<org.apache.calcite.rel.core.Correlate>().Subject;
+            var (crossed, definedCrossed) = BesideTheName(overTraversal);
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, traversal, CosmosPlanMembers.NewSeen(), definedCrossed).Should().BeTrue("the definedness alone is translated over the traversal");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Reaches(convention, traversal, CosmosPlanMembers.NewSeen(), crossed).Should().BeFalse("over the traversal the half reads an item of a map");
+
+            // The filter's disjunction of a comparison and the case fold of the name, the fold weakened to the name's definedness.
+            static (RexNode Half, RexNode Defined) BesideTheName(org.apache.calcite.rel.core.Filter filter)
+            {
+                var rex = filter.getCluster().getRexBuilder();
+                var disjuncts = RelOptUtil.disjunctions(filter.getCondition()).toArray().Cast<RexNode>().ToList();
+                var fold = disjuncts.Should().ContainSingle(d => RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, d) != null).Subject;
+                var comparison = disjuncts.Should().ContainSingle(d => ReferenceEquals(d, fold) == false).Subject;
+                var initcap = (RexCall)RexUtil.findOperatorCall(SqlStdOperatorTable.INITCAP, fold)!;
+                var defined = rex.makeCall(CosmosOperators.IsDefined, (RexNode)initcap.getOperands().get(0));
+                return (rex.makeCall(SqlStdOperatorTable.OR, comparison, defined), defined);
+            }
+        }
+
+        /// <summary>
+        /// Where the split asks whether the project rule converts a projection, it answers as the rule does: over a view naming
+        /// a field the target stores escaped, which the rule's conversion declines on the emulator alone, and over a projection
+        /// holding a correlation, which its match declines, as its operand's translation of the column does too.
+        /// </summary>
+        /// <remarks>
+        /// The split repeats those two declines (<c>CosmosFilterSplitRule.Converts</c>), since the rule's match and conversion
+        /// are asked only by a planner's call; this holds the repeat to the rule. Each projection is planned alone to the
+        /// convention: the project rule is added, and the scan's convention registers the rest of its rules when the planner
+        /// meets the scan, none of which converts a projection into the convention, so the plan is in the convention exactly
+        /// where the project rule converts it.
+        /// </remarks>
+        [Theory]
+        [InlineData(CosmosServiceTarget.Azure, false)]
+        [InlineData(CosmosServiceTarget.Emulator, false)]
+        [InlineData(CosmosServiceTarget.Azure, true)]
+        [InlineData(CosmosServiceTarget.Emulator, true)]
+        public void TheSplitAsksWhetherTheProjectRuleConvertsAProjectionAsTheRuleAnswers(CosmosServiceTarget target, bool correlated)
+        {
+            var harness = new Corpus.PlannerHarness(null, target);
+            var convention = harness.Tables["products"].Convention;
+            var view = harness.ToLogical("SELECT c.\"id\", JSON_VALUE(c.\"DOC\", '$.region') AS \"r﷐\" FROM products AS c")
+                .Should().BeAssignableTo<org.apache.calcite.rel.core.Project>().Subject;
+
+            var project = view;
+            if (correlated)
+            {
+                var rex = view.getCluster().getRexBuilder();
+                var input = view.getInput();
+                var correlation = new org.apache.calcite.rel.core.CorrelationId(0);
+                var projects = new java.util.ArrayList(view.getProjects());
+                projects.add(rex.makeFieldAccess(rex.makeCorrel(input.getRowType(), correlation), 1));
+                project = org.apache.calcite.rel.logical.LogicalProject.create(input, java.util.Collections.emptyList(), projects, java.util.Arrays.asList("id", "r", "k"), java.util.Collections.singleton(correlation));
+            }
+
+            var planner = (VolcanoPlanner)project.getCluster().getPlanner();
+            planner.addRule(Adapter.Rel.Convert.CosmosProjectRule.Create(convention));
+            planner.setRoot(planner.changeTraits(project, project.getTraitSet().replace(convention)));
+
+            bool converted;
+            try
+            {
+                converted = planner.findBestExp() is CosmosRel;
+            }
+            catch (RelOptPlanner.CannotPlanException)
+            {
+                converted = false;
+            }
+
+            converted.Should().Be(correlated == false && target == CosmosServiceTarget.Azure, "the rule declines a correlation, and an escaped name where the target stores it so");
+            Adapter.Rel.Convert.CosmosFilterSplitRule.Converts(convention, project).Should().Be(converted, "the split asks the project rule as the rule answers");
+        }
+
+        /// <summary>
+        /// A half stacked on a filter reaches the service only where the filter rule translates it onto that filter's
+        /// <c>WHERE</c>. A filter over a filtered view, planned as the harness plans for a host, with no filter merge, then
+        /// the calc pass a host runs: no filter Calcite evaluates in the plan chosen holds the service's form, and the plan
+        /// implements.
+        /// </summary>
+        /// <remarks>
+        /// The split over the view's projection builds the half of a <c>RETURNING REAL</c> comparison, which only the
+        /// translator admits, beside the weakening of the case fold. Asked only whether the filter rule converts the view's
+        /// filter and whether the half lands over the filter's input, it reached the service; but with no merge it sits on
+        /// the filter, and onto a <c>WHERE</c> the filter rule folds only a statement that never fails there, so it stayed a
+        /// filter Calcite evaluates holding <c>IS_DEFINED</c>, chosen by cost, and the plan failed to implement where
+        /// <c>main</c> answers. The last two, a view passing every column up and one projecting the columns compared, failed
+        /// on <c>main</c> too, by the half the split stacked on the view's filter.
+        /// </remarks>
+        [Theory]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"r\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE t.\"r\" > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.region')) > 'M'")]
+        [InlineData("SELECT t.\"id\" FROM (SELECT * FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M' AND INITCAP(JSON_VALUE(t.\"DOC\", '$.region')) > 'M'")]
+        [InlineData("SELECT t.\"id\", t.\"nm\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_VALUE(c.\"DOC\", '$.name') AS \"nm\", JSON_VALUE(c.\"DOC\", '$.n' RETURNING REAL) AS \"r\" FROM products AS c WHERE JSON_VALUE(c.\"DOC\", '$.k') = 'a') AS t WHERE t.\"r\" > 10 AND INITCAP(t.\"nm\") > 'M'")]
+        public void AHalfStackedOnAFilterReachesTheServiceOnlyWhereTheFilterRuleTranslatesItOntoThatWhere(string sql)
+        {
+            ImplementsWithNoServiceFormInProcess(new Corpus.PlannerHarness().PlanToAsync(sql));
+        }
+
+        /// <summary>
+        /// A half stacked on a filter reaches the service only where that filter reaches it, with its own condition. A view's
+        /// map column, filtered on an item of it beside a disjunction reading the column thirty times and a case fold, planned
+        /// as the harness plans for a host, with no filter merge, then the calc pass a host runs: no filter Calcite evaluates
+        /// in the plan chosen holds the service's form, and the plan implements.
+        /// </summary>
+        /// <remarks>
+        /// The split over the view pushes the item's equality, which the filter rule translates over the view's binding. A
+        /// projected map has no Cosmos form, so that filter reaches the service only by the transpose carrying it beneath the
+        /// view, where it reads an item of a <c>JSON_QUERY</c>, which the filter rule does not translate; and the disjunction
+        /// grows past the transpose's bloat, so nothing of the rest moves beneath the view. The split of the rest pushed the
+        /// case fold's weakening onto the item's filter: asked whether the filter rule translates that filter, whether the
+        /// half lands over the filter's input and whether it lands onto the filter, it reached the service, was chosen by
+        /// cost, and stayed a filter Calcite evaluates holding <c>IS_DEFINED</c>, where <c>main</c> answers.
+        /// </remarks>
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void AHalfStackedOnAFilterReachesTheServiceOnlyWhereThatFilterDoes(bool items)
+        {
+            ImplementsWithNoServiceFormInProcess(new Corpus.PlannerHarness().PlanToAsync(OnAnItemOfAViewsMap(items)));
+        }
+
+        /// <summary>
+        /// A filter over a view's map column on an item of it, beside a disjunction reading the column thirty times, of its
+        /// cardinality alone or of its cardinality and twenty-nine more items, and a case fold of the name.
+        /// </summary>
+        static string OnAnItemOfAViewsMap(bool items)
+        {
+            List<string> disjuncts = items
+                ? ["CARDINALITY(t.\"m\") = 1", .. Enumerable.Range(1, 29).Select(i => $"t.\"m\"['k{i}'] = 'v{i}'")]
+                : [.. Enumerable.Range(1, 30).Select(i => $"CARDINALITY(t.\"m\") = {i}")];
+
+            return "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\", JSON_QUERY(c.\"DOC\", '$.x' RETURNING MAP<VARCHAR, VARCHAR>) AS \"m\" FROM products AS c) AS t "
+                + $"WHERE t.\"m\"['a'] = '5' AND ({string.Join(" OR ", disjuncts)}) AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'";
+        }
+
+        /// <summary>
+        /// Every half the split registers holding the service's form has a form the service evaluates once the search is
+        /// done: its set holds a statement, or a logical projection over a set that does, the projection Calcite's and what it
+        /// reads the service's. Planned as the harness plans for a host, with what the split rule registers recorded before
+        /// Volcano takes it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A half holding a weakening that no statement takes stays a filter Calcite evaluates, which has no body for the
+        /// service's form, and only the cost model keeps it out of the plan chosen. Stacked on a filter over a view on an item
+        /// of its map column, the case fold's weakening was asked of the filter rule onto that filter, which never reaches the
+        /// service.
+        /// </para>
+        /// <para>
+        /// Over a traversal holding its element's filter, beside the same filter over the traversal in one set, the half was
+        /// asked of the filter rule over the traversal, whose binding writes no <c>WHERE</c>; the rule binds the set through
+        /// the filter it was built from, which writes one, onto which a <c>RETURNING REAL</c> comparison, which can fail, does
+        /// not fold. That statement fails to implement on <c>main</c> too, for the traversal's own reason, so the plan chosen
+        /// says nothing of the half.
+        /// </para>
+        /// <para>
+        /// Over a traversal of a view computing <c>INITCAP</c>, raw and after the field trimmer, the case fold's weakening was
+        /// registered over the traversal, its left side asked only whether a filter over it could reach the service, the
+        /// transpose taken for granted beneath it; but the unnest rule converts a traversal only over a left side part of a
+        /// statement, and nothing carries a projection out of one. The plan chosen took the correlate's transposition instead.
+        /// </para>
+        /// </remarks>
+        [Theory]
+        [InlineData("map", false)]
+        [InlineData("map of items", false)]
+        [InlineData("traversal", false)]
+        [InlineData("traversal of a view", false)]
+        [InlineData("traversal of a view's array", true)]
+        public void EveryHalfTheSplitRegistersHoldingTheServicesFormHasAFormTheServiceEvaluates(string shape, bool trimmed)
+        {
+            const string view = "(SELECT c.\"id\", c.\"DOC\", INITCAP(JSON_VALUE(c.\"DOC\", '$.region')) AS \"ic\" FROM products AS c) AS t";
+            var sql = shape switch
+            {
+                "map" => OnAnItemOfAViewsMap(items: false),
+                "map of items" => OnAnItemOfAViewsMap(items: true),
+                "traversal" => "SELECT t.\"id\" FROM (SELECT c.\"id\", c.\"DOC\" FROM products AS c, UNNEST(StringToArray(JSON_QUERY(c.\"DOC\", '$.tags'))) AS u WHERE CAST(u AS VARCHAR) = 'red') AS t "
+                    + "WHERE JSON_VALUE(t.\"DOC\", '$.n' RETURNING REAL) > 10 AND INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) > 'M'",
+                "traversal of a view" => $"SELECT t.\"id\" FROM {view}, UNNEST(StringToArray(JSON_QUERY(t.\"DOC\", '$.tags'))) AS u WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+                _ => $"SELECT t.\"id\", t.\"ic\" FROM {view}, UNNEST(JSON_QUERY(t.\"DOC\", '$.tags' RETURNING VARCHAR ARRAY)) AS u(e) WHERE INITCAP(JSON_VALUE(t.\"DOC\", '$.name')) = 'Steel'",
+            };
+
+            var productions = new SplitProductions();
+            var best = PlanToAsync(sql, hostRewrites: false, reduce: false, productions, trimmed);
+            var planner = (VolcanoPlanner)best.getCluster().getPlanner();
+
+            productions.Halves.Should().NotBeEmpty("the split fires: " + Plan(best));
+
+            foreach (var half in productions.Halves.Where(half => CosmosOperators.HoldsServiceForm(half.getCondition())))
+                Evaluated(planner.ensureRegistered(half, null), 0).Should().BeTrue("a half holding the service's form is one the service evaluates: {0}", half.getCondition());
+
+            // A set holds a statement where its subset in the convention has a best; or a logical projection among its members,
+            // Calcite's, reads a set that does, to three projections.
+            bool Evaluated(RelNode set, int depth)
+            {
+                if (planner.getSubset(set, set.getTraitSet().replace(_table.Convention))?.getBest() is not null)
+                    return true;
+
+                return depth < 3 && CosmosPlanMembers.Of(set).OfType<org.apache.calcite.rel.core.Project>()
+                    .Any(project => project.getConvention() == Convention.NONE && Evaluated(project.getInput(), depth + 1));
+            }
+        }
+
+        /// <summary>
+        /// Holds a plan chosen to what Calcite can evaluate: no filter outside the convention holds the service's form, and the
+        /// plan implements after the calc pass a host runs.
+        /// </summary>
+        static void ImplementsWithNoServiceFormInProcess(RelNode best)
+        {
+            TestContext.Current.TestOutputHelper?.WriteLine(Plan(best));
+
+            Filters(best).Where(filter => filter is not CosmosRel).Should()
+                .NotContain(filter => CosmosOperators.HoldsServiceForm(filter.getCondition()), "Calcite has no body for the service's form: " + Plan(best));
+
+            var program = new org.apache.calcite.plan.hep.HepProgramBuilder();
+            foreach (var rule in Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRules.CalcRules())
+                program.addRuleInstance(rule);
+            var hep = new org.apache.calcite.plan.hep.HepPlanner(program.build());
+            hep.setRoot(best);
+            var calcs = hep.findBestExp();
+
+            var implement = () => new Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRelImplementor(calcs.getCluster().getRexBuilder(), new java.util.HashMap())
+                .ImplementRoot((Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorRel)calcs, Apache.Calcite.Extensions.Adapter.Cursor.ClrCursorPrefer.Array);
+            implement.Should().NotThrow("what Calcite evaluates holds nothing it has no body for: " + Plan(calcs));
+        }
+
+        /// <summary>
+        /// Records the half of each pair the split rule registers, before Volcano takes it: the filter beneath the one left
+        /// above, or the filter registered alone where nothing is left above.
+        /// </summary>
+        sealed class SplitProductions : RelOptListener
+        {
+            public List<org.apache.calcite.rel.core.Filter> Halves { get; } = new();
+
+            public void relEquivalenceFound(RelOptListener.RelEquivalenceEvent e) { }
+
+            public void ruleAttempted(RelOptListener.RuleAttemptedEvent e) { }
+
+            public void ruleProductionSucceeded(RelOptListener.RuleProductionEvent e)
+            {
+                if (e.isBefore() && e.getRuleCall().getRule() is Adapter.Rel.Convert.CosmosFilterSplitRule && e.getRel() is org.apache.calcite.rel.core.Filter produced)
+                    Halves.Add(produced.getInput() as org.apache.calcite.rel.core.Filter ?? produced);
+            }
+
+            public void relDiscarded(RelOptListener.RelDiscardedEvent e) { }
+
+            public void relChosen(RelOptListener.RelChosenEvent e) { }
         }
 
         /// <summary>Counts each match the planner fires of the split rule.</summary>

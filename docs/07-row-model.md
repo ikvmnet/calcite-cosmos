@@ -74,8 +74,7 @@ concrete type is learned per row. In practice:
   pinned only by answering where Calcite fails (Chapter 23). A key whose `enum` or `const` leaves one
   value whose double is the number's, a fraction among them, is pinned through `RETURNING DOUBLE`:
   `= 5.5` where the schema lists `[5.5, 7.25]`. A comparison through a cast to `DOUBLE` may be routed
-  to a partition where the request then finds nothing, and may fail to plan through a connection that
-  runs Calcite's default rules, as the README's does (Chapter 23). Where the schema fixes the key to one
+  to a partition where the request then finds nothing (Chapter 23). Where the schema fixes the key to one
   value, a comparison the schema shows true may be dropped from the request, which may then read every
   partition (Chapter 23). Without such a declaration Calcite compares the number by its double, so
   `= 5` also keeps a stored number written with more digits than a double holds, and the adapter does
@@ -98,6 +97,10 @@ concrete type is learned per row. In practice:
   the service's string functions were not measured through that reading. Apply the function to the
   path instead: `UPPER(JSON_VALUE(c."DOC", '$.category'))` pushes where the schema declares the path a
   string and its characters are proved (Appendix B.2).
+- **Selected or grouped as text, it is computed in process.** `CAST(c."$.category" AS VARCHAR)` is null
+  for a number or a boolean, as Calcite casts them, which the adapter does not yet send, so in a select
+  list or a `GROUP BY` the column is read as it is and cast in process, and a grouping on the cast groups
+  there. Select or group the path to have the service read it: `JSON_VALUE(c."DOC", '$.category')`.
 - **To read a typed value**, select the path rather than the column: `JSON_VALUE(c."DOC",
   '$.category')` is text.
 

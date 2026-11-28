@@ -109,13 +109,16 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
 
         /// <summary>
         /// <c>CanRefuse</c> says of every readable type what the reader does: whether some value of the
-        /// kind it reads is refused.
+        /// kind it reads is refused; and of a collection of each, whether some element is.
         /// </summary>
         /// <remarks>
         /// A refusal of the kind — <c>"x"</c> read as an <c>INTEGER</c>, "Expected a JSON number" — is
         /// not one: the service's guard sends such a value as null. A refusal of the value is the rest,
         /// and the values tried are the ones each reading has a refusal for: 2^63 written whole, 1E+19
-        /// and 42.5 for the integral widths, text that is no date, UUID, GeoJSON or base64.
+        /// and 42.5 for the integral widths, text that is no date, UUID, GeoJSON or base64. A
+        /// collection's guard is the collection's, <c>(IS_ARRAY(c.x) ? c.x : null)</c>, so an element of
+        /// another kind arrives as it is: each value is tried as an array's one element, and any refusal
+        /// of it counts.
         /// </remarks>
         [Fact]
         public void EveryTypeAgreesWithWhatCanRefuseSays()
@@ -132,17 +135,35 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Client
                 if (CosmosJson.CanRead(type) == false)
                 {
                     CosmosJson.CanRefuse(type).Should().BeTrue("a type with no reading refuses everything: " + type.name());
+                    CosmosJson.CanRefuse(SqlTypeName.ARRAY, type).Should().BeTrue("nor has a collection of it: " + type.name());
                     continue;
                 }
 
                 var refused = values.Where(json => RefusesTheValue(json, type, null)).ToList();
                 CosmosJson.CanRefuse(type).Should().Be(refused.Count > 0, $"for {type.name()}, which refused {string.Join(", ", refused)}");
+
+                foreach (var collection in new[] { SqlTypeName.ARRAY, SqlTypeName.MULTISET })
+                {
+                    var elements = values.Where(json => RefusesAnElement("[" + json + "]", collection, type)).ToList();
+                    CosmosJson.CanRefuse(collection, type).Should().Be(elements.Count > 0, $"for {collection.name()} of {type.name()}, which refused the elements {string.Join(", ", elements)}");
+                }
             }
 
-            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue();
-            RefusesTheValue("[1.5]", SqlTypeName.ARRAY, SqlTypeName.BIGINT).Should().BeTrue("an element is read as its type");
-            CosmosJson.CanRefuse(SqlTypeName.ARRAY, SqlTypeName.VARCHAR).Should().BeFalse();
+            RefusesAnElement("[1]", SqlTypeName.ARRAY, SqlTypeName.VARCHAR).Should().BeTrue("an element is read as its type, under no guard of its own");
             CosmosJson.CanRefuse(SqlTypeName.ARRAY).Should().BeFalse("an element type nobody named is read by its own JSON type");
+
+            static bool RefusesAnElement(string json, SqlTypeName type, SqlTypeName component)
+            {
+                try
+                {
+                    CosmosJson.GetValue(Value(json), type, component);
+                    return false;
+                }
+                catch (CosmosMaterializationException)
+                {
+                    return true;
+                }
+            }
 
             static bool RefusesTheValue(string json, SqlTypeName type, SqlTypeName? component)
             {

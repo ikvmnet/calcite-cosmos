@@ -565,8 +565,8 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
                 var loading = new CosmosPredicateLoader.Loading(statement.BindingForCheck.Fields, statement.BindingForCheck.Readings, CosmosImplementor.DefaultRootAlias);
                 Builder built = form => RenderingRexBuilder.Build(form, statement.RexBuilderForCheck, accessors);
                 // A weakening over an input holding no document column, of a path read through a field as text alone: no node
-                // names its raw value, a cast to ANY being the text Calcite holds, so none is built, and the split rule weakens no
-                // filter over a projection (OverProjection), the only input that drops the column.
+                // names its raw value, a cast to ANY being the text Calcite holds, so over the one input that drops the column,
+                // a projection's, the builder writes no raw value and none is built.
                 if (HoldsNoRawValue(w.Mine!, accessors) && built(w.Mine!) is null)
                 {
                     declined.Add(shown + ": no raw value over an input holding no document column, not pushed");
@@ -1052,6 +1052,41 @@ namespace Apache.Calcite.Cosmos.Adapter.Tests.Facts.Rendering
             (Over(PredicateAtom.TypedReader("BIGINT"))?.Equals(bigint), Over(PredicateAtom.TypedReader("INTEGER"))?.Equals(integer)).Should().Be((true, true));
             Over(null).Should().BeNull("a number judged over no reader is written over none");
             RenderingRexBuilder.Build(ServiceForm.TestOf(CosmosServiceTest.IsDefined, p), Rex, accessors).Should().NotBeNull();
+        }
+
+        /// <summary>
+        /// A number compared with a term of an approximate type is written as a literal of that type where its double is the
+        /// number, as Calcite's validator writes it, so that Calcite's simplifier meets one class of literal where the
+        /// weakening lands beside a filter on the same term (<c>CosmosConnectionPlanningTests.AWeakeningOverAViewMeetsTheViewsOwnLiteral</c>);
+        /// where its double is another number, 2.1, 0.1 or 2^53 + 1, and beside a term of an exact type, the literal is the
+        /// exact number, so the bound is the number the form holds.
+        /// </summary>
+        [Fact]
+        public void ABoundIsWrittenInItsTermsTypeWhereItsDoubleIsTheNumber()
+        {
+            var loading = new CosmosPredicateLoader.Loading(Fields, Readings, CosmosImplementor.DefaultRootAlias);
+            var p = SqlValue.Spell(JsonDocumentPath.Root.Property("p"));
+
+            string? Written(SqlTypeName type, string number)
+            {
+                var accessor = JsonValue("p", type);
+                var accessors = loading.AccessorsOf(Rex.makeCall(SqlStdOperatorTable.GREATER_THAN, accessor, Rex.makeExactLiteral(new java.math.BigDecimal(number))), Rex);
+                var form = ServiceForm.Read(ServiceForm.CompareOf(CosmosServiceTest.Greater, p, JsonValues.Of(decimal.Parse(number, System.Globalization.CultureInfo.InvariantCulture))),
+                    PredicateAtom.TypedReader(type.getName()));
+                if (RenderingRexBuilder.Build(form, Rex, accessors) is not RexCall call || call.getOperands().get(1) is not RexLiteral literal)
+                    return null;
+
+                var value = ((java.math.BigDecimal)literal.getValueAs((java.lang.Class)typeof(java.math.BigDecimal))).stripTrailingZeros().toPlainString();
+                return (literal.getTypeName() == SqlTypeName.DECIMAL ? "exact" : literal.getType().getSqlTypeName().getName()) + " " + value;
+            }
+
+            new[]
+            {
+                Written(SqlTypeName.DOUBLE, "2"), Written(SqlTypeName.DOUBLE, "2.5"), Written(SqlTypeName.DOUBLE, "9007199254740992"),
+                Written(SqlTypeName.REAL, "30"),
+                Written(SqlTypeName.DOUBLE, "2.1"), Written(SqlTypeName.DOUBLE, "0.1"), Written(SqlTypeName.DOUBLE, "9007199254740993"),
+                Written(SqlTypeName.BIGINT, "30"), Written(SqlTypeName.INTEGER, "2"),
+            }.Should().Equal("DOUBLE 2", "DOUBLE 2.5", "DOUBLE 9007199254740992", "REAL 30", "exact 2.1", "exact 0.1", "exact 9007199254740993", "exact 30", "exact 2");
         }
 
         /// <summary>

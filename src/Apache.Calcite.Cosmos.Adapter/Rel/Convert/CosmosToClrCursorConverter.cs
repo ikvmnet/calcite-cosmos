@@ -157,19 +157,22 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Read off the row type rather than off the plan, because the row type is what crosses this
-        /// node: a subtree that has pushed a projection presents the projected columns here, and one
-        /// that has not presents the document. Which column <em>is</em> the document is left to
-        /// <see cref="CosmosImplementor.BindReadings"/> rather than tested again here — it is the one
-        /// column the row model reserves, and one place should say so.
+        /// Read off what crosses this node, the converted subtree's row: a subtree that has pushed a
+        /// projection presents the projected columns here, and one that has not presents the document.
+        /// Which column <em>is</em> the document is read off what the subtree binds
+        /// (<see cref="CosmosImplementor.TryBindOutput(RelNode?, out System.Collections.Generic.IReadOnlyList{CosmosPath?}, out System.Collections.Generic.IReadOnlyList{CosmosReading}, out CosmosClauses)"/>),
+        /// the readings implementation reads the row by: a column passed straight through from the
+        /// document column is read as JSON under any name, and a column computed is a value whatever it
+        /// is called. A subtree the walk does not bind is read by its row type, as the scan's is
+        /// (<see cref="CosmosImplementor.BindReadings"/>).
         /// </para>
         /// <para>
-        /// <b>That answer is the column's name, so an alias can fool it either way</b>, and neither
-        /// direction reaches a decision. A computed column aliased <c>DOC</c> is weighed as a document
-        /// and over-prices a pushed projection; the document column aliased to anything else is
-        /// weighed as a value and under-prices one. Both only matter where one plan ships the document
-        /// and the other does not — and a statement that names the document at all ships it on every
-        /// plan, so the two alternatives are mis-priced identically and rank the same.
+        /// <b>It was the column's name, and an alias fooled it.</b> A projection
+        /// <see cref="CosmosProjectSplitRule"/> pushes names its columns <c>$f0</c>, <c>$f1</c>, so the
+        /// document under another name was weighed as one value: over a view carrying the document
+        /// beside a column Calcite computes, a plan reading the document whole tied with one reading the
+        /// path a condition kept in process needs, and was narrower than one reading two, and it was
+        /// taken.
         /// </para>
         /// </remarks>
         /// <param name="input">The subtree being converted.</param>
@@ -180,11 +183,11 @@ namespace Apache.Calcite.Cosmos.Adapter.Rel.Convert
             var document = Metadata.CosmosRequestUnitModel.AverageDocumentSizeInBytes(container);
             var documentWidth = Math.Max(MinimumDocumentWidth, document / BytesPerValue);
 
-            var readings = CosmosImplementor.BindReadings(input.getRowType());
+            var readings = CosmosImplementor.TryBindOutput(input, out _, out var bound, out _) ? bound : CosmosImplementor.BindReadings(input.getRowType());
             var width = 0d;
 
-            for (var i = 0; i < readings.Count; i++)
-                width += readings[i] == CosmosReading.Json ? documentWidth : 1d;
+            for (var i = 0; i < input.getRowType().getFieldCount(); i++)
+                width += i < readings.Count && readings[i] == CosmosReading.Json ? documentWidth : 1d;
 
             return width;
         }

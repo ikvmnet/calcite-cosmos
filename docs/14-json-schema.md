@@ -246,10 +246,8 @@ at most 100, `> 100` is (Chapter 23).
 A bound binds only numbers, as JSON Schema's `minimum` and `maximum` do, and the cast converts a stored
 string too — `> 500` keeps a document storing `"600"`. So with the bound alone a range on `n` is not
 ruled out: written `CAST(JSON_VALUE(c."DOC", '$.n') AS INTEGER) > 500`, it is sent, one request that
-reads what the service finds. A comparison through a cast to `DOUBLE` may fail to plan through a
-connection that runs Calcite's default rules, as the README's does (Chapter 23). An enum that lists a
-number beside a string the cast cannot read may be sent whole, and the service then answers where
-Calcite fails on that string (Chapter 23).
+reads what the service finds. An enum that lists a number beside a string the cast cannot read may be
+sent whole, and the service then answers where Calcite fails on that string (Chapter 23).
 
 A test of a truth value Calcite reads as never true is asked the same way, and needs nothing declared
 but what the service guarantees: `(c."id" = 'b') IS NULL` sends nothing, since every document holds an
